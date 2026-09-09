@@ -1,5 +1,5 @@
-use crate::local_executor::LocalExecutor;
 use crate::proto::dev_agent::executor::{RunRequest, RunResult, SandboxProfile};
+use crate::restricted_executor::{RestrictedError, RestrictedExecutor};
 use starlark::environment::{Globals, Module};
 use starlark::eval::Evaluator;
 use starlark::syntax::{AstModule, Dialect};
@@ -21,6 +21,14 @@ pub enum SandboxError {
     /// An error occurred while evaluating the Starlark policy script.
     #[error("policy evaluation error: {0}")]
     Policy(String),
+
+    /// The sandbox profile could not be converted into an enforcement policy.
+    #[error("sandbox configuration error: {0}")]
+    SandboxConfig(String),
+
+    /// The current platform does not yet provide a restricted execution backend.
+    #[error("sandbox execution is not supported on this platform: {0}")]
+    Unsupported(String),
 
     /// The underlying executor failed.
     #[error("executor error: {0}")]
@@ -63,13 +71,13 @@ pub enum PolicyDecision {
 }
 
 pub struct SandboxExecutor {
-    inner: LocalExecutor,
+    inner: RestrictedExecutor,
 }
 
 impl SandboxExecutor {
     pub fn new() -> Self {
         Self {
-            inner: LocalExecutor::new(),
+            inner: RestrictedExecutor::new(),
         }
     }
 
@@ -96,7 +104,14 @@ impl SandboxExecutor {
                 }
             }
         }
-        self.inner.run(run).await.map_err(SandboxError::from)
+        self.inner
+            .run(run, profile)
+            .await
+            .map_err(|error| match error {
+                RestrictedError::Executor(error) => SandboxError::Executor(error),
+                RestrictedError::Profile(message) => SandboxError::SandboxConfig(message),
+                RestrictedError::Unsupported(message) => SandboxError::Unsupported(message),
+            })
     }
 }
 
@@ -199,6 +214,7 @@ mod tests {
         }
     }
 
+    #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn sandbox_executor_runs_without_policy() {
         let executor = SandboxExecutor::new();
@@ -209,6 +225,7 @@ mod tests {
         assert_eq!(result.exit_code, 0);
     }
 
+    #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn sandbox_executor_evaluates_policy_script() {
         let executor = SandboxExecutor::new();
@@ -296,6 +313,185 @@ def policy(ctx):
         assert_eq!(ctx.cwd, Some("/workspace".to_string()));
         assert_eq!(ctx.writable_paths, vec!["/workspace".to_string()]);
         assert_eq!(ctx.readonly_paths, vec!["/etc".to_string()]);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sandbox_executor_allows_writes_to_writable_paths() {
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("out.txt");
+        let executor = SandboxExecutor::new();
+        let result = executor
+            .run_sandboxed(
+                &RunRequest {
+                    command: "/bin/sh".to_string(),
+                    args: vec!["-c".to_string(), "echo ok > out.txt".to_string()],
+                    cwd: Some(dir.path().to_string_lossy().to_string()),
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: None,
+                },
+                &SandboxProfile {
+                    name: "writable".to_string(),
+                    network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
+                        as i32,
+                    writable_paths: vec![dir.path().to_string_lossy().to_string()],
+                    readonly_paths: vec![],
+                    environment: std::collections::HashMap::new(),
+                    timeout_ms: None,
+                    policy_script: Some("True".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(std::fs::read_to_string(out).unwrap(), "ok\n");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sandbox_executor_rejects_readonly_path_writes() {
+        let dir = tempfile::tempdir().unwrap();
+        let readonly = dir.path().join("readonly.txt");
+        std::fs::write(&readonly, "keep\n").unwrap();
+        let executor = SandboxExecutor::new();
+        let result = executor
+            .run_sandboxed(
+                &RunRequest {
+                    command: "/bin/sh".to_string(),
+                    args: vec!["-c".to_string(), "echo blocked > readonly.txt".to_string()],
+                    cwd: Some(dir.path().to_string_lossy().to_string()),
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: None,
+                },
+                &SandboxProfile {
+                    name: "readonly".to_string(),
+                    network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
+                        as i32,
+                    writable_paths: vec![dir.path().to_string_lossy().to_string()],
+                    readonly_paths: vec![readonly.to_string_lossy().to_string()],
+                    environment: std::collections::HashMap::new(),
+                    timeout_ms: None,
+                    policy_script: Some("True".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+        assert_ne!(result.exit_code, 0);
+        assert!(result.stderr.contains("Operation not permitted"));
+        assert_eq!(std::fs::read_to_string(readonly).unwrap(), "keep\n");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sandbox_executor_denies_network_when_disabled() {
+        let executor = SandboxExecutor::new();
+        let result = executor
+            .run_sandboxed(
+                &RunRequest {
+                    command: "/usr/bin/python3".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        "import socket; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', 65530))"
+                            .to_string(),
+                    ],
+                    cwd: None,
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: None,
+                },
+                &fake_profile("network-off", Some("True")),
+            )
+            .await
+            .unwrap();
+        assert_ne!(result.exit_code, 0);
+        assert!(result.stderr.contains("Operation not permitted"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sandbox_executor_allows_loopback_network_when_loopback() {
+        let executor = SandboxExecutor::new();
+        let script = "import socket, threading; ls=socket.socket(); ls.bind((\"127.0.0.1\", 0)); ls.listen(1); port=ls.getsockname()[1]; threading.Thread(target=lambda: (lambda c: (c.sendall(b\"ok\"), c.close()))(ls.accept()[0]), daemon=True).start(); s=socket.socket(); s.settimeout(2); s.connect((\"127.0.0.1\", port)); print(s.recv(2).decode()); s.close()";
+        let result = executor
+            .run_sandboxed(
+                &RunRequest {
+                    command: "/usr/bin/python3".to_string(),
+                    args: vec!["-c".to_string(), script.to_string()],
+                    cwd: None,
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: None,
+                },
+                &SandboxProfile {
+                    name: "loopback".to_string(),
+                    network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkLoopback
+                        as i32,
+                    writable_paths: vec![],
+                    readonly_paths: vec![],
+                    environment: std::collections::HashMap::new(),
+                    timeout_ms: None,
+                    policy_script: Some("True".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout.trim(), "ok");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sandbox_executor_enforces_profile_timeout() {
+        let executor = SandboxExecutor::new();
+        let result = executor
+            .run_sandboxed(
+                &RunRequest {
+                    command: "/bin/sleep".to_string(),
+                    args: vec!["10".to_string()],
+                    cwd: None,
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: None,
+                },
+                &SandboxProfile {
+                    name: "timed".to_string(),
+                    network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
+                        as i32,
+                    writable_paths: vec![],
+                    readonly_paths: vec![],
+                    environment: std::collections::HashMap::new(),
+                    timeout_ms: Some(100),
+                    policy_script: Some("True".to_string()),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(result.timed_out);
+        assert_eq!(result.exit_code, -1);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sandbox_executor_applies_resource_limits() {
+        let executor = SandboxExecutor::new();
+        let result = executor
+            .run_sandboxed(
+                &RunRequest {
+                    command: "/bin/sh".to_string(),
+                    args: vec!["-c".to_string(), "ulimit -n".to_string()],
+                    cwd: None,
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: None,
+                },
+                &fake_profile("limits", Some("True")),
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout.trim(), "4096");
     }
 }
 

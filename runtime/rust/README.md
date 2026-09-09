@@ -2,22 +2,24 @@
 
 Rust side of dev-agent's low-level runtime boundary. The current crate provides
 a working stdio executor binary that is consumed by the TypeScript `RustExecutor`
-through a stable protobuf protocol; sandbox enforcement is the next stage.
+through a stable protobuf protocol. Restricted execution is active on macOS via
+`sandbox-exec`; Linux backend support is planned next.
 
 The TypeScript side defines `SandboxProfile` and `SandboxExecutor` in
-`@dev-agent/executor`. The Rust runtime will implement the actual sandbox back
-end for those contracts.
+`@dev-agent/executor`. The Rust runtime implements the actual sandbox back end
+for those contracts on macOS.
 
-Planned capabilities:
+Current capabilities (macOS):
 
 - Sandboxed command execution
 - Process management and isolation
 - Filesystem security and permission enforcement
 - Explicit network policy, read-only paths, writable paths, and per-command
   timeouts
+- CPU, file-size, open-file, process-count, and core-dump resource limits
 
-Sandbox and process isolation are the next stage for this crate; the stdio
-execution boundary is already active.
+The stdio execution boundary is active, and macOS `sandbox-exec` currently
+enforces the profile. Linux bubblewrap/seccomp support is the next backend.
 
 ## Policy Language: Starlark
 
@@ -40,9 +42,7 @@ In practice this means:
   safe to evaluate untrusted or model-generated policy snippets.
 
 This keeps the policy surface human-readable, testable, and consistent with how
-production coding agents govern tool execution. Until the Rust runtime is
-introduced, `SandboxProfile` remains a TypeScript-only contract with no
-enforcement.
+production coding agents govern tool execution.
 
 ## Building
 
@@ -89,3 +89,8 @@ The TS side is wired end to end:
   `runSandboxed` path routes through this evaluator.
 - Policy evaluation is guarded by tick and heap limits, and sandbox tests cover
   both allow and deny decisions through `RustExecutor`.
+- `SandboxExecutor` no longer passes through to `LocalExecutor`: after Starlark
+  returns `Allow`, `runSandboxed` executes through `sandbox-exec` with writable
+  path, read-only path, network policy, cwd, timeout, and resource constraints.
+- Real-binary integration tests cover Starlark deny, read-only write rejection,
+  disabled network, allowed writes, profile timeout, and resource limits.

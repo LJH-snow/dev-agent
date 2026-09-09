@@ -23,11 +23,20 @@ impl LocalExecutor {
     }
 
     pub async fn run(&self, request: &RunRequest) -> Result<RunResult, ExecutorError> {
+        self.run_with_builder(request, || Command::new(&request.command))
+            .await
+    }
+
+    pub(crate) async fn run_with_builder(
+        &self,
+        request: &RunRequest,
+        build: impl FnOnce() -> Command,
+    ) -> Result<RunResult, ExecutorError> {
         if request.command.trim().is_empty() {
             return Err(ExecutorError::EmptyCommand);
         }
 
-        let mut command = Command::new(&request.command);
+        let mut command = build();
         command.args(&request.args);
         command.stdin(Stdio::piped());
         command.stdout(Stdio::piped());

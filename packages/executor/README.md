@@ -9,8 +9,8 @@ Implemented in phase 1:
 - `LocalExecutor` using Node's `child_process`. It supports `cwd`, `env`, stdin
   `input`, and `timeoutMs`, and returns `stdout`, `stderr`, `exitCode`, and an
   optional `timedOut` flag.
-- `SandboxProfile` and `SandboxExecutor` types as the contract for the future
-  Rust-backed sandbox runtime.
+- `SandboxProfile` and `SandboxExecutor` types as the contract for the Rust-backed
+  sandbox runtime; the macOS backend is active via `sandbox-exec`.
 
 Typical usage:
 
@@ -42,6 +42,8 @@ The Rust runtime lives in `runtime/rust` and communicates with TypeScript over
 TypeScript side: it spawns the Rust binary, encodes requests, decodes responses,
 and implements both `Executor` and `SandboxExecutor`. It reuses the same
 `ExecutorResult` contract as `LocalExecutor`, so callers can swap between them.
+The protobuf stream is consumed as raw `Buffer` frames; text encoding is only
+applied to the Rust process's stderr, never to stdio protocol payloads.
 
 The CLI can verify the boundary directly:
 
@@ -94,8 +96,9 @@ The Rust crate (`dev-agent-runtime`) provides:
 - `LocalExecutor` — a Rust port of the Node `LocalExecutor`, used as the
   baseline implementation.
 - `SandboxExecutor` — evaluates an optional Starlark `policy_script` before
-  delegating to `LocalExecutor`. Filesystem/network isolation remains future
-  work, but the Starlark interpreter-backed allow/deny policy path is active.
+  executing through the restricted backend. The Starlark interpreter-backed
+  allow/deny path and macOS `sandbox-exec` filesystem/network enforcement are
+  active.
 - `dev-agent-executor` binary — reads `Envelope` messages from stdin and writes
   `Response` messages to stdout, serving as the stdio transport.
 

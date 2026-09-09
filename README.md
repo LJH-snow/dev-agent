@@ -3,8 +3,9 @@
 An AI coding agent for developers, built with TypeScript and Node.js.
 
 Phase 1 is a pnpm workspace monorepo made of small TypeScript packages. Low-level
-capabilities such as sandboxing, process isolation, and filesystem security will be
-added later in the Rust runtime under `runtime/rust`.
+capabilities such as sandboxing, process isolation, and filesystem security live
+in the Rust runtime under `runtime/rust`; the macOS backend is active, and Linux
+backend support is planned next.
 
 ## Structure
 
@@ -21,7 +22,7 @@ dev-agent/
 |   |-- code-intelligence/ TypeScript/AST symbol scanner, code index, and ranked search
 |   `-- executor/         Executor abstraction; phase 1 provides LocalExecutor
 |-- runtime/
-|   `-- rust/             Future Rust runtime for sandbox and isolation
+|   `-- rust/             Active Rust runtime for sandbox and isolation
 |-- configs/              Shared TypeScript configuration
 |-- docs/                 Project documentation
 |-- tests/                Test suites (framework to be added)
@@ -68,7 +69,7 @@ pnpm cli -- --version
 - Executor contract in `@dev-agent/executor` with `cwd`, `env`, stdin `input`,
   and `timeoutMs` support on `LocalExecutor`; `RustExecutor` implements
   `SandboxExecutor` over the protobuf stdio boundary, with sandbox enforcement
-  reserved for the Rust runtime
+  running in the Rust runtime
 - Basic stdio MCP client and MCP tool registration in `@dev-agent/mcp`, wired into the CLI
 - MCP resources and prompts support in `@dev-agent/mcp`, with `ping` and
   initialized lifecycle notifications
@@ -76,7 +77,7 @@ pnpm cli -- --version
   and `<prefix>:prompt` tools, with available resources/prompts listed in the
   agent system prompt
 - CLI entry point wired to the loop and verified with local Ollama smoke tests
-- Policy language direction set: the future Rust sandbox will use **Starlark** for
+- Policy language direction set: the Rust sandbox uses **Starlark** for
   filesystem/network/policy rules, consistent with the open-source Codex agent
 - Rust runtime boundary is active: `runtime/rust` has a `dev-agent-runtime`
   crate with `LocalExecutor`, `SandboxExecutor`, a `dev-agent-executor` stdio
@@ -116,15 +117,19 @@ pnpm cli -- --version
 - The Rust `dev-agent-executor` binary routes `runSandboxed` through
   `SandboxExecutor`, and a real-binary integration test verifies both allow and
   policy-denied responses from TypeScript
+- Restricted execution is enabled on macOS with `sandbox-exec`: writable paths,
+  read-only paths, network policy, cwd, profile timeouts, and process resource
+  limits are enforced before a command runs
 
 ## Roadmap
 
 1. Richer code index and reference search
 2. MCP resources, prompts, and richer server lifecycle
 3. Rust runtime under `runtime/rust`, implemented behind the `SandboxExecutor` contract.
-   Sandbox and filesystem policies will be authored in **Starlark** (the same
+   Sandbox and filesystem policies are authored in **Starlark** (the same
    approach used by the open-source Codex agent), evaluated at runtime by an
    embedded Starlark interpreter in Rust. Starlark `policy` evaluation is now
-   implemented and tested; the remaining work is enforcement of filesystem,
-   network, and process isolation semantics around the evaluated decision
+   implemented and tested; macOS `sandbox-exec` enforcement is now active for
+   filesystem, network, timeout, and resource limits. The next backend to add
+   is Linux bubblewrap/seccomp support
 4. Desktop shell in `apps/desktop`

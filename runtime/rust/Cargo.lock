@@ -394,6 +394,7 @@ dependencies = [
 name = "dev-agent-runtime"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "prost",
  "prost-build",
  "serde",

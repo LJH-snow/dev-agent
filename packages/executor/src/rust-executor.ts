@@ -198,8 +198,7 @@ export class RustExecutor implements SandboxExecutor {
       stdio: ["pipe", "pipe", "pipe"],
     });
     this.child = child;
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => this.handleData(chunk));
+    child.stdout.on("data", (chunk: Buffer) => this.handleData(chunk));
     child.stderr.setEncoding("utf8");
     child.on("error", (error) => this.rejectAll(error));
     child.on("exit", (code, signal) => {
@@ -247,8 +246,8 @@ export class RustExecutor implements SandboxExecutor {
     this.child.stdin.write(buffer);
   }
 
-  private handleData(chunk: string): void {
-    this.buffer = Buffer.concat([this.buffer, Buffer.from(chunk, "utf8")]);
+  private handleData(chunk: Buffer): void {
+    this.buffer = Buffer.concat([this.buffer, chunk]);
     for (;;) {
       if (this.buffer.length < 4) {
         break;

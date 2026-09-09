@@ -1,5 +1,6 @@
 pub mod local_executor;
 pub mod proto;
+pub mod restricted_executor;
 pub mod sandbox_executor;
 pub mod stdio_transport;
 

@@ -66,6 +66,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     ("POLICY_DENIED", message.clone())
                                 }
                                 SandboxError::Policy(message) => ("POLICY_ERROR", message.clone()),
+                                SandboxError::SandboxConfig(message) => {
+                                    ("SANDBOX_CONFIG_ERROR", message.clone())
+                                }
+                                SandboxError::Unsupported(message) => {
+                                    ("SANDBOX_UNSUPPORTED", message.clone())
+                                }
                                 SandboxError::Executor(err) => ("EXECUTOR_ERROR", err.to_string()),
                             };
                             Some(proto::dev_agent::executor::response::Payload::Error(
