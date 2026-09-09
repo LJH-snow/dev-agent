@@ -1,0 +1,28 @@
+[package]
+name = "dev-agent-runtime"
+version = "0.1.0"
+edition = "2021"
+description = "Rust runtime for dev-agent: sandboxed command execution and process isolation."
+
+[lib]
+name = "dev_agent_runtime"
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "dev-agent-executor"
+path = "src/bin/dev-agent-executor.rs"
+
+[dependencies]
+prost = "0.13"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+starlark = "0.14"
+thiserror = "2"
+tokio = { version = "1", features = ["full"] }
+
+[build-dependencies]
+prost-build = "0.13"
+
+[dev-dependencies]
+tempfile = "3"

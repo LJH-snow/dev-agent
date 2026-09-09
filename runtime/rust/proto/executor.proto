@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package dev_agent.executor;
+
+// Envelope wrapping all requests sent from TypeScript to the Rust runtime.
+// The stdio transport frames each message as: [4-byte big-endian length][Envelope payload].
+message Envelope {
+  optional uint32 request_id = 1;
+  oneof payload {
+    RunRequest run = 2;
+    RunSandboxedRequest run_sandboxed = 3;
+    HealthCheck health_check = 4;
+  }
+}
+
+// Envelope wrapping all responses sent from the Rust runtime to TypeScript.
+message Response {
+  optional uint32 request_id = 1;
+  oneof payload {
+    RunResult run_result = 2;
+    HealthCheckResult health_check_result = 3;
+    ErrorResult error = 4;
+  }
+}
+
+message RunRequest {
+  string command = 1;
+  repeated string args = 2;
+  optional string cwd = 3;
+  map<string, string> env = 4;
+  optional string input = 5;
+  optional uint64 timeout_ms = 6;
+}
+
+message RunResult {
+  string stdout = 1;
+  string stderr = 2;
+  int32 exit_code = 3;
+  bool timed_out = 4;
+}
+
+enum NetworkPolicy {
+  NETWORK_UNSPECIFIED = 0;
+  NETWORK_ENABLED = 1;
+  NETWORK_DISABLED = 2;
+  NETWORK_LOOPBACK = 3;
+}
+
+message SandboxProfile {
+  string name = 1;
+  NetworkPolicy network = 2;
+  repeated string writable_paths = 3;
+  repeated string readonly_paths = 4;
+  map<string, string> environment = 5;
+  optional uint64 timeout_ms = 6;
+  // Starlark policy script evaluated by the Rust runtime to compute
+  // allow/deny decisions for filesystem and network access.
+  optional string policy_script = 7;
+}
+
+message RunSandboxedRequest {
+  RunRequest run = 1;
+  SandboxProfile profile = 2;
+}
+
+message HealthCheck {}
+
+message HealthCheckResult {
+  string runtime_version = 1;
+  repeated string capabilities = 2;
+}
+
+message ErrorResult {
+  string message = 1;
+  string code = 2;
+}

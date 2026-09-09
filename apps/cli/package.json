@@ -1,0 +1,37 @@
+{
+  "name": "@dev-agent/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Primary command-line entry point for dev-agent.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "dev-agent": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@dev-agent/agent-core": "workspace:*",
+    "@dev-agent/executor": "workspace:*",
+    "@dev-agent/mcp": "workspace:*",
+    "@dev-agent/model": "workspace:*",
+    "@dev-agent/tools": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/index.js",
+    "test": "tsc -p tsconfig.json && node --test tests/*.test.mjs",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.9.0"
+  }
+}
