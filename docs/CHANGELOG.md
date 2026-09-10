@@ -1,5 +1,63 @@
 # Changelog
 
+## 2026-09-11 (Development plan v4: cancellation, usage, MCP server)
+
+Executed `docs/night-plan-v4.md`, which closed the gaps v3 left behind:
+interrupts only stopped at turn boundaries, token usage was invisible, and
+dev-agent could consume MCP servers but not act as one.
+
+### Added: cancelling a running tool
+- `Envelope` gains `cancel = 5` with `CancelRequest { request_id }`. The
+  cancelled run answers `ErrorResult { code: "CANCELLED" }`; the cancel itself
+  is not acknowledged separately.
+- `dev-agent-executor` now reads envelopes concurrently with running commands
+  and tracks a `oneshot` sender per in-flight request id, so a cancel can
+  arrive mid-command and kill its child process. This replaces the previous
+  strictly-serial execution model.
+- `ExecutorRunOptions.signal` aborts a run: `LocalExecutor` kills the child and
+  rejects with `ExecutorCancelledError`; `RustExecutor` sends the cancel
+  envelope and rejects when the runtime answers `CANCELLED`. `RustExecutor`
+  gained the same default concurrency limit as `LocalExecutor` (5).
+- The loop forwards its run signal into `ToolExecutionContext.signal`, and
+  shell/git/search pass it to the executor, so a disconnect stops the command.
+- Fixed two latent `RustExecutor` bugs the new tests exposed: concurrent first
+  calls could spawn two runtimes, and `dispose()` left the instance unusable.
+
+### Added: desktop end-to-end coverage
+- New e2e suite with a local OpenAI-compatible SSE stub driving a real
+  `ChatSession` and `startServer`.
+- Disconnecting the client is proven to kill a running command: the tool
+  touches a start marker, sleeps, then touches a finish marker that never
+  appears.
+- `DEV_AGENT_MAX_CONTEXT_CHARS` is verified through the real session, and the
+  `usage` SSE event is asserted end to end.
+
+### Added: token-usage accounting
+- `ChatUsage { promptTokens, completionTokens, totalTokens }` on
+  `ChatCompletion`; all four providers map their own field names, including
+  usage from a stream's final event (Anthropic merges `message_start` and
+  `message_delta`). Responses without usage stay undefined.
+- `AgentLoop` fires `onUsage` per turn and accumulates the session total on
+  `AgentContext.usage`, so it survives across runs.
+- CLI prints `[usage] prompt=… completion=… total=…`; the desktop emits a
+  `usage` SSE event and the UI shows a running token counter.
+
+### Added: MCP server mode
+- `createMcpServer({ tools })` speaks newline-delimited JSON-RPC 2.0 over
+  stdio: `initialize`, `ping`, `tools/list`, `tools/call`. Tool implementations
+  are injected, so `@dev-agent/mcp` keeps no dependency on `@dev-agent/tools`.
+- Tool execution failures answer `{ isError: true }` for the host model, while
+  unknown tools (-32602) and methods (-32601) are protocol errors.
+- `apps/cli --mcp-server` exposes the built-in tool set with no model provider
+  and keeps stdout protocol-only.
+
+### Tests
+- TypeScript: 237 -> 262. Rust: 39 -> 42.
+- New coverage: Rust cancellation (unit + real-binary), LocalExecutor and
+  RustExecutor aborts plus the concurrency limit, tool-signal forwarding, the
+  desktop interrupt/context-budget/usage e2e suite, per-provider usage parsing,
+  and the MCP server unit tests plus a CLI host-script round trip.
+
 ## 2026-09-11 (Night plan v3: quotas, context budget, retries, interrupts)
 
 Executed `docs/night-plan-v3.md` end to end. The through-line is making the

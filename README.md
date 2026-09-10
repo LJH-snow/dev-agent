@@ -184,7 +184,13 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   honour `Retry-After`, and never restart a stream that already emitted tokens
 - Desktop chat aborts on client disconnect (the SSE stream closes with
   `done { "status": "aborted" }`) and rejects a concurrent run with 409
-- Test suite: 237 TypeScript tests + 39 Rust tests, all passing
+- Interrupting a run now cancels the tool that is already running: the abort
+  signal reaches the tool context, `LocalExecutor` kills the child, and
+  `RustExecutor` sends `Envelope.cancel` so the runtime kills it too
+- Token usage: providers report `usage`, the loop accumulates it on the
+  context and fires `onUsage`, and the CLI (`[usage] …`) plus the desktop
+  (`usage` SSE event and header counter) surface it
+- Test suite: 262 TypeScript tests + 42 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -213,3 +219,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 11. ~~code-search incremental index caching~~ (done)
 12. ~~Model retry and rate-limit handling~~ (done)
 13. ~~Desktop interrupt and concurrency protection~~ (done)
+14. ~~Cancel a running tool through the Rust protocol~~ (done)
+15. ~~Desktop end-to-end coverage for interrupts and the context budget~~ (done)
+16. ~~Session token-usage accounting across providers~~ (done)
+17. ~~MCP server mode (`--mcp-server`) exposing the built-in tools~~ (done)

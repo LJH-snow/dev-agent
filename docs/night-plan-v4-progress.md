@@ -5,12 +5,59 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 4（文档、回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
-- 最近一次运行：运行 4（2026-09-11 08:05-08:35）
-- 工作区：阶段 3 的改动已提交并推送
+- 当前阶段：无（v4 计划全部完成）
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4
+- 最近一次运行：运行 5（2026-09-11 08:35-08:55）
+- 工作区：阶段 4 的改动已提交并推送
 
 ## 日志
+
+### 运行 5 — 2026-09-11 08:35-08:55
+
+- 阶段/工作项：阶段 4（文档、回归与提交）全部完成
+- 做了什么：
+  - 根 `README.md`：Current Status 增加取消贯通与用量统计两条，测试数量更新为
+    262 TypeScript + 42 Rust；Roadmap 增加 14-17 项（取消协议、桌面端 E2E、
+    用量统计、MCP server 模式）
+  - `docs/architecture.md`：补充工具取消链路、用量累计、MCP server 模式
+  - `docs/CHANGELOG.md`：顶部新增 v4 条目，按 Added/Test 分节记录四个阶段与测试变化
+- 验证命令与结果（完整回归矩阵）：
+  - `node scripts/check.mjs`：通过
+  - `pnpm build`、`pnpm typecheck`：通过
+  - `pnpm test`：262 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：9 passed（真实 Rust 二进制）
+  - `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：42 passed / 0 failed
+- 提交：见阶段 4 的 docs 提交
+- 下一步：无（计划完成）
+
+## 最终总结（2026-09-11 08:55）
+
+### 各阶段产出
+
+| 阶段 | 产出 | 关键提交 |
+|------|------|----------|
+| 0 | 执行器取消协议：`Envelope.cancel`、并发读 stdin、按 request id 杀子进程；TS `signal` 贯通到工具 | `feat(executor)` |
+| 1 | 桌面端端到端测试：真实 ChatSession 验证"断开即杀掉运行中的命令"与上下文预算 | `test(desktop)` |
+| 2 | 会话用量统计：四家 provider 解析 usage、AgentLoop 累计 + `onUsage`、CLI/桌面端展示 | `feat(model)` |
+| 3 | MCP server 模式：`createMcpServer` + `--mcp-server` 暴露内置工具 | `feat(mcp)` |
+| 4 | 文档同步、全量回归、提交推送 | `docs` |
+
+### 测试数量
+
+- TypeScript：237 → 262（+25）
+- Rust：39 → 42（+3）
+- 真实二进制集成用例：8 → 9（新增取消用例）
+
+### 遗留问题（已知边界）
+
+1. Rust 执行器的取消是"杀进程"级别：`SIGKILL` 之后不会再给子进程清理机会，
+   需要优雅终止的场景（例如需要 flush 的构建）还不能选中。
+2. `RustExecutor` 的并发上限在 TS 侧计数，runtime 本身不限制并发；绕过 TS 直接
+   写协议可以提交任意多请求。
+3. MCP server 目前只实现 tools 能力（无 resources / prompts / sampling），
+   也没有实现取消通知。
+4. Linux `bwrap` 的实时测试仍只能在 Linux 上运行；Windows 仍不受支持。
 
 ### 运行 4 — 2026-09-11 08:05-08:35
 

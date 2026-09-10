@@ -17,7 +17,11 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   the system prompt and the newest entry, and reports how many entries it
   dropped.
 - **Interrupts**: `run(context, input, { signal })` checks the signal before each
-  turn and tool call and forwards it to the model request.
+  turn and tool call and forwards it to the model request. The signal also
+  reaches tools through `ToolExecutionContext.signal`, so a running command can
+  be cancelled instead of only stopping between turns.
+- **Usage**: every model response that reports tokens fires `onUsage`, and the
+  loop accumulates the totals on `AgentContext.usage` across runs.
 
 ### `packages/model`
 - Unified `ModelProvider` interface with `chat()` and `streamChat()` methods.
@@ -27,6 +31,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   jitter; `Retry-After` (seconds or HTTP-date, capped at 2s) is honoured and
   other 4xx fail immediately. Streaming calls only retry the initial request, so
   tokens already delivered are never duplicated.
+- **Usage**: `ChatCompletion.usage` normalises each provider's field names
+  (OpenAI `usage`, Anthropic `input_tokens`/`output_tokens`, Gemini
+  `usageMetadata`, Ollama `prompt_eval_count`/`eval_count`), including usage
+  that arrives in a stream's final event.
 
 ### `packages/tools`
 - `AgentToolRegistry` for registering and looking up tools.
@@ -41,6 +49,12 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - `McpServerSession`: Session lifecycle, debounced notifications, reconnect with backoff.
 - Resource subscription via `watchResource()`.
 - Structured error codes (`McpRequestError`).
+- **Server mode**: `createMcpServer({ tools })` speaks newline-delimited
+  JSON-RPC over stdio and implements `initialize`, `ping`, `tools/list`, and
+  `tools/call`. Tool implementations are injected, so the package keeps no
+  dependency on `@dev-agent/tools`; the CLI's `--mcp-server` wires the built-in
+  tools in. Tool failures answer `{ isError: true }`; unknown tools and methods
+  are JSON-RPC errors.
 
 ### `packages/code-intelligence`
 - Multi-language symbol scanning: TypeScript (AST), Python (regex), Rust (regex).
@@ -54,6 +68,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - Quotas: `maxOutputBytes`, `maxConcurrentExecutions`.
 - The output quota crosses the protobuf boundary: `max_output_bytes` is enforced
   by the Rust runtime while streaming and reported back as `bytes_truncated`.
+- Cancellation crosses it too: `ExecutorRunOptions.signal` makes `LocalExecutor`
+  kill the child locally, while `RustExecutor` sends `Envelope.cancel` and the
+  runtime kills the matching child and answers `CANCELLED`.
 - `SandboxProfile` and `SandboxExecutor` for Rust sandbox integration.
 - `RestrictedExecutor` enforces profiles on macOS (`sandbox-exec`) and Linux (`bwrap`).
 
