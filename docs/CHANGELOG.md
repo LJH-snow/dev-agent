@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-10 (Release pipeline)
+
+### Added: tag-driven release workflow
+- `.github/workflows/release.yml` builds `dev-agent-executor` for
+  `aarch64-apple-darwin`, `x86_64-apple-darwin`, `x86_64-unknown-linux-gnu`, and
+  `aarch64-unknown-linux-gnu`, packages each as `.tar.gz` with a `.sha256`
+  checksum, and attaches them to a GitHub Release on a `v*` tag.
+- The macOS targets build natively on `macos-latest`; the Linux arm64 target
+  cross-compiles on `ubuntu-latest` with `gcc-aarch64-linux-gnu`.
+- Manual `workflow_dispatch` runs build and upload the artifacts without
+  publishing a release, so the pipeline can be verified without cutting a tag.
+- Checksum files record only the archive name, so `shasum -a 256 -c` works next
+  to the downloaded files rather than expecting the CI build directory.
+
+Verified end to end: a dispatched run built all four targets and uploaded four
+artifacts; the downloaded macOS arm64 archive contained a Mach-O arm64 binary
+that answered `--check-rust` with runtime version `0.1.0` and capabilities
+`run, run_sandboxed`.
+
 ## 2026-09-10 (Config file wiring and sandbox binary selection)
 
 ### Fixed: the config file was never read

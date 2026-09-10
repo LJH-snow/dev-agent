@@ -72,12 +72,17 @@ jobs:
           cp "runtime/rust/target/${{ matrix.target }}/release/dev-agent-executor" "dist/${asset}/"
           cp runtime/rust/README.md "dist/${asset}/README.md"
           tar -C dist -czf "dist/${asset}.tar.gz" "${asset}"
-          if command -v shasum >/dev/null 2>&1; then
-            shasum -a 256 "dist/${asset}.tar.gz" > "dist/${asset}.tar.gz.sha256"
-          else
-            sha256sum "dist/${asset}.tar.gz" > "dist/${asset}.tar.gz.sha256"
-          fi
-          cat "dist/${asset}.tar.gz.sha256"
+          # Record only the file name so the checksum is verifiable next to the
+          # downloaded archive, not against this job's build directory.
+          (
+            cd dist
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "${asset}.tar.gz" > "${asset}.tar.gz.sha256"
+            else
+              sha256sum "${asset}.tar.gz" > "${asset}.tar.gz.sha256"
+            fi
+            cat "${asset}.tar.gz.sha256"
+          )
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
