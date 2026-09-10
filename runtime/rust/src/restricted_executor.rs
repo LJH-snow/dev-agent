@@ -563,7 +563,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[tokio::test]
-    fn linux_bwrap_runs_echo() {
+    async fn linux_bwrap_runs_echo() {
         if !bwrap_available() {
             eprintln!("skipping linux_bwrap_runs_echo: bwrap not available");
             return;

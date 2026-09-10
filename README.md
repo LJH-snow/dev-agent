@@ -59,6 +59,14 @@ pnpm cli -- --version
 workspace packages resolve each other through their published `dist/*.d.ts`,
 which the build step emits.
 
+To catch Linux-only compile errors while developing on macOS:
+
+```bash
+rustup target add x86_64-unknown-linux-gnu
+cd runtime/rust
+cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
+```
+
 ## Continuous Integration
 
 `.github/workflows/ci.yml` runs on every push to `main` and on pull requests:
