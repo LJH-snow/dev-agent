@@ -47,6 +47,11 @@ The output quota crosses the boundary too: `maxOutputBytes` is sent as
 `max_output_bytes`, and the Rust runtime truncates per stream and answers with
 `bytes_truncated`, which surfaces as `bytesTruncated` on the result. The Rust
 runtime applies its own 1 MiB default when a client omits the field.
+Cancellation crosses it as well: `ExecutorRunOptions.signal` makes
+`LocalExecutor` kill the child process locally, while `RustExecutor` sends a
+`CancelRequest` and rejects with `ExecutorCancelledError` once the runtime
+answers `CANCELLED`. `RustExecutor` also enforces the same default concurrency
+limit as `LocalExecutor` (5, configurable via `maxConcurrentExecutions`).
 The protobuf stream is consumed as raw `Buffer` frames; text encoding is only
 applied to the Rust process's stderr, never to stdio protocol payloads.
 

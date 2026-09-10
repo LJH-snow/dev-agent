@@ -2,7 +2,12 @@ import type { AgentState } from "./agent-state.js";
 import type { AgentContext } from "./context.js";
 import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.js";
 import type { ChatMessage, ModelProvider, ToolSchema } from "@dev-agent/model";
-import { runTool, type ToolCollection, type ToolDefaults } from "./tools.js";
+import {
+  runTool,
+  type ToolCollection,
+  type ToolDefaults,
+  type ToolExecutionContext,
+} from "./tools.js";
 
 export interface AgentLoopOptions {
   readonly model: ModelProvider;
@@ -106,7 +111,12 @@ export class AgentLoop {
             throw new Error(`Agent requested tool "${call.name}" but no tools are configured.`);
           }
           this.onToolCall?.({ name: call.name, input: call.input }, context);
-          const result = await runTool(this.tools, call, context, this.toolDefaults);
+          const toolContext: ToolExecutionContext = {
+            sessionId: context.sessionId,
+            workingDirectory: context.workingDirectory,
+            signal: options.signal,
+          };
+          const result = await runTool(this.tools, call, toolContext, this.toolDefaults);
           this.onToolResult?.({ name: call.name, output: result }, context);
           await memory.append(
             createMemoryEntry("tool", result, { toolCallId: call.id, toolName: call.name })

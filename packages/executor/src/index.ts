@@ -16,6 +16,11 @@ export interface ExecutorRunOptions {
   readonly input?: string | Buffer;
   readonly timeoutMs?: number;
   readonly maxOutputBytes?: number;
+  /**
+   * Aborts a running command. `LocalExecutor` kills the child process;
+   * `RustExecutor` sends a cancel to the runtime, which kills it there.
+   */
+  readonly signal?: AbortSignal;
 }
 
 export interface Executor {
@@ -49,6 +54,7 @@ import { RustExecutor } from "./rust-executor.js";
 
 export * from "./local-executor.js";
 export * from "./rust-executor.js";
+export * from "./errors.js";
 
 export interface CreateExecutorOptions {
   readonly rustBinaryPath?: string;

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 
+import { ExecutorCancelledError } from "./errors.js";
 import type { Executor, ExecutorResult, ExecutorRunOptions } from "./index.js";
 
 export interface LocalExecutorOptions {
@@ -66,14 +67,41 @@ export class LocalExecutor implements Executor {
       let stderr = "";
       let timedOut = false;
       let truncated = false;
+      let cancelled = false;
+      let settled = false;
+      let timer: NodeJS.Timeout | undefined;
       const startedAt = Date.now();
+      const signal = options.signal;
 
-      const timer = options.timeoutMs === undefined
-        ? undefined
-        : setTimeout(() => {
-            timedOut = true;
-            child.kill("SIGTERM");
-          }, options.timeoutMs);
+      const cleanup = (): void => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+        signal?.removeEventListener("abort", onAbort);
+      };
+
+      const onAbort = (): void => {
+        if (settled) {
+          return;
+        }
+        cancelled = true;
+        child.kill("SIGTERM");
+      };
+
+      if (options.timeoutMs !== undefined) {
+        timer = setTimeout(() => {
+          timedOut = true;
+          child.kill("SIGTERM");
+        }, options.timeoutMs);
+      }
+
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+        } else {
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+      }
 
       child.stdout.on("data", (chunk: Buffer) => {
         const chunkStr = chunk.toString();
@@ -96,15 +124,17 @@ export class LocalExecutor implements Executor {
       });
 
       child.on("error", (error) => {
-        if (timer) {
-          clearTimeout(timer);
-        }
+        settled = true;
+        cleanup();
         reject(error);
       });
 
       child.on("close", (code) => {
-        if (timer) {
-          clearTimeout(timer);
+        settled = true;
+        cleanup();
+        if (cancelled) {
+          reject(new ExecutorCancelledError(command));
+          return;
         }
         const result: ExecutorResult = {
           stdout,

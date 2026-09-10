@@ -3,6 +3,8 @@ export type ToolName = "filesystem" | "shell" | "git" | "search" | "code-search"
 export interface ToolExecutionContext {
   readonly sessionId: string;
   readonly workingDirectory: string;
+  /** Aborted when the surrounding run is interrupted, so tools can stop work. */
+  readonly signal?: AbortSignal;
 }
 
 export interface Tool {

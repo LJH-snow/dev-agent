@@ -8,6 +8,7 @@
 //   default         → echoes back a RunResult with stdout "mock:{command}"
 //   reflect          → echoes back the exact RunRequest payload as JSON in stdout
 //   truncate         → responds with a RunResult that reports truncated output
+//   slow             → answers a run after a delay, so a cancel can arrive first
 //   error:CODE       → responds with an ErrorResult using the given code
 //   hang             → never responds (for timeout/disconnect tests)
 
@@ -157,7 +158,7 @@ function encodeSandboxProfile(msg) {
   return bytes;
 }
 
-// Envelope: request_id=1, run=2, run_sandboxed=3, health_check=4
+// Envelope: request_id=1, run=2, run_sandboxed=3, health_check=4, cancel=5
 function encodeEnvelope(msg) {
   let bytes = [];
   if (msg.requestId) bytes = bytes.concat(encodeVarintField(1, msg.requestId));
@@ -174,6 +175,10 @@ function encodeEnvelope(msg) {
   } else if (msg.payload?.healthCheck !== undefined) {
     // HealthCheck is an empty message
     bytes = bytes.concat(encodeEmbedded(4, []));
+  } else if (msg.payload?.cancel) {
+    // CancelRequest: request_id=1
+    const inner = encodeVarintField(1, msg.payload.cancel.requestId);
+    bytes = bytes.concat(encodeEmbedded(5, inner));
   }
   return bytes;
 }
@@ -227,6 +232,9 @@ function decodeEnvelope(buf) {
     };
   } else if (fields[4] !== undefined) {
     result.payload = { healthCheck: {} };
+  } else if (fields[5] !== undefined) {
+    const cancel = decodeMessage(fields[5], 0, fields[5].length);
+    result.payload = { cancel: { requestId: cancel[1] ?? 0 } };
   }
   return result;
 }
@@ -296,6 +304,19 @@ function handleRequest(encoded) {
   if (behavior === "hang") return;
   const envelope = decodeEnvelope(encoded);
   const requestId = envelope.requestId;
+
+  // A cancel answers for the request it targets; the run itself is not
+  // expected to produce another response in this mock.
+  if (envelope.payload?.cancel) {
+    writeFrame(
+      encodeResponse({
+        requestId: envelope.payload.cancel.requestId,
+        error: { message: `mock cancelled ${envelope.payload.cancel.requestId}`, code: "CANCELLED" },
+      })
+    );
+    return;
+  }
+
   let response;
 
   if (behavior.startsWith("error:")) {
@@ -317,6 +338,11 @@ function handleRequest(encoded) {
     response = { requestId, healthCheckResult: { runtimeVersion: "0.0.0-mock", capabilities: ["run", "run_sandboxed"] } };
   } else {
     response = { requestId, error: { message: "empty envelope", code: "INVALID_REQUEST" } };
+  }
+
+  if (behavior === "slow" && (envelope.payload?.run || envelope.payload?.runSandboxed)) {
+    setTimeout(() => writeFrame(encodeResponse(response)), 2000);
+    return;
   }
 
   writeFrame(encodeResponse(response));

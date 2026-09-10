@@ -215,3 +215,41 @@ test("agent loop stops before running a tool when the signal aborts mid-turn", a
   );
   assert.equal(toolRuns, 0);
 });
+
+test("agent loop passes the run signal into tool execution contexts", async () => {
+  let capturedContext;
+  let modelCalls = 0;
+
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "capture",
+    description: "Captures its execution context.",
+    async execute(_input, context) {
+      capturedContext = context;
+      return { ok: true };
+    },
+  });
+
+  const model = {
+    id: "openai",
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      if (modelCalls === 1) {
+        return { content: "", toolCalls: [{ id: "call-1", name: "capture", input: {} }] };
+      }
+      return { content: "done", toolCalls: [] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-signal", memory);
+  const loop = new AgentLoop({ model, tools, maxTurns: 3 });
+  const controller = new AbortController();
+
+  const result = await loop.run(context, "capture", { signal: controller.signal });
+
+  assert.equal(result.state.status, "done");
+  assert.equal(capturedContext.sessionId, "agent-signal");
+  assert.equal(capturedContext.signal, controller.signal);
+});

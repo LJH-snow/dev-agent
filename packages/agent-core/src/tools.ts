@@ -11,6 +11,8 @@ const DEFAULT_TIMEOUT_MS = 30000;
 export interface ToolExecutionContext {
   readonly sessionId: string;
   readonly workingDirectory: string;
+  /** Aborted when the surrounding run is interrupted. */
+  readonly signal?: AbortSignal;
 }
 
 export interface AgentTool {

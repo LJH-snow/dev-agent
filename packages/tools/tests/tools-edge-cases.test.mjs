@@ -141,6 +141,19 @@ test("shell tool forwards command, args, and working directory to the executor",
   ]);
 });
 
+test("shell tool forwards the abort signal to the executor", async () => {
+  const executor = recordingExecutor();
+  const tool = new ShellTool(executor);
+  const controller = new AbortController();
+
+  await tool.execute(
+    { command: "sleep", args: ["10"] },
+    { sessionId: "s", workingDirectory: "/tmp", signal: controller.signal }
+  );
+
+  assert.equal(executor.calls[0].options.signal, controller.signal);
+});
+
 test("shell tool treats missing args as an empty list", async () => {
   const executor = recordingExecutor();
   const tool = new ShellTool(executor);

@@ -6,6 +6,7 @@ use starlark::syntax::{AstModule, Dialect};
 use starlark::values::list::AllocList;
 use starlark::values::none::NoneType;
 use starlark::values::structs::AllocStruct;
+use tokio::sync::oneshot;
 
 /// Maps a protobuf `NetworkPolicy` enum to the lowercase label exposed to
 /// Starlark policy scripts via `ctx.network_policy`.
@@ -43,6 +44,10 @@ pub enum SandboxError {
     /// The sandbox profile could not be converted into an enforcement policy.
     #[error("sandbox configuration error: {0}")]
     SandboxConfig(String),
+
+    /// The caller cancelled the command while it was running.
+    #[error("command cancelled")]
+    Cancelled,
 
     /// The current platform does not yet provide a restricted execution backend.
     #[error("sandbox execution is not supported on this platform: {0}")]
@@ -110,6 +115,17 @@ impl SandboxExecutor {
         run: &RunRequest,
         profile: &SandboxProfile,
     ) -> Result<RunResult, SandboxError> {
+        self.run_sandboxed_cancellable(run, profile, None).await
+    }
+
+    /// Like [`Self::run_sandboxed`], but the command can be stopped early by
+    /// sending on the `cancel` channel.
+    pub async fn run_sandboxed_cancellable(
+        &self,
+        run: &RunRequest,
+        profile: &SandboxProfile,
+        cancel: Option<oneshot::Receiver<()>>,
+    ) -> Result<RunResult, SandboxError> {
         if let Some(script) = &profile.policy_script {
             let ctx = PolicyContext::from_request(run, profile);
             match evaluate_policy(script, &ctx)? {
@@ -123,9 +139,12 @@ impl SandboxExecutor {
             }
         }
         self.inner
-            .run(run, profile)
+            .run(run, profile, cancel)
             .await
             .map_err(|error| match error {
+                RestrictedError::Executor(crate::local_executor::ExecutorError::Cancelled) => {
+                    SandboxError::Cancelled
+                }
                 RestrictedError::Executor(error) => SandboxError::Executor(error),
                 RestrictedError::Profile(message) => SandboxError::SandboxConfig(message),
                 RestrictedError::Unsupported(message) => SandboxError::Unsupported(message),
@@ -742,5 +761,36 @@ def policy(ctx):
             .unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout.trim(), "4096");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn sandbox_executor_cancels_a_running_command() {
+        let executor = SandboxExecutor::new();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let _ = sender.send(());
+        });
+
+        let started = std::time::Instant::now();
+        let result = executor
+            .run_sandboxed_cancellable(
+                &RunRequest {
+                    command: "/bin/sleep".to_string(),
+                    args: vec!["10".to_string()],
+                    cwd: None,
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: None,
+                    max_output_bytes: None,
+                },
+                &fake_profile("cancel", Some("True")),
+                Some(receiver),
+            )
+            .await;
+
+        assert!(matches!(result, Err(SandboxError::Cancelled)));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
     }
 }

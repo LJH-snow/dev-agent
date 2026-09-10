@@ -274,3 +274,28 @@ test(
     }
   }
 );
+
+test(
+  "real Rust binary cancels a running command",
+  { skip: existsSync(rustBinaryPath) ? false : "Rust binary not built" },
+  async () => {
+    const executor = new RustExecutor({ binaryPath: rustBinaryPath });
+    try {
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 100);
+
+      const started = Date.now();
+      await assert.rejects(
+        () => executor.run("/bin/sleep", ["10"], { signal: controller.signal }),
+        /cancelled/i
+      );
+
+      assert.ok(
+        Date.now() - started < 3000,
+        "the runtime should stop the command instead of waiting for it"
+      );
+    } finally {
+      await executor.dispose();
+    }
+  }
+);

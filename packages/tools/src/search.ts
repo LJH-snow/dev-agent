@@ -32,6 +32,7 @@ export class SearchTool implements Tool {
     args.push(params.query, params.path);
     return this.executor.run("rg", args, {
       cwd: context?.workingDirectory,
+      ...(context?.signal ? { signal: context.signal } : {}),
     });
   }
 }

@@ -23,6 +23,7 @@ export class GitTool implements Tool {
     }
     return this.executor.run("git", args, {
       cwd: context?.workingDirectory,
+      ...(context?.signal ? { signal: context.signal } : {}),
     });
   }
 }

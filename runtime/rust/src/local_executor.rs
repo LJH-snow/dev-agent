@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
 use tokio::process::{Child, Command};
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::timeout;
 
 use crate::proto::dev_agent::executor::{RunRequest, RunResult};
@@ -14,6 +14,8 @@ pub enum ExecutorError {
     EmptyCommand,
     #[error("execution error: {0}")]
     Io(#[from] std::io::Error),
+    #[error("command cancelled")]
+    Cancelled,
 }
 
 /// Bytes captured per output stream when the client does not ask for a
@@ -28,7 +30,19 @@ impl LocalExecutor {
     }
 
     pub async fn run(&self, request: &RunRequest) -> Result<RunResult, ExecutorError> {
-        self.run_with_builder(request, || Command::new(&request.command))
+        self.run_cancellable(request, None).await
+    }
+
+    /// Runs a command that can be stopped early through `cancel`.
+    ///
+    /// Dropping the sender without sending is not a cancellation: the receiver
+    /// resolves and the run stops only when a value is actually sent.
+    pub async fn run_cancellable(
+        &self,
+        request: &RunRequest,
+        cancel: Option<oneshot::Receiver<()>>,
+    ) -> Result<RunResult, ExecutorError> {
+        self.run_with_builder(request, || Command::new(&request.command), cancel)
             .await
     }
 
@@ -36,6 +50,7 @@ impl LocalExecutor {
         &self,
         request: &RunRequest,
         build: impl FnOnce() -> Command,
+        cancel: Option<oneshot::Receiver<()>>,
     ) -> Result<RunResult, ExecutorError> {
         if request.command.trim().is_empty() {
             return Err(ExecutorError::EmptyCommand);
@@ -89,61 +104,92 @@ impl LocalExecutor {
             truncate_tx,
         ));
 
-        let exit_status = match request.timeout_ms {
+        let outcome = match request.timeout_ms {
             Some(millis) => {
                 let duration = Duration::from_millis(millis);
-                match timeout(duration, wait_for_exit(&mut child, &mut truncate_rx)).await {
-                    Ok(status) => Some(status.map_err(ExecutorError::Io)?),
+                match timeout(
+                    duration,
+                    wait_for_exit(&mut child, &mut truncate_rx, cancel),
+                )
+                .await
+                {
+                    Ok(outcome) => outcome.map_err(ExecutorError::Io)?,
                     Err(_) => {
                         let _ = child.kill().await;
                         let _ = child.wait().await;
-                        None
+                        WaitOutcome::TimedOut
                     }
                 }
             }
-            None => Some(
-                wait_for_exit(&mut child, &mut truncate_rx)
-                    .await
-                    .map_err(ExecutorError::Io)?,
-            ),
+            None => wait_for_exit(&mut child, &mut truncate_rx, cancel)
+                .await
+                .map_err(ExecutorError::Io)?,
         };
 
         let (stdout_bytes, stdout_truncated) = join_output(stdout_task).await;
         let (stderr_bytes, stderr_truncated) = join_output(stderr_task).await;
 
-        match exit_status {
-            Some(status) => Ok(RunResult {
+        match outcome {
+            WaitOutcome::Exited(status) => Ok(RunResult {
                 stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
                 stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
                 exit_code: status.code().unwrap_or(-1),
                 timed_out: false,
                 bytes_truncated: stdout_truncated || stderr_truncated,
             }),
-            None => Ok(RunResult {
+            WaitOutcome::TimedOut => Ok(RunResult {
                 stdout: String::new(),
                 stderr: "command timed out".to_string(),
                 exit_code: -1,
                 timed_out: true,
                 bytes_truncated: false,
             }),
+            WaitOutcome::Cancelled => Err(ExecutorError::Cancelled),
         }
     }
 }
 
+enum WaitOutcome {
+    Exited(std::process::ExitStatus),
+    TimedOut,
+    Cancelled,
+}
+
 /// Waits for the child to exit, killing it early when a reader reports that the
-/// capture limit was hit. Without the kill the child could block forever
-/// writing into a pipe nobody reads.
+/// capture limit was hit or when a cancellation arrives. Without the kill the
+/// child could block forever writing into a pipe nobody reads.
 async fn wait_for_exit(
     child: &mut Child,
     truncate_rx: &mut mpsc::Receiver<()>,
-) -> std::io::Result<std::process::ExitStatus> {
+    cancel: Option<oneshot::Receiver<()>>,
+) -> std::io::Result<WaitOutcome> {
+    let cancel_wait = async move {
+        match cancel {
+            Some(receiver) => {
+                if receiver.await.is_ok() {
+                    return;
+                }
+                // The sender was dropped without cancelling: never resolve, so
+                // the select keeps waiting for the command itself.
+                std::future::pending::<()>().await;
+            }
+            None => std::future::pending::<()>().await,
+        }
+    };
+    tokio::pin!(cancel_wait);
+
     tokio::select! {
-        status = child.wait() => status,
+        status = child.wait() => Ok(WaitOutcome::Exited(status?)),
         signal = truncate_rx.recv() => {
             if signal.is_some() {
                 let _ = child.kill().await;
             }
-            child.wait().await
+            Ok(WaitOutcome::Exited(child.wait().await?))
+        }
+        _ = &mut cancel_wait => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            Ok(WaitOutcome::Cancelled)
         }
     }
 }
@@ -333,5 +379,38 @@ mod tests {
             .unwrap();
         assert_eq!(result.stdout.len(), 1024);
         assert!(!result.bytes_truncated);
+    }
+
+    #[tokio::test]
+    async fn local_executor_cancels_a_running_command() {
+        let executor = LocalExecutor::new();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let _ = sender.send(());
+        });
+
+        let started = std::time::Instant::now();
+        let result = executor
+            .run_cancellable(&fake_request("sleep", &["10"]), Some(receiver))
+            .await;
+
+        assert!(matches!(result, Err(ExecutorError::Cancelled)));
+        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    }
+
+    #[tokio::test]
+    async fn dropping_the_cancel_sender_does_not_cancel_the_command() {
+        let executor = LocalExecutor::new();
+        let (sender, receiver) = tokio::sync::oneshot::channel::<()>();
+        drop(sender);
+
+        let result = executor
+            .run_cancellable(&fake_request("echo", &["still-runs"]), Some(receiver))
+            .await
+            .unwrap();
+
+        assert_eq!(result.stdout.trim(), "still-runs");
+        assert_eq!(result.exit_code, 0);
     }
 }

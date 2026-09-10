@@ -20,14 +20,19 @@ Current capabilities:
 - Per-stream output quota (default 1 MiB, client-overridable via
   `max_output_bytes`) enforced while streaming; exceeding it kills the child and
   sets `bytes_truncated` on the result
+- Cancellation: an `Envelope.cancel` stops the in-flight run with the given
+  request id, kills its child process, and answers the run with
+  `ErrorResult { code: "CANCELLED" }`
 - Linux `bwrap` namespace isolation (user/ipc/pid/uts/cgroup), read-only root
   filesystem with writable/read-only path bind mounts, network policy
   (`--unshare-net`), environment injection, resource limits, and cwd enforcement
 
-The stdio binary reads one envelope, runs it, writes the response, and only then
-reads the next envelope, so a single `dev-agent-executor` process executes
-commands strictly serially. Concurrency is bounded by the number of processes a
-client starts, not by a per-process limit.
+The stdio binary handles requests concurrently: the read loop keeps consuming
+envelopes while commands run, which is what lets a `CancelRequest` arrive
+mid-command. Each in-flight request is tracked by request id, and cancelling one
+kills its child and answers the run with `CANCELLED`. Limiting concurrency is
+the caller's job; both `LocalExecutor` and `RustExecutor` default to five
+concurrent requests.
 
 The stdio execution boundary is active, and macOS `sandbox-exec` currently
 enforces the profile. The Linux `bwrap` backend is active, with pure

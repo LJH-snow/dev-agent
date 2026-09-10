@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use tokio::process::Command;
+use tokio::sync::oneshot;
 
 use crate::local_executor::{ExecutorError, LocalExecutor};
 use crate::proto::dev_agent::executor::{NetworkPolicy, RunRequest, RunResult, SandboxProfile};
@@ -31,6 +32,7 @@ impl RestrictedExecutor {
         &self,
         run: &RunRequest,
         profile: &SandboxProfile,
+        cancel: Option<oneshot::Receiver<()>>,
     ) -> Result<RunResult, RestrictedError> {
         let mut request = run.clone();
         request.timeout_ms = effective_timeout_ms(run, profile);
@@ -50,12 +52,16 @@ impl RestrictedExecutor {
         let command_name = request.command.clone();
 
         self.inner
-            .run_with_builder(&request, move || {
-                let mut command = Command::new("sandbox-exec");
-                command.arg("-p").arg(&policy_profile).arg(&command_name);
-                apply_resource_limits(&mut command);
-                command
-            })
+            .run_with_builder(
+                &request,
+                move || {
+                    let mut command = Command::new("sandbox-exec");
+                    command.arg("-p").arg(&policy_profile).arg(&command_name);
+                    apply_resource_limits(&mut command);
+                    command
+                },
+                cancel,
+            )
             .await
             .map_err(RestrictedError::Executor)
     }
@@ -65,6 +71,7 @@ impl RestrictedExecutor {
         &self,
         run: &RunRequest,
         profile: &SandboxProfile,
+        cancel: Option<oneshot::Receiver<()>>,
     ) -> Result<RunResult, RestrictedError> {
         let mut request = run.clone();
         request.timeout_ms = effective_timeout_ms(run, profile);
@@ -78,14 +85,18 @@ impl RestrictedExecutor {
         let bwrap_args = build_bwrap_args(&request, profile, base_dir)?;
 
         self.inner
-            .run_with_builder(&request, move || {
-                let mut command = Command::new("bwrap");
-                for arg in &bwrap_args {
-                    command.arg(arg);
-                }
-                apply_resource_limits(&mut command);
-                command
-            })
+            .run_with_builder(
+                &request,
+                move || {
+                    let mut command = Command::new("bwrap");
+                    for arg in &bwrap_args {
+                        command.arg(arg);
+                    }
+                    apply_resource_limits(&mut command);
+                    command
+                },
+                cancel,
+            )
             .await
             .map_err(RestrictedError::Executor)
     }
@@ -95,6 +106,7 @@ impl RestrictedExecutor {
         &self,
         _run: &RunRequest,
         _profile: &SandboxProfile,
+        _cancel: Option<oneshot::Receiver<()>>,
     ) -> Result<RunResult, RestrictedError> {
         Err(RestrictedError::Unsupported(other_platform_message()))
     }

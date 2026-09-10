@@ -25,6 +25,7 @@ export class ShellTool implements Tool {
     const params = parseShellInput(input);
     return this.executor.run(params.command, params.args, {
       cwd: context?.workingDirectory,
+      ...(context?.signal ? { signal: context.signal } : {}),
     });
   }
 }

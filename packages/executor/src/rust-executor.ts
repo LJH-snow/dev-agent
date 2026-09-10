@@ -6,6 +6,7 @@ import * as protobuf from "protobufjs";
 type ProtobufModule = typeof protobuf;
 
 import { DEFAULT_MAX_OUTPUT_BYTES } from "./local-executor.js";
+import { ExecutorCancelledError } from "./errors.js";
 
 // protobufjs is CommonJS; Node's ESM loader exposes its API on `default`.
 const protobufImpl: ProtobufModule = (
@@ -67,7 +68,11 @@ message Envelope {
     RunRequest run = 2;
     RunSandboxedRequest run_sandboxed = 3;
     HealthCheck health_check = 4;
+    CancelRequest cancel = 5;
   }
+}
+message CancelRequest {
+  uint32 request_id = 1;
 }
 message Response {
   optional uint32 request_id = 1;
@@ -79,6 +84,7 @@ message Response {
 }`;
 
 interface PendingRequest {
+  readonly command: string;
   resolve(value: ExecutorResult): void;
   reject(reason: unknown): void;
 }
@@ -86,6 +92,8 @@ interface PendingRequest {
 export interface RustExecutorOptions {
   readonly binaryPath: string;
   readonly protoPath?: string;
+  /** Requests allowed to run at once; further calls are rejected. Defaults to 5. */
+  readonly maxConcurrentExecutions?: number;
 }
 
 const NETWORK_POLICY_MAP: Readonly<Record<SandboxNetworkPolicy, number>> = {
@@ -94,9 +102,12 @@ const NETWORK_POLICY_MAP: Readonly<Record<SandboxNetworkPolicy, number>> = {
   loopback: 3,
 };
 
+const DEFAULT_MAX_CONCURRENT = 5;
+
 export class RustExecutor implements SandboxExecutor {
   private readonly binaryPath: string;
   private readonly protoPath?: string;
+  private readonly maxConcurrentExecutions: number;
   private child?: ChildProcessWithoutNullStreams;
   private readonly pending = new Map<number, PendingRequest>();
   private nextRequestId = 1;
@@ -105,6 +116,7 @@ export class RustExecutor implements SandboxExecutor {
   private envelopeType?: protobuf.Type;
   private responseType?: protobuf.Type;
   private started = false;
+  private startPromise?: Promise<void>;
 
   constructor(options: RustExecutorOptions) {
     if (!options.binaryPath.trim()) {
@@ -112,6 +124,7 @@ export class RustExecutor implements SandboxExecutor {
     }
     this.binaryPath = options.binaryPath;
     this.protoPath = options.protoPath;
+    this.maxConcurrentExecutions = options.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT;
   }
 
   async run(
@@ -128,6 +141,12 @@ export class RustExecutor implements SandboxExecutor {
     options: ExecutorRunOptions & { readonly profile?: SandboxProfile } = {}
   ): Promise<ExecutorResult> {
     await this.ensureStarted();
+
+    if (this.pending.size >= this.maxConcurrentExecutions) {
+      throw new Error(
+        `Concurrent execution limit reached (${this.maxConcurrentExecutions}). Try again later.`
+      );
+    }
 
     const env: Record<string, string> = {};
     if (options.env) {
@@ -164,17 +183,50 @@ export class RustExecutor implements SandboxExecutor {
         };
 
     return new Promise<ExecutorResult>((resolve, reject) => {
-      this.pending.set(requestId, { resolve, reject });
+      const signal = options.signal;
+      const onAbort = (): void => {
+        // The runtime kills the child and answers with a CANCELLED error, so
+        // the promise settles through the normal response path.
+        this.writeCancel(requestId);
+      };
+      const cleanup = (): void => {
+        signal?.removeEventListener("abort", onAbort);
+      };
+
+      this.pending.set(requestId, {
+        command,
+        resolve: (value) => {
+          cleanup();
+          resolve(value);
+        },
+        reject: (reason) => {
+          cleanup();
+          reject(reason);
+        },
+      });
+
+      if (signal) {
+        if (signal.aborted) {
+          onAbort();
+        } else {
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+      }
+
       this.writeEnvelope(envelope);
     });
   }
 
   async dispose(): Promise<void> {
     if (!this.child) {
+      this.started = false;
+      this.startPromise = undefined;
       return;
     }
     const child = this.child;
     this.child = undefined;
+    this.started = false;
+    this.startPromise = undefined;
     child.stdin.end();
     await new Promise<void>((resolve) => {
       child.once("exit", () => resolve());
@@ -185,10 +237,20 @@ export class RustExecutor implements SandboxExecutor {
     });
   }
 
-  private async ensureStarted(): Promise<void> {
+  private ensureStarted(): Promise<void> {
     if (this.started) {
-      return;
+      return Promise.resolve();
     }
+    // Two calls arriving together must not spawn two runtimes: the second
+    // spawn would overwrite `this.child` and orphan the first process.
+    this.startPromise ??= this.start().catch((error: unknown) => {
+      this.startPromise = undefined;
+      throw error;
+    });
+    return this.startPromise;
+  }
+
+  private async start(): Promise<void> {
     if (!existsSync(this.binaryPath)) {
       throw new Error(
         `Rust executor binary not found at ${this.binaryPath}. Build the runtime/rust crate first.`
@@ -251,6 +313,15 @@ export class RustExecutor implements SandboxExecutor {
     this.child.stdin.write(buffer);
   }
 
+  private writeCancel(targetRequestId: number): void {
+    const envelopeId = this.nextRequestId;
+    this.nextRequestId += 1;
+    this.writeEnvelope({
+      requestId: envelopeId,
+      cancel: { requestId: targetRequestId },
+    });
+  }
+
   private handleData(chunk: Buffer): void {
     this.buffer = Buffer.concat([this.buffer, chunk]);
     for (;;) {
@@ -289,7 +360,11 @@ export class RustExecutor implements SandboxExecutor {
     }
     this.pending.delete(json.requestId!);
     if (json.error) {
-      pending.reject(new Error(`${json.error.code}: ${json.error.message}`));
+      if (json.error.code === "CANCELLED") {
+        pending.reject(new ExecutorCancelledError(pending.command));
+      } else {
+        pending.reject(new Error(`${json.error.code}: ${json.error.message}`));
+      }
       return;
     }
     if (json.runResult) {

@@ -10,7 +10,15 @@ message Envelope {
     RunRequest run = 2;
     RunSandboxedRequest run_sandboxed = 3;
     HealthCheck health_check = 4;
+    // Cancels the in-flight run with the referenced request id. The cancelled
+    // run answers with ErrorResult{code: "CANCELLED"}; the cancel envelope
+    // itself is not acknowledged separately.
+    CancelRequest cancel = 5;
   }
+}
+
+message CancelRequest {
+  uint32 request_id = 1;
 }
 
 // Envelope wrapping all responses sent from the Rust runtime to TypeScript.
