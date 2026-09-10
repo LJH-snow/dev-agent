@@ -168,7 +168,21 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - Model streaming: `streamChat` for OpenAI, Anthropic, Gemini, and Ollama emits
   tokens via `onToken`, flushes a final event that lacks a trailing newline, and
   surfaces tool calls so the agent can still run tools in streaming mode
-- Test suite: 182 TypeScript tests + 35 Rust tests, all passing
+- Rust runtime output quota: `RunRequest.max_output_bytes` is enforced while
+  streaming, a command that exceeds it is killed, and `bytes_truncated` reports
+  the truncation back through `RustExecutor`
+- Agent context budget: `contextBudget.maxChars` drops the oldest history first,
+  never splits a tool call from its results, always keeps the system prompt and
+  the newest entry, and announces the omission; configured with
+  `DEV_AGENT_MAX_CONTEXT_CHARS` or `maxContextChars`
+- `code-search` caches its scan per root and re-reads only files whose size or
+  mtime changed; deleted files leave the index and `getCacheStats()` reports
+  hits/misses/rescanned
+- Model providers retry 429/5xx and network failures with exponential backoff,
+  honour `Retry-After`, and never restart a stream that already emitted tokens
+- Desktop chat aborts on client disconnect (the SSE stream closes with
+  `done { "status": "aborted" }`) and rejects a concurrent run with 409
+- Test suite: 237 TypeScript tests + 39 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -192,4 +206,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 6. ~~Desktop shell in `apps/desktop`~~ (done)
 7. ~~CLI streaming output and session management hardening~~ (done)
 8. ~~Network policy enforcement via Starlark~~ (done)
-- Test suite: 206 TypeScript tests + 35 Rust tests, all passing
+9. ~~Rust runtime output quota across the protobuf boundary~~ (done)
+10. ~~Agent context budget with tool-call-aware trimming~~ (done)
+11. ~~code-search incremental index caching~~ (done)
+12. ~~Model retry and rate-limit handling~~ (done)
+13. ~~Desktop interrupt and concurrency protection~~ (done)

@@ -5,12 +5,62 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 5（文档、回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4
-- 最近一次运行：运行 5（2026-09-11 00:35-00:55）
-- 工作区：阶段 4 的改动已提交并推送
+- 当前阶段：无（v3 计划全部完成）
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4、阶段 5
+- 最近一次运行：运行 6（2026-09-11 00:41-01:00）
+- 工作区：阶段 5 的改动已提交并推送
 
 ## 日志
+
+### 运行 6 — 2026-09-11 00:41-01:00
+
+- 阶段/工作项：阶段 5（文档、回归与提交）全部完成
+- 做了什么：
+  - 根 `README.md`：Current Status 增加 v3 的五项能力，Roadmap 增加 9-13 项
+    （全部 done），测试数量更新为 237 TypeScript + 39 Rust
+  - `docs/architecture.md`：补充上下文预算、运行中断、模型重试、索引缓存、
+    输出配额跨边界、桌面端中断/409 语义
+  - `docs/CHANGELOG.md`：顶部新增 v3 条目，按 Added/Test 分节记录五个阶段与测试变化
+  - `apps/cli/README.md`、`apps/desktop/README.md`、`runtime/rust/README.md`、
+    `packages/*/README.md`：各包 README 在前五个阶段已同步，此处核对无遗漏
+- 验证命令与结果（完整回归矩阵）：
+  - `node scripts/check.mjs`：通过
+  - `pnpm build`、`pnpm typecheck`：通过
+  - `pnpm test`：237 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：8 passed（真实 Rust 二进制）
+  - `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：39 passed / 0 failed
+- 提交：见阶段 5 的 docs 提交
+- 下一步：无（计划完成）
+
+## 最终总结（2026-09-11 01:00）
+
+### 各阶段产出
+
+| 阶段 | 产出 | 关键提交 |
+|------|------|----------|
+| 0 | Rust 运行时输出配额：`max_output_bytes` / `bytes_truncated` 跨 protobuf 边界，流式截断并杀进程，默认 1 MiB | `feat(executor)` |
+| 1 | Agent 上下文预算：`contextBudget.maxChars`，成组保留工具调用，CLI/桌面端接线 | `feat(agent-core)` |
+| 2 | code-search 增量索引缓存：签名校验、删除清理、`getCacheStats()` | `feat(tools)` |
+| 3 | 模型层重试：429/5xx/网络错误退避重试、`Retry-After`、流式不重放 | `feat(model)` |
+| 4 | 桌面端中断与并发保护：AbortSignal 贯通、断开即中止、并发 409 | `feat(desktop)` |
+| 5 | 文档同步、全量回归、提交推送 | `docs` |
+
+### 测试数量
+
+- TypeScript：206 → 237（+31）
+- Rust：35 → 39（+4）
+- 真实二进制集成用例：8（含新增的输出截断用例）
+
+### 遗留问题（已知边界，均有文档说明）
+
+1. 桌面端中断只保证"模型请求 + 轮次/工具之间"可中止；已开始的工具调用不会被强杀，
+   Rust 执行器需要新增取消协议才能覆盖。
+2. `DEV_AGENT_MAX_CONTEXT_CHARS` 在桌面端只有接线与类型检查，没有独立端到端用例
+   （agent-core 裁剪逻辑与 CLI 端到端已覆盖）。
+3. Rust 执行器单进程天然串行，因此没有显式并发上限；并发由客户端启动的进程数决定。
+4. Linux `bwrap` 的实时测试只能在 Linux 上运行，本机（macOS）仅跑了参数构造单测。
+5. Windows 平台仍不受支持。
 
 ### 运行 5 — 2026-09-11 00:35-00:55
 

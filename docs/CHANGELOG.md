@@ -1,5 +1,69 @@
 # Changelog
 
+## 2026-09-11 (Night plan v3: quotas, context budget, retries, interrupts)
+
+Executed `docs/night-plan-v3.md` end to end. The through-line is making the
+sandbox path and long sessions behave under real use rather than only in the
+happy path.
+
+### Added: Rust runtime output quota
+- `RunRequest.max_output_bytes` (field 7) and `RunResult.bytes_truncated`
+  (field 5) extend the protobuf protocol; both are optional/backward compatible,
+  and a client that omits the limit gets a 1 MiB default rather than unbounded
+  capture.
+- The Rust `LocalExecutor` streams stdout/stderr instead of buffering with
+  `wait_with_output`, stops at the per-stream limit, kills a child that would
+  otherwise block on a full pipe, and reports the truncation.
+- `RustExecutor` forwards `maxOutputBytes` (default 1 MiB) and surfaces
+  `bytesTruncated` on the result, so the quota that already existed in the
+  TypeScript `LocalExecutor` now also applies when the sandbox is enabled.
+- The stdio binary is documented as strictly serial: it reads the next envelope
+  only after the current command finished.
+
+### Added: Agent context budget
+- `AgentLoopOptions.contextBudget.maxChars` bounds the history sent to the
+  model. Oldest entries are dropped first, an assistant tool call is never
+  separated from its tool results, the system prompt and the newest entry are
+  always kept, and a `[context] N earlier entries omitted` system message
+  announces the drop. Unset means the full history, exactly as before.
+- CLI: `DEV_AGENT_MAX_CONTEXT_CHARS` (over `maxContextChars` in the config file).
+- Desktop: `ChatSessionOptions.maxContextChars` with the same env fallback.
+
+### Added: code-search incremental caching
+- `InMemoryCodeIndex.removeFile()` (declared on `CodeIndex`) drops a file's
+  symbols so a cached index can be updated in place.
+- `CodeSearchTool` caches the symbol index, per-file signatures, and sources per
+  scan root. A repeated search re-reads only files whose size or mtime changed,
+  drops deleted files, and reuses cached sources for `references`/`definition`.
+  `getCacheStats()` reports hits/misses/rescanned.
+- On this repository a repeated `AgentLoop` symbol search dropped from 261ms to
+  65ms with identical results.
+
+### Added: model retry and rate-limit handling
+- New `retry` module: 429/5xx and network failures retry with exponential
+  backoff and jitter; other 4xx fail immediately; aborts are never retried.
+  `Retry-After` is honoured in delta-seconds and HTTP-date form, capped at 2s.
+- All four providers share the wrapper, configured via
+  `ProviderConfig.retry` (defaults: 2 retries, 250ms base, 2s cap).
+- `streamChat` only retries the initial request, so tokens already delivered to
+  the caller are never duplicated.
+
+### Added: desktop interrupts and concurrency protection
+- `AgentLoop.run` accepts an optional `AbortSignal`, checked before each turn
+  and tool call and forwarded to the model request; interruptions are rethrown
+  instead of being recorded as a failed turn.
+- A client disconnect aborts the run and closes the stream with
+  `done { "status": "aborted" }`; a second concurrent `POST /api/chat` is
+  rejected with 409 so two runs never interleave one conversation state.
+- Documented boundary: an already-running tool call is not killed.
+
+### Tests
+- TypeScript: 206 -> 237. Rust: 35 -> 39.
+- New coverage: Rust output truncation (unit + real-binary integration), the
+  macOS test interpreter discovery, context-budget trimming and CLI wiring,
+  code-search cache hits/invalidations, model retry policy, and desktop
+  abort/409 behaviour.
+
 ## 2026-09-10 (Sandbox network test interpreter discovery)
 
 ### Fixed: macOS network tests asserted on the Xcode python3 stub
