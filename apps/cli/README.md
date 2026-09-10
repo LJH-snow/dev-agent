@@ -19,6 +19,12 @@ Options:
 - `--session <id>` - use a separate persisted memory session
 - `--reset-memory` - clear the selected memory before running
 - `--tools` - list registered tools and exit
+- `--metadata` - print metadata for the selected session and exit
+- `--session-list` - list saved sessions, newest first
+- `--compact <n>` - compact the selected session, keeping the `n` most recent turns
+- `--no-stream` - print only the final answer instead of streaming tokens
+- `--rust-executor <path>` - run tools through the Rust sandbox runtime binary
+- `--check-rust [path]` - send a health check to the Rust runtime binary
 - `--version` / `-v` - print the CLI version
 
 Configuration is read from the environment:
@@ -38,7 +44,35 @@ Configuration is read from the environment:
 - `DEV_AGENT_SESSION_DIR` - optional directory holding session files; defaults to
   `~/.dev-agent/sessions`. Used by `--session`, `--metadata`, `--compact`, and
   `--session-list` alike, so sessions written by the CLI are the ones listed.
+- `DEV_AGENT_RUST_BINARY` - path to the `dev-agent-executor` binary. Applies to
+  real tool runs as well as `--check-rust`, so setting it routes every tool
+  command through the Rust sandbox. `--rust-executor <path>` wins over it.
 - `DEV_AGENT_MCP_SERVERS` - optional JSON array of MCP stdio server configs
+
+## Configuration file
+
+`~/.dev-agent/config.json` is read on every run. Environment variables and CLI
+flags take precedence over it, so a saved preference never overrides an explicit
+invocation.
+
+```json
+{
+  "defaultProvider": "openai",
+  "defaultModel": "gpt-4o-mini",
+  "maxTurns": 12,
+  "mcpServers": [
+    { "name": "files", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"] }
+  ]
+}
+```
+
+- `defaultProvider` / `defaultModel` - used when `DEV_AGENT_MODEL_PROVIDER` /
+  `DEV_AGENT_MODEL` are unset.
+- `maxTurns` - agent turn budget; must be a positive integer, otherwise ignored
+  (the default is 8).
+- `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
+
+A malformed config file is ignored rather than fatal.
 
 When MCP servers are configured, dev-agent injects `DEV_AGENT_SESSION_ID` and
 `DEV_AGENT_WORKING_DIRECTORY` into each server process so MCP tools can share

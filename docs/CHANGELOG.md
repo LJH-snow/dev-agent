@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-09-10 (Config file wiring and sandbox binary selection)
+
+### Fixed: the config file was never read
+- `apps/cli/src/config.ts` implemented `parseConfig`/`loadConfig` with unit tests,
+  but nothing in the CLI called them: `~/.dev-agent/config.json` had no effect at
+  all, despite being documented as supported.
+- The CLI now loads it and applies it to provider selection (`defaultProvider` /
+  `defaultModel`), the agent turn budget (`maxTurns`), and MCP servers
+  (`mcpServers`). Environment variables and CLI flags take precedence, so an
+  explicit invocation always overrides a saved preference. A malformed config
+  file is ignored rather than fatal.
+
+### Fixed: DEV_AGENT_RUST_BINARY did not reach tool execution
+- The variable was only read inside `--check-rust`, so setting it left real tool
+  runs on `LocalExecutor` -- the sandbox was silently bypassed. The CLI's own
+  error message told users to set it, and the root README pointed at it too.
+- `--rust-executor <path>` / `--check-rust <path>` now win, then
+  `DEV_AGENT_RUST_BINARY`, and that resolved path is what builds the executor.
+  `ChatSession` in the desktop app honours the same variable.
+
+### Docs
+- `apps/cli/README.md` gained the missing `--metadata`, `--session-list`,
+  `--compact`, `--no-stream`, `--rust-executor`, and `--check-rust` options, the
+  `DEV_AGENT_RUST_BINARY` variable, and a configuration-file section describing
+  the keys and their precedence.
+
+### Tests
+- New `apps/cli/tests/config-file.test.mjs` (3 tests): a config file's
+  `defaultProvider` is applied, an environment variable overrides it, and a
+  malformed config still lets the CLI run. These point `HOME` at a scratch
+  directory so they never touch a developer's real config.
+- New `apps/cli/tests/rust-executor-wiring.test.mjs` (2 tests): against a local
+  OpenAI-compatible stub, a streamed tool call is executed through
+  `RustExecutor` when `DEV_AGENT_RUST_BINARY` is set, and through
+  `LocalExecutor` when it is not.
+- Config resolver unit tests cover flag/env precedence for the binary path,
+  provider, model, and turn budget.
+- `apps/cli` tests: 23 -> 33. TypeScript tests: 196 -> 206.
+
 ## 2026-09-10 (CLI session directory consistency)
 
 ### Fixed: DEV_AGENT_SESSION_DIR only affected listing

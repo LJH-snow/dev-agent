@@ -74,6 +74,42 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 - **TypeScript**: install, structure check, build, typecheck, test (Node 26, pnpm 12.3.4).
 - **Rust**: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
 
+## Releases
+
+The sandbox runtime binary (`dev-agent-executor`) has to be built from
+`runtime/rust`. `.github/workflows/release.yml` does that for you: pushing a
+`v*` tag builds `dev-agent-executor` for each supported platform, packages it as
+a `.tar.gz` with a `.sha256` checksum, and attaches everything to a GitHub
+Release.
+
+Supported targets:
+
+- `aarch64-apple-darwin` (Apple silicon)
+- `x86_64-apple-darwin` (Intel macOS)
+- `x86_64-unknown-linux-gnu`
+- `aarch64-unknown-linux-gnu`
+
+To cut a release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow can also be run manually (`workflow_dispatch`), which builds and
+uploads the artifacts without publishing a release.
+
+To build the binary locally:
+
+```bash
+cd runtime/rust
+cargo build --release --bin dev-agent-executor
+# -> runtime/rust/target/release/dev-agent-executor
+```
+
+Point the CLI or desktop app at it with `--rust-executor <path>` or
+`DEV_AGENT_RUST_BINARY`.
+
 ## Current Status
 
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup
@@ -156,4 +192,4 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 6. ~~Desktop shell in `apps/desktop`~~ (done)
 7. ~~CLI streaming output and session management hardening~~ (done)
 8. ~~Network policy enforcement via Starlark~~ (done)
-- Test suite: 196 TypeScript tests + 35 Rust tests, all passing
+- Test suite: 206 TypeScript tests + 35 Rust tests, all passing

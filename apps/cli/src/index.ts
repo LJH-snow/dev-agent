@@ -16,6 +16,14 @@ import {
 import { createExecutor } from "@dev-agent/executor";
 import { McpServerSession, type McpClient, type McpClientConfig, type McpSessionSnapshot } from "@dev-agent/mcp";
 import { colors, colorize } from "./colors.js";
+import {
+  loadConfig,
+  resolveMaxTurns,
+  resolveModel,
+  resolveProviderId,
+  resolveRustBinaryPath,
+  type CliConfig,
+} from "./config.js";
 import { buildMcpSystemPromptSupplement } from "./mcp-system-prompt.js";
 import type { McpResourceLine, McpPromptLine } from "./mcp-system-prompt.js";
 import {
@@ -58,22 +66,26 @@ export async function main(argv: string[]): Promise<void> {
   const normalizedSessionId = normalizeSessionId(sessionId ?? "default");
   const workingDirectory = resolveWorkingDirectory();
   const rustIndex = args.indexOf("--rust-executor");
-  const rustBinaryPath = rustIndex >= 0 ? args[rustIndex + 1] : undefined;
-  const rustCheckIndex = args.indexOf("--check-rust");
-  const rustCheckPath = rustCheckIndex >= 0 ? args[rustCheckIndex + 1] : undefined;
-  if (rustIndex >= 0 && !rustBinaryPath) {
+  const rustFlag = rustIndex >= 0 ? args[rustIndex + 1] : undefined;
+  if (rustIndex >= 0 && !rustFlag) {
     console.error("--rust-executor requires a path to the dev-agent-executor binary");
     process.exitCode = 1;
     return;
   }
+  const rustCheckIndex = args.indexOf("--check-rust");
+  const rustCheckFlag = rustCheckIndex >= 0 ? args[rustCheckIndex + 1] : undefined;
+  // An explicit flag wins; otherwise DEV_AGENT_RUST_BINARY applies to real runs
+  // too, not just --check-rust.
+  const rustBinaryPath = resolveRustBinaryPath(rustFlag ?? rustCheckFlag);
   if (args.includes("--check-rust")) {
-    await checkRust(rustBinaryPath ?? rustCheckPath);
+    await checkRust(rustBinaryPath);
     return;
   }
 
   const mcpSessions: McpServerSession[] = [];
   try {
-    const provider = createProvider();
+    const config = loadConfig();
+    const provider = createProvider(config);
     const tools = new AgentToolRegistry();
     for (const tool of createDefaultTools(createExecutor({ rustBinaryPath }))) {
       tools.register(tool);
@@ -82,7 +94,7 @@ export async function main(argv: string[]): Promise<void> {
     const mcpSupplement = await registerMcpTools(tools, mcpSessions, {
       sessionId: normalizedSessionId,
       workingDirectory,
-    });
+    }, config);
 
     if (args.includes("--tools")) {
       for (const tool of tools.list()) {
@@ -140,7 +152,7 @@ export async function main(argv: string[]): Promise<void> {
       systemPrompt: [defaultSystemPrompt, mcpSupplement]
         .filter((part) => part.length > 0)
         .join("\n\n"),
-      maxTurns: 8,
+      maxTurns: resolveMaxTurns(config, 8),
       onTurn: (turn) => {
         process.stdout.write(`[turn ${turn}]\n`);
       },
@@ -503,9 +515,10 @@ function summarizeOutput(output: string): string {
 async function registerMcpTools(
   tools: AgentToolRegistry,
   sessions: McpServerSession[],
-  runtime: { readonly sessionId: string; workingDirectory: string }
+  runtime: { readonly sessionId: string; workingDirectory: string },
+  config: CliConfig = {}
 ): Promise<string> {
-  const servers = loadMcpServers();
+  const servers = loadMcpServers(config);
   const resourceLines: McpResourceLine[] = [];
   const promptLines: McpPromptLine[] = [];
 
@@ -620,10 +633,11 @@ function sessionForClient(session: McpServerSession): McpClient {
   return session.getClient();
 }
 
-function loadMcpServers(): McpClientConfig[] {
+function loadMcpServers(config: CliConfig = {}): McpClientConfig[] {
   const raw = process.env.DEV_AGENT_MCP_SERVERS;
   if (!raw) {
-    return [];
+    // No environment override: fall back to servers saved in the config file.
+    return normalizeMcpServers(config.mcpServers ?? []);
   }
 
   let parsed: unknown;
@@ -637,16 +651,21 @@ function loadMcpServers(): McpClientConfig[] {
     throw new Error("DEV_AGENT_MCP_SERVERS must be a JSON array");
   }
 
-  return parsed.map((entry) => {
-    if (typeof entry !== "object" || entry === null || typeof entry.command !== "string") {
-      throw new Error(
-        "Each DEV_AGENT_MCP_SERVERS entry must be an object with a string command"
-      );
+  return normalizeMcpServers(parsed);
+}
+
+function normalizeMcpServers(entries: readonly unknown[]): McpClientConfig[] {
+  return entries.map((entry) => {
+    if (typeof entry !== "object" || entry === null) {
+      throw new Error("Each MCP server entry must be an object with a string command");
     }
     const config = entry as Record<string, unknown>;
+    if (typeof config.command !== "string") {
+      throw new Error("Each MCP server entry must be an object with a string command");
+    }
     return {
       name: typeof config.name === "string" ? config.name : undefined,
-      command: config.command as string,
+      command: config.command,
       args: Array.isArray(config.args)
         ? (config.args as unknown[]).map((arg) => String(arg))
         : undefined,
@@ -657,9 +676,9 @@ function loadMcpServers(): McpClientConfig[] {
   });
 }
 
-function createProvider(): ModelProvider {
-  const providerId = process.env.DEV_AGENT_MODEL_PROVIDER ?? "ollama";
-  const model = process.env.DEV_AGENT_MODEL;
+function createProvider(config: CliConfig = {}): ModelProvider {
+  const providerId = resolveProviderId(config);
+  const model = resolveModel(config);
 
   if (providerId === "ollama") {
     return createOllamaProvider({
@@ -671,7 +690,7 @@ function createProvider(): ModelProvider {
   if (providerId === "openai") {
     const apiKey = process.env.OPENAI_API_KEY ?? process.env.DEV_AGENT_OPENAI_API_KEY;
     if (!apiKey) {
-      throw new Error("OPENAI_API_KEY is required when DEV_AGENT_MODEL_PROVIDER=openai");
+      throw new Error("OPENAI_API_KEY is required for the openai provider");
     }
     return createOpenAIProvider({
       model: model ?? "gpt-4o-mini",
@@ -683,7 +702,7 @@ function createProvider(): ModelProvider {
   if (providerId === "anthropic") {
     const apiKey = process.env.ANTHROPIC_API_KEY ?? process.env.DEV_AGENT_ANTHROPIC_API_KEY;
     if (!apiKey) {
-      throw new Error("ANTHROPIC_API_KEY is required when DEV_AGENT_MODEL_PROVIDER=anthropic");
+      throw new Error("ANTHROPIC_API_KEY is required for the anthropic provider");
     }
     return createAnthropicProvider({
       model: model ?? "claude-sonnet-4-20250514",
@@ -695,7 +714,7 @@ function createProvider(): ModelProvider {
   if (providerId === "gemini") {
     const apiKey = process.env.GEMINI_API_KEY ?? process.env.DEV_AGENT_GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error("GEMINI_API_KEY is required when DEV_AGENT_MODEL_PROVIDER=gemini");
+      throw new Error("GEMINI_API_KEY is required for the gemini provider");
     }
     return createGeminiProvider({
       model: model ?? "gemini-2.0-flash",

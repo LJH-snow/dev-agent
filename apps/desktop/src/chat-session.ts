@@ -42,8 +42,9 @@ export class ChatSession {
 
   constructor(options: ChatSessionOptions = {}) {
     this.model = createProvider();
+    const rustBinaryPath = options.rustBinaryPath ?? process.env.DEV_AGENT_RUST_BINARY;
     this.tools = new AgentToolRegistry();
-    for (const tool of createDefaultTools(createExecutor({ rustBinaryPath: options.rustBinaryPath }))) {
+    for (const tool of createDefaultTools(createExecutor({ rustBinaryPath }))) {
       this.tools.register(tool);
     }
 
