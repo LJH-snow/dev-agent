@@ -5,12 +5,36 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 4（桌面端中断与并发保护）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
-- 最近一次运行：运行 4（2026-09-11 00:26-00:45）
-- 工作区：阶段 3 的改动已提交并推送
+- 当前阶段：阶段 5（文档、回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4
+- 最近一次运行：运行 5（2026-09-11 00:35-00:55）
+- 工作区：阶段 4 的改动已提交并推送
 
 ## 日志
+
+### 运行 5 — 2026-09-11 00:35-00:55
+
+- 阶段/工作项：阶段 4（桌面端中断与并发保护）全部完成
+- 做了什么：
+  - `AgentLoop.run(context, input, options)` 新增可选 `signal`：每轮开始前、每个工具调用前
+    检查；signal 透传给 `model.chat` / `model.streamChat`；中断异常直接向上抛，
+    不再被记录成一条 error 记忆
+  - `ChatSession.run(message, emit, { signal })`：中断时发 `done { status: "aborted", turns }`，
+    context 保持中断前状态
+  - `server.ts`：客户端断开（`res` close 且未正常结束）→ `AbortController.abort()`；
+    同一会话已有请求在跑时第二个请求返回 409，避免两次运行交错改写同一份上下文；
+    emit 在响应已关闭时跳过，收尾时按需 `res.end()`
+  - 文档：`apps/desktop/README.md` 新增 Interrupts 一节与
+    `DEV_AGENT_MAX_CONTEXT_CHARS` 说明，并写明"已开始的工具不会被强杀"的边界
+- 验证命令与结果：
+  - `apps/desktop`：19 passed（新增 3 个：断开连接触发 abort、并发请求 409、
+    正常结束不会误触发 abort）
+  - `packages/agent-core`：26 passed（新增 2 个：已中断时不调用模型、
+    模型返回后在执行工具前停住）
+  - `node scripts/check.mjs`、`pnpm build`、`pnpm typecheck`、`pnpm test`：全绿
+    （TypeScript 237 个测试）
+- 提交：见阶段 4 的 feat 提交
+- 下一步：阶段 5 — 文档、回归与提交（README/Roadmap、architecture、CHANGELOG、全量回归）
 
 ### 运行 4 — 2026-09-11 00:26-00:45
 

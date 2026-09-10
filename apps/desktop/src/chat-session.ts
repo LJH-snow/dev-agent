@@ -65,7 +65,12 @@ export class ChatSession {
     });
   }
 
-  async run(message: string, emit: (event: StreamEvent) => void): Promise<void> {
+  async run(
+    message: string,
+    emit: (event: StreamEvent) => void,
+    options: { readonly signal?: AbortSignal } = {}
+  ): Promise<void> {
+    let turns = this.context.state.turns;
     const loop = new AgentLoop({
       model: this.model,
       tools: this.tools,
@@ -73,18 +78,31 @@ export class ChatSession {
       maxTurns: this.maxTurns,
       contextBudget:
         this.maxContextChars === undefined ? undefined : { maxChars: this.maxContextChars },
-      onTurn: (turn) => emit({ type: "turn", data: { turn } }),
+      onTurn: (turn) => {
+        turns = turn;
+        emit({ type: "turn", data: { turn } });
+      },
       onToken: (token) => emit({ type: "token", data: { token } }),
       onToolCall: (call) => emit({ type: "tool", data: { name: call.name, input: call.input } }),
       onToolResult: (result) => emit({ type: "tool-result", data: { name: result.name, output: result.output } }),
     });
 
-    const result = await loop.run(this.context, message);
-    this.context = result;
-    emit({
-      type: "done",
-      data: { status: result.state.status, turns: result.state.turns },
-    });
+    try {
+      const result = await loop.run(this.context, message, { signal: options.signal });
+      this.context = result;
+      emit({
+        type: "done",
+        data: { status: result.state.status, turns: result.state.turns },
+      });
+    } catch (error) {
+      if (options.signal?.aborted) {
+        // The interrupted run keeps its previous context; tell the client the
+        // stream is over instead of leaving it waiting for more events.
+        emit({ type: "done", data: { status: "aborted", turns } });
+        return;
+      }
+      throw error;
+    }
   }
 }
 

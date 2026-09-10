@@ -25,6 +25,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const session = options.session ?? new ChatSession();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
+  let chatInFlight = false;
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${host}:${port}`);
@@ -53,7 +54,20 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "POST" && url.pathname === "/api/chat") {
-        await handleChat(req, res, session);
+        if (chatInFlight) {
+          // The session keeps its conversation state between requests, so a
+          // second concurrent run would interleave two histories.
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "a chat request is already running" }));
+          return;
+        }
+        chatInFlight = true;
+        try {
+          await handleChat(req, res, session);
+        } finally {
+          chatInFlight = false;
+        }
         return;
       }
 
@@ -104,6 +118,15 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, session: Ch
     return;
   }
 
+  const controller = new AbortController();
+  const onClose = (): void => {
+    // `close` also fires after a normal end; only a real disconnect aborts.
+    if (!res.writableEnded) {
+      controller.abort();
+    }
+  };
+  res.on("close", onClose);
+
   res.writeHead(200, {
     "content-type": "text/event-stream",
     "cache-control": "no-cache, no-transform",
@@ -113,17 +136,24 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, session: Ch
   res.write(`retry: 3000\n\n`);
 
   const emit = (event: StreamEvent) => {
+    if (res.writableEnded || res.destroyed) {
+      return;
+    }
     res.write(`event: ${event.type}\n`);
     res.write(`data: ${JSON.stringify(event.data)}\n\n`);
   };
 
   try {
-    await session.run(message, emit);
+    await session.run(message, emit, { signal: controller.signal });
   } catch (error) {
     emit({ type: "error", data: { message: error instanceof Error ? error.message : String(error) } });
+  } finally {
+    res.off("close", onClose);
   }
 
-  res.end();
+  if (!res.writableEnded) {
+    res.end();
+  }
 }
 
 function readBody(req: IncomingMessage): Promise<string> {

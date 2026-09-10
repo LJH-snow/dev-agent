@@ -30,6 +30,15 @@ export interface ContextBudget {
   readonly maxChars?: number;
 }
 
+export interface RunOptions {
+  /**
+   * Stops the loop at the next checkpoint: before each turn, before each tool
+   * call, and by forwarding the signal to the model request. A running tool
+   * call is not killed; the loop stops before the following one.
+   */
+  readonly signal?: AbortSignal;
+}
+
 export class AgentLoop {
   private readonly model: ModelProvider;
   private readonly tools?: ToolCollection;
@@ -58,7 +67,11 @@ export class AgentLoop {
     this.contextBudget = options.contextBudget;
   }
 
-  async run(context: AgentContext, input: string): Promise<AgentContext> {
+  async run(
+    context: AgentContext,
+    input: string,
+    options: RunOptions = {}
+  ): Promise<AgentContext> {
     const memory = context.memory;
     await memory.append(createMemoryEntry("user", input));
     let state: AgentState = {
@@ -72,9 +85,11 @@ export class AgentLoop {
 
     try {
       for (let turn = 0; turn < this.maxTurns && !completed; turn += 1) {
+        throwIfAborted(options.signal);
         const messages = await this.buildMessages(memory, context);
         const chatOptions = {
           tools: this.buildToolSchemas(),
+          signal: options.signal,
         };
         const completion = this.model.streamChat && this.onToken
           ? await this.model.streamChat(messages, { ...chatOptions, onToken: (token) => this.onToken?.(token, context) })
@@ -86,6 +101,7 @@ export class AgentLoop {
         this.onTurn?.(state.turns, context);
 
         for (const call of toolCalls) {
+          throwIfAborted(options.signal);
           if (!this.tools) {
             throw new Error(`Agent requested tool "${call.name}" but no tools are configured.`);
           }
@@ -110,6 +126,11 @@ export class AgentLoop {
       updatedAt = new Date().toISOString();
       return { ...context, state, updatedAt };
     } catch (error) {
+      if (options.signal?.aborted) {
+        // Interruptions are not failures: the caller decides how to report
+        // them, and recording a half-finished turn as an error would be wrong.
+        throw error;
+      }
       const message = error instanceof Error ? error.message : String(error);
       await memory.append(createMemoryEntry("assistant", `[error] ${message}`));
       updatedAt = new Date().toISOString();
@@ -155,6 +176,12 @@ export class AgentLoop {
       description: tool.description,
       parameters: tool.parameters,
     }));
+  }
+}
+
+function throwIfAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    throw signal.reason ?? new Error("The operation was aborted");
   }
 }
 

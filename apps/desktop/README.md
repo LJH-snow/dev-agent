@@ -22,6 +22,8 @@ Configure the model provider the same way as the CLI, via environment variables:
 - Provider-specific keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_BASE_URL`
 - `DEV_AGENT_DESKTOP_HOST` / `DEV_AGENT_DESKTOP_PORT` — bind address (default `127.0.0.1:4317`)
 - `DEV_AGENT_MEMORY_FILE` — session memory file (defaults to `~/.dev-agent/sessions/desktop-default.json`)
+- `DEV_AGENT_MAX_CONTEXT_CHARS` — optional conversation-history budget; oldest
+  entries are dropped first (never splitting a tool call from its results)
 
 ## How it works
 
@@ -40,6 +42,18 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `GET /health` — `{ "status": "ok" }`.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-result`, `turn`, `done`, `error`.
+- `POST /api/chat` while another run is in flight — `409`, so two runs never
+  interleave the same conversation state.
+
+## Interrupts
+
+Disconnecting the client aborts the running agent: the abort signal is forwarded
+to the model request and checked before each turn and each tool call. The
+stream closes with a `done` frame carrying `{ "status": "aborted" }`.
+
+A tool call that is already executing is not killed; the run stops before the
+next one. Cancelling an in-flight sandboxed command would need a cancel message
+in the Rust executor protocol and is out of scope for now.
 
 ## Tests
 

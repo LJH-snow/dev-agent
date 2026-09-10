@@ -157,3 +157,61 @@ test("agent loop records an error when a requested tool is missing", async () =>
   const entries = await memory.entries();
   assert.match(entries.at(-1).content, /Tool not found: missing/);
 });
+
+test("agent loop rejects without calling the model when already aborted", async () => {
+  let modelCalls = 0;
+  const model = {
+    id: "openai",
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return { content: "done", toolCalls: [] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-abort", memory);
+  const loop = new AgentLoop({ model });
+  const controller = new AbortController();
+  controller.abort();
+
+  await assert.rejects(
+    () => loop.run(context, "hello", { signal: controller.signal }),
+    /abort/i
+  );
+  assert.equal(modelCalls, 0);
+});
+
+test("agent loop stops before running a tool when the signal aborts mid-turn", async () => {
+  const controller = new AbortController();
+  let toolRuns = 0;
+
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "echo",
+    description: "Echoes the input.",
+    async execute() {
+      toolRuns += 1;
+      return { ok: true };
+    },
+  });
+
+  const model = {
+    id: "openai",
+    model: "test-model",
+    async chat() {
+      controller.abort();
+      return { content: "", toolCalls: [{ id: "call-1", name: "echo", input: {} }] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-abort-2", memory);
+  const loop = new AgentLoop({ model, tools, maxTurns: 2 });
+
+  await assert.rejects(
+    () => loop.run(context, "hello", { signal: controller.signal }),
+    /abort/i
+  );
+  assert.equal(toolRuns, 0);
+});
