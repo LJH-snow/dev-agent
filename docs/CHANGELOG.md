@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-10 (Sandbox network test interpreter discovery)
+
+### Fixed: macOS network tests asserted on the Xcode python3 stub
+- `sandbox_executor_denies_network_when_disabled` and
+  `sandbox_executor_allows_loopback_network_when_loopback` hardcoded
+  `/usr/bin/python3`. On machines without full developer tools that path is a
+  stub which shells out to `xcode-select`; the sandbox profiles under test deny
+  writes to `/dev/null`, so the stub aborted before Python started and the
+  assertions checked the stub's error instead of the network policy. Both tests
+  failed locally while passing on CI, where `/usr/bin/python3` is a real
+  interpreter.
+- The tests now resolve an interpreter by probing candidates outside the
+  sandbox: `DEV_AGENT_TEST_PYTHON`, then `python3` from `PATH`, then
+  `/usr/bin/python3`, `/opt/homebrew/bin/python3`, and `/usr/local/bin/python3`.
+  Candidates that cannot run are skipped, so a broken stub no longer masks the
+  behaviour under test.
+- With no usable interpreter the two tests skip with an explanatory message
+  instead of reporting a failure. The sandbox policy behaviour is unchanged;
+  only the interpreter the tests drive it with.
+
+### Tests
+- Rust: 33 passed / 2 failed -> 35 passed. Verified both network tests still
+  exercise the policy by pointing `DEV_AGENT_TEST_PYTHON` at a nonexistent
+  binary and confirming the probe falls through to a working interpreter.
+
 ## 2026-09-10 (Release pipeline)
 
 ### Added: tag-driven release workflow

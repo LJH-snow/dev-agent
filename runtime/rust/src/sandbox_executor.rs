@@ -238,6 +238,39 @@ mod tests {
         }
     }
 
+    /// Returns the first candidate that behaves like a real Python 3
+    /// interpreter.
+    ///
+    /// macOS ships a `/usr/bin/python3` stub that shells out to `xcode-select`
+    /// when the developer tools are not installed. That stub cannot run inside
+    /// the sandbox profiles these tests use (they deny writes to `/dev/null`),
+    /// so the stub's own failure would mask the behaviour under test. Probing
+    /// candidates outside the sandbox keeps the assertions meaningful, and
+    /// lets the network tests skip cleanly on machines without an interpreter.
+    #[cfg(target_os = "macos")]
+    fn python3_interpreter() -> Option<String> {
+        let mut candidates: Vec<String> = Vec::new();
+        if let Ok(explicit) = std::env::var("DEV_AGENT_TEST_PYTHON") {
+            if !explicit.trim().is_empty() {
+                candidates.push(explicit);
+            }
+        }
+        candidates.push("python3".to_string());
+        candidates.push("/usr/bin/python3".to_string());
+        candidates.push("/opt/homebrew/bin/python3".to_string());
+        candidates.push("/usr/local/bin/python3".to_string());
+
+        candidates.into_iter().find(|candidate| {
+            std::process::Command::new(candidate)
+                .args(["-c", "import socket"])
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        })
+    }
+
     #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn sandbox_executor_runs_without_policy() {
@@ -584,11 +617,17 @@ def policy(ctx):
     #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn sandbox_executor_denies_network_when_disabled() {
+        let Some(python) = python3_interpreter() else {
+            eprintln!(
+                "skipping sandbox_executor_denies_network_when_disabled: no working python3 interpreter"
+            );
+            return;
+        };
         let executor = SandboxExecutor::new();
         let result = executor
             .run_sandboxed(
                 &RunRequest {
-                    command: "/usr/bin/python3".to_string(),
+                    command: python,
                     args: vec![
                         "-c".to_string(),
                         "import socket; s=socket.socket(); s.settimeout(1); s.connect(('127.0.0.1', 65530))"
@@ -610,12 +649,18 @@ def policy(ctx):
     #[cfg(target_os = "macos")]
     #[tokio::test]
     async fn sandbox_executor_allows_loopback_network_when_loopback() {
+        let Some(python) = python3_interpreter() else {
+            eprintln!(
+                "skipping sandbox_executor_allows_loopback_network_when_loopback: no working python3 interpreter"
+            );
+            return;
+        };
         let executor = SandboxExecutor::new();
         let script = "import socket, threading; ls=socket.socket(); ls.bind((\"127.0.0.1\", 0)); ls.listen(1); port=ls.getsockname()[1]; threading.Thread(target=lambda: (lambda c: (c.sendall(b\"ok\"), c.close()))(ls.accept()[0]), daemon=True).start(); s=socket.socket(); s.settimeout(2); s.connect((\"127.0.0.1\", port)); print(s.recv(2).decode()); s.close()";
         let result = executor
             .run_sandboxed(
                 &RunRequest {
-                    command: "/usr/bin/python3".to_string(),
+                    command: python,
                     args: vec!["-c".to_string(), script.to_string()],
                     cwd: None,
                     env: std::collections::HashMap::new(),
