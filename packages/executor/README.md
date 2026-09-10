@@ -8,7 +8,8 @@ Implemented in phase 1:
   command execution contract.
 - `LocalExecutor` using Node's `child_process`. It supports `cwd`, `env`, stdin
   `input`, and `timeoutMs`, and returns `stdout`, `stderr`, `exitCode`, and an
-  optional `timedOut` flag.
+  optional `timedOut` flag. It also enforces a per-stream `maxOutputBytes` limit
+  (default 1 MiB) and reports `bytesTruncated` when a command produced more.
 - `SandboxProfile` and `SandboxExecutor` types as the contract for the Rust-backed
   sandbox runtime; the macOS backend is active via `sandbox-exec`.
 
@@ -42,6 +43,10 @@ The Rust runtime lives in `runtime/rust` and communicates with TypeScript over
 TypeScript side: it spawns the Rust binary, encodes requests, decodes responses,
 and implements both `Executor` and `SandboxExecutor`. It reuses the same
 `ExecutorResult` contract as `LocalExecutor`, so callers can swap between them.
+The output quota crosses the boundary too: `maxOutputBytes` is sent as
+`max_output_bytes`, and the Rust runtime truncates per stream and answers with
+`bytes_truncated`, which surfaces as `bytesTruncated` on the result. The Rust
+runtime applies its own 1 MiB default when a client omits the field.
 The protobuf stream is consumed as raw `Buffer` frames; text encoding is only
 applied to the Rust process's stderr, never to stdio protocol payloads.
 
@@ -64,6 +69,7 @@ controlled via the `MOCK_EXECUTOR_BEHAVIOR` environment variable:
 
 - `default` — echoes back a `RunResult` with stdout `mock:{command}`
 - `reflect` — echoes back the exact `RunRequest` payload as JSON in stdout
+- `truncate` — responds with a `RunResult` that reports truncated output
 - `error:CODE` — responds with an `ErrorResult` using the given code
 - `hang` — never responds (for timeout/disconnect tests)
 

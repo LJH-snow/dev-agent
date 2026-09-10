@@ -223,6 +223,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             input: None,
             timeout_ms: None,
+            max_output_bytes: None,
         }
     }
 
@@ -561,6 +562,7 @@ def policy(ctx):
                     env: std::collections::HashMap::new(),
                     input: None,
                     timeout_ms: None,
+                    max_output_bytes: None,
                 },
                 &SandboxProfile {
                     name: "writable".to_string(),
@@ -595,6 +597,7 @@ def policy(ctx):
                     env: std::collections::HashMap::new(),
                     input: None,
                     timeout_ms: None,
+                    max_output_bytes: None,
                 },
                 &SandboxProfile {
                     name: "readonly".to_string(),
@@ -637,6 +640,7 @@ def policy(ctx):
                     env: std::collections::HashMap::new(),
                     input: None,
                     timeout_ms: None,
+                    max_output_bytes: None,
                 },
                 &fake_profile("network-off", Some("True")),
             )
@@ -666,6 +670,7 @@ def policy(ctx):
                     env: std::collections::HashMap::new(),
                     input: None,
                     timeout_ms: None,
+                    max_output_bytes: None,
                 },
                 &SandboxProfile {
                     name: "loopback".to_string(),
@@ -697,6 +702,7 @@ def policy(ctx):
                     env: std::collections::HashMap::new(),
                     input: None,
                     timeout_ms: None,
+                    max_output_bytes: None,
                 },
                 &SandboxProfile {
                     name: "timed".to_string(),
@@ -728,6 +734,7 @@ def policy(ctx):
                     env: std::collections::HashMap::new(),
                     input: None,
                     timeout_ms: None,
+                    max_output_bytes: None,
                 },
                 &fake_profile("limits", Some("True")),
             )

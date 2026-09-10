@@ -16,6 +16,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let executor = LocalExecutor::new();
     let sandbox_executor = SandboxExecutor::new();
 
+    // Requests are handled one at a time: the loop only reads the next envelope
+    // after the current command finished and its response was written. A single
+    // executor process therefore runs commands strictly serially, so there is no
+    // per-process concurrency limit to enforce here.
     loop {
         let envelope = match read_envelope(&mut reader) {
             Ok(Some(envelope)) => envelope,

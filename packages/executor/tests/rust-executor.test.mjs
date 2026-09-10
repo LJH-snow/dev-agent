@@ -39,3 +39,42 @@ test("RustExecutor encodes a sandboxed request the mock binary can decode", asyn
     await executor.dispose();
   }
 });
+
+test("RustExecutor forwards maxOutputBytes to the runtime", async () => {
+  process.env.MOCK_EXECUTOR_BEHAVIOR = "reflect";
+  const executor = new RustExecutor({ binaryPath: mockBinary });
+  try {
+    const result = await executor.run("echo", ["hi"], { maxOutputBytes: 4096 });
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.maxOutputBytes, 4096);
+  } finally {
+    await executor.dispose();
+    delete process.env.MOCK_EXECUTOR_BEHAVIOR;
+  }
+});
+
+test("RustExecutor applies the default output limit when none is given", async () => {
+  process.env.MOCK_EXECUTOR_BEHAVIOR = "reflect";
+  const executor = new RustExecutor({ binaryPath: mockBinary });
+  try {
+    const result = await executor.run("echo", ["hi"]);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.maxOutputBytes, 1_000_000);
+  } finally {
+    await executor.dispose();
+    delete process.env.MOCK_EXECUTOR_BEHAVIOR;
+  }
+});
+
+test("RustExecutor surfaces bytesTruncated from the runtime", async () => {
+  process.env.MOCK_EXECUTOR_BEHAVIOR = "truncate";
+  const executor = new RustExecutor({ binaryPath: mockBinary });
+  try {
+    const result = await executor.run("yes");
+    assert.equal(result.bytesTruncated, true);
+    assert.equal(result.stdout, "partial-output");
+  } finally {
+    await executor.dispose();
+    delete process.env.MOCK_EXECUTOR_BEHAVIOR;
+  }
+});

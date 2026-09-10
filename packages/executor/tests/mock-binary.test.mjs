@@ -15,7 +15,18 @@ import test from "node:test";
 const here = fileURLToPath(new URL(".", import.meta.url));
 const mockBinary = join(here, "mock-executor-binary.mjs");
 
-function encodeRunRequest({ command = "", args = [], cwd, env = {}, input, timeoutMs }) {
+function encodeVarint(value) {
+  const bytes = [];
+  let v = value;
+  while (v > 0x7f) {
+    bytes.push((v & 0x7f) | 0x80);
+    v = Math.floor(v / 128);
+  }
+  bytes.push(v & 0x7f);
+  return bytes;
+}
+
+function encodeRunRequest({ command = "", args = [], cwd, env = {}, input, timeoutMs, maxOutputBytes }) {
   const bytes = [];
   // command (field 1, string)
   const cmdBytes = Buffer.from(command, "utf8");
@@ -44,7 +55,11 @@ function encodeRunRequest({ command = "", args = [], cwd, env = {}, input, timeo
   }
   // timeoutMs (field 6, varint) — tag = (6 << 3) | 0 = 0x30
   if (timeoutMs) {
-    bytes.push(0x30, timeoutMs);
+    bytes.push(0x30, ...encodeVarint(timeoutMs));
+  }
+  // maxOutputBytes (field 7, varint) — tag = (7 << 3) | 0 = 0x38
+  if (maxOutputBytes) {
+    bytes.push(0x38, ...encodeVarint(maxOutputBytes));
   }
   return bytes;
 }
@@ -177,6 +192,7 @@ function decodeRunResult(buf) {
       }
       if (field === 3) result.exitCode = value;
       else if (field === 4) result.timedOut = value === 1;
+      else if (field === 5) result.bytesTruncated = value === 1;
     }
   }
   return result;
@@ -266,7 +282,15 @@ test("mock binary echoes back a RunResult for a simple command", async () => {
 test("mock binary reflects the full RunRequest payload", async () => {
   const env = encodeEnvelope({
     requestId: 42,
-    run: { command: "build", args: ["--release"], cwd: "/workspace", env: { CI: "1" }, input: "data", timeoutMs: 30 },
+    run: {
+      command: "build",
+      args: ["--release"],
+      cwd: "/workspace",
+      env: { CI: "1" },
+      input: "data",
+      timeoutMs: 30,
+      maxOutputBytes: 4096,
+    },
   });
   const response = await sendAndReceive(env, "reflect");
   assert.equal(response.requestId, 42);
@@ -277,6 +301,14 @@ test("mock binary reflects the full RunRequest payload", async () => {
   assert.equal(parsed.env.CI, "1");
   assert.equal(parsed.input, "data");
   assert.equal(parsed.timeoutMs, 30);
+  assert.equal(parsed.maxOutputBytes, 4096);
+});
+
+test("mock binary reports truncated output when asked to", async () => {
+  const env = encodeEnvelope({ requestId: 3, run: { command: "yes", maxOutputBytes: 1024 } });
+  const response = await sendAndReceive(env, "truncate");
+  assert.equal(response.runResult?.bytesTruncated, true);
+  assert.equal(response.runResult?.stdout, "partial-output");
 });
 
 test("mock binary returns an error for error behavior", async () => {

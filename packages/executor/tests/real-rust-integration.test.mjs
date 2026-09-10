@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,8 +16,36 @@ const sandboxExecPath = "/usr/bin/sandbox-exec";
 const canRunRust =
   existsSync(rustBinaryPath) &&
   process.platform === "darwin" &&
-  existsSync(sandboxExecPath) &&
-  existsSync("/usr/bin/python3");
+  existsSync(sandboxExecPath);
+
+/**
+ * Returns a python3 that actually starts, or undefined.
+ *
+ * `/usr/bin/python3` on a machine without full developer tools is an Xcode
+ * stub that aborts before running any Python, which would make the network
+ * tests below assert on the stub's failure instead of the sandbox policy.
+ */
+function findPython3() {
+  const candidates = [
+    process.env.DEV_AGENT_TEST_PYTHON,
+    "python3",
+    "/usr/bin/python3",
+    "/opt/homebrew/bin/python3",
+    "/usr/local/bin/python3",
+  ].filter((candidate) => typeof candidate === "string" && candidate.length > 0);
+
+  for (const candidate of candidates) {
+    try {
+      execFileSync(candidate, ["-c", "import socket"], { stdio: "ignore" });
+      return candidate;
+    } catch {
+      // Not a usable interpreter; try the next candidate.
+    }
+  }
+  return undefined;
+}
+
+const python3 = findPython3();
 
 test(
   "real Rust binary enforces Starlark sandbox policies",
@@ -85,7 +114,12 @@ test(
 
 test(
   "real Rust binary blocks network when disabled",
-  { skip: canRunRust ? false : "Rust binary or macOS sandbox not available" },
+  {
+    skip:
+      canRunRust && python3
+        ? false
+        : "Rust binary, macOS sandbox, or a real python3 not available",
+  },
   async () => {
     const executor = new RustExecutor({ binaryPath: rustBinaryPath });
     try {
@@ -95,7 +129,7 @@ test(
         "s.settimeout(1)",
         "s.connect(('127.0.0.1', 65530))",
       ].join("; ");
-      const result = await executor.runSandboxed("/usr/bin/python3", ["-c", script], {
+      const result = await executor.runSandboxed(python3, ["-c", script], {
         profile: {
           name: "network-off",
           network: "disabled",
@@ -112,7 +146,12 @@ test(
 
 test(
   "real Rust binary allows loopback when configured",
-  { skip: canRunRust ? false : "Rust binary or macOS sandbox not available" },
+  {
+    skip:
+      canRunRust && python3
+        ? false
+        : "Rust binary, macOS sandbox, or a real python3 not available",
+  },
   async () => {
     const executor = new RustExecutor({ binaryPath: rustBinaryPath });
     try {
@@ -129,7 +168,7 @@ test(
         "print(s.recv(2).decode())",
         "s.close()",
       ].join("; ");
-      const result = await executor.runSandboxed("/usr/bin/python3", ["-c", script], {
+      const result = await executor.runSandboxed(python3, ["-c", script], {
         profile: {
           name: "loopback",
           network: "loopback",
@@ -211,6 +250,25 @@ test(
       });
       assert.equal(result.exitCode, 0);
       assert.equal(result.stdout.trim(), "4096");
+    } finally {
+      await executor.dispose();
+    }
+  }
+);
+
+test(
+  "real Rust binary truncates output that exceeds maxOutputBytes",
+  { skip: existsSync(rustBinaryPath) ? false : "Rust binary not built" },
+  async () => {
+    const executor = new RustExecutor({ binaryPath: rustBinaryPath });
+    try {
+      const result = await executor.run("/usr/bin/yes", [], {
+        maxOutputBytes: 4096,
+        timeoutMs: 10_000,
+      });
+      assert.equal(result.bytesTruncated, true);
+      assert.equal(result.stdout.length, 4096);
+      assert.notEqual(result.timedOut, true);
     } finally {
       await executor.dispose();
     }

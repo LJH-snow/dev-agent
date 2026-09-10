@@ -30,6 +30,10 @@ message RunRequest {
   map<string, string> env = 4;
   optional string input = 5;
   optional uint64 timeout_ms = 6;
+  // Maximum bytes captured per output stream before the child is killed.
+  // Clients that omit the field get the runtime default (1 MiB) instead of
+  // unbounded capture, so an old client cannot blow up the runtime's memory.
+  optional uint64 max_output_bytes = 7;
 }
 
 message RunResult {
@@ -37,6 +41,8 @@ message RunResult {
   string stderr = 2;
   int32 exit_code = 3;
   bool timed_out = 4;
+  // True when stdout or stderr hit max_output_bytes and the child was killed.
+  bool bytes_truncated = 5;
 }
 
 enum NetworkPolicy {

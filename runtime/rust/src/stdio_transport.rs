@@ -53,6 +53,7 @@ mod tests {
                 stderr: "".to_string(),
                 exit_code: 0,
                 timed_out: false,
+                bytes_truncated: false,
             })),
         };
 
@@ -73,6 +74,7 @@ mod tests {
                     env: std::collections::HashMap::new(),
                     input: None,
                     timeout_ms: None,
+                    max_output_bytes: None,
                 },
             )),
         };

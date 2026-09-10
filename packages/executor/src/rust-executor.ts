@@ -5,6 +5,8 @@ import * as protobuf from "protobufjs";
 
 type ProtobufModule = typeof protobuf;
 
+import { DEFAULT_MAX_OUTPUT_BYTES } from "./local-executor.js";
+
 // protobufjs is CommonJS; Node's ESM loader exposes its API on `default`.
 const protobufImpl: ProtobufModule = (
   protobuf as unknown as { readonly default?: ProtobufModule }
@@ -28,12 +30,14 @@ message RunRequest {
   map<string, string> env = 4;
   optional string input = 5;
   optional uint64 timeout_ms = 6;
+  optional uint64 max_output_bytes = 7;
 }
 message RunResult {
   string stdout = 1;
   string stderr = 2;
   int32 exit_code = 3;
   bool timed_out = 4;
+  bool bytes_truncated = 5;
 }
 message SandboxProfile {
   string name = 1;
@@ -144,6 +148,7 @@ export class RustExecutor implements SandboxExecutor {
       env,
       input: options.input,
       timeoutMs: options.timeoutMs,
+      maxOutputBytes: options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES,
     };
     const envelope = options.profile
       ? {
@@ -268,7 +273,13 @@ export class RustExecutor implements SandboxExecutor {
     }
     const decoded = this.responseType.decode(encoded) as protobuf.Message<{
       requestId?: number;
-      runResult?: { stdout: string; stderr: string; exitCode: number; timedOut: boolean };
+      runResult?: {
+        stdout: string;
+        stderr: string;
+        exitCode: number;
+        timedOut: boolean;
+        bytesTruncated?: boolean;
+      };
       error?: { message: string; code: string };
     }>;
     const json = decoded.toJSON();
@@ -287,6 +298,7 @@ export class RustExecutor implements SandboxExecutor {
         stderr: json.runResult.stderr ?? "",
         exitCode: json.runResult.exitCode ?? 0,
         timedOut: json.runResult.timedOut ? true : undefined,
+        bytesTruncated: json.runResult.bytesTruncated ? true : undefined,
       });
     }
   }

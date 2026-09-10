@@ -8,7 +8,7 @@ export interface LocalExecutorOptions {
   readonly defaultMaxOutputBytes?: number;
 }
 
-const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
+export const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 const DEFAULT_MAX_CONCURRENT = 5;
 
 export class LocalExecutor implements Executor {

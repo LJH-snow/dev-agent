@@ -1,8 +1,9 @@
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::AsyncWriteExt;
-use tokio::process::Command;
+use tokio::io::{AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::process::{Child, Command};
+use tokio::sync::mpsc;
 use tokio::time::timeout;
 
 use crate::proto::dev_agent::executor::{RunRequest, RunResult};
@@ -14,6 +15,10 @@ pub enum ExecutorError {
     #[error("execution error: {0}")]
     Io(#[from] std::io::Error),
 }
+
+/// Bytes captured per output stream when the client does not ask for a
+/// specific limit. Matches the TypeScript `LocalExecutor` default.
+pub const DEFAULT_MAX_OUTPUT_BYTES: usize = 1_000_000;
 
 pub struct LocalExecutor;
 
@@ -65,38 +70,124 @@ impl LocalExecutor {
             stdin.shutdown().await.ok();
         }
 
-        let result = match request.timeout_ms {
+        // Stream both pipes instead of waiting for the whole output to be
+        // buffered, so a chatty command cannot grow the runtime's memory
+        // without bound.
+        let max_output_bytes = request
+            .max_output_bytes
+            .map(|value| usize::try_from(value).unwrap_or(usize::MAX))
+            .unwrap_or(DEFAULT_MAX_OUTPUT_BYTES);
+        let (truncate_tx, mut truncate_rx) = mpsc::channel::<()>(1);
+        let stdout_task = tokio::spawn(read_capped(
+            child.stdout.take(),
+            max_output_bytes,
+            truncate_tx.clone(),
+        ));
+        let stderr_task = tokio::spawn(read_capped(
+            child.stderr.take(),
+            max_output_bytes,
+            truncate_tx,
+        ));
+
+        let exit_status = match request.timeout_ms {
             Some(millis) => {
                 let duration = Duration::from_millis(millis);
-                match timeout(duration, child.wait_with_output()).await {
-                    Ok(Ok(output)) => RunResult {
-                        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                        exit_code: output.status.code().unwrap_or(-1),
-                        timed_out: false,
-                    },
-                    Ok(Err(err)) => return Err(ExecutorError::Io(err)),
-                    Err(_) => RunResult {
-                        stdout: String::new(),
-                        stderr: "command timed out".to_string(),
-                        exit_code: -1,
-                        timed_out: true,
-                    },
+                match timeout(duration, wait_for_exit(&mut child, &mut truncate_rx)).await {
+                    Ok(status) => Some(status.map_err(ExecutorError::Io)?),
+                    Err(_) => {
+                        let _ = child.kill().await;
+                        let _ = child.wait().await;
+                        None
+                    }
                 }
             }
-            None => {
-                let output = child.wait_with_output().await.map_err(ExecutorError::Io)?;
-                RunResult {
-                    stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                    stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                    exit_code: output.status.code().unwrap_or(-1),
-                    timed_out: false,
-                }
-            }
+            None => Some(
+                wait_for_exit(&mut child, &mut truncate_rx)
+                    .await
+                    .map_err(ExecutorError::Io)?,
+            ),
         };
 
-        Ok(result)
+        let (stdout_bytes, stdout_truncated) = join_output(stdout_task).await;
+        let (stderr_bytes, stderr_truncated) = join_output(stderr_task).await;
+
+        match exit_status {
+            Some(status) => Ok(RunResult {
+                stdout: String::from_utf8_lossy(&stdout_bytes).into_owned(),
+                stderr: String::from_utf8_lossy(&stderr_bytes).into_owned(),
+                exit_code: status.code().unwrap_or(-1),
+                timed_out: false,
+                bytes_truncated: stdout_truncated || stderr_truncated,
+            }),
+            None => Ok(RunResult {
+                stdout: String::new(),
+                stderr: "command timed out".to_string(),
+                exit_code: -1,
+                timed_out: true,
+                bytes_truncated: false,
+            }),
+        }
     }
+}
+
+/// Waits for the child to exit, killing it early when a reader reports that the
+/// capture limit was hit. Without the kill the child could block forever
+/// writing into a pipe nobody reads.
+async fn wait_for_exit(
+    child: &mut Child,
+    truncate_rx: &mut mpsc::Receiver<()>,
+) -> std::io::Result<std::process::ExitStatus> {
+    tokio::select! {
+        status = child.wait() => status,
+        signal = truncate_rx.recv() => {
+            if signal.is_some() {
+                let _ = child.kill().await;
+            }
+            child.wait().await
+        }
+    }
+}
+
+/// Reads a child stream into memory, stopping once `limit` bytes were captured.
+/// The returned flag reports whether more data was available (or would have
+/// been), which is what marks the run as truncated on the wire.
+async fn read_capped<R: AsyncRead + Unpin>(
+    reader: Option<R>,
+    limit: usize,
+    truncate_tx: mpsc::Sender<()>,
+) -> (Vec<u8>, bool) {
+    let Some(mut reader) = reader else {
+        return (Vec::new(), false);
+    };
+
+    let mut captured = Vec::new();
+    let mut chunk = [0u8; 8192];
+    let mut truncated = false;
+
+    loop {
+        match reader.read(&mut chunk).await {
+            Ok(0) => break,
+            Ok(read) => {
+                let remaining = limit.saturating_sub(captured.len());
+                if read > remaining {
+                    captured.extend_from_slice(&chunk[..remaining]);
+                    truncated = true;
+                    let _ = truncate_tx.try_send(());
+                    break;
+                }
+                captured.extend_from_slice(&chunk[..read]);
+            }
+            Err(_) => break,
+        }
+    }
+
+    (captured, truncated)
+}
+
+/// Collects a reader task's result, falling back to empty output if the task
+/// was cancelled or panicked so a broken pipe never fails the whole run.
+async fn join_output(handle: tokio::task::JoinHandle<(Vec<u8>, bool)>) -> (Vec<u8>, bool) {
+    handle.await.unwrap_or_default()
 }
 
 impl Default for LocalExecutor {
@@ -117,6 +208,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             input: None,
             timeout_ms: None,
+            max_output_bytes: None,
         }
     }
 
@@ -158,10 +250,88 @@ mod tests {
                 env: std::collections::HashMap::new(),
                 input: None,
                 timeout_ms: Some(50),
+                max_output_bytes: None,
             })
             .await
             .unwrap();
         assert!(result.timed_out);
         assert_eq!(result.exit_code, -1);
+    }
+
+    #[tokio::test]
+    async fn local_executor_truncates_output_at_the_configured_limit() {
+        let executor = LocalExecutor::new();
+        let result = executor
+            .run(&RunRequest {
+                command: "yes".to_string(),
+                args: vec![],
+                cwd: None,
+                env: std::collections::HashMap::new(),
+                input: None,
+                timeout_ms: Some(10_000),
+                max_output_bytes: Some(1024),
+            })
+            .await
+            .unwrap();
+        assert!(result.bytes_truncated);
+        assert_eq!(result.stdout.len(), 1024);
+        assert!(!result.timed_out);
+    }
+
+    #[tokio::test]
+    async fn local_executor_keeps_output_within_the_limit() {
+        let executor = LocalExecutor::new();
+        let result = executor
+            .run(&RunRequest {
+                command: "echo".to_string(),
+                args: vec!["hello".to_string()],
+                cwd: None,
+                env: std::collections::HashMap::new(),
+                input: None,
+                timeout_ms: None,
+                max_output_bytes: Some(1024),
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.stdout, "hello\n");
+        assert!(!result.bytes_truncated);
+    }
+
+    #[tokio::test]
+    async fn local_executor_applies_a_default_limit_when_absent() {
+        let executor = LocalExecutor::new();
+        let result = executor
+            .run(&RunRequest {
+                command: "yes".to_string(),
+                args: vec![],
+                cwd: None,
+                env: std::collections::HashMap::new(),
+                input: None,
+                timeout_ms: Some(10_000),
+                max_output_bytes: None,
+            })
+            .await
+            .unwrap();
+        assert!(result.bytes_truncated);
+        assert_eq!(result.stdout.len(), DEFAULT_MAX_OUTPUT_BYTES);
+    }
+
+    #[tokio::test]
+    async fn local_executor_does_not_truncate_output_that_exactly_fills_the_limit() {
+        let executor = LocalExecutor::new();
+        let result = executor
+            .run(&RunRequest {
+                command: "/bin/sh".to_string(),
+                args: vec!["-c".to_string(), "head -c 1024 /dev/zero".to_string()],
+                cwd: None,
+                env: std::collections::HashMap::new(),
+                input: None,
+                timeout_ms: None,
+                max_output_bytes: Some(1024),
+            })
+            .await
+            .unwrap();
+        assert_eq!(result.stdout.len(), 1024);
+        assert!(!result.bytes_truncated);
     }
 }

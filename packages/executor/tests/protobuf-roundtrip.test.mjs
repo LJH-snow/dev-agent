@@ -58,6 +58,7 @@ function encodeRunRequest(req) {
   }
   if (req.input) bytes = bytes.concat(encodeString(5, req.input));
   if (req.timeoutMs) bytes = bytes.concat(encodeVarintField(6, req.timeoutMs));
+  if (req.maxOutputBytes) bytes = bytes.concat(encodeVarintField(7, req.maxOutputBytes));
   return bytes;
 }
 
@@ -163,6 +164,7 @@ function decodeRunResult(buf) {
       }
       if (field === 3) result.exitCode = value;
       else if (field === 4) result.timedOut = value === 1;
+      else if (field === 5) result.bytesTruncated = value === 1;
     }
   }
   return result;
@@ -263,6 +265,7 @@ test("TS-encoded RunRequest with all fields round-trips correctly", async () => 
       env: { RUST_BACKTRACE: "1", CARGO_TARGET_DIR: "/tmp/target" },
       input: "stdin-content",
       timeoutMs: 60000,
+      maxOutputBytes: 65536,
     },
   });
   const response = await sendAndReceive(env, "reflect");
@@ -275,6 +278,18 @@ test("TS-encoded RunRequest with all fields round-trips correctly", async () => 
   assert.equal(parsed.env.CARGO_TARGET_DIR, "/tmp/target");
   assert.equal(parsed.input, "stdin-content");
   assert.equal(parsed.timeoutMs, 60000);
+  assert.equal(parsed.maxOutputBytes, 65536);
+});
+
+test("a truncated RunResult survives the round-trip", async () => {
+  const env = encodeEnvelope({
+    requestId: 11,
+    run: { command: "yes", maxOutputBytes: 1024 },
+  });
+  const response = await sendAndReceive(env, "truncate");
+  assert.equal(response.requestId, 11);
+  assert.equal(response.runResult?.bytesTruncated, true);
+  assert.equal(response.runResult?.stdout, "partial-output");
 });
 
 test("TS-encoded RunSandboxedRequest round-trips correctly", async () => {

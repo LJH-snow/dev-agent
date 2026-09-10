@@ -416,6 +416,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             input: None,
             timeout_ms: Some(10_000),
+            max_output_bytes: None,
         };
         let profile = SandboxProfile {
             name: "timed".to_string(),
@@ -440,6 +441,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             input: None,
             timeout_ms: None,
+            max_output_bytes: None,
         };
         let profile = SandboxProfile {
             name: "default".to_string(),
@@ -471,6 +473,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             input: None,
             timeout_ms: None,
+            max_output_bytes: None,
         };
         let profile = SandboxProfile {
             name: "net-off".to_string(),
@@ -494,6 +497,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             input: None,
             timeout_ms: None,
+            max_output_bytes: None,
         };
         let profile = SandboxProfile {
             name: "net-on".to_string(),
@@ -517,6 +521,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             input: None,
             timeout_ms: None,
+            max_output_bytes: None,
         };
         let profile = SandboxProfile {
             name: "build".to_string(),
@@ -543,6 +548,7 @@ mod tests {
             env: std::collections::HashMap::new(),
             input: None,
             timeout_ms: None,
+            max_output_bytes: None,
         };
         let mut environment = std::collections::HashMap::new();
         environment.insert("CARGO_HOME".to_string(), "/tmp/cargo".to_string());
@@ -578,6 +584,7 @@ mod tests {
                     env: std::collections::HashMap::new(),
                     input: None,
                     timeout_ms: Some(5000),
+                    max_output_bytes: None,
                 },
                 &SandboxProfile {
                     name: "echo".to_string(),

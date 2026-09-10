@@ -17,9 +17,17 @@ Current capabilities:
 - Explicit network policy, read-only paths, writable paths, and per-command
   timeouts
 - CPU, file-size, open-file, process-count, and core-dump resource limits
+- Per-stream output quota (default 1 MiB, client-overridable via
+  `max_output_bytes`) enforced while streaming; exceeding it kills the child and
+  sets `bytes_truncated` on the result
 - Linux `bwrap` namespace isolation (user/ipc/pid/uts/cgroup), read-only root
   filesystem with writable/read-only path bind mounts, network policy
   (`--unshare-net`), environment injection, resource limits, and cwd enforcement
+
+The stdio binary reads one envelope, runs it, writes the response, and only then
+reads the next envelope, so a single `dev-agent-executor` process executes
+commands strictly serially. Concurrency is bounded by the number of processes a
+client starts, not by a per-process limit.
 
 The stdio execution boundary is active, and macOS `sandbox-exec` currently
 enforces the profile. The Linux `bwrap` backend is active, with pure

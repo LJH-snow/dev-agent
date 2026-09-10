@@ -7,6 +7,7 @@
 // Behavior is controlled via the MOCK_EXECUTOR_BEHAVIOR environment variable:
 //   default         → echoes back a RunResult with stdout "mock:{command}"
 //   reflect          → echoes back the exact RunRequest payload as JSON in stdout
+//   truncate         → responds with a RunResult that reports truncated output
 //   error:CODE       → responds with an ErrorResult using the given code
 //   hang             → never responds (for timeout/disconnect tests)
 
@@ -113,7 +114,7 @@ function decodeMessage(buf, offset, length) {
 // ---------------------------------------------------------------------------
 
 // Field numbers from executor.proto:
-// RunRequest: command=1, args=2, cwd=3, env=4, input=5, timeout_ms=6
+// RunRequest: command=1, args=2, cwd=3, env=4, input=5, timeout_ms=6, max_output_bytes=7
 function encodeRunRequest(msg) {
   let bytes = [];
   if (msg.command) bytes = bytes.concat(encodeString(1, msg.command));
@@ -130,6 +131,7 @@ function encodeRunRequest(msg) {
   }
   if (msg.input) bytes = bytes.concat(encodeString(5, msg.input));
   if (msg.timeoutMs) bytes = bytes.concat(encodeVarintField(6, msg.timeoutMs));
+  if (msg.maxOutputBytes) bytes = bytes.concat(encodeVarintField(7, msg.maxOutputBytes));
   return bytes;
 }
 
@@ -181,12 +183,13 @@ function encodeResponse(msg) {
   let bytes = [];
   if (msg.requestId) bytes = bytes.concat(encodeVarintField(1, msg.requestId));
   if (msg.runResult) {
-    // RunResult: stdout=1, stderr=2, exit_code=3, timed_out=4
+    // RunResult: stdout=1, stderr=2, exit_code=3, timed_out=4, bytes_truncated=5
     let inner = [];
     inner = inner.concat(encodeString(1, msg.runResult.stdout));
     inner = inner.concat(encodeString(2, msg.runResult.stderr));
     inner = inner.concat(encodeVarintField(3, msg.runResult.exitCode));
     if (msg.runResult.timedOut) inner = inner.concat(encodeVarintField(4, 1));
+    if (msg.runResult.bytesTruncated) inner = inner.concat(encodeVarintField(5, 1));
     bytes = bytes.concat(encodeEmbedded(2, inner));
   }
   if (msg.healthCheckResult) {
@@ -237,6 +240,7 @@ function decodeRunRequest(buf) {
     env: fields["4_repeated"] ? decodeMapFromRepeated(fields["4_repeated"]) : (fields[4] ? decodeMap(fields[4]) : undefined),
     input: fields[5] ? fields[5].toString("utf8") : undefined,
     timeoutMs: fields[6] ?? undefined,
+    maxOutputBytes: fields[7] ?? undefined,
   };
 }
 
@@ -301,6 +305,8 @@ function handleRequest(encoded) {
     const run = envelope.payload.run;
     if (behavior === "reflect") {
       response = { requestId, runResult: { stdout: JSON.stringify(run), stderr: "", exitCode: 0, timedOut: false } };
+    } else if (behavior === "truncate") {
+      response = { requestId, runResult: { stdout: "partial-output", stderr: "", exitCode: -1, timedOut: false, bytesTruncated: true } };
     } else {
       response = { requestId, runResult: { stdout: `mock:${run.command}`, stderr: "", exitCode: 0, timedOut: false } };
     }
