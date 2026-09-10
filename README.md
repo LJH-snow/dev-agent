@@ -156,4 +156,4 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 6. ~~Desktop shell in `apps/desktop`~~ (done)
 7. ~~CLI streaming output and session management hardening~~ (done)
 8. ~~Network policy enforcement via Starlark~~ (done)
-- Test suite: 193 TypeScript tests + 35 Rust tests, all passing
+- Test suite: 196 TypeScript tests + 35 Rust tests, all passing

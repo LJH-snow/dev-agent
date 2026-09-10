@@ -159,9 +159,10 @@ export async function main(argv: string[]): Promise<void> {
 }
 
 function createMemory(sessionId = "default"): FileMemory {
+  // Keep this consistent with sessionDir() so sessions written by the CLI are
+  // the same ones --session-list and --compact operate on.
   const filePath =
-    process.env.DEV_AGENT_MEMORY_FILE ??
-    join(homedir(), ".dev-agent", "sessions", `${sessionId}.json`);
+    process.env.DEV_AGENT_MEMORY_FILE ?? join(sessionDir(), `${sessionId}.json`);
   return new FileMemory({ filePath });
 }
 

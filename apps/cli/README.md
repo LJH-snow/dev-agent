@@ -35,6 +35,9 @@ Configuration is read from the environment:
 - `DEV_AGENT_MEMORY_FILE` - optional JSON memory file path; when set, it bypasses
   session files. Without it, memory defaults to `~/.dev-agent/sessions/default.json`
   and `--session <id>` maps to `~/.dev-agent/sessions/<id>.json`
+- `DEV_AGENT_SESSION_DIR` - optional directory holding session files; defaults to
+  `~/.dev-agent/sessions`. Used by `--session`, `--metadata`, `--compact`, and
+  `--session-list` alike, so sessions written by the CLI are the ones listed.
 - `DEV_AGENT_MCP_SERVERS` - optional JSON array of MCP stdio server configs
 
 When MCP servers are configured, dev-agent injects `DEV_AGENT_SESSION_ID` and

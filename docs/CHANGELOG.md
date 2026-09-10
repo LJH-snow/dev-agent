@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-09-10 (CLI session directory consistency)
+
+### Fixed: DEV_AGENT_SESSION_DIR only affected listing
+- `sessionDir()` honoured `DEV_AGENT_SESSION_DIR` for `--session-list`, but
+  `createMemory()` built its path from `homedir()` directly. Setting the variable
+  therefore pointed the listing at an empty directory while `--session`,
+  `--metadata`, and `--compact` kept reading and writing
+  `~/.dev-agent/sessions` -- the CLI's own sessions never appeared in its own
+  listing, contradicting the documented behaviour.
+- `createMemory()` now resolves through `sessionDir()`, so all four commands use
+  the same directory. `DEV_AGENT_MEMORY_FILE` still takes precedence.
+
+### Docs
+- `apps/cli/README.md` now documents `DEV_AGENT_SESSION_DIR`, which was
+  previously only mentioned in the changelog.
+
+### Tests
+- New `apps/cli/tests/session-dir.test.mjs` (3 tests): `--metadata` and
+  `--compact` operate on the configured session directory, and
+  `DEV_AGENT_MEMORY_FILE` still wins. Tests use a unique session id so a failure
+  cannot read or mutate a developer's real sessions.
+- `apps/cli` tests: 20 -> 23. TypeScript tests: 193 -> 196.
+
 ## 2026-09-10 (Desktop server hardening)
 
 ### Fixed: client errors were reported as server errors
