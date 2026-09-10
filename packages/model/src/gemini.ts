@@ -161,6 +161,36 @@ export class GeminiProvider implements ModelProvider {
     const decoder = new TextDecoder();
     let content = "";
     let buffer = "";
+    const toolCalls: ToolCall[] = [];
+
+    const handleLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data: ")) return;
+      const data = trimmed.slice(6);
+      try {
+        const json = JSON.parse(data) as {
+          candidates?: readonly {
+            content?: { parts?: readonly GeminiPart[] };
+          }[];
+        };
+        const parts = json.candidates?.[0]?.content?.parts ?? [];
+        for (const part of parts) {
+          if (part.text) {
+            content += part.text;
+            options.onToken?.(part.text);
+          }
+          if (part.functionCall) {
+            toolCalls.push({
+              id: `gemini-${toolCalls.length}`,
+              name: part.functionCall.name ?? "unknown",
+              input: part.functionCall.args ?? part.functionCall.arguments ?? {},
+            });
+          }
+        }
+      } catch {
+        // skip malformed
+      }
+    };
 
     try {
       for (;;) {
@@ -170,28 +200,18 @@ export class GeminiProvider implements ModelProvider {
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data: ")) continue;
-          const data = trimmed.slice(6);
-          try {
-            const json = JSON.parse(data) as {
-              candidates?: readonly { content?: { parts?: readonly { text?: string }[] } }[];
-            };
-            const delta = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-            if (delta) {
-              content += delta;
-              options.onToken?.(delta);
-            }
-          } catch {
-            // skip malformed
-          }
+          handleLine(line);
         }
+      }
+      // A stream may end without a trailing newline; flush the final event.
+      if (buffer.length > 0) {
+        handleLine(buffer);
       }
     } finally {
       reader.releaseLock();
     }
 
-    return { content };
+    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
   }
 }
 

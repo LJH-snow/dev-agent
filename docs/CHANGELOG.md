@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-09-10 (Model streaming hardening)
+
+### Fixed: streaming dropped tool calls, breaking tool use
+- The agent loop calls `streamChat` whenever `onToken` is set, and the CLI enables
+  token streaming by default. All four providers returned only `{ content }` from
+  `streamChat`, so `completion.toolCalls` was always empty: the loop saw zero tool
+  calls and ended the turn without ever running a tool. Tool use was effectively
+  broken in streaming mode for every provider.
+- `streamChat` now surfaces tool calls:
+  - OpenAI accumulates `tool_calls` deltas by index (id, name, concatenated
+    arguments) and parses the assembled JSON.
+  - Anthropic tracks `content_block_start` `tool_use` blocks and concatenates
+    `input_json_delta` fragments before parsing.
+  - Gemini collects `functionCall` parts from streamed candidates.
+  - Ollama collects `message.tool_calls` from each NDJSON chunk (the array was
+    declared and returned but never populated).
+
+### Fixed: the final streamed event was dropped
+- Every provider kept a partial-line buffer but never flushed it when the stream
+  ended, so a final event without a trailing newline was silently lost.
+- OpenAI additionally stopped on `[DONE]` only inside the inner line loop, so
+  events arriving after `[DONE]` were still parsed; the stream now terminates.
+
+### Tests
+- New `packages/model/tests/streaming.test.mjs` (25 tests): token accumulation and
+  `onToken`, events split across chunk boundaries, multi-byte characters split
+  mid-UTF-8, `[DONE]` termination, trailing-event flush, malformed payloads,
+  non-OK and body-less responses, abort-signal forwarding, and streamed tool
+  calls for all four providers.
+- New `packages/agent-core/tests/streaming-tool-calls.test.mjs`: wires the real
+  OpenAI provider (fake `fetch`) into `AgentLoop` and asserts the streamed tool
+  call is actually executed. Existing streaming tests used a mock provider that
+  returned tool calls directly, which is why they never caught this.
+- TypeScript tests: 130 -> 156.
+
 ## 2026-09-10 (CI + build hardening)
 
 ### Continuous integration (`.github/workflows/ci.yml`)

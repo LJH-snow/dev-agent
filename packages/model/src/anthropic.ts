@@ -136,6 +136,41 @@ export class AnthropicProvider implements ModelProvider {
     const decoder = new TextDecoder();
     let content = "";
     let buffer = "";
+    const toolUses = new Map<number, { id: string; name: string; json: string }>();
+
+    const handleLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data: ")) return;
+      const data = trimmed.slice(6);
+      try {
+        const json = JSON.parse(data) as {
+          index?: number;
+          content_block?: { type?: string; id?: string; name?: string };
+          delta?: { type?: string; text?: string; partial_json?: string };
+        };
+        if (json.content_block?.type === "tool_use") {
+          const index = json.index ?? 0;
+          toolUses.set(index, {
+            id: json.content_block.id ?? `anthropic-${index}`,
+            name: json.content_block.name ?? "unknown",
+            json: "",
+          });
+        }
+        if (json.delta?.type === "input_json_delta" && json.delta.partial_json) {
+          const accumulated = toolUses.get(json.index ?? 0);
+          if (accumulated) {
+            accumulated.json += json.delta.partial_json;
+          }
+        }
+        const text = json.delta?.text;
+        if (text) {
+          content += text;
+          options.onToken?.(text);
+        }
+      } catch {
+        // skip malformed
+      }
+    };
 
     try {
       for (;;) {
@@ -145,31 +180,43 @@ export class AnthropicProvider implements ModelProvider {
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data: ")) continue;
-          const data = trimmed.slice(6);
-          try {
-            const json = JSON.parse(data) as { delta?: { text?: string } };
-            const delta = json.delta?.text ?? "";
-            if (delta) {
-              content += delta;
-              options.onToken?.(delta);
-            }
-          } catch {
-            // skip malformed
-          }
+          handleLine(line);
         }
+      }
+      // A stream may end without a trailing newline; flush the final event.
+      if (buffer.length > 0) {
+        handleLine(buffer);
       }
     } finally {
       reader.releaseLock();
     }
 
-    return { content };
+    const toolCalls = [...toolUses.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([, accumulated]) => ({
+        id: accumulated.id,
+        name: accumulated.name,
+        input: parseJsonOrRaw(accumulated.json),
+      }));
+
+    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
   }
 }
 
 export function createAnthropicProvider(config: AnthropicProviderConfig): AnthropicProvider {
   return new AnthropicProvider(config);
+}
+
+/** Parses a streamed JSON fragment, falling back to the raw text when invalid. */
+function parseJsonOrRaw(text: string): unknown {
+  if (!text.trim()) {
+    return {};
+  }
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 function toAnthropicMessages(messages: readonly ChatMessage[]): unknown[] {

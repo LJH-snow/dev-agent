@@ -30,6 +30,15 @@ interface OpenAIResponse {
   }[];
 }
 
+interface OpenAIStreamToolCallDelta {
+  readonly index?: number;
+  readonly id?: string;
+  readonly function?: {
+    readonly name?: string;
+    readonly arguments?: string;
+  };
+}
+
 export class OpenAIProvider implements ModelProvider {
   readonly id = "openai" as const;
   readonly model: string;
@@ -107,6 +116,44 @@ export class OpenAIProvider implements ModelProvider {
     const decoder = new TextDecoder();
     let content = "";
     let buffer = "";
+    let finished = false;
+    const toolCallDeltas = new Map<number, { id: string; name: string; args: string }>();
+
+    const handleLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data: ")) return;
+      const data = trimmed.slice(6);
+      if (data === "[DONE]") {
+        finished = true;
+        return;
+      }
+      try {
+        const json = JSON.parse(data) as {
+          choices?: readonly {
+            delta?: {
+              content?: string;
+              tool_calls?: readonly OpenAIStreamToolCallDelta[];
+            };
+          }[];
+        };
+        const delta = json.choices?.[0]?.delta;
+        if (!delta) return;
+        if (delta.content) {
+          content += delta.content;
+          options.onToken?.(delta.content);
+        }
+        for (const call of delta.tool_calls ?? []) {
+          const index = call.index ?? 0;
+          const accumulated = toolCallDeltas.get(index) ?? { id: "", name: "", args: "" };
+          if (call.id) accumulated.id = call.id;
+          if (call.function?.name) accumulated.name = call.function.name;
+          if (call.function?.arguments) accumulated.args += call.function.arguments;
+          toolCallDeltas.set(index, accumulated);
+        }
+      } catch {
+        // skip malformed
+      }
+    };
 
     try {
       for (;;) {
@@ -116,29 +163,29 @@ export class OpenAIProvider implements ModelProvider {
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data: ")) continue;
-          const data = trimmed.slice(6);
-          if (data === "[DONE]") break;
-          try {
-            const json = JSON.parse(data) as {
-              choices?: readonly { delta?: { content?: string } }[];
-            };
-            const delta = json.choices?.[0]?.delta?.content ?? "";
-            if (delta) {
-              content += delta;
-              options.onToken?.(delta);
-            }
-          } catch {
-            // skip malformed
-          }
+          handleLine(line);
+          if (finished) break;
         }
+        if (finished) break;
+      }
+      // A stream may end without a trailing newline; flush the final event.
+      if (!finished && buffer.length > 0) {
+        handleLine(buffer);
       }
     } finally {
       reader.releaseLock();
     }
 
-    return { content };
+    const toolCalls = [...toolCallDeltas.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([index, accumulated]) =>
+        parseOpenAIToolCall({
+          id: accumulated.id || `openai-${index}`,
+          function: { name: accumulated.name, arguments: accumulated.args },
+        })
+      );
+
+    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
   }
 }
 

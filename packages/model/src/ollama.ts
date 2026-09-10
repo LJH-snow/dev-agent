@@ -103,8 +103,26 @@ export class OllamaProvider implements ModelProvider {
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let content = "";
-    let toolCalls: ToolCall[] = [];
+    const toolCalls: ToolCall[] = [];
     let buffer = "";
+
+    const handleLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      try {
+        const chunk = JSON.parse(trimmed) as OllamaResponse;
+        const delta = chunk.message?.content ?? "";
+        if (delta) {
+          content += delta;
+          options.onToken?.(delta);
+        }
+        for (const call of chunk.message?.tool_calls ?? []) {
+          toolCalls.push(parseOllamaToolCall(call, toolCalls.length));
+        }
+      } catch {
+        // skip malformed line
+      }
+    };
 
     try {
       for (;;) {
@@ -114,19 +132,12 @@ export class OllamaProvider implements ModelProvider {
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          try {
-            const chunk = JSON.parse(trimmed) as OllamaResponse;
-            const delta = chunk.message?.content ?? "";
-            if (delta) {
-              content += delta;
-              options.onToken?.(delta);
-            }
-          } catch {
-            // skip malformed line
-          }
+          handleLine(line);
         }
+      }
+      // A stream may end without a trailing newline; flush the final line.
+      if (buffer.length > 0) {
+        handleLine(buffer);
       }
     } finally {
       reader.releaseLock();
