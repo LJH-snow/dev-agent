@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   parseConfig,
   loadConfig,
+  resolveMaxContextChars,
   resolveMaxTurns,
   resolveModel,
   resolveProviderId,
@@ -88,4 +89,26 @@ test("resolveMaxTurns ignores invalid config values", () => {
   assert.equal(resolveMaxTurns({ maxTurns: "4" }, 8), 8);
   assert.equal(resolveMaxTurns({}, 8), 8);
   assert.equal(resolveMaxTurns(undefined, 8), 8);
+});
+
+test("resolveMaxContextChars prefers env, then config, then no budget", () => {
+  assert.equal(
+    resolveMaxContextChars(
+      { maxContextChars: 4000 },
+      { DEV_AGENT_MAX_CONTEXT_CHARS: "9000" }
+    ),
+    9000
+  );
+  assert.equal(resolveMaxContextChars({ maxContextChars: 4000 }, {}), 4000);
+  assert.equal(resolveMaxContextChars({}, {}), undefined);
+  assert.equal(resolveMaxContextChars(undefined, {}), undefined);
+});
+
+test("resolveMaxContextChars ignores invalid values", () => {
+  assert.equal(resolveMaxContextChars({}, { DEV_AGENT_MAX_CONTEXT_CHARS: "0" }), undefined);
+  assert.equal(resolveMaxContextChars({}, { DEV_AGENT_MAX_CONTEXT_CHARS: "-5" }), undefined);
+  assert.equal(resolveMaxContextChars({}, { DEV_AGENT_MAX_CONTEXT_CHARS: "abc" }), undefined);
+  assert.equal(resolveMaxContextChars({ maxContextChars: 0 }, {}), undefined);
+  assert.equal(resolveMaxContextChars({ maxContextChars: 2.5 }, {}), undefined);
+  assert.equal(resolveMaxContextChars({ maxContextChars: -1 }, {}), undefined);
 });

@@ -28,6 +28,7 @@ export interface ChatSessionOptions {
   readonly workingDirectory?: string;
   readonly systemPrompt?: string;
   readonly maxTurns?: number;
+  readonly maxContextChars?: number;
   readonly rustBinaryPath?: string;
 }
 
@@ -38,6 +39,7 @@ export class ChatSession {
   private readonly workingDirectory: string;
   private readonly systemPrompt: string;
   private readonly maxTurns: number;
+  private readonly maxContextChars?: number;
   private context: AgentContext;
 
   constructor(options: ChatSessionOptions = {}) {
@@ -54,6 +56,8 @@ export class ChatSession {
     this.workingDirectory = options.workingDirectory ?? process.cwd();
     this.systemPrompt = options.systemPrompt ?? defaultSystemPrompt;
     this.maxTurns = options.maxTurns ?? 12;
+    this.maxContextChars =
+      options.maxContextChars ?? parsePositiveInt(process.env.DEV_AGENT_MAX_CONTEXT_CHARS);
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -67,6 +71,8 @@ export class ChatSession {
       tools: this.tools,
       systemPrompt: this.systemPrompt,
       maxTurns: this.maxTurns,
+      contextBudget:
+        this.maxContextChars === undefined ? undefined : { maxChars: this.maxContextChars },
       onTurn: (turn) => emit({ type: "turn", data: { turn } }),
       onToken: (token) => emit({ type: "token", data: { token } }),
       onToolCall: (call) => emit({ type: "tool", data: { name: call.name, input: call.input } }),
@@ -97,6 +103,14 @@ function normalizeSessionId(sessionId: string): string {
 
 function defaultMemoryPath(sessionId: string): string {
   return join(homedir(), ".dev-agent", "sessions", `${sessionId}.json`);
+}
+
+function parsePositiveInt(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value.trim(), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function createProvider(): ModelProvider {

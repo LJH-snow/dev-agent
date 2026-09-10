@@ -14,6 +14,20 @@ export interface AgentLoopOptions {
   readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
   readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
   readonly toolDefaults?: ToolDefaults;
+  readonly contextBudget?: ContextBudget;
+}
+
+/**
+ * Approximate budget for the conversation history handed to the model.
+ *
+ * `maxChars` counts message content plus serialized tool calls. The system
+ * prompt is neither counted nor dropped: it is always sent. Oldest entries are
+ * dropped first, and an assistant message that requested tools is always kept
+ * together with the tool results answering it. The newest entry is kept even
+ * when it alone exceeds the budget, so the current request is never dropped.
+ */
+export interface ContextBudget {
+  readonly maxChars?: number;
 }
 
 export class AgentLoop {
@@ -26,6 +40,7 @@ export class AgentLoop {
   private readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
   private readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
   private readonly toolDefaults?: ToolDefaults;
+  private readonly contextBudget?: ContextBudget;
 
   constructor(options: AgentLoopOptions) {
     if (options.maxTurns !== undefined && options.maxTurns < 1) {
@@ -40,6 +55,7 @@ export class AgentLoop {
     this.onToolCall = options.onToolCall;
     this.onToolResult = options.onToolResult;
     this.toolDefaults = options.toolDefaults;
+    this.contextBudget = options.contextBudget;
   }
 
   async run(context: AgentContext, input: string): Promise<AgentContext> {
@@ -112,7 +128,14 @@ export class AgentLoop {
     if (systemPrompt) {
       messages.push({ role: "system", content: systemPrompt });
     }
-    for (const entry of entries) {
+    const selection = selectEntriesWithinBudget(entries, normalizeMaxChars(this.contextBudget?.maxChars));
+    if (selection.omitted > 0) {
+      messages.push({
+        role: "system",
+        content: `[context] ${selection.omitted} earlier entries omitted`,
+      });
+    }
+    for (const entry of selection.entries) {
       messages.push(toChatMessage(entry));
     }
     return messages;
@@ -133,6 +156,88 @@ export class AgentLoop {
       parameters: tool.parameters,
     }));
   }
+}
+
+interface HistorySelection {
+  readonly entries: readonly MemoryEntry[];
+  readonly omitted: number;
+}
+
+function normalizeMaxChars(value: number | undefined): number | undefined {
+  if (value === undefined || !Number.isInteger(value) || value <= 0) {
+    return undefined;
+  }
+  return value;
+}
+
+/**
+ * Keeps the newest entries that fit into `maxChars`, never splitting a tool
+ * call from its tool results. Returns the original entries untouched when no
+ * budget is configured.
+ */
+function selectEntriesWithinBudget(
+  entries: readonly MemoryEntry[],
+  maxChars: number | undefined
+): HistorySelection {
+  if (maxChars === undefined) {
+    return { entries, omitted: 0 };
+  }
+
+  const groups = groupEntries(entries);
+  const selected: MemoryEntry[][] = [];
+  let used = 0;
+
+  for (let index = groups.length - 1; index >= 0; index -= 1) {
+    const group = groups[index]!;
+    const size = group.reduce((total, entry) => total + entryChars(entry), 0);
+    const isNewest = index === groups.length - 1;
+    if (!isNewest && used + size > maxChars) {
+      break;
+    }
+    selected.unshift(group);
+    used += size;
+  }
+
+  const kept = selected.flat();
+  return { entries: kept, omitted: entries.length - kept.length };
+}
+
+/**
+ * Groups an assistant message with the tool results that answer its calls so
+ * the history never ends up with a tool message whose call was dropped.
+ */
+function groupEntries(entries: readonly MemoryEntry[]): MemoryEntry[][] {
+  const groups: MemoryEntry[][] = [];
+  const pendingByCallId = new Map<string, MemoryEntry[]>();
+
+  for (const entry of entries) {
+    if (entry.role === "assistant" && entry.toolCalls && entry.toolCalls.length > 0) {
+      const group = [entry];
+      groups.push(group);
+      for (const call of entry.toolCalls) {
+        pendingByCallId.set(call.id, group);
+      }
+      continue;
+    }
+
+    const pending = entry.role === "tool" && entry.toolCallId
+      ? pendingByCallId.get(entry.toolCallId)
+      : undefined;
+    if (pending) {
+      pending.push(entry);
+      pendingByCallId.delete(entry.toolCallId!);
+      continue;
+    }
+
+    groups.push([entry]);
+  }
+
+  return groups;
+}
+
+function entryChars(entry: MemoryEntry): number {
+  const toolCallChars = entry.toolCalls ? JSON.stringify(entry.toolCalls).length : 0;
+  return entry.content.length + toolCallChars;
 }
 
 function toChatMessage(entry: MemoryEntry): ChatMessage {

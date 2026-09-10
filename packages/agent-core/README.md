@@ -5,6 +5,10 @@ Core agent runtime: agent loop, context, memory, and agent state.
 Implemented in phase 1:
 
 - `AgentLoop` - model and tool orchestration loop with a max turn limit
+- `AgentLoop`'s optional `contextBudget` - character budget for the history sent
+  to the model. It keeps the newest entries that fit, never splits an assistant
+  tool call from its tool results, always keeps the system prompt, and announces
+  how many older entries were omitted
 - `AgentContext` - holds session id, working directory, runtime metadata, timestamps,
   `AgentState`, and `AgentMemory`
 - `AgentState` - id, status, turn counter, current task, and last error

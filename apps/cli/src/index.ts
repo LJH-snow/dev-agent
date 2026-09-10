@@ -18,6 +18,7 @@ import { McpServerSession, type McpClient, type McpClientConfig, type McpSession
 import { colors, colorize } from "./colors.js";
 import {
   loadConfig,
+  resolveMaxContextChars,
   resolveMaxTurns,
   resolveModel,
   resolveProviderId,
@@ -153,6 +154,7 @@ export async function main(argv: string[]): Promise<void> {
         .filter((part) => part.length > 0)
         .join("\n\n"),
       maxTurns: resolveMaxTurns(config, 8),
+      contextBudget: buildContextBudget(config),
       onTurn: (turn) => {
         process.stdout.write(`[turn ${turn}]\n`);
       },
@@ -176,6 +178,11 @@ function createMemory(sessionId = "default"): FileMemory {
   const filePath =
     process.env.DEV_AGENT_MEMORY_FILE ?? join(sessionDir(), `${sessionId}.json`);
   return new FileMemory({ filePath });
+}
+
+function buildContextBudget(config: CliConfig): { maxChars: number } | undefined {
+  const maxChars = resolveMaxContextChars(config);
+  return maxChars === undefined ? undefined : { maxChars };
 }
 
 function sessionDir(): string {

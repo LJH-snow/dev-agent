@@ -6,6 +6,7 @@ export interface CliConfig {
   readonly defaultProvider?: string;
   readonly defaultModel?: string;
   readonly maxTurns?: number;
+  readonly maxContextChars?: number;
   readonly mcpServers?: ReadonlyArray<{
     readonly name?: string;
     readonly command: string;
@@ -90,4 +91,31 @@ export function resolveMaxTurns(config: CliConfig = {}, fallback: number): numbe
     return value;
   }
   return fallback;
+}
+
+/**
+ * Resolves the conversation-history budget handed to the agent loop.
+ *
+ * Environment, then config file, then no budget at all -- with no budget the
+ * loop passes the full history through, exactly as it did before the option
+ * existed. Invalid values are ignored rather than fatal.
+ */
+export function resolveMaxContextChars(
+  config: CliConfig = {},
+  env: Env = process.env
+): number | undefined {
+  const fromEnv = env.DEV_AGENT_MAX_CONTEXT_CHARS?.trim();
+  if (fromEnv) {
+    const parsed = Number.parseInt(fromEnv, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  const fromConfig = config.maxContextChars;
+  if (typeof fromConfig === "number" && Number.isInteger(fromConfig) && fromConfig > 0) {
+    return fromConfig;
+  }
+
+  return undefined;
 }
