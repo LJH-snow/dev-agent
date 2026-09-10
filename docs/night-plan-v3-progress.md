@@ -5,12 +5,35 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（模型层重试与限流处理）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-11 00:18-00:40）
-- 工作区：阶段 2 的改动已提交并推送
+- 当前阶段：阶段 4（桌面端中断与并发保护）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-11 00:26-00:45）
+- 工作区：阶段 3 的改动已提交并推送
 
 ## 日志
+
+### 运行 4 — 2026-09-11 00:26-00:45
+
+- 阶段/工作项：阶段 3（模型层重试与限流处理）全部完成
+- 做了什么：
+  - 新增 `packages/model/src/retry.ts`：`withRetry` / `requestWithRetry` /
+    `ModelRequestError` / `parseRetryAfter`
+  - 重试策略：429 与 5xx 重试、其他 4xx 立即失败、网络错误（TypeError 或
+    fetch/ECONN* 类错误）重试；`Retry-After` 支持秒数与 HTTP-date，上限 2s；
+    指数退避（基数 250ms）+ 抖动
+  - 四个 provider（OpenAI / Anthropic / Gemini / Ollama）统一接入，`ProviderConfig`
+    新增可选 `retry` 配置（次数、基数、上限、注入 sleep/random 便于测试）
+  - 流式调用只重试初始请求：一旦开始输出就不再重试，避免重复 token
+  - 现有两个"非 OK 响应"用例显式传 `retry: { retries: 0 }`，保持测试瞬时完成
+    （模型包测试总耗时 95ms）
+  - 文档：`packages/model/README.md` 新增 Retries 一节
+- 验证命令与结果：
+  - `packages/model`：35 passed（新增 6 个：429+Retry-After 重试成功、5xx 退避到
+    预算耗尽（断言延迟序列 [188, 375]）、4xx 不重试、网络错误重试、流式中途失败
+    不重试且首个 token 已交付、parseRetryAfter 解析两种格式）
+  - `pnpm build`、`pnpm typecheck`、`pnpm test`：全绿（TypeScript 232 个测试）
+- 提交：见阶段 3 的 feat 提交
+- 下一步：阶段 4 — 桌面端中断与并发保护
 
 ### 运行 3 — 2026-09-11 00:18-00:40
 

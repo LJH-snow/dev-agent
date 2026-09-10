@@ -1,3 +1,4 @@
+import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
   ChatMessage,
@@ -45,35 +46,37 @@ export class OpenAIProvider implements ModelProvider {
   private readonly apiKey?: string;
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
+  private readonly retry?: RetryOptions;
 
   constructor(config: OpenAIProviderConfig) {
     this.model = config.model;
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl?.replace(/\/$/, "") ?? "https://api.openai.com/v1";
     this.fetchFn = config.fetch ?? globalThis.fetch;
+    this.retry = config.retry;
   }
 
   async chat(messages: readonly ChatMessage[], options: ChatOptions = {}): Promise<ChatCompletion> {
-    const response = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: messages.map(toOpenAIMessage),
-        temperature: options.temperature,
-        max_tokens: options.maxTokens,
-        ...(options.tools ? { tools: options.tools.map(toOpenAITool) } : {}),
-      }),
-      signal: options.signal,
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`OpenAI request failed (${response.status}): ${body}`);
-    }
+    const response = await requestWithRetry(
+      "OpenAI request",
+      () =>
+        this.fetchFn(`${this.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages: messages.map(toOpenAIMessage),
+            temperature: options.temperature,
+            max_tokens: options.maxTokens,
+            ...(options.tools ? { tools: options.tools.map(toOpenAITool) } : {}),
+          }),
+          signal: options.signal,
+        }),
+      { ...this.retry, signal: options.signal ?? this.retry?.signal }
+    );
 
     const data = (await response.json()) as OpenAIResponse;
     const message = data.choices?.[0]?.message;
@@ -90,24 +93,29 @@ export class OpenAIProvider implements ModelProvider {
     messages: readonly ChatMessage[],
     options: ChatOptions & { onToken?: (token: string) => void } = {}
   ): Promise<ChatCompletion> {
-    const response = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: messages.map(toOpenAIMessage),
-        stream: true,
-        temperature: options.temperature,
-        max_tokens: options.maxTokens,
-        ...(options.tools ? { tools: options.tools.map(toOpenAITool) } : {}),
-      }),
-      signal: options.signal,
-    });
+    const response = await requestWithRetry(
+      "OpenAI stream request",
+      () =>
+        this.fetchFn(`${this.baseUrl}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages: messages.map(toOpenAIMessage),
+            stream: true,
+            temperature: options.temperature,
+            max_tokens: options.maxTokens,
+            ...(options.tools ? { tools: options.tools.map(toOpenAITool) } : {}),
+          }),
+          signal: options.signal,
+        }),
+      { ...this.retry, signal: options.signal ?? this.retry?.signal }
+    );
 
-    if (!response.ok || !response.body) {
+    if (!response.body) {
       const body = await response.text().catch(() => "");
       throw new Error(`OpenAI stream request failed (${response.status}): ${body}`);
     }

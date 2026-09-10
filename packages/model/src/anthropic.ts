@@ -1,3 +1,4 @@
+import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
   ChatMessage,
@@ -29,12 +30,14 @@ export class AnthropicProvider implements ModelProvider {
   private readonly apiKey?: string;
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
+  private readonly retry?: RetryOptions;
 
   constructor(config: AnthropicProviderConfig) {
     this.model = config.model;
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl?.replace(/\/$/, "") ?? "https://api.anthropic.com";
     this.fetchFn = config.fetch ?? globalThis.fetch;
+    this.retry = config.retry;
   }
 
   async chat(messages: readonly ChatMessage[], options: ChatOptions = {}): Promise<ChatCompletion> {
@@ -57,21 +60,21 @@ export class AnthropicProvider implements ModelProvider {
       body.tools = options.tools.map(toAnthropicTool);
     }
 
-    const response = await this.fetchFn(`${this.baseUrl}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        ...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
-      },
-      body: JSON.stringify(body),
-      signal: options.signal,
-    });
-
-    if (!response.ok) {
-      const bodyText = await response.text();
-      throw new Error(`Anthropic request failed (${response.status}): ${bodyText}`);
-    }
+    const response = await requestWithRetry(
+      "Anthropic request",
+      () =>
+        this.fetchFn(`${this.baseUrl}/v1/messages`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+            ...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
+          },
+          body: JSON.stringify(body),
+          signal: options.signal,
+        }),
+      { ...this.retry, signal: options.signal ?? this.retry?.signal }
+    );
 
     const data = (await response.json()) as AnthropicResponse;
     const blocks = data.content ?? [];
@@ -116,18 +119,23 @@ export class AnthropicProvider implements ModelProvider {
     if (options.temperature !== undefined) body.temperature = options.temperature;
     if (options.tools) body.tools = options.tools.map(toAnthropicTool);
 
-    const response = await this.fetchFn(`${this.baseUrl}/v1/messages`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-        ...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
-      },
-      body: JSON.stringify(body),
-      signal: options.signal,
-    });
+    const response = await requestWithRetry(
+      "Anthropic stream request",
+      () =>
+        this.fetchFn(`${this.baseUrl}/v1/messages`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+            ...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
+          },
+          body: JSON.stringify(body),
+          signal: options.signal,
+        }),
+      { ...this.retry, signal: options.signal ?? this.retry?.signal }
+    );
 
-    if (!response.ok || !response.body) {
+    if (!response.body) {
       const bodyText = await response.text().catch(() => "");
       throw new Error(`Anthropic stream request failed (${response.status}): ${bodyText}`);
     }

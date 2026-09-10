@@ -1,3 +1,4 @@
+import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
   ChatMessage,
@@ -33,12 +34,14 @@ export class GeminiProvider implements ModelProvider {
   private readonly apiKey?: string;
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
+  private readonly retry?: RetryOptions;
 
   constructor(config: GeminiProviderConfig) {
     this.model = config.model;
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl?.replace(/\/$/, "") ?? "https://generativelanguage.googleapis.com";
     this.fetchFn = config.fetch ?? globalThis.fetch;
+    this.retry = config.retry;
   }
 
   async chat(messages: readonly ChatMessage[], options: ChatOptions = {}): Promise<ChatCompletion> {
@@ -73,19 +76,19 @@ export class GeminiProvider implements ModelProvider {
       };
     }
 
-    const response = await this.fetchFn(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-      signal: options.signal,
-    });
-
-    if (!response.ok) {
-      const bodyText = await response.text();
-      throw new Error(`Gemini request failed (${response.status}): ${bodyText}`);
-    }
+    const response = await requestWithRetry(
+      "Gemini request",
+      () =>
+        this.fetchFn(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+          signal: options.signal,
+        }),
+      { ...this.retry, signal: options.signal ?? this.retry?.signal }
+    );
 
     const data = (await response.json()) as GeminiResponse;
     const parts = data.candidates?.[0]?.content?.parts ?? [];
@@ -145,14 +148,19 @@ export class GeminiProvider implements ModelProvider {
       };
     }
 
-    const response = await this.fetchFn(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: options.signal,
-    });
+    const response = await requestWithRetry(
+      "Gemini stream request",
+      () =>
+        this.fetchFn(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+          signal: options.signal,
+        }),
+      { ...this.retry, signal: options.signal ?? this.retry?.signal }
+    );
 
-    if (!response.ok || !response.body) {
+    if (!response.body) {
       const bodyText = await response.text().catch(() => "");
       throw new Error(`Gemini stream request failed (${response.status}): ${bodyText}`);
     }

@@ -1,3 +1,4 @@
+import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
   ChatMessage,
@@ -33,36 +34,38 @@ export class OllamaProvider implements ModelProvider {
   readonly model: string;
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
+  private readonly retry?: RetryOptions;
 
   constructor(config: OllamaProviderConfig) {
     this.model = config.model;
     this.baseUrl = config.baseUrl?.replace(/\/$/, "") ?? "http://localhost:11434";
     this.fetchFn = config.fetch ?? globalThis.fetch;
+    this.retry = config.retry;
   }
 
   async chat(messages: readonly ChatMessage[], options: ChatOptions = {}): Promise<ChatCompletion> {
-    const response = await this.fetchFn(`${this.baseUrl}/api/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: messages.map(toOllamaMessage),
-        stream: false,
-        ...(options.tools ? { tools: options.tools.map(toOllamaTool) } : {}),
-        options: {
-          temperature: options.temperature,
-          num_predict: options.maxTokens,
-        },
-      }),
-      signal: options.signal,
-    });
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Ollama request failed (${response.status}): ${body}`);
-    }
+    const response = await requestWithRetry(
+      "Ollama request",
+      () =>
+        this.fetchFn(`${this.baseUrl}/api/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: this.model,
+            messages: messages.map(toOllamaMessage),
+            stream: false,
+            ...(options.tools ? { tools: options.tools.map(toOllamaTool) } : {}),
+            options: {
+              temperature: options.temperature,
+              num_predict: options.maxTokens,
+            },
+          }),
+          signal: options.signal,
+        }),
+      { ...this.retry, signal: options.signal ?? this.retry?.signal }
+    );
 
     const data = (await response.json()) as OllamaResponse;
     const message = data.message;
@@ -79,23 +82,28 @@ export class OllamaProvider implements ModelProvider {
     messages: readonly ChatMessage[],
     options: OllamaStreamOptions = {}
   ): Promise<ChatCompletion> {
-    const response = await this.fetchFn(`${this.baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        model: this.model,
-        messages: messages.map(toOllamaMessage),
-        stream: true,
-        ...(options.tools ? { tools: options.tools.map(toOllamaTool) } : {}),
-        options: {
-          temperature: options.temperature,
-          num_predict: options.maxTokens,
-        },
-      }),
-      signal: options.signal,
-    });
+    const response = await requestWithRetry(
+      "Ollama stream request",
+      () =>
+        this.fetchFn(`${this.baseUrl}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: this.model,
+            messages: messages.map(toOllamaMessage),
+            stream: true,
+            ...(options.tools ? { tools: options.tools.map(toOllamaTool) } : {}),
+            options: {
+              temperature: options.temperature,
+              num_predict: options.maxTokens,
+            },
+          }),
+          signal: options.signal,
+        }),
+      { ...this.retry, signal: options.signal ?? this.retry?.signal }
+    );
 
-    if (!response.ok || !response.body) {
+    if (!response.body) {
       const body = await response.text().catch(() => "");
       throw new Error(`Ollama stream request failed (${response.status}): ${body}`);
     }

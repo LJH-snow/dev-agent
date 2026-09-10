@@ -1,3 +1,5 @@
+import type { RetryOptions } from "./retry.js";
+
 export type ModelProviderId = "openai" | "anthropic" | "gemini" | "ollama";
 
 export type ChatMessageRole = "system" | "user" | "assistant" | "tool";
@@ -40,6 +42,8 @@ export interface ProviderConfig {
   readonly apiKey?: string;
   readonly baseUrl?: string;
   readonly fetch?: typeof fetch;
+  /** Retry policy for the initial HTTP request of each call. */
+  readonly retry?: RetryOptions;
 }
 
 export interface ModelProvider {

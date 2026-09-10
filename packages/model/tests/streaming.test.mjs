@@ -132,6 +132,8 @@ test("OpenAI streamChat throws on a non-OK response", async () => {
   const provider = createOpenAIProvider({
     model: "gpt-4.1",
     fetch: async () => new Response("nope", { status: 500 }),
+    // Error surfacing, not retry behaviour: keep the test instant.
+    retry: { retries: 0 },
   });
 
   await assert.rejects(
@@ -256,6 +258,8 @@ test("Anthropic streamChat throws on a non-OK response", async () => {
   const provider = createAnthropicProvider({
     model: "claude-sonnet-4",
     fetch: async () => new Response("boom", { status: 429 }),
+    // Error surfacing, not retry behaviour: keep the test instant.
+    retry: { retries: 0 },
   });
 
   await assert.rejects(
