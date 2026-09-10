@@ -153,6 +153,7 @@ fn resolve_sandbox_path(path: &str, base_dir: &Path) -> Result<PathBuf, Restrict
 }
 
 /// Read-only bind `path` onto itself if it exists on the host.
+#[cfg(any(target_os = "linux", test))]
 fn ro_bind_if_exists(args: &mut Vec<String>, path: &str) {
     if Path::new(path).exists() {
         args.push("--ro-bind".to_string());
@@ -227,6 +228,7 @@ fn quote_sandbox_path(path: &str) -> String {
 ///
 /// This is a pure function so it can be unit-tested on any host, even though the
 /// resulting command only runs on Linux where `bwrap` is available.
+#[cfg(any(target_os = "linux", test))]
 fn build_bwrap_args(
     run: &RunRequest,
     profile: &SandboxProfile,
@@ -341,10 +343,9 @@ fn apply_resource_limits(command: &mut Command) {
                 };
                 if libc::setrlimit(resource, &limit) != 0 {
                     let err = std::io::Error::last_os_error();
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("setrlimit({resource}) failed: {err}"),
-                    ));
+                    return Err(std::io::Error::other(format!(
+                        "setrlimit({resource}) failed: {err}"
+                    )));
                 }
             }
             Ok(())
@@ -358,7 +359,8 @@ fn apply_resource_limits(command: &mut Command) {
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn other_platform_message() -> String {
-    "Restricted execution is currently supported on macOS (sandbox-exec) and Linux (bwrap).".to_string()
+    "Restricted execution is currently supported on macOS (sandbox-exec) and Linux (bwrap)."
+        .to_string()
 }
 
 #[cfg(test)]

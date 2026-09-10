@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-09-10 (CI + build hardening)
+
+### Continuous integration (`.github/workflows/ci.yml`)
+- Added a GitHub Actions workflow that runs on push to `main`, pull requests, and
+  manual dispatch:
+  - TypeScript job (ubuntu, Node 26 via `.nvmrc`, pnpm 12.3.4): `pnpm install
+    --frozen-lockfile` -> structure check -> build -> typecheck -> test.
+  - Rust job (ubuntu, stable toolchain): `cargo fmt --check`, `cargo clippy
+    --all-targets -- -D warnings`, `cargo test`.
+- Validated the workflow with `actionlint`.
+- Added `.nvmrc` pinning Node 26 and a CI status badge in the root README.
+
+### Fixed: root `clean` script caused infinite recursion
+- `pnpm clean` is a **built-in pnpm command** (it removes `node_modules`
+  directories) and a same-named script in `package.json` overrides it. The root
+  `"clean": "pnpm -r clean"` therefore re-entered the root script recursively,
+  spawning processes until it was interrupted instead of removing `dist`.
+- Root delegating scripts now use the explicit `run` verb
+  (`pnpm -r run build|typecheck|test|clean`), which avoids built-in collisions and
+  correctly skips the workspace root. Added a root `test` script.
+
+### Build ordering
+- Documented and wired the required order on a fresh checkout: `build` before
+  `typecheck`/`test`, because workspace packages resolve each other through
+  `dist/*.d.ts`, which only exist after a build.
+
+### Rust lint gates
+- `cargo fmt --check` is now clean.
+- Resolved all `cargo clippy --all-targets -- -D warnings` findings: gated the
+  Linux-only `ro_bind_if_exists`/`build_bwrap_args` helpers with
+  `#[cfg(any(target_os = "linux", test))]`, switched to `std::io::Error::other`,
+  and moved `impl Default for SandboxExecutor` before the test module.
+
 ## 2026-09-10 (Night Build v4)
 
 ### Network policy enforcement via Starlark (`runtime/rust`)

@@ -8,10 +8,11 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "pnpm -r build",
-    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
     "check": "node scripts/check.mjs",
-    "clean": "pnpm -r clean",
+    "clean": "pnpm -r run clean",
     "cli": "pnpm --filter @dev-agent/cli run start"
   },
   "devDependencies": {

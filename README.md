@@ -1,11 +1,13 @@
 # dev-agent
 
+[![CI](https://github.com/LJH-snow/dev-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/LJH-snow/dev-agent/actions/workflows/ci.yml)
+
 An AI coding agent for developers, built with TypeScript and Node.js.
 
 Phase 1 is a pnpm workspace monorepo made of small TypeScript packages. Low-level
 capabilities such as sandboxing, process isolation, and filesystem security live
-in the Rust runtime under `runtime/rust`; the macOS backend is active, and Linux
-backend support is planned next.
+in the Rust runtime under `runtime/rust`; both the macOS (`sandbox-exec`) and
+Linux (`bwrap`) backends are active.
 
 ## Structure
 
@@ -13,7 +15,7 @@ backend support is planned next.
 dev-agent/
 |-- apps/
 |   |-- cli/              Primary phase-1 entry point
-|   `-- desktop/          Placeholder; desktop shell is not implemented yet
+|   `-- desktop/          Local web server with a streaming chat UI
 |-- packages/
 |   |-- agent-core/       Agent loop, context, memory, agent state
 |   |-- model/            Unified LLM provider interface (OpenAI, Anthropic, Gemini, Ollama)
@@ -36,15 +38,27 @@ dev-agent/
 
 ## Getting Started
 
-Requires Node.js >= 20 and pnpm.
+Requires Node.js >= 20 (see `.nvmrc`, currently 26) and pnpm 12.3.4.
 
 ```bash
 pnpm install
 pnpm check
 pnpm build
 pnpm typecheck
+pnpm test
 pnpm cli -- --version
 ```
+
+`pnpm build` must run before `pnpm typecheck`/`pnpm test` on a fresh checkout:
+workspace packages resolve each other through their published `dist/*.d.ts`,
+which the build step emits.
+
+## Continuous Integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and on pull requests:
+
+- **TypeScript**: install, structure check, build, typecheck, test (Node 26, pnpm 12.3.4).
+- **Rust**: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
 
 ## Current Status
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup

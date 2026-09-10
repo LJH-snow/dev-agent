@@ -203,6 +203,12 @@ fn evaluate_policy(script: &str, ctx: &PolicyContext) -> Result<PolicyDecision, 
     })
 }
 
+impl Default for SandboxExecutor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -401,8 +407,7 @@ def policy(ctx):
             &fake_run("curl"),
             &SandboxProfile {
                 name: "network-off".to_string(),
-                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
-                    as i32,
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled as i32,
                 writable_paths: vec!["/workspace".to_string()],
                 readonly_paths: vec![],
                 environment: std::collections::HashMap::new(),
@@ -417,14 +422,16 @@ def policy(ctx):
         return ctx.command not in network_commands
     return True
 "#;
-        assert!(matches!(evaluate_policy(script, &ctx), Ok(PolicyDecision::Deny)));
+        assert!(matches!(
+            evaluate_policy(script, &ctx),
+            Ok(PolicyDecision::Deny)
+        ));
 
         let local = PolicyContext::from_request(
             &fake_run("cat"),
             &SandboxProfile {
                 name: "network-off".to_string(),
-                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
-                    as i32,
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled as i32,
                 writable_paths: vec!["/workspace".to_string()],
                 readonly_paths: vec![],
                 environment: std::collections::HashMap::new(),
@@ -432,7 +439,10 @@ def policy(ctx):
                 policy_script: None,
             },
         );
-        assert!(matches!(evaluate_policy(script, &local), Ok(PolicyDecision::Allow)));
+        assert!(matches!(
+            evaluate_policy(script, &local),
+            Ok(PolicyDecision::Allow)
+        ));
     }
 
     #[test]
@@ -441,8 +451,7 @@ def policy(ctx):
             &fake_run("curl"),
             &SandboxProfile {
                 name: "network-on".to_string(),
-                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkEnabled
-                    as i32,
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkEnabled as i32,
                 writable_paths: vec!["/workspace".to_string()],
                 readonly_paths: vec![],
                 environment: std::collections::HashMap::new(),
@@ -457,7 +466,10 @@ def policy(ctx):
         return ctx.command not in network_commands
     return True
 "#;
-        assert!(matches!(evaluate_policy(script, &ctx), Ok(PolicyDecision::Allow)));
+        assert!(matches!(
+            evaluate_policy(script, &ctx),
+            Ok(PolicyDecision::Allow)
+        ));
     }
 
     #[test]
@@ -466,8 +478,7 @@ def policy(ctx):
             &fake_run("curl"),
             &SandboxProfile {
                 name: "network-off".to_string(),
-                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
-                    as i32,
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled as i32,
                 writable_paths: vec!["/workspace".to_string()],
                 readonly_paths: vec![],
                 environment: std::collections::HashMap::new(),
@@ -475,7 +486,10 @@ def policy(ctx):
                 policy_script: None,
             },
         );
-        assert!(matches!(evaluate_policy(EXAMPLE_POLICY, &ctx), Ok(PolicyDecision::Deny)));
+        assert!(matches!(
+            evaluate_policy(EXAMPLE_POLICY, &ctx),
+            Ok(PolicyDecision::Deny)
+        ));
 
         let git_local = PolicyContext::from_request(
             &{
@@ -485,8 +499,7 @@ def policy(ctx):
             },
             &SandboxProfile {
                 name: "network-off".to_string(),
-                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
-                    as i32,
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled as i32,
                 writable_paths: vec!["/workspace".to_string()],
                 readonly_paths: vec![],
                 environment: std::collections::HashMap::new(),
@@ -494,7 +507,10 @@ def policy(ctx):
                 policy_script: None,
             },
         );
-        assert!(matches!(evaluate_policy(EXAMPLE_POLICY, &git_local), Ok(PolicyDecision::Allow)));
+        assert!(matches!(
+            evaluate_policy(EXAMPLE_POLICY, &git_local),
+            Ok(PolicyDecision::Allow)
+        ));
     }
 
     #[cfg(target_os = "macos")]
@@ -674,11 +690,5 @@ def policy(ctx):
             .unwrap();
         assert_eq!(result.exit_code, 0);
         assert_eq!(result.stdout.trim(), "4096");
-    }
-}
-
-impl Default for SandboxExecutor {
-    fn default() -> Self {
-        Self::new()
     }
 }
