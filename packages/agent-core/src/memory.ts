@@ -19,6 +19,8 @@ export interface AgentMemory {
   append(entry: MemoryEntry): Promise<void>;
   entries(): Promise<readonly MemoryEntry[]>;
   clear(): Promise<void>;
+  getMetadata?(): Promise<SessionMetadata | undefined>;
+  compact?(keepRecentTurns: number): Promise<number>;
 }
 
 export class InMemoryMemory implements AgentMemory {
@@ -41,8 +43,16 @@ export interface FileMemoryOptions {
   readonly filePath: string;
 }
 
+export interface SessionMetadata {
+  readonly sessionId: string;
+  readonly createdAt: string;
+  readonly lastActiveAt: string;
+  readonly entryCount: number;
+}
+
 interface MemoryFile {
   readonly version: 1;
+  readonly metadata?: SessionMetadata;
   readonly entries: MemoryEntry[];
 }
 
@@ -52,6 +62,29 @@ export class FileMemory implements AgentMemory {
 
   constructor(options: FileMemoryOptions) {
     this.filePath = options.filePath;
+  }
+
+  async getMetadata(): Promise<SessionMetadata | undefined> {
+    try {
+      const file = await this.readMemoryFile();
+      return file.metadata;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async compact(keepRecentTurns: number): Promise<number> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      const keepEntries = keepRecentTurns * 4;
+      if (entries.length <= keepEntries) {
+        return 0;
+      }
+      const removed = entries.length - keepEntries;
+      const compacted = entries.slice(-keepEntries);
+      await this.persist(compacted);
+      return removed;
+    });
   }
 
   append(entry: MemoryEntry): Promise<void> {
@@ -104,8 +137,25 @@ export class FileMemory implements AgentMemory {
 
   private async persist(entries: readonly MemoryEntry[]): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
-    const payload: MemoryFile = { version: 1, entries: [...entries] };
+    const existing = await this.readMemoryFile().catch(() => undefined);
+    const now = new Date().toISOString();
+    const metadata: SessionMetadata = {
+      sessionId: existing?.metadata?.sessionId ?? "default",
+      createdAt: existing?.metadata?.createdAt ?? now,
+      lastActiveAt: now,
+      entryCount: entries.length,
+    };
+    const payload: MemoryFile = { version: 1, metadata, entries: [...entries] };
     await writeFile(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  }
+
+  private async readMemoryFile(): Promise<MemoryFile> {
+    const raw = await readFile(this.filePath, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (!isMemoryFile(parsed)) {
+      throw new Error(`Invalid memory file: ${this.filePath}`);
+    }
+    return parsed;
   }
 }
 

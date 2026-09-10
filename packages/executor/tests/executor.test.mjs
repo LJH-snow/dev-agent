@@ -63,3 +63,54 @@ test("LocalExecutor times out long-running commands", async () => {
   assert.equal(result.timedOut, true);
   assert.equal(result.exitCode, -1);
 });
+
+test("LocalExecutor rejects an empty command", async () => {
+  await assert.rejects(() => executor.run(""), /non-empty/);
+  await assert.rejects(() => executor.run("   "), /non-empty/);
+});
+
+test("LocalExecutor surfaces nonexistent commands as errors", async () => {
+  await assert.rejects(
+    () => executor.run("definitely-not-a-real-command-xyz"),
+    (error) => {
+      assert.match(error.message, /ENOENT|not found|spawn/);
+      return true;
+    }
+  );
+});
+
+test("LocalExecutor preserves stdout across non-zero exits", async () => {
+  const result = await executor.run(node, [
+    "-e",
+    "process.stdout.write('partial'); process.exit(42)",
+  ]);
+  assert.equal(result.stdout, "partial");
+  assert.equal(result.exitCode, 42);
+  assert.equal(result.timedOut, undefined);
+});
+
+test("LocalExecutor reports durationMs and command", async () => {
+  const executor = new LocalExecutor();
+  const result = await executor.run("echo", ["timing"]);
+  assert.equal(result.command, "echo");
+  assert.ok(typeof result.durationMs === "number");
+  assert.ok(result.durationMs >= 0);
+});
+
+test("LocalExecutor records history when historyLimit is set", async () => {
+  const executor = new LocalExecutor({ historyLimit: 2 });
+  await executor.run("echo", ["one"]);
+  await executor.run("echo", ["two"]);
+  await executor.run("echo", ["three"]);
+
+  const history = executor.getHistory();
+  assert.equal(history.length, 2);
+  assert.equal(history[0].command, "echo");
+  assert.equal(history[1].command, "echo");
+});
+
+test("LocalExecutor does not record history by default", async () => {
+  const executor = new LocalExecutor();
+  await executor.run("echo", ["one"]);
+  assert.equal(executor.getHistory().length, 0);
+});

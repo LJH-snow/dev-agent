@@ -18,7 +18,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test tests/*.test.mjs",
+    "test": "tsc -p tsconfig.json && node --test tests/executor.test.mjs tests/health-check.test.mjs tests/mock-binary.test.mjs tests/protobuf-roundtrip.test.mjs tests/rust-executor.test.mjs",
+    "test:integration": "tsc -p tsconfig.json && node --test tests/real-rust-integration.test.mjs",
+    "test:all": "pnpm test && pnpm test:integration",
     "clean": "rm -rf dist"
   },
   "devDependencies": {

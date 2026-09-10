@@ -2,7 +2,18 @@ import { spawn } from "node:child_process";
 
 import type { Executor, ExecutorResult, ExecutorRunOptions } from "./index.js";
 
+export interface LocalExecutorOptions {
+  readonly historyLimit?: number;
+}
+
 export class LocalExecutor implements Executor {
+  private readonly history: ExecutorResult[] = [];
+  private readonly historyLimit?: number;
+
+  constructor(options: LocalExecutorOptions = {}) {
+    this.historyLimit = options.historyLimit;
+  }
+
   async run(
     command: string,
     args: readonly string[] = [],
@@ -22,6 +33,7 @@ export class LocalExecutor implements Executor {
       let stdout = "";
       let stderr = "";
       let timedOut = false;
+      const startedAt = Date.now();
 
       const timer = options.timeoutMs === undefined
         ? undefined
@@ -46,12 +58,16 @@ export class LocalExecutor implements Executor {
         if (timer) {
           clearTimeout(timer);
         }
-        resolve({
+        const result: ExecutorResult = {
           stdout,
           stderr,
           exitCode: code ?? -1,
           timedOut: timedOut ? true : undefined,
-        });
+          durationMs: Date.now() - startedAt,
+          command,
+        };
+        this.recordHistory(result);
+        resolve(result);
       });
 
       if (options.input === undefined) {
@@ -62,6 +78,20 @@ export class LocalExecutor implements Executor {
         });
       }
     });
+  }
+
+  private recordHistory(result: ExecutorResult): void {
+    if (this.historyLimit === undefined || this.historyLimit <= 0) {
+      return;
+    }
+    this.history.push(result);
+    while (this.history.length > this.historyLimit) {
+      this.history.shift();
+    }
+  }
+
+  getHistory(): readonly ExecutorResult[] {
+    return [...this.history];
   }
 }
 

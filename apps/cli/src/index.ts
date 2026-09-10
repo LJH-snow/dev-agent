@@ -9,6 +9,7 @@ import {
   FileMemory,
   type AgentContext,
   type AgentMemory,
+  type SessionMetadata,
 } from "@dev-agent/agent-core";
 import { createExecutor } from "@dev-agent/executor";
 import { McpServerSession, type McpClient, type McpClientConfig, type McpSessionSnapshot } from "@dev-agent/mcp";
@@ -86,6 +87,34 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
 
+    if (args.includes("--metadata")) {
+      const memory = createMemory(normalizedSessionId);
+      const meta = await memory.getMetadata();
+      if (meta) {
+        console.log(`Session: ${meta.sessionId}`);
+        console.log(`Created: ${meta.createdAt}`);
+        console.log(`Last active: ${meta.lastActiveAt}`);
+        console.log(`Entries: ${meta.entryCount}`);
+      } else {
+        console.log("No session metadata found.");
+      }
+      return;
+    }
+
+    const compactIndex = args.indexOf("--compact");
+    if (compactIndex >= 0) {
+      const keepTurns = Number.parseInt(args[compactIndex + 1] ?? "5", 10);
+      if (!Number.isInteger(keepTurns) || keepTurns < 1) {
+        console.error("--compact requires a positive integer argument");
+        process.exitCode = 1;
+        return;
+      }
+      const memory = createMemory(normalizedSessionId);
+      const removed = await memory.compact(keepTurns);
+      console.log(`Compacted session memory: removed ${removed} entries, keeping ${keepTurns} recent turns.`);
+      return;
+    }
+
     const memory = createMemory(normalizedSessionId);
     if (resetMemory) {
       await memory.clear();
@@ -102,6 +131,9 @@ export async function main(argv: string[]): Promise<void> {
         .filter((part) => part.length > 0)
         .join("\n\n"),
       maxTurns: 8,
+      onTurn: (turn) => {
+        process.stdout.write(`[turn ${turn}]\n`);
+      },
     });
 
     if (oncePrompt) {
@@ -115,7 +147,7 @@ export async function main(argv: string[]): Promise<void> {
   }
 }
 
-function createMemory(sessionId = "default"): AgentMemory {
+function createMemory(sessionId = "default"): FileMemory {
   const filePath =
     process.env.DEV_AGENT_MEMORY_FILE ??
     join(homedir(), ".dev-agent", "sessions", `${sessionId}.json`);
@@ -310,8 +342,18 @@ async function interactive(loop: AgentLoop, context: AgentContext): Promise<void
   });
 
   console.log("dev-agent CLI. Type 'exit' or 'quit' to stop.");
+  let interrupted = false;
+  const onSigint = () => {
+    interrupted = true;
+    process.stdout.write("\n(interrupted)\n");
+  };
+  process.on("SIGINT", onSigint);
+
   for (;;) {
     const line = await rl.question("> ");
+    if (interrupted) {
+      break;
+    }
     const prompt = line.trim();
     if (prompt === "exit" || prompt === "quit") {
       break;
@@ -322,6 +364,7 @@ async function interactive(loop: AgentLoop, context: AgentContext): Promise<void
     await runPrompt(loop, context, prompt);
   }
 
+  process.removeListener("SIGINT", onSigint);
   rl.close();
 }
 

@@ -43,7 +43,7 @@ test("in-memory code index ranks exact and token matches", () => {
   const exact = index.searchSymbols({ query: "findAgent", limit: 10 });
   assert.equal(exact.length, 1);
   assert.equal(exact[0].symbol.name, "findAgent");
-  assert.equal(exact[0].score, 100);
+  assert.ok(exact[0].score >= 100);
   assert.ok(exact[0].reasons.includes("name:exact"));
 
   const tokens = index.searchSymbols({ query: "agent", limit: 10 });
@@ -70,4 +70,40 @@ test("in-memory code index filters by symbol kind", () => {
 
   const types = index.searchSymbols({ query: "agent", kinds: ["type"] });
   assert.equal(types[0].symbol.name, "AgentStatus");
+});
+
+test("case-sensitive exact match scores higher than case-insensitive", async () => {
+  const { InMemoryCodeIndex } = await import("../dist/index.js");
+  const index = new InMemoryCodeIndex();
+  index.addSource("function MyHelper() {}\nfunction myhelper() {}", "sample.ts");
+  const matches = index.searchSymbols({ query: "MyHelper", limit: 10 });
+  assert.ok(matches.length >= 2);
+  const exact = matches.find((m) => m.symbol.name === "MyHelper");
+  const fuzzy = matches.find((m) => m.symbol.name === "myhelper");
+  assert.ok(exact, "expected MyHelper in results");
+  assert.ok(fuzzy, "expected myhelper in results");
+  assert.ok(exact.score > fuzzy.score, "case-sensitive match should score higher");
+});
+
+test("test files are demoted in ranking", async () => {
+  const { InMemoryCodeIndex } = await import("../dist/index.js");
+  const index = new InMemoryCodeIndex();
+  index.addSource("function helper() {}", "src/helper.ts");
+  index.addSource("function helper() {}", "tests/helper.test.ts");
+  const matches = index.searchSymbols({ query: "helper", limit: 10 });
+  assert.equal(matches.length, 2);
+  assert.match(matches[0].symbol.filePath, /src\/helper/);
+  assert.match(matches[1].symbol.filePath, /tests\/helper/);
+  assert.ok(matches[0].score > matches[1].score);
+});
+
+test("deeply nested paths receive a depth penalty", async () => {
+  const { InMemoryCodeIndex } = await import("../dist/index.js");
+  const index = new InMemoryCodeIndex();
+  index.addSource("function util() {}", "src/util.ts");
+  index.addSource("function util() {}", "a/b/c/d/e/f/deep.ts");
+  const matches = index.searchSymbols({ query: "util", limit: 10 });
+  assert.equal(matches.length, 2);
+  assert.match(matches[0].symbol.filePath, /src\/util/);
+  assert.ok(matches[0].score > matches[1].score);
 });

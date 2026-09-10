@@ -5,6 +5,8 @@ export interface ExecutorResult {
   readonly stderr: string;
   readonly exitCode: number;
   readonly timedOut?: boolean;
+  readonly durationMs?: number;
+  readonly command?: string;
 }
 
 export interface ExecutorRunOptions {

@@ -147,7 +147,7 @@ test("MCP server session re-registers tools when the server emits list_changed",
     assert.ok(notifyTool, "expected notify tool to exist");
     await notifyTool.execute({});
 
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await new Promise((resolve) => setTimeout(resolve, 700));
 
     const snapshot = session.getSnapshot();
     assert.equal(snapshot.tools.length, 3);

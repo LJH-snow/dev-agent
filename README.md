@@ -47,10 +47,10 @@ pnpm cli -- --version
 ```
 
 ## Current Status
-
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup
 - Agent loop, context, and in-memory memory in `@dev-agent/agent-core`
-- File-backed memory in `@dev-agent/agent-core` for cross-run conversation history
+- File-backed memory in `@dev-agent/agent-core` for cross-run conversation history,
+  with session metadata (created/last-active timestamps) and `--compact` support
 - CLI session isolation and reset via `--session` and `--reset-memory`
 - Rich agent context with session id, working directory, metadata, task, and error state
 - Context-aware built-in tools that run relative to `workingDirectory`
@@ -58,73 +58,43 @@ pnpm cli -- --version
 - MCP server environment injection for session id and working directory
 - TypeScript AST scanner in `@dev-agent/code-intelligence` for functions, classes,
   interfaces, type aliases, enums, methods, properties, variables, and arrow functions
-- `InMemoryCodeIndex` with `addSource`, kind filters, token ranking, and
-  limit-aware `searchSymbols` in `@dev-agent/code-intelligence`
+- `InMemoryCodeIndex` with improved ranking: case-sensitive exact-match bonus,
+  test-file demotion, and path-depth penalty in `@dev-agent/code-intelligence`
+- `JsonFileCodeIndex` with JSON persistence and incremental updates
 - `TypeScriptReferenceIndex` for reference search and go-to-definition via the
   TypeScript language service in `@dev-agent/code-intelligence`
 - `code-search` tool now supports `search` (default), `references`, and `definition`
-  modes, so agents can find symbol usages and jump to definitions
 - Model contracts plus OpenAI, Anthropic, Gemini, and Ollama providers in `@dev-agent/model`
 - Built-in filesystem, shell, git, and search tools in `@dev-agent/tools`
 - Executor contract in `@dev-agent/executor` with `cwd`, `env`, stdin `input`,
-  and `timeoutMs` support on `LocalExecutor`; `RustExecutor` implements
-  `SandboxExecutor` over the protobuf stdio boundary, with sandbox enforcement
-  running in the Rust runtime
-- Basic stdio MCP client and MCP tool registration in `@dev-agent/mcp`, wired into the CLI
-- MCP resources and prompts support in `@dev-agent/mcp`, with `ping` and
-  initialized lifecycle notifications
-- MCP resources and prompts wired into the CLI agent loop via `<prefix>:resource`
-  and `<prefix>:prompt` tools, with available resources/prompts listed in the
-  agent system prompt
-- CLI entry point wired to the loop and verified with local Ollama smoke tests
-- Policy language direction set: the Rust sandbox uses **Starlark** for
-  filesystem/network/policy rules, consistent with the open-source Codex agent
+  `timeoutMs`, `durationMs`, and `command` on `LocalExecutor`; optional execution
+  history via `historyLimit`. `RustExecutor` implements `SandboxExecutor` over the
+  protobuf stdio boundary
+- Stdio MCP client with reconnect backoff, notification debounce, structured error
+  codes (`McpRequestError`), and graceful close in `@dev-agent/mcp`
+- MCP resources, prompts, capability negotiation, and roots handling
+- CLI entry point wired to the loop with `--once`, `--tools`, `--metadata`,
+  `--compact`, and Ctrl-C interrupt handling. Agent loop exposes `onTurn` callback
+  for streaming progress
+- Policy language: the Rust sandbox uses **Starlark** for filesystem/network/policy
+  rules, consistent with the open-source Codex agent
 - Rust runtime boundary is active: `runtime/rust` has a `dev-agent-runtime`
   crate with `LocalExecutor`, `SandboxExecutor`, a `dev-agent-executor` stdio
-  binary, and a protobuf protocol (`proto/executor.proto`) defining the TS↔Rust
-  boundary. `RustExecutor` on the TS side spawns the binary and speaks
-  length-prefixed protobuf over stdio, implementing both `Executor` and
-  `SandboxExecutor`
-- `apps/cli --check-rust <path>` sends a health check to the Rust binary and
-  reports the runtime version and capabilities; `--rust-executor <path>` routes
-  command execution through `RustExecutor`
-- MCP capability negotiation: client declares `roots` capability, captures and exposes
-  server capabilities and server info from the `initialize` response
-- MCP server lifecycle: `McpStdioClient.reconnect()` re-establishes a dropped session,
-  and `onNotification` receives server→client notifications (`tools/list_changed`,
-  `resources/list_changed`, `prompts/list_changed`, `message`, `progress`, `cancelled`)
-- MCP `roots/list` handling: client responds to server roots requests with the workspace
-  directory, so servers that query client roots work correctly
-- MCP `McpServerSession` wraps connect/reconnect/close with change callbacks, so the CLI
-  can dynamically re-register tools when a server reports its tool list changed
-- `AgentToolRegistry.unregister` added to support clean MCP tool re-registration
+  binary, and a protobuf protocol (`proto/executor.proto`)
+- macOS `sandbox-exec` enforcement is active for filesystem, network, timeout,
+  and resource limits. Linux bubblewrap backend is planned next
+- Test suite: 90 TypeScript tests + 26 Rust tests, all passing
 
 ### Rust runtime progress
 
-- Fixed binary framing bug in `RustExecutor`: protobuf data is now handled as
-  `Buffer` (not UTF-8 strings), so binary payloads are no longer corrupted
-- Fixed request/response matching: Rust binary now propagates `request_id` from
-  `Envelope` to `Response`, so the TS side can match responses to pending requests
-- Self-contained mock binary (`packages/executor/tests/mock-executor-binary.mjs`)
-  speaks the same length-prefixed protobuf protocol with zero external dependencies,
-  enabling TS↔Rust boundary testing without a Rust toolchain
-- Rust unit tests for `LocalExecutor`, `SandboxExecutor`, and `stdio_transport`
-  pass (16 tests with the current Rust toolchain)
-- `SandboxExecutor::evaluate_policy` now runs Starlark policy scripts with
-  `starlark 0.14`, binding `ctx.command`, `ctx.args`, `ctx.cwd`,
-  `ctx.network_policy`, `ctx.writable_paths`, and `ctx.readonly_paths` before
-  returning an `Allow` or `Deny` decision
-- The Rust `dev-agent-executor` binary routes `runSandboxed` through
-  `SandboxExecutor`, and a real-binary integration test verifies both allow and
-  policy-denied responses from TypeScript
-- Restricted execution is enabled on macOS with `sandbox-exec`: writable paths,
-  read-only paths, network policy, cwd, profile timeouts, and process resource
-  limits are enforced before a command runs
-
+- Starlark policy evaluation with `starlark 0.14`, tick/heap limits, and `ctx` bindings
+- macOS `sandbox-exec` enforcement: writable/read-only paths, network policy, cwd,
+  timeout, and resource limits (CPU, FSIZE, NOFILE, NPROC, CORE)
+- Linux placeholder detects `bwrap` availability for clearer error messages
 ## Roadmap
 
-1. Richer code index and reference search
-2. MCP resources, prompts, and richer server lifecycle
+1. ~~Richer code index and reference search~~ (done: improved ranking, persistent `JsonFileCodeIndex`)
+2. ~~MCP resources, prompts, and richer server lifecycle~~ (done: debounce, backoff, structured errors)
 3. Rust runtime under `runtime/rust`, implemented behind the `SandboxExecutor` contract.
    Sandbox and filesystem policies are authored in **Starlark** (the same
    approach used by the open-source Codex agent), evaluated at runtime by an
@@ -133,3 +103,4 @@ pnpm cli -- --version
    filesystem, network, timeout, and resource limits. The next backend to add
    is Linux bubblewrap/seccomp support
 4. Desktop shell in `apps/desktop`
+5. CLI streaming output and session management hardening

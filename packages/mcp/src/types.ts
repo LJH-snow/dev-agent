@@ -78,6 +78,7 @@ export interface McpTool {
 export interface McpToolResult {
   readonly content?: readonly unknown[];
   readonly structuredContent?: unknown;
+  readonly isError?: boolean;
 }
 
 export interface McpResourceInfo {

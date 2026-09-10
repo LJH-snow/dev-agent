@@ -46,6 +46,7 @@ export class McpStdioClient implements McpClient {
   private nextId = 1;
   private buffer = "";
   private notificationHandlers: NotificationHandler[] = [];
+  private closed = false;
 
   async connect(config: McpClientConfig): Promise<void> {
     if (this.child) {
@@ -65,7 +66,9 @@ export class McpStdioClient implements McpClient {
       this.rejectAll(error);
     });
     child.on("exit", (code, signal) => {
-      this.rejectAll(new Error(`MCP server exited (code=${code} signal=${signal ?? "none"})`));
+      if (!this.closed) {
+        this.rejectAll(new Error(`MCP server exited (code=${code} signal=${signal ?? "none"})`));
+      }
     });
 
     const result = (await this.request("initialize", {
@@ -116,7 +119,19 @@ export class McpStdioClient implements McpClient {
       name,
       arguments: input,
     })) as McpToolResult | undefined;
-    return result ?? { content: [] };
+    const toolResult = result ?? { content: [] };
+    if (toolResult.isError) {
+      throw new McpRequestError(-32603, `MCP tool "${name}" reported an error`);
+    }
+    return toolResult;
+  }
+
+  isConnected(): boolean {
+    return this.child !== undefined;
+  }
+
+  get pendingRequestCount(): number {
+    return this.pending.size;
   }
 
   async listResources(): Promise<McpResource[]> {
@@ -171,6 +186,7 @@ export class McpStdioClient implements McpClient {
       return;
     }
     this.child = undefined;
+    this.closed = true;
     this.initializeResult = undefined;
     this.rejectAll(new Error("MCP client closed"));
     child.stdin.end();
@@ -247,7 +263,7 @@ export class McpStdioClient implements McpClient {
       if (pending) {
         this.pending.delete(message.id);
         if (message.error) {
-          pending.reject(new Error(message.error.message ?? "MCP request failed"));
+          pending.reject(new McpRequestError(message.error.code, message.error.message ?? "MCP request failed"));
         } else {
           pending.resolve(message.result);
         }
@@ -335,6 +351,16 @@ function asRecord(value: unknown): Record<string, unknown> {
     return value as Record<string, unknown>;
   }
   return {};
+}
+
+export class McpRequestError extends Error {
+  readonly code: number | undefined;
+
+  constructor(code: number | undefined, message: string) {
+    super(message);
+    this.name = "McpRequestError";
+    this.code = code;
+  }
 }
 
 export function createMcpTool(client: McpClient, info: McpToolInfo): McpTool {

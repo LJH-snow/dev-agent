@@ -88,7 +88,10 @@ The TS side is wired end to end:
   `policy(ctx)` function, and returns `Allow` / `Deny`. The real binary's
   `runSandboxed` path routes through this evaluator.
 - Policy evaluation is guarded by tick and heap limits, and sandbox tests cover
-  both allow and deny decisions through `RustExecutor`.
+ both allow and deny decisions through `RustExecutor`.
+ - Linux placeholder improved: `RestrictedExecutor` now detects `bwrap`
+   availability and returns a clearer unsupported message distinguishing
+   "bwrap installed but backend not wired in" from "bwrap not installed".
 - `SandboxExecutor` no longer passes through to `LocalExecutor`: after Starlark
   returns `Allow`, `runSandboxed` executes through `sandbox-exec` with writable
   path, read-only path, network policy, cwd, timeout, and resource constraints.

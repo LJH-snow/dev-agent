@@ -42,6 +42,8 @@ export class McpServerSession {
   private resources: McpResource[] = [];
   private prompts: McpPrompt[] = [];
   private changeHandlers: McpSessionChangeHandler[] = [];
+  private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
+  private static readonly DEBOUNCE_MS = 500;
 
   constructor(options: McpSessionOptions) {
     this.config = options.config;
@@ -71,8 +73,23 @@ export class McpServerSession {
   }
 
   async reconnect(): Promise<McpSessionSnapshot> {
-    await this.client.close();
-    return this.connect();
+    let lastError: unknown;
+    const maxAttempts = 3;
+    const backoffMs = [1000, 2000, 4000];
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      try {
+        await this.client.close();
+        return await this.connect();
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxAttempts - 1) {
+          await new Promise<void>((resolve) => setTimeout(resolve, backoffMs[attempt]));
+        }
+      }
+    }
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("MCP reconnect failed after 3 attempts");
   }
 
   async close(): Promise<void> {
@@ -107,16 +124,22 @@ export class McpServerSession {
   private async handleNotification(notification: McpNotification): Promise<void> {
     switch (notification.method) {
       case "tools/list_changed":
-        this.tools = await this.client.listTools();
-        this.emitChange();
+        this.debounceReload("tools", async () => {
+          this.tools = await this.client.listTools();
+          this.emitChange();
+        });
         break;
       case "resources/list_changed":
-        this.resources = await this.client.listResources();
-        this.emitChange();
+        this.debounceReload("resources", async () => {
+          this.resources = await this.client.listResources();
+          this.emitChange();
+        });
         break;
       case "prompts/list_changed":
-        this.prompts = await this.client.listPrompts();
-        this.emitChange();
+        this.debounceReload("prompts", async () => {
+          this.prompts = await this.client.listPrompts();
+          this.emitChange();
+        });
         break;
       default:
         break;
@@ -128,5 +151,19 @@ export class McpServerSession {
     for (const handler of this.changeHandlers) {
       handler(current);
     }
+  }
+
+  private debounceReload(kind: string, reload: () => Promise<void>): void {
+    const existing = this.debounceTimers.get(kind);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    this.debounceTimers.set(
+      kind,
+      setTimeout(() => {
+        this.debounceTimers.delete(kind);
+        void reload();
+      }, McpServerSession.DEBOUNCE_MS)
+    );
   }
 }

@@ -66,9 +66,21 @@ impl RestrictedExecutor {
         _run: &RunRequest,
         _profile: &SandboxProfile,
     ) -> Result<RunResult, RestrictedError> {
-        Err(RestrictedError::Unsupported(
-            "macOS sandbox-exec is the only restricted backend currently wired in".to_string(),
-        ))
+        Err(RestrictedError::Unsupported(linux_backend_message()))
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn linux_backend_message() -> String {
+    let bwrap_available = std::process::Command::new("bwrap")
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false);
+    if bwrap_available {
+        "Linux bubblewrap backend is not yet wired in; bwrap is available but the backend is not implemented".to_string()
+    } else {
+        "Restricted execution on Linux requires bubblewrap (bwrap), which is not installed".to_string()
     }
 }
 

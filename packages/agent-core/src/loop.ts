@@ -9,6 +9,7 @@ export interface AgentLoopOptions {
   readonly tools?: ToolCollection;
   readonly systemPrompt?: string;
   readonly maxTurns?: number;
+  readonly onTurn?: (turn: number, context: AgentContext) => void;
 }
 
 export class AgentLoop {
@@ -16,6 +17,7 @@ export class AgentLoop {
   private readonly tools?: ToolCollection;
   private readonly systemPrompt?: string;
   private readonly maxTurns: number;
+  private readonly onTurn?: (turn: number, context: AgentContext) => void;
 
   constructor(options: AgentLoopOptions) {
     if (options.maxTurns !== undefined && options.maxTurns < 1) {
@@ -25,6 +27,7 @@ export class AgentLoop {
     this.tools = options.tools;
     this.systemPrompt = options.systemPrompt;
     this.maxTurns = options.maxTurns ?? 10;
+    this.onTurn = options.onTurn;
   }
 
   async run(context: AgentContext, input: string): Promise<AgentContext> {
@@ -49,6 +52,7 @@ export class AgentLoop {
 
         await memory.append(createMemoryEntry("assistant", completion.content, { toolCalls }));
         state = { ...state, turns: state.turns + 1 };
+        this.onTurn?.(state.turns, context);
 
         for (const call of toolCalls) {
           if (!this.tools) {
@@ -98,7 +102,9 @@ export class AgentLoop {
   }
 
   private buildSystemPrompt(context: AgentContext): string {
-    return [this.systemPrompt, `Session: ${context.sessionId}`, `Working directory: ${context.workingDirectory}`]
+    const runtime = `Runtime: ${process.platform} / Node ${process.version}`;
+    const toolCount = this.tools ? `Available tools: ${this.tools.list().length}` : "Available tools: 0";
+    return [this.systemPrompt, `Session: ${context.sessionId}`, `Working directory: ${context.workingDirectory}`, runtime, toolCount]
       .filter((part): part is string => Boolean(part))
       .join("\n\n");
   }

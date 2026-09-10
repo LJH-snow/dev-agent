@@ -74,7 +74,7 @@ export class InMemoryCodeIndex implements CodeIndex {
           continue;
         }
 
-        const ranked = scoreSymbol(symbol, normalized);
+        const ranked = scoreSymbol(symbol, normalized, options.query.trim());
         if (ranked.score > 0) {
           matches.push({
             symbol,
@@ -108,7 +108,7 @@ export class InMemoryCodeIndex implements CodeIndex {
   }
 }
 
-function scoreSymbol(symbol: CodeSymbol, normalizedQuery: string): Omit<RankedSymbolMatch, "symbol"> {
+function scoreSymbol(symbol: CodeSymbol, normalizedQuery: string, originalQuery: string): Omit<RankedSymbolMatch, "symbol"> {
   const name = symbol.name.toLowerCase();
   const filePath = symbol.filePath.toLowerCase();
   const container = symbol.containerName?.toLowerCase();
@@ -118,6 +118,10 @@ function scoreSymbol(symbol: CodeSymbol, normalizedQuery: string): Omit<RankedSy
   if (name === normalizedQuery) {
     score += 100;
     reasons.push("name:exact");
+    if (symbol.name === originalQuery) {
+      score += 15;
+      reasons.push("name:case-sensitive");
+    }
   } else if (name.startsWith(normalizedQuery)) {
     score += 80;
     reasons.push("name:prefix");
@@ -127,10 +131,10 @@ function scoreSymbol(symbol: CodeSymbol, normalizedQuery: string): Omit<RankedSy
   }
 
   const tokens = tokenize(symbol.name).map((token) => token.toLowerCase());
-  if (tokens.includes(normalizedQuery)) {
+  if (tokens.length > 1 && tokens.includes(normalizedQuery)) {
     score += 75;
     reasons.push("name:token");
-  } else if (tokens.some((token) => token.startsWith(normalizedQuery))) {
+  } else if (tokens.length > 1 && tokens.some((token) => token.startsWith(normalizedQuery))) {
     score += 65;
     reasons.push("name:token-prefix");
   }
@@ -145,7 +149,24 @@ function scoreSymbol(symbol: CodeSymbol, normalizedQuery: string): Omit<RankedSy
     reasons.push("path");
   }
 
+  const depth = symbol.filePath.split("/").length;
+  if (depth > 8) {
+    const penalty = Math.min(15, (depth - 8) * 3);
+    score -= penalty;
+    reasons.push(`path:depth-penalty(${penalty})`);
+  }
+
+  if (isTestFile(symbol.filePath)) {
+    score = Math.round(score * 0.5);
+    reasons.push("test-file:demoted");
+  }
+
   return { score, reasons };
+}
+
+function isTestFile(filePath: string): boolean {
+  const lower = filePath.toLowerCase();
+  return /(\.test\.|\.spec\.|_test\.|_spec\.|\/tests?\/|\/__tests__\/)/.test(lower);
 }
 
 function tokenize(value: string): string[] {
@@ -155,3 +176,4 @@ function tokenize(value: string): string[] {
 
 export * from "./scanner.js";
 export * from "./reference-index.js";
+export * from "./json-file-index.js";
