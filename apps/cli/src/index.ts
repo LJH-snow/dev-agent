@@ -14,7 +14,13 @@ import {
   type SessionMetadata,
 } from "@dev-agent/agent-core";
 import { createExecutor } from "@dev-agent/executor";
-import { McpServerSession, type McpClient, type McpClientConfig, type McpSessionSnapshot } from "@dev-agent/mcp";
+import {
+  createMcpServer,
+  McpServerSession,
+  type McpClient,
+  type McpClientConfig,
+  type McpSessionSnapshot,
+} from "@dev-agent/mcp";
 import { colors, colorize } from "./colors.js";
 import {
   loadConfig,
@@ -80,6 +86,17 @@ export async function main(argv: string[]): Promise<void> {
   const rustBinaryPath = resolveRustBinaryPath(rustFlag ?? rustCheckFlag);
   if (args.includes("--check-rust")) {
     await checkRust(rustBinaryPath);
+    return;
+  }
+
+  if (args.includes("--mcp-server")) {
+    // Expose the built-in tools over MCP instead of running the agent. No model
+    // provider is needed, and stdout carries only JSON-RPC frames.
+    await runMcpServer({
+      sessionId: normalizedSessionId,
+      workingDirectory,
+      rustBinaryPath,
+    });
     return;
   }
 
@@ -178,6 +195,31 @@ function createMemory(sessionId = "default"): FileMemory {
   const filePath =
     process.env.DEV_AGENT_MEMORY_FILE ?? join(sessionDir(), `${sessionId}.json`);
   return new FileMemory({ filePath });
+}
+
+async function runMcpServer(options: {
+  readonly sessionId: string;
+  readonly workingDirectory: string;
+  readonly rustBinaryPath?: string;
+}): Promise<void> {
+  const tools = createDefaultTools(createExecutor({ rustBinaryPath: options.rustBinaryPath }));
+  const server = createMcpServer({
+    tools: tools.map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.parameters,
+      execute: (input: unknown, context) =>
+        tool.execute(input, {
+          sessionId: context?.sessionId ?? options.sessionId,
+          workingDirectory: context?.workingDirectory ?? options.workingDirectory,
+        }),
+    })),
+    name: "dev-agent",
+    version,
+    sessionId: options.sessionId,
+    workingDirectory: options.workingDirectory,
+  });
+  await server.start();
 }
 
 function buildContextBudget(config: CliConfig): { maxChars: number } | undefined {

@@ -25,7 +25,16 @@ Options:
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary
 - `--check-rust [path]` - send a health check to the Rust runtime binary
+- `--mcp-server` - run as an MCP server over stdio instead of starting the agent,
+  exposing the built-in tools to a host agent (no model provider needed)
 - `--version` / `-v` - print the CLI version
+
+MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on
+stdout is a protocol message, so logs (if any) go to stderr:
+
+```bash
+node apps/cli/dist/index.js --mcp-server
+```
 
 Configuration is read from the environment:
 

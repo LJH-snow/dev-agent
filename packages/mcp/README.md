@@ -1,6 +1,19 @@
 # @dev-agent/mcp
 
-MCP client and MCP tool/resource/prompt integration.
+MCP client and server: dev-agent can consume other MCP servers and expose its
+own tools to a host agent.
+
+## Server mode
+
+`createMcpServer({ tools })` speaks newline-delimited JSON-RPC 2.0 over stdio
+and implements `initialize`, `ping`, `tools/list`, and `tools/call`. Tool
+implementations are injected by the caller, so this package stays free of any
+dependency on `@dev-agent/tools`; the CLI wires the built-in tools in with
+`--mcp-server` (see `apps/cli/README.md`). Tool execution failures come back as
+`{ isError: true }` results so the host model can react, while unknown tools and
+methods are JSON-RPC errors.
+
+## Client
 
 Implemented in phase 1:
 

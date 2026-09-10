@@ -138,6 +138,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - Stdio MCP client with reconnect backoff, notification debounce, structured error
   codes (`McpRequestError`), and graceful close in `@dev-agent/mcp`
 - MCP resources, prompts, capability negotiation, and roots handling
+- MCP server mode: `createMcpServer` plus `--mcp-server` exposes the built-in
+  tools to a host agent over stdio (`initialize`, `tools/list`, `tools/call`)
 - CLI entry point wired to the loop with `--once`, `--tools`, `--metadata`,
   `--compact`, and Ctrl-C interrupt handling. Agent loop exposes `onTurn` callback
   for streaming progress

@@ -5,12 +5,38 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（MCP server 模式）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-11 07:35-08:05）
-- 工作区：阶段 2 的改动已提交并推送
+- 当前阶段：阶段 4（文档、回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-11 08:05-08:35）
+- 工作区：阶段 3 的改动已提交并推送
 
 ## 日志
+
+### 运行 4 — 2026-09-11 08:05-08:35
+
+- 阶段/工作项：阶段 3（MCP server 模式）全部完成
+- 做了什么：
+  - 新增 `packages/mcp/src/server.ts`：`createMcpServer({ tools })`，
+    newline-delimited JSON-RPC 2.0 over stdio，实现 `initialize`、`ping`、
+    `tools/list`、`tools/call`；通知（无 id）不回包；未知方法 -32601、
+    未知工具 -32602、解析失败 -32700；工具执行失败按 MCP 语义返回
+    `{ isError: true }` 结果而不是协议错误
+  - 工具实现由调用方注入（结构化接口），mcp 包不依赖 `@dev-agent/tools`，
+    保持包边界干净
+  - CLI 新增 `--mcp-server`：不创建模型 provider、不连接已配置的 MCP 客户端，
+    只把内置工具（filesystem/shell/git/search/code-search）暴露出去；
+    stdout 只走 JSON-RPC
+  - 文档：`packages/mcp/README.md`（双向 MCP 能力）、`apps/cli/README.md`
+    （`--mcp-server` 用法）、根 `README.md` Current Status
+- 验证命令与结果：
+  - `packages/mcp`：26 passed（新增 6 个：initialize 握手、tools/list schema、
+    tools/call 成功、失败返回 isError、未知工具 -32602、未知方法/通知）
+  - `apps/cli`：39 passed（新增端到端：假宿主脚本走 stdio 完成
+    initialize → tools/list（5 个内置工具）→ tools/call 读文件成功 →
+    tools/call 读缺失文件 isError，且 stderr 为空）
+  - `pnpm check/build/typecheck/test`：全绿（TypeScript 262 个测试）
+- 提交：见阶段 3 的 feat 提交
+- 下一步：阶段 4 — 文档、全量回归与提交（含 Roadmap 更新、CHANGELOG、最终总结）
 
 ### 运行 3 — 2026-09-11 07:35-08:05
 
