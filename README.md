@@ -40,6 +40,12 @@ dev-agent/
 
 Requires Node.js >= 20 (see `.nvmrc`, currently 26) and pnpm 12.3.4.
 
+Additional tools used by the build and tests:
+
+- `rg` (ripgrep) — the search tool and its tests shell out to ripgrep.
+- `protoc` (protobuf-compiler) — the Rust runtime's build script needs it via
+  `prost-build`. On Debian/Ubuntu: `apt-get install protobuf-compiler`.
+
 ```bash
 pnpm install
 pnpm check
