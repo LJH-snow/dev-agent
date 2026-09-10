@@ -41,7 +41,7 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `GET /` — chat UI.
 - `GET /health` — `{ "status": "ok" }`.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
-  frames: `token`, `tool`, `tool-result`, `turn`, `done`, `error`.
+  frames: `token`, `tool`, `tool-result`, `turn`, `usage`, `done`, `error`.
 - `POST /api/chat` while another run is in flight — `409`, so two runs never
   interleave the same conversation state.
 

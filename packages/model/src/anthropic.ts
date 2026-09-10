@@ -3,6 +3,7 @@ import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatUsage,
   ModelProvider,
   ProviderConfig,
   ToolCall,
@@ -22,6 +23,12 @@ type AnthropicContentBlock =
 
 interface AnthropicResponse {
   readonly content?: readonly AnthropicContentBlock[];
+  readonly usage?: AnthropicWireUsage;
+}
+
+interface AnthropicWireUsage {
+  readonly input_tokens?: number;
+  readonly output_tokens?: number;
 }
 
 export class AnthropicProvider implements ModelProvider {
@@ -98,6 +105,7 @@ export class AnthropicProvider implements ModelProvider {
           };
         })
         .filter((call): call is ToolCall => call !== undefined),
+      usage: applyAnthropicUsage(undefined, data.usage),
     };
   }
 
@@ -144,6 +152,7 @@ export class AnthropicProvider implements ModelProvider {
     const decoder = new TextDecoder();
     let content = "";
     let buffer = "";
+    let usage: ChatUsage | undefined;
     const toolUses = new Map<number, { id: string; name: string; json: string }>();
 
     const handleLine = (line: string): void => {
@@ -152,10 +161,15 @@ export class AnthropicProvider implements ModelProvider {
       const data = trimmed.slice(6);
       try {
         const json = JSON.parse(data) as {
+          type?: string;
           index?: number;
           content_block?: { type?: string; id?: string; name?: string };
           delta?: { type?: string; text?: string; partial_json?: string };
+          message?: { usage?: AnthropicWireUsage };
+          usage?: AnthropicWireUsage;
         };
+        usage = applyAnthropicUsage(usage, json.message?.usage);
+        usage = applyAnthropicUsage(usage, json.usage);
         if (json.content_block?.type === "tool_use") {
           const index = json.index ?? 0;
           toolUses.set(index, {
@@ -207,8 +221,28 @@ export class AnthropicProvider implements ModelProvider {
         input: parseJsonOrRaw(accumulated.json),
       }));
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
+    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
   }
+}
+
+/**
+ * Anthropic reports input tokens when the message starts and output tokens as
+ * it progresses, so both events are merged into one running total.
+ */
+function applyAnthropicUsage(
+  current: ChatUsage | undefined,
+  wire: AnthropicWireUsage | undefined
+): ChatUsage | undefined {
+  if (!wire) {
+    return current;
+  }
+  const promptTokens = wire.input_tokens ?? current?.promptTokens ?? 0;
+  const completionTokens = wire.output_tokens ?? current?.completionTokens ?? 0;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: promptTokens + completionTokens,
+  };
 }
 
 export function createAnthropicProvider(config: AnthropicProviderConfig): AnthropicProvider {

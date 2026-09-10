@@ -53,6 +53,9 @@ Configuration is read from the environment:
   command through the Rust sandbox. `--rust-executor <path>` wins over it.
 - `DEV_AGENT_MCP_SERVERS` - optional JSON array of MCP stdio server configs
 
+Runs print a `[usage] prompt=… completion=… total=…` line after the state line
+when the provider reported token counts.
+
 ## Configuration file
 
 `~/.dev-agent/config.json` is read on every run. Environment variables and CLI

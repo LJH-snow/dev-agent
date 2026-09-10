@@ -19,7 +19,7 @@ import {
 import { createDefaultTools } from "@dev-agent/tools";
 
 export interface StreamEvent {
-  readonly type: "token" | "tool" | "tool-result" | "turn" | "done" | "error";
+  readonly type: "token" | "tool" | "tool-result" | "turn" | "usage" | "done" | "error";
   readonly data: Record<string, unknown>;
 }
 
@@ -85,6 +85,15 @@ export class ChatSession {
       onToken: (token) => emit({ type: "token", data: { token } }),
       onToolCall: (call) => emit({ type: "tool", data: { name: call.name, input: call.input } }),
       onToolResult: (result) => emit({ type: "tool-result", data: { name: result.name, output: result.output } }),
+      onUsage: (usage) =>
+        emit({
+          type: "usage",
+          data: {
+            promptTokens: usage.promptTokens,
+            completionTokens: usage.completionTokens,
+            totalTokens: usage.totalTokens,
+          },
+        }),
     });
 
     try {

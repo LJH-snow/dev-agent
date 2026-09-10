@@ -3,6 +3,7 @@ export type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatUsage,
   ModelProvider,
   ToolCall,
   ToolSchema,

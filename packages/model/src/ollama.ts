@@ -3,6 +3,7 @@ import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatUsage,
   ModelProvider,
   ProviderConfig,
   ToolCall,
@@ -27,6 +28,9 @@ interface OllamaResponse {
     readonly content?: string | null;
     readonly tool_calls?: readonly OllamaWireToolCall[];
   };
+  /** Token counts Ollama reports on the final chunk of a response. */
+  readonly prompt_eval_count?: number;
+  readonly eval_count?: number;
 }
 
 export class OllamaProvider implements ModelProvider {
@@ -68,13 +72,15 @@ export class OllamaProvider implements ModelProvider {
     );
 
     const data = (await response.json()) as OllamaResponse;
+    const usage = parseOllamaUsage(data);
     const message = data.message;
     if (!message) {
-      return { content: "" };
+      return { content: "", usage };
     }
     return {
       content: message.content ?? "",
       toolCalls: message.tool_calls?.map(parseOllamaToolCall),
+      usage,
     };
   }
 
@@ -113,12 +119,16 @@ export class OllamaProvider implements ModelProvider {
     let content = "";
     const toolCalls: ToolCall[] = [];
     let buffer = "";
+    let usage: ChatUsage | undefined;
 
     const handleLine = (line: string): void => {
       const trimmed = line.trim();
       if (!trimmed) return;
       try {
         const chunk = JSON.parse(trimmed) as OllamaResponse;
+        if (chunk.prompt_eval_count !== undefined || chunk.eval_count !== undefined) {
+          usage = parseOllamaUsage(chunk);
+        }
         const delta = chunk.message?.content ?? "";
         if (delta) {
           content += delta;
@@ -151,8 +161,21 @@ export class OllamaProvider implements ModelProvider {
       reader.releaseLock();
     }
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
+    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
   }
+}
+
+function parseOllamaUsage(chunk: OllamaResponse): ChatUsage | undefined {
+  if (chunk.prompt_eval_count === undefined && chunk.eval_count === undefined) {
+    return undefined;
+  }
+  const promptTokens = chunk.prompt_eval_count ?? 0;
+  const completionTokens = chunk.eval_count ?? 0;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: promptTokens + completionTokens,
+  };
 }
 
 export function createOllamaProvider(config: OllamaProviderConfig): OllamaProvider {

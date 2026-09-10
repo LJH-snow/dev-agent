@@ -9,6 +9,15 @@ Phase 1 provides:
 - OpenAI, Anthropic, Gemini, and Ollama providers built on Node `fetch`, no SDK
   dependency
 
+## Usage reporting
+
+When a provider reports token counts, `ChatCompletion.usage` carries them as
+`{ promptTokens, completionTokens, totalTokens }`. All four providers map their
+own field names (OpenAI `usage`, Anthropic `input_tokens`/`output_tokens`,
+Gemini `usageMetadata`, Ollama `prompt_eval_count`/`eval_count`), including the
+usage that arrives in a stream's final event. Responses without usage leave the
+field undefined rather than reporting zeros.
+
 ## Retries
 
 Every provider retries the initial HTTP request when the server answers 429 or

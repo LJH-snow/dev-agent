@@ -9,6 +9,9 @@ Implemented in phase 1:
   to the model. It keeps the newest entries that fit, never splits an assistant
   tool call from its tool results, always keeps the system prompt, and announces
   how many older entries were omitted
+- Usage accounting: every model response that reports tokens fires `onUsage`,
+  and the loop adds the totals up on the returned context's `usage` field, so a
+  session's consumption survives across runs
 - `AgentContext` - holds session id, working directory, runtime metadata, timestamps,
   `AgentState`, and `AgentMemory`
 - `AgentState` - id, status, turn counter, current task, and last error

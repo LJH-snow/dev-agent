@@ -2,6 +2,7 @@ import type { AgentState } from "./agent-state.js";
 import type { AgentContext } from "./context.js";
 import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.js";
 import type { ChatMessage, ModelProvider, ToolSchema } from "@dev-agent/model";
+import type { ChatUsage } from "@dev-agent/model";
 import {
   runTool,
   type ToolCollection,
@@ -18,6 +19,8 @@ export interface AgentLoopOptions {
   readonly onToken?: (token: string, context: AgentContext) => void;
   readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
   readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
+  /** Fired for every model response that reported token usage. */
+  readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
   readonly toolDefaults?: ToolDefaults;
   readonly contextBudget?: ContextBudget;
 }
@@ -53,6 +56,7 @@ export class AgentLoop {
   private readonly onToken?: (token: string, context: AgentContext) => void;
   private readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
   private readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
+  private readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
   private readonly toolDefaults?: ToolDefaults;
   private readonly contextBudget?: ContextBudget;
 
@@ -68,6 +72,7 @@ export class AgentLoop {
     this.onToken = options.onToken;
     this.onToolCall = options.onToolCall;
     this.onToolResult = options.onToolResult;
+    this.onUsage = options.onUsage;
     this.toolDefaults = options.toolDefaults;
     this.contextBudget = options.contextBudget;
   }
@@ -87,6 +92,7 @@ export class AgentLoop {
     };
     let updatedAt = new Date().toISOString();
     let completed = false;
+    let totalUsage = context.usage;
 
     try {
       for (let turn = 0; turn < this.maxTurns && !completed; turn += 1) {
@@ -99,6 +105,10 @@ export class AgentLoop {
         const completion = this.model.streamChat && this.onToken
           ? await this.model.streamChat(messages, { ...chatOptions, onToken: (token) => this.onToken?.(token, context) })
           : await this.model.chat(messages, chatOptions);
+        if (completion.usage) {
+          totalUsage = addUsage(totalUsage, completion.usage);
+          this.onUsage?.(completion.usage, context);
+        }
         const toolCalls = completion.toolCalls ?? [];
 
         await memory.append(createMemoryEntry("assistant", completion.content, { toolCalls }));
@@ -134,7 +144,7 @@ export class AgentLoop {
           : state.lastError ?? "Max turns reached without a final answer",
       };
       updatedAt = new Date().toISOString();
-      return { ...context, state, updatedAt };
+      return { ...context, state, updatedAt, usage: totalUsage };
     } catch (error) {
       if (options.signal?.aborted) {
         // Interruptions are not failures: the caller decides how to report
@@ -148,6 +158,7 @@ export class AgentLoop {
         ...context,
         state: { ...state, status: "error", lastError: message },
         updatedAt,
+        usage: totalUsage,
       };
     }
   }
@@ -193,6 +204,18 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw signal.reason ?? new Error("The operation was aborted");
   }
+}
+
+/** Adds the tokens of one model response to a running total. */
+function addUsage(
+  total: ChatUsage | undefined,
+  usage: ChatUsage
+): ChatUsage {
+  return {
+    promptTokens: (total?.promptTokens ?? 0) + usage.promptTokens,
+    completionTokens: (total?.completionTokens ?? 0) + usage.completionTokens,
+    totalTokens: (total?.totalTokens ?? 0) + usage.totalTokens,
+  };
 }
 
 interface HistorySelection {

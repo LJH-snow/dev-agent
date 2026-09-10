@@ -452,6 +452,11 @@ async function runPrompt(loop: AgentLoop, context: AgentContext, streaming: Stre
     }
   }
   console.log(`[state=${result.state.status} turns=${result.state.turns}]`);
+  if (result.usage) {
+    console.log(
+      `[usage] prompt=${result.usage.promptTokens} completion=${result.usage.completionTokens} total=${result.usage.totalTokens}`
+    );
+  }
 }
 
 interface StreamingCallbacks {

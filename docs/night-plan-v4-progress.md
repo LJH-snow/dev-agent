@@ -5,12 +5,36 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（会话用量统计）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-11 07:19-07:35）
-- 工作区：阶段 1 的改动已提交并推送
+- 当前阶段：阶段 3（MCP server 模式）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-11 07:35-08:05）
+- 工作区：阶段 2 的改动已提交并推送
 
 ## 日志
+
+### 运行 3 — 2026-09-11 07:35-08:05
+
+- 阶段/工作项：阶段 2（会话用量统计）全部完成
+- 做了什么：
+  - `packages/model`：新增 `ChatUsage { promptTokens, completionTokens, totalTokens }`，
+    `ChatCompletion.usage` 可选；四个 provider 各自映射字段：
+    OpenAI `usage`、Anthropic `input_tokens`/`output_tokens`（流式按 message_start +
+    message_delta 合并）、Gemini `usageMetadata`、Ollama `prompt_eval_count`/`eval_count`；
+    流式路径解析最终事件里的 usage，没有 usage 的响应保持 undefined（不报 0 假数据）
+  - `packages/agent-core`：`AgentLoopOptions.onUsage` 每次上报本轮回调；
+    `AgentContext.usage` 累计整个会话（跨多次 run 累加），错误路径也会带回已累计值
+  - CLI：结果行后输出 `[usage] prompt=… completion=… total=…`（仅在有 usage 时）
+  - 桌面端：新增 `usage` SSE 事件；UI 头部累加显示 "N tokens"
+  - 文档：model / agent-core / cli / desktop 四个 README 同步
+- 验证命令与结果：
+  - `packages/model`：42 passed（新增 7 个：四个 provider 各一条解析 + OpenAI 流式 +
+    Anthropic 流式合并 + 无 usage 时为 undefined）
+  - `packages/agent-core`：28 passed（新增"跨 run 累计 + onUsage 上报"）
+  - `apps/cli`：38 passed（新增 `[usage] prompt=21 completion=8 total=29` 输出用例）
+  - `apps/desktop`：22 passed（新增 usage SSE 事件用例）
+  - `pnpm build`、`pnpm typecheck`、`pnpm test`：全绿（TypeScript 255 个测试）
+- 提交：见阶段 2 的 feat 提交
+- 下一步：阶段 3 — MCP server 模式（把内置工具以 MCP 协议暴露，CLI `--mcp-server`）
 
 ### 运行 2 — 2026-09-11 07:19-07:35
 

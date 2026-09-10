@@ -253,3 +253,31 @@ test("agent loop passes the run signal into tool execution contexts", async () =
   assert.equal(capturedContext.sessionId, "agent-signal");
   assert.equal(capturedContext.signal, controller.signal);
 });
+
+test("agent loop accumulates usage across runs and reports each turn", async () => {
+  const usage = { promptTokens: 10, completionTokens: 5, totalTokens: 15 };
+  const reported = [];
+  const model = {
+    id: "openai",
+    model: "test-model",
+    async chat() {
+      return { content: "done", toolCalls: [], usage };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-usage", memory);
+  const loop = new AgentLoop({ model, onUsage: (value) => reported.push(value) });
+
+  const first = await loop.run(context, "hello");
+  assert.deepEqual(reported, [usage]);
+  assert.deepEqual(first.usage, usage);
+
+  const second = await loop.run(first, "again");
+  assert.equal(reported.length, 2);
+  assert.deepEqual(second.usage, {
+    promptTokens: 20,
+    completionTokens: 10,
+    totalTokens: 30,
+  });
+});

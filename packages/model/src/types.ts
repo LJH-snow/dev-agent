@@ -27,6 +27,14 @@ export interface ToolSchema {
 export interface ChatCompletion {
   readonly content: string;
   readonly toolCalls?: readonly ToolCall[];
+  /** Token usage reported by the provider, when it reports any. */
+  readonly usage?: ChatUsage;
+}
+
+export interface ChatUsage {
+  readonly promptTokens: number;
+  readonly completionTokens: number;
+  readonly totalTokens: number;
 }
 
 export interface ChatOptions {

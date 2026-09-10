@@ -3,6 +3,7 @@ import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatUsage,
   ModelProvider,
   ProviderConfig,
   ToolCall,
@@ -22,6 +23,12 @@ interface OpenAIWireToolCall {
   readonly function: OpenAIWireFunction;
 }
 
+interface OpenAIWireUsage {
+  readonly prompt_tokens?: number;
+  readonly completion_tokens?: number;
+  readonly total_tokens?: number;
+}
+
 interface OpenAIResponse {
   readonly choices?: readonly {
     readonly message?: {
@@ -29,6 +36,7 @@ interface OpenAIResponse {
       readonly tool_calls?: readonly OpenAIWireToolCall[];
     };
   }[];
+  readonly usage?: OpenAIWireUsage;
 }
 
 interface OpenAIStreamToolCallDelta {
@@ -79,13 +87,15 @@ export class OpenAIProvider implements ModelProvider {
     );
 
     const data = (await response.json()) as OpenAIResponse;
+    const usage = parseOpenAIUsage(data.usage);
     const message = data.choices?.[0]?.message;
     if (!message) {
-      return { content: "" };
+      return { content: "", usage };
     }
     return {
       content: message.content ?? "",
       toolCalls: message.tool_calls?.map(parseOpenAIToolCall),
+      usage,
     };
   }
 
@@ -125,6 +135,7 @@ export class OpenAIProvider implements ModelProvider {
     let content = "";
     let buffer = "";
     let finished = false;
+    let usage: ChatUsage | undefined;
     const toolCallDeltas = new Map<number, { id: string; name: string; args: string }>();
 
     const handleLine = (line: string): void => {
@@ -143,7 +154,11 @@ export class OpenAIProvider implements ModelProvider {
               tool_calls?: readonly OpenAIStreamToolCallDelta[];
             };
           }[];
+          usage?: OpenAIWireUsage;
         };
+        if (json.usage) {
+          usage = parseOpenAIUsage(json.usage);
+        }
         const delta = json.choices?.[0]?.delta;
         if (!delta) return;
         if (delta.content) {
@@ -193,8 +208,21 @@ export class OpenAIProvider implements ModelProvider {
         })
       );
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
+    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
   }
+}
+
+function parseOpenAIUsage(usage: OpenAIWireUsage | undefined): ChatUsage | undefined {
+  if (!usage) {
+    return undefined;
+  }
+  const promptTokens = usage.prompt_tokens ?? 0;
+  const completionTokens = usage.completion_tokens ?? 0;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: usage.total_tokens ?? promptTokens + completionTokens,
+  };
 }
 
 export function createOpenAIProvider(config: OpenAIProviderConfig): OpenAIProvider {

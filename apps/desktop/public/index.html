@@ -54,6 +54,7 @@
       align-items: center;
     }
     header .status { font-weight: 400; font-size: 12px; color: var(--muted); }
+    header .header-status { display: flex; align-items: center; gap: 12px; }
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -104,7 +105,10 @@
 <body>
   <header>
     <span>dev-agent</span>
-    <span class="status" id="status">idle</span>
+    <div class="header-status">
+      <span class="status" id="usage"></span>
+      <span class="status" id="status">idle</span>
+    </div>
   </header>
   <div id="messages"><div class="empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
   <form class="composer" id="form">
@@ -117,8 +121,10 @@
     const input = document.getElementById("input");
     const send = document.getElementById("send");
     const status = document.getElementById("status");
+    const usage = document.getElementById("usage");
 
     let currentAssistant = null;
+    let totalTokens = 0;
 
     function setStatus(text) { status.textContent = text; }
 
@@ -222,6 +228,10 @@
           break;
         case "turn":
           setStatus("turn " + parsed.turn);
+          break;
+        case "usage":
+          totalTokens += Number(parsed.totalTokens) || 0;
+          usage.textContent = totalTokens + " tokens";
           break;
         case "error":
           appendMessage("error", parsed.message || "unknown error");

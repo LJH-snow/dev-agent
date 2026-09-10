@@ -3,6 +3,7 @@ import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatUsage,
   ModelProvider,
   ProviderConfig,
   ToolCall,
@@ -26,6 +27,13 @@ interface GeminiResponse {
       readonly parts?: readonly GeminiPart[];
     };
   }[];
+  readonly usageMetadata?: GeminiWireUsage;
+}
+
+interface GeminiWireUsage {
+  readonly promptTokenCount?: number;
+  readonly candidatesTokenCount?: number;
+  readonly totalTokenCount?: number;
 }
 
 export class GeminiProvider implements ModelProvider {
@@ -91,6 +99,7 @@ export class GeminiProvider implements ModelProvider {
     );
 
     const data = (await response.json()) as GeminiResponse;
+    const usage = parseGeminiUsage(data.usageMetadata);
     const parts = data.candidates?.[0]?.content?.parts ?? [];
     const toolCalls = parts
       .map((part, index): ToolCall | undefined => {
@@ -112,6 +121,7 @@ export class GeminiProvider implements ModelProvider {
         .filter(Boolean)
         .join("\n"),
       toolCalls,
+      usage,
     };
   }
 
@@ -169,6 +179,7 @@ export class GeminiProvider implements ModelProvider {
     const decoder = new TextDecoder();
     let content = "";
     let buffer = "";
+    let usage: ChatUsage | undefined;
     const toolCalls: ToolCall[] = [];
 
     const handleLine = (line: string): void => {
@@ -180,7 +191,11 @@ export class GeminiProvider implements ModelProvider {
           candidates?: readonly {
             content?: { parts?: readonly GeminiPart[] };
           }[];
+          usageMetadata?: GeminiWireUsage;
         };
+        if (json.usageMetadata) {
+          usage = parseGeminiUsage(json.usageMetadata);
+        }
         const parts = json.candidates?.[0]?.content?.parts ?? [];
         for (const part of parts) {
           if (part.text) {
@@ -219,8 +234,21 @@ export class GeminiProvider implements ModelProvider {
       reader.releaseLock();
     }
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
+    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
   }
+}
+
+function parseGeminiUsage(usage: GeminiWireUsage | undefined): ChatUsage | undefined {
+  if (!usage) {
+    return undefined;
+  }
+  const promptTokens = usage.promptTokenCount ?? 0;
+  const completionTokens = usage.candidatesTokenCount ?? 0;
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens: usage.totalTokenCount ?? promptTokens + completionTokens,
+  };
 }
 
 export function createGeminiProvider(config: GeminiProviderConfig): GeminiProvider {

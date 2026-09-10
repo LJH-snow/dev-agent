@@ -214,3 +214,37 @@ test("the desktop session sends a trimmed history when a budget is configured", 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("the desktop stream reports the token usage of each turn", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-usage-"));
+  const provider = await startStubProvider(() => [
+    { choices: [{ delta: { content: "done" } }] },
+    { choices: [], usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 } },
+  ]);
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+
+  const session = new ChatSession({ workingDirectory: dir });
+  const server = await startServer({ session, host: "127.0.0.1" });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "hello" }),
+    });
+    const text = await response.text();
+
+    assert.match(text, /event: usage/);
+    assert.match(text, /"totalTokens":6/);
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve()));
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
