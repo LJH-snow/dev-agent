@@ -76,6 +76,70 @@ export class OpenAIProvider implements ModelProvider {
       toolCalls: message.tool_calls?.map(parseOpenAIToolCall),
     };
   }
+
+  async streamChat(
+    messages: readonly ChatMessage[],
+    options: ChatOptions & { onToken?: (token: string) => void } = {}
+  ): Promise<ChatCompletion> {
+    const response = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(this.apiKey ? { Authorization: `Bearer ${this.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: this.model,
+        messages: messages.map(toOpenAIMessage),
+        stream: true,
+        temperature: options.temperature,
+        max_tokens: options.maxTokens,
+        ...(options.tools ? { tools: options.tools.map(toOpenAITool) } : {}),
+      }),
+      signal: options.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`OpenAI stream request failed (${response.status}): ${body}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let content = "";
+    let buffer = "";
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          if (data === "[DONE]") break;
+          try {
+            const json = JSON.parse(data) as {
+              choices?: readonly { delta?: { content?: string } }[];
+            };
+            const delta = json.choices?.[0]?.delta?.content ?? "";
+            if (delta) {
+              content += delta;
+              options.onToken?.(delta);
+            }
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { content };
+  }
 }
 
 export function createOpenAIProvider(config: OpenAIProviderConfig): OpenAIProvider {

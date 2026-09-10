@@ -32,6 +32,7 @@ export interface ChatOptions {
   readonly temperature?: number;
   readonly maxTokens?: number;
   readonly tools?: readonly ToolSchema[];
+  readonly stream?: boolean;
 }
 
 export interface ProviderConfig {
@@ -45,4 +46,8 @@ export interface ModelProvider {
   readonly id: ModelProviderId;
   readonly model: string;
   chat(messages: readonly ChatMessage[], options?: ChatOptions): Promise<ChatCompletion>;
+  streamChat?(
+    messages: readonly ChatMessage[],
+    options?: ChatOptions & { onToken?: (token: string) => void }
+  ): Promise<ChatCompletion>;
 }

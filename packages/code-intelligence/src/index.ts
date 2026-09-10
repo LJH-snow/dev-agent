@@ -1,4 +1,19 @@
 import { scanTypeScriptSymbols } from "./scanner.js";
+import { scanPythonSymbols } from "./python-scanner.js";
+import { scanRustSymbols } from "./rust-scanner.js";
+
+export function scanFile(source: string, filePath: string): CodeSymbol[] {
+  if (filePath.endsWith(".py")) {
+    return scanPythonSymbols(source, filePath);
+  }
+  if (filePath.endsWith(".rs")) {
+    return scanRustSymbols(source, filePath);
+  }
+  if (filePath.endsWith(".ts") || filePath.endsWith(".tsx") || filePath.endsWith(".js") || filePath.endsWith(".jsx") || filePath.endsWith(".mts") || filePath.endsWith(".mjs") || filePath.endsWith(".cjs")) {
+    return scanTypeScriptSymbols(source, filePath);
+  }
+  return [];
+}
 
 export type SymbolKind =
   | "function"
@@ -49,7 +64,7 @@ export class InMemoryCodeIndex implements CodeIndex {
   }
 
   addSource(source: string, filePath: string): void {
-    for (const symbol of scanTypeScriptSymbols(source, filePath)) {
+    for (const symbol of scanFile(source, filePath)) {
       this.addSymbol(symbol);
     }
   }

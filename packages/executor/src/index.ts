@@ -7,6 +7,7 @@ export interface ExecutorResult {
   readonly timedOut?: boolean;
   readonly durationMs?: number;
   readonly command?: string;
+  readonly bytesTruncated?: boolean;
 }
 
 export interface ExecutorRunOptions {
@@ -14,6 +15,7 @@ export interface ExecutorRunOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly input?: string | Buffer;
   readonly timeoutMs?: number;
+  readonly maxOutputBytes?: number;
 }
 
 export interface Executor {

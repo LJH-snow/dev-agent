@@ -8,6 +8,10 @@ import type {
   ToolSchema,
 } from "./types.js";
 
+export interface OllamaStreamOptions extends ChatOptions {
+  onToken?: (token: string) => void;
+}
+
 export interface OllamaProviderConfig extends ProviderConfig {}
 
 interface OllamaWireToolCall {
@@ -69,6 +73,66 @@ export class OllamaProvider implements ModelProvider {
       content: message.content ?? "",
       toolCalls: message.tool_calls?.map(parseOllamaToolCall),
     };
+  }
+
+  async streamChat(
+    messages: readonly ChatMessage[],
+    options: OllamaStreamOptions = {}
+  ): Promise<ChatCompletion> {
+    const response = await this.fetchFn(`${this.baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: this.model,
+        messages: messages.map(toOllamaMessage),
+        stream: true,
+        ...(options.tools ? { tools: options.tools.map(toOllamaTool) } : {}),
+        options: {
+          temperature: options.temperature,
+          num_predict: options.maxTokens,
+        },
+      }),
+      signal: options.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const body = await response.text().catch(() => "");
+      throw new Error(`Ollama stream request failed (${response.status}): ${body}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let content = "";
+    let toolCalls: ToolCall[] = [];
+    let buffer = "";
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          try {
+            const chunk = JSON.parse(trimmed) as OllamaResponse;
+            const delta = chunk.message?.content ?? "";
+            if (delta) {
+              content += delta;
+              options.onToken?.(delta);
+            }
+          } catch {
+            // skip malformed line
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
   }
 }
 

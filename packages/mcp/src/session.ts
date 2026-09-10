@@ -16,6 +16,7 @@ export interface McpSessionSnapshot {
 }
 
 export type McpSessionChangeHandler = (snapshot: McpSessionSnapshot) => void;
+export type McpResourceWatcher = (uri: string) => void;
 
 export interface McpSessionOptions {
   readonly config: McpClientConfig;
@@ -43,6 +44,7 @@ export class McpServerSession {
   private prompts: McpPrompt[] = [];
   private changeHandlers: McpSessionChangeHandler[] = [];
   private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
+  private readonly resourceWatchers = new Map<string, McpResourceWatcher[]>();
   private static readonly DEBOUNCE_MS = 500;
 
   constructor(options: McpSessionOptions) {
@@ -108,6 +110,21 @@ export class McpServerSession {
     this.changeHandlers.push(handler);
   }
 
+  watchResource(uri: string, callback: McpResourceWatcher): () => void {
+    const existing = this.resourceWatchers.get(uri) ?? [];
+    existing.push(callback);
+    this.resourceWatchers.set(uri, existing);
+    return () => {
+      const current = this.resourceWatchers.get(uri) ?? [];
+      const filtered = current.filter((cb) => cb !== callback);
+      if (filtered.length === 0) {
+        this.resourceWatchers.delete(uri);
+      } else {
+        this.resourceWatchers.set(uri, filtered);
+      }
+    };
+  }
+
   private async refreshAll(): Promise<McpSessionSnapshot> {
     const [tools, resources, prompts] = await Promise.all([
       this.client.listTools(),
@@ -133,7 +150,11 @@ export class McpServerSession {
         this.debounceReload("resources", async () => {
           this.resources = await this.client.listResources();
           this.emitChange();
+          this.notifyResourceWatchers();
         });
+        break;
+      case "resources/updated":
+        this.notifyResourceWatcher(notification.uri);
         break;
       case "prompts/list_changed":
         this.debounceReload("prompts", async () => {
@@ -150,6 +171,23 @@ export class McpServerSession {
     const current = this.getSnapshot();
     for (const handler of this.changeHandlers) {
       handler(current);
+    }
+  }
+
+  private notifyResourceWatchers(): void {
+    for (const watchers of this.resourceWatchers.values()) {
+      for (const watcher of watchers) {
+        watcher("*");
+      }
+    }
+  }
+
+  private notifyResourceWatcher(uri: string): void {
+    const watchers = this.resourceWatchers.get(uri);
+    if (watchers) {
+      for (const watcher of watchers) {
+        watcher(uri);
+      }
     }
   }
 

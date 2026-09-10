@@ -97,6 +97,75 @@ export class AnthropicProvider implements ModelProvider {
         .filter((call): call is ToolCall => call !== undefined),
     };
   }
+
+  async streamChat(
+    messages: readonly ChatMessage[],
+    options: ChatOptions & { onToken?: (token: string) => void } = {}
+  ): Promise<ChatCompletion> {
+    const system = messages
+      .filter((m) => m.role === "system")
+      .map((m) => m.content)
+      .join("\n\n");
+    const body: Record<string, unknown> = {
+      model: this.model,
+      max_tokens: options.maxTokens ?? 1024,
+      stream: true,
+      messages: toAnthropicMessages(messages),
+    };
+    if (system) body.system = system;
+    if (options.temperature !== undefined) body.temperature = options.temperature;
+    if (options.tools) body.tools = options.tools.map(toAnthropicTool);
+
+    const response = await this.fetchFn(`${this.baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "anthropic-version": "2023-06-01",
+        ...(this.apiKey ? { "x-api-key": this.apiKey } : {}),
+      },
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const bodyText = await response.text().catch(() => "");
+      throw new Error(`Anthropic stream request failed (${response.status}): ${bodyText}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let content = "";
+    let buffer = "";
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          try {
+            const json = JSON.parse(data) as { delta?: { text?: string } };
+            const delta = json.delta?.text ?? "";
+            if (delta) {
+              content += delta;
+              options.onToken?.(delta);
+            }
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { content };
+  }
 }
 
 export function createAnthropicProvider(config: AnthropicProviderConfig): AnthropicProvider {

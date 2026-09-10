@@ -43,6 +43,10 @@ export interface McpInitializeResult {
 export type McpNotification =
   | { readonly method: "tools/list_changed" }
   | { readonly method: "resources/list_changed" }
+  | {
+      readonly method: "resources/updated";
+      readonly uri: string;
+    }
   | { readonly method: "prompts/list_changed" }
   | {
       readonly method: "message";

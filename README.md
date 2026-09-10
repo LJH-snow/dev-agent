@@ -91,16 +91,23 @@ pnpm cli -- --version
 - macOS `sandbox-exec` enforcement: writable/read-only paths, network policy, cwd,
   timeout, and resource limits (CPU, FSIZE, NOFILE, NPROC, CORE)
 - Linux placeholder detects `bwrap` availability for clearer error messages
+## Current Status (v2)
+
+- Agent Loop streaming with token-level callbacks
+- Tool output truncation and timeout protection
+- MCP resource subscription (watchResource)
+- Multi-language code intelligence (TypeScript, Python, Rust)
+- Executor quotas (maxOutputBytes, maxConcurrentExecutions)
+- CLI configuration file support (~/.dev-agent/config.json)
+- 101 TypeScript tests + 26 Rust tests passing
+
 ## Roadmap
 
-1. ~~Richer code index and reference search~~ (done: improved ranking, persistent `JsonFileCodeIndex`)
-2. ~~MCP resources, prompts, and richer server lifecycle~~ (done: debounce, backoff, structured errors)
-3. Rust runtime under `runtime/rust`, implemented behind the `SandboxExecutor` contract.
-   Sandbox and filesystem policies are authored in **Starlark** (the same
-   approach used by the open-source Codex agent), evaluated at runtime by an
-   embedded Starlark interpreter in Rust. Starlark `policy` evaluation is now
-   implemented and tested; macOS `sandbox-exec` enforcement is now active for
-   filesystem, network, timeout, and resource limits. The next backend to add
-   is Linux bubblewrap/seccomp support
-4. Desktop shell in `apps/desktop`
-5. CLI streaming output and session management hardening
+1. ~~Richer code index and reference search~~ (done)
+2. ~~MCP resources, prompts, and richer server lifecycle~~ (done)
+3. ~~Agent Loop streaming and tool safety~~ (done)
+4. ~~Multi-language symbol scanning~~ (done)
+5. Linux bubblewrap backend for Rust sandbox
+6. Desktop shell in `apps/desktop`
+7. CLI streaming output and session management hardening
+8. Network policy enforcement via Starlark

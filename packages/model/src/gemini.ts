@@ -111,6 +111,88 @@ export class GeminiProvider implements ModelProvider {
       toolCalls,
     };
   }
+
+  async streamChat(
+    messages: readonly ChatMessage[],
+    options: ChatOptions & { onToken?: (token: string) => void } = {}
+  ): Promise<ChatCompletion> {
+    const url =
+      `${this.baseUrl}/v1beta/models/${encodeURIComponent(this.model)}:streamGenerateContent` +
+      `?key=${encodeURIComponent(this.apiKey ?? "")}&alt=sse`;
+    const system = messages
+      .filter((m) => m.role === "system")
+      .map((m) => m.content)
+      .join("\n\n");
+    const body: Record<string, unknown> = {
+      contents: toGeminiContents(messages),
+    };
+    if (system) body.systemInstruction = { parts: [{ text: system }] };
+    if (options.tools) {
+      body.tools = [
+        {
+          functionDeclarations: options.tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+          })),
+        },
+      ];
+    }
+    if (options.temperature !== undefined || options.maxTokens !== undefined) {
+      body.generationConfig = {
+        temperature: options.temperature,
+        maxOutputTokens: options.maxTokens,
+      };
+    }
+
+    const response = await this.fetchFn(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: options.signal,
+    });
+
+    if (!response.ok || !response.body) {
+      const bodyText = await response.text().catch(() => "");
+      throw new Error(`Gemini stream request failed (${response.status}): ${bodyText}`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let content = "";
+    let buffer = "";
+
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          const data = trimmed.slice(6);
+          try {
+            const json = JSON.parse(data) as {
+              candidates?: readonly { content?: { parts?: readonly { text?: string }[] } }[];
+            };
+            const delta = json.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+            if (delta) {
+              content += delta;
+              options.onToken?.(delta);
+            }
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    return { content };
+  }
 }
 
 export function createGeminiProvider(config: GeminiProviderConfig): GeminiProvider {

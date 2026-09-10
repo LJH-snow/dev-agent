@@ -34,3 +34,39 @@
 ### Policy language
 - The Rust sandbox uses **Starlark** for filesystem/network/policy rules, consistent with the
   open-source Codex agent. See `runtime/rust/README.md` for the policy model.
+
+## 2026-09-10 (Night Build v2)
+
+### Agent Loop streaming
+- AgentLoop now supports `onToken`, `onToolCall`, `onToolResult` callbacks for streaming progress.
+- All four model providers (OpenAI, Anthropic, Gemini, Ollama) implement `streamChat` for token-level streaming.
+- Fallback to non-streaming `chat` when callbacks are not provided.
+
+### Tool output truncation and timeout
+- `runTool` now truncates output exceeding `maxOutputChars` (default 50000), preserving head and tail with a notice.
+- Tool execution honors `timeoutMs` (default 30000); returns structured error instead of hanging.
+- Configurable via `AgentLoopOptions.toolDefaults`.
+
+### MCP resource subscription
+- `McpServerSession.watchResource(uri, callback)` subscribes to resource changes.
+- Supports `resources/updated` notifications and `resources/list_changed` (triggers all watchers).
+- Unwatch function returned for cleanup.
+
+### Code intelligence — multi-language scanning
+- New `python-scanner.ts` extracts Python functions, classes, and methods (with class scope tracking).
+- New `rust-scanner.ts` extracts Rust functions, structs, enums, types, modules, and uses.
+- `scanFile()` dispatches to the correct scanner based on file extension.
+- `InMemoryCodeIndex.addSource` now handles .py, .rs, .ts, .tsx, .js, .jsx, .mts, .mjs, .cjs.
+
+### Executor quotas and safety
+- `LocalExecutor` now enforces `maxOutputBytes` (default 1MB) — terminates process and sets `bytesTruncated`.
+- `maxConcurrentExecutions` (default 5) prevents fork bombs.
+- `getActiveCount()` exposes current execution count.
+
+### CLI configuration
+- `loadConfig()` reads `~/.dev-agent/config.json` for default provider, model, maxTurns, mcpServers.
+- `parseConfig()` exposed for testing config parsing logic.
+
+### Integration tests
+- CLI integration tests verify `--version`, `--tools`, `--metadata` E2E.
+- Full pipeline test verifies AgentLoop with FileMemory persistence.
