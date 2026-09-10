@@ -60,27 +60,43 @@ impl RestrictedExecutor {
             .map_err(RestrictedError::Executor)
     }
 
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    pub async fn run(
+        &self,
+        run: &RunRequest,
+        profile: &SandboxProfile,
+    ) -> Result<RunResult, RestrictedError> {
+        let mut request = run.clone();
+        request.timeout_ms = effective_timeout_ms(run, profile);
+        request.env = merge_env(run, profile);
+
+        let base_dir = run
+            .cwd
+            .as_deref()
+            .map(Path::new)
+            .unwrap_or_else(|| Path::new("."));
+        let bwrap_args = build_bwrap_args(&request, profile, base_dir)?;
+
+        self.inner
+            .run_with_builder(&request, move || {
+                let mut command = Command::new("bwrap");
+                for arg in &bwrap_args {
+                    command.arg(arg);
+                }
+                apply_resource_limits(&mut command);
+                command
+            })
+            .await
+            .map_err(RestrictedError::Executor)
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     pub async fn run(
         &self,
         _run: &RunRequest,
         _profile: &SandboxProfile,
     ) -> Result<RunResult, RestrictedError> {
-        Err(RestrictedError::Unsupported(linux_backend_message()))
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn linux_backend_message() -> String {
-    let bwrap_available = std::process::Command::new("bwrap")
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false);
-    if bwrap_available {
-        "Linux bubblewrap backend is not yet wired in; bwrap is available but the backend is not implemented".to_string()
-    } else {
-        "Restricted execution on Linux requires bubblewrap (bwrap), which is not installed".to_string()
+        Err(RestrictedError::Unsupported(other_platform_message()))
     }
 }
 
@@ -89,6 +105,10 @@ impl Default for RestrictedExecutor {
         Self::new()
     }
 }
+
+// ---------------------------------------------------------------------------
+// Shared helpers (all platforms)
+// ---------------------------------------------------------------------------
 
 fn effective_timeout_ms(run: &RunRequest, profile: &SandboxProfile) -> Option<u64> {
     match (run.timeout_ms, profile.timeout_ms) {
@@ -109,6 +129,41 @@ fn merge_env(
     }
     env
 }
+
+fn resolve_sandbox_path(path: &str, base_dir: &Path) -> Result<PathBuf, RestrictedError> {
+    let path_buf = if Path::new(path).is_absolute() {
+        PathBuf::from(path)
+    } else {
+        base_dir.join(path)
+    };
+
+    if let Ok(canonical) = std::fs::canonicalize(&path_buf) {
+        return Ok(canonical);
+    }
+
+    if let Some(parent) = path_buf.parent() {
+        if let Ok(canonical_parent) = std::fs::canonicalize(parent) {
+            if let Some(name) = path_buf.file_name() {
+                return Ok(canonical_parent.join(name));
+            }
+        }
+    }
+
+    Ok(path_buf)
+}
+
+/// Read-only bind `path` onto itself if it exists on the host.
+fn ro_bind_if_exists(args: &mut Vec<String>, path: &str) {
+    if Path::new(path).exists() {
+        args.push("--ro-bind".to_string());
+        args.push(path.to_string());
+        args.push(path.to_string());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// macOS backend: sandbox-exec
+// ---------------------------------------------------------------------------
 
 #[cfg(target_os = "macos")]
 fn build_sandbox_profile(
@@ -146,7 +201,7 @@ fn build_sandbox_profile(
     Ok(profile)
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 fn build_sandbox_profile(
     _network: NetworkPolicy,
     _writable_paths: &[String],
@@ -154,47 +209,120 @@ fn build_sandbox_profile(
     _base_dir: &Path,
 ) -> Result<String, RestrictedError> {
     Err(RestrictedError::Unsupported(
-        "profile generation only supports the macOS backend".to_string(),
+        "profile generation only supports the macOS and Linux backends".to_string(),
     ))
 }
 
-fn resolve_sandbox_path(path: &str, base_dir: &Path) -> Result<PathBuf, RestrictedError> {
-    let path_buf = if Path::new(path).is_absolute() {
-        PathBuf::from(path)
-    } else {
-        base_dir.join(path)
-    };
-
-    if let Ok(canonical) = std::fs::canonicalize(&path_buf) {
-        return Ok(canonical);
-    }
-
-    if let Some(parent) = path_buf.parent() {
-        if let Ok(canonical_parent) = std::fs::canonicalize(parent) {
-            if let Some(name) = path_buf.file_name() {
-                return Ok(canonical_parent.join(name));
-            }
-        }
-    }
-
-    Ok(path_buf)
-}
-
+#[cfg(target_os = "macos")]
 fn quote_sandbox_path(path: &str) -> String {
     let escaped = path.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{escaped}\"")
 }
 
-#[cfg(target_os = "macos")]
+// ---------------------------------------------------------------------------
+// Linux backend: bubblewrap (bwrap)
+// ---------------------------------------------------------------------------
+
+/// Builds the `bwrap` argument list (not including the `bwrap` binary itself).
+///
+/// This is a pure function so it can be unit-tested on any host, even though the
+/// resulting command only runs on Linux where `bwrap` is available.
+fn build_bwrap_args(
+    run: &RunRequest,
+    profile: &SandboxProfile,
+    base_dir: &Path,
+) -> Result<Vec<String>, RestrictedError> {
+    let mut args: Vec<String> = vec![
+        "--unshare-user-try".to_string(),
+        "--unshare-ipc".to_string(),
+        "--unshare-pid".to_string(),
+        "--unshare-uts".to_string(),
+        "--unshare-cgroup-try".to_string(),
+    ];
+
+    match profile.network() {
+        NetworkPolicy::NetworkDisabled | NetworkPolicy::NetworkLoopback => {
+            // A fresh network namespace only exposes the loopback interface, so
+            // this both disables external network access (disabled) and confines
+            // the command to loopback-only (loopback).
+            args.push("--unshare-net".to_string());
+        }
+        NetworkPolicy::NetworkEnabled | NetworkPolicy::NetworkUnspecified => {}
+    };
+
+    // Read-only view of the standard filesystem hierarchy. Each entry is only
+    // bound if it exists on the host, so the same profile works across distros.
+    for path in &[
+        "/", "/usr", "/bin", "/lib", "/lib64", "/sbin", "/etc", "/opt", "/home", "/root",
+    ] {
+        ro_bind_if_exists(&mut args, path);
+    }
+
+    args.push("--proc".to_string());
+    args.push("/proc".to_string());
+    args.push("--dev".to_string());
+    args.push("/dev".to_string());
+    args.push("--dir".to_string());
+    args.push("/tmp".to_string());
+
+    // Writable paths: bind-mounted read-write, overriding the read-only root.
+    for raw in profile.writable_paths.iter().filter(|p| !p.is_empty()) {
+        let path = resolve_sandbox_path(raw, base_dir)?;
+        let rendered = path.to_string_lossy().to_string();
+        args.push("--bind".to_string());
+        args.push(rendered.clone());
+        args.push(rendered);
+    }
+
+    // Explicit read-only paths.
+    for raw in profile.readonly_paths.iter().filter(|p| !p.is_empty()) {
+        let path = resolve_sandbox_path(raw, base_dir)?;
+        let rendered = path.to_string_lossy().to_string();
+        args.push("--ro-bind".to_string());
+        args.push(rendered.clone());
+        args.push(rendered);
+    }
+
+    // Environment variables (profile first, then run env can override).
+    for (key, value) in &profile.environment {
+        args.push("--setenv".to_string());
+        args.push(key.clone());
+        args.push(value.clone());
+    }
+    for (key, value) in &run.env {
+        args.push("--setenv".to_string());
+        args.push(key.clone());
+        args.push(value.clone());
+    }
+
+    args.push("--die-with-parent".to_string());
+
+    if let Some(cwd) = &run.cwd {
+        args.push("--chdir".to_string());
+        args.push(cwd.clone());
+    }
+
+    // Separator followed by the command to run inside the sandbox.
+    args.push("--".to_string());
+    args.push(run.command.clone());
+
+    Ok(args)
+}
+
+// ---------------------------------------------------------------------------
+// Resource limits
+// ---------------------------------------------------------------------------
+
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 const RESOURCE_MAX_CPU_SECS: libc::rlim_t = 30;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 const RESOURCE_MAX_FILE_SIZE_BYTES: libc::rlim_t = 256 * 1024 * 1024;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 const RESOURCE_MAX_OPEN_FILES: libc::rlim_t = 4096;
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 const RESOURCE_MAX_PROCESSES: libc::rlim_t = 256;
 
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 fn apply_resource_limits(command: &mut Command) {
     unsafe {
         command.pre_exec(|| {
@@ -222,6 +350,15 @@ fn apply_resource_limits(command: &mut Command) {
             Ok(())
         });
     }
+}
+
+// ---------------------------------------------------------------------------
+// Other platforms
+// ---------------------------------------------------------------------------
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+fn other_platform_message() -> String {
+    "Restricted execution is currently supported on macOS (sandbox-exec) and Linux (bwrap).".to_string()
 }
 
 #[cfg(test)]
@@ -288,5 +425,180 @@ mod tests {
             policy_script: None,
         };
         assert_eq!(effective_timeout_ms(&run, &profile), Some(250));
+    }
+
+    // `build_bwrap_args` is a pure function, so we can verify its output on any
+    // host (including macOS CI) even though the command only runs on Linux.
+    #[test]
+    fn bwrap_args_include_namespace_unsharing() {
+        let run = RunRequest {
+            command: "echo".to_string(),
+            args: vec!["hi".to_string()],
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            input: None,
+            timeout_ms: None,
+        };
+        let profile = SandboxProfile {
+            name: "default".to_string(),
+            network: NetworkPolicy::NetworkEnabled as i32,
+            writable_paths: vec![],
+            readonly_paths: vec![],
+            environment: std::collections::HashMap::new(),
+            timeout_ms: None,
+            policy_script: None,
+        };
+        let args = build_bwrap_args(&run, &profile, Path::new(".")).unwrap();
+        assert!(args.contains(&"--unshare-ipc".to_string()));
+        assert!(args.contains(&"--unshare-pid".to_string()));
+        assert!(args.contains(&"--unshare-uts".to_string()));
+        assert!(args.contains(&"--proc".to_string()));
+        assert!(args.contains(&"--dev".to_string()));
+        assert!(args.contains(&"--die-with-parent".to_string()));
+        // Command must come after the `--` separator.
+        let sep = args.iter().position(|a| a == "--").unwrap();
+        assert_eq!(args[sep + 1], "echo");
+    }
+
+    #[test]
+    fn bwrap_args_disable_network_when_disabled() {
+        let run = RunRequest {
+            command: "curl".to_string(),
+            args: vec![],
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            input: None,
+            timeout_ms: None,
+        };
+        let profile = SandboxProfile {
+            name: "net-off".to_string(),
+            network: NetworkPolicy::NetworkDisabled as i32,
+            writable_paths: vec![],
+            readonly_paths: vec![],
+            environment: std::collections::HashMap::new(),
+            timeout_ms: None,
+            policy_script: None,
+        };
+        let args = build_bwrap_args(&run, &profile, Path::new(".")).unwrap();
+        assert!(args.contains(&"--unshare-net".to_string()));
+    }
+
+    #[test]
+    fn bwrap_args_allow_network_when_enabled() {
+        let run = RunRequest {
+            command: "curl".to_string(),
+            args: vec![],
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            input: None,
+            timeout_ms: None,
+        };
+        let profile = SandboxProfile {
+            name: "net-on".to_string(),
+            network: NetworkPolicy::NetworkEnabled as i32,
+            writable_paths: vec![],
+            readonly_paths: vec![],
+            environment: std::collections::HashMap::new(),
+            timeout_ms: None,
+            policy_script: None,
+        };
+        let args = build_bwrap_args(&run, &profile, Path::new(".")).unwrap();
+        assert!(!args.contains(&"--unshare-net".to_string()));
+    }
+
+    #[test]
+    fn bwrap_args_bind_writable_and_readonly_paths() {
+        let run = RunRequest {
+            command: "make".to_string(),
+            args: vec![],
+            cwd: Some("/workspace".to_string()),
+            env: std::collections::HashMap::new(),
+            input: None,
+            timeout_ms: None,
+        };
+        let profile = SandboxProfile {
+            name: "build".to_string(),
+            network: NetworkPolicy::NetworkEnabled as i32,
+            writable_paths: vec!["/workspace".to_string()],
+            readonly_paths: vec!["/workspace/src".to_string()],
+            environment: std::collections::HashMap::new(),
+            timeout_ms: None,
+            policy_script: None,
+        };
+        let args = build_bwrap_args(&run, &profile, Path::new("/workspace")).unwrap();
+        assert!(args.contains(&"--bind".to_string()));
+        assert!(args.contains(&"--ro-bind".to_string()));
+        assert!(args.contains(&"--chdir".to_string()));
+        assert!(args.contains(&"/workspace".to_string()));
+    }
+
+    #[test]
+    fn bwrap_args_set_environment_variables() {
+        let run = RunRequest {
+            command: "cargo".to_string(),
+            args: vec!["build".to_string()],
+            cwd: None,
+            env: std::collections::HashMap::new(),
+            input: None,
+            timeout_ms: None,
+        };
+        let mut environment = std::collections::HashMap::new();
+        environment.insert("CARGO_HOME".to_string(), "/tmp/cargo".to_string());
+        let profile = SandboxProfile {
+            name: "cargo".to_string(),
+            network: NetworkPolicy::NetworkEnabled as i32,
+            writable_paths: vec![],
+            readonly_paths: vec![],
+            environment,
+            timeout_ms: None,
+            policy_script: None,
+        };
+        let args = build_bwrap_args(&run, &profile, Path::new(".")).unwrap();
+        let setenv = args.iter().position(|a| a == "--setenv").unwrap();
+        assert_eq!(args[setenv + 1], "CARGO_HOME");
+        assert_eq!(args[setenv + 2], "/tmp/cargo");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    fn linux_bwrap_runs_echo() {
+        if !bwrap_available() {
+            eprintln!("skipping linux_bwrap_runs_echo: bwrap not available");
+            return;
+        }
+        let executor = RestrictedExecutor::new();
+        let result = executor
+            .run(
+                &RunRequest {
+                    command: "echo".to_string(),
+                    args: vec!["hello".to_string()],
+                    cwd: None,
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: Some(5000),
+                },
+                &SandboxProfile {
+                    name: "echo".to_string(),
+                    network: NetworkPolicy::NetworkDisabled as i32,
+                    writable_paths: vec![],
+                    readonly_paths: vec![],
+                    environment: std::collections::HashMap::new(),
+                    timeout_ms: None,
+                    policy_script: None,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(result.exit_code, 0);
+        assert_eq!(result.stdout.trim(), "hello");
+    }
+
+    #[cfg(target_os = "linux")]
+    fn bwrap_available() -> bool {
+        std::process::Command::new("bwrap")
+            .arg("--version")
+            .output()
+            .map(|output| output.status.success())
+            .unwrap_or(false)
     }
 }

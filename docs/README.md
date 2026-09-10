@@ -11,7 +11,7 @@ runtime; a Rust runtime provides sandbox enforcement.
 dev-agent/
 ├── apps/
 │   ├── cli/              Primary CLI entry point (phase 1)
-│   └── desktop/          Placeholder (not implemented)
+│   └── desktop/          Local web server with streaming chat UI (SSE)
 ├── packages/
 │   ├── agent-core/       Agent loop, context, memory, agent state
 │   ├── model/            Unified LLM provider (OpenAI, Anthropic, Gemini, Ollama)
@@ -20,7 +20,7 @@ dev-agent/
 │   ├── code-intelligence/ AST scanner, in-memory + JSON-persistent code index, reference search
 │   └── executor/         Executor abstraction: LocalExecutor + RustExecutor (protobuf stdio)
 ├── runtime/
-│   └── rust/             Sandbox enforcement (macOS sandbox-exec, Starlark policies)
+│   └── rust/             Sandbox enforcement (macOS sandbox-exec, Linux bwrap, Starlark policies)
 ├── configs/              Shared TypeScript configuration
 ├── docs/                 This documentation
 └── tests/                Test suites
@@ -40,13 +40,21 @@ dev-agent/
   `TypeScriptReferenceIndex` uses the TS language service for go-to-definition.
 - **executor**: `LocalExecutor` runs commands locally with optional history. `RustExecutor`
   spawns the Rust binary and speaks length-prefixed protobuf.
-- **runtime/rust**: Enforces sandbox profiles with `sandbox-exec` on macOS. Policies are
-  authored in **Starlark** and evaluated by an embedded interpreter.
+- **runtime/rust**: Enforces sandbox profiles with `sandbox-exec` on macOS and `bwrap`
+  on Linux. Policies are authored in **Starlark** and evaluated by an embedded interpreter;
+  the policy script receives `ctx.network_policy` (`"enabled"`, `"disabled"`, `"loopback"`)
+  for network policy decisions.
+- **apps/desktop**: `ChatSession` builds the `AgentLoop` with default tools and model
+  provider, bridging streaming callbacks to SSE events. `server.ts` serves a static chat UI
+  with `POST /api/chat` (Server-Sent Events) and `GET /health`. Single-page dark/light UI
+  in `public/index.html`.
 
 ## Policy Language: Starlark
 
-Sandbox, filesystem, and network policies are authored in Starlark and evaluated
-by the Rust runtime. This follows the open-source Codex agent's approach: deterministic,
-sandboxable, auditable rules instead of raw JSON or ad-hoc DSLs.
+Sandbox, filesystem, and network policies are authored in Starlark and evaluated by the
+Rust runtime. This follows the open-source Codex agent's approach: deterministic,
+sandboxable, auditable rules instead of raw JSON or ad-hoc DSLs. The policy script receives
+a `ctx` struct including `ctx.network_policy` (`"enabled"`, `"disabled"`, `"loopback"`) to
+make network access decisions.
 
 See `runtime/rust/README.md` for the policy model and Linux backend status.

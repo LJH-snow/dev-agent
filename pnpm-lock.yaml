@@ -141,6 +141,31 @@ importers:
         specifier: ^5.9.0
         version: 5.9.3
 
+  apps/desktop:
+    dependencies:
+      '@dev-agent/agent-core':
+        specifier: workspace:*
+        version: link:../../packages/agent-core
+      '@dev-agent/executor':
+        specifier: workspace:*
+        version: link:../../packages/executor
+      '@dev-agent/mcp':
+        specifier: workspace:*
+        version: link:../../packages/mcp
+      '@dev-agent/model':
+        specifier: workspace:*
+        version: link:../../packages/model
+      '@dev-agent/tools':
+        specifier: workspace:*
+        version: link:../../packages/tools
+    devDependencies:
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.4.1
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
   packages/agent-core:
     dependencies:
       '@dev-agent/model':

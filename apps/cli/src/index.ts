@@ -1,6 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
+import { readdir, stat } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import {
   AgentLoop,
@@ -13,6 +15,7 @@ import {
 } from "@dev-agent/agent-core";
 import { createExecutor } from "@dev-agent/executor";
 import { McpServerSession, type McpClient, type McpClientConfig, type McpSessionSnapshot } from "@dev-agent/mcp";
+import { colors, colorize } from "./colors.js";
 import { buildMcpSystemPromptSupplement } from "./mcp-system-prompt.js";
 import type { McpResourceLine, McpPromptLine } from "./mcp-system-prompt.js";
 import {
@@ -51,6 +54,7 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
   const resetMemory = args.includes("--reset-memory");
+  const noStream = args.includes("--no-stream");
   const normalizedSessionId = normalizeSessionId(sessionId ?? "default");
   const workingDirectory = resolveWorkingDirectory();
   const rustIndex = args.indexOf("--rust-executor");
@@ -101,6 +105,11 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
 
+    if (args.includes("--session-list")) {
+      await listSessions();
+      return;
+    }
+
     const compactIndex = args.indexOf("--compact");
     if (compactIndex >= 0) {
       const keepTurns = Number.parseInt(args[compactIndex + 1] ?? "5", 10);
@@ -124,6 +133,7 @@ export async function main(argv: string[]): Promise<void> {
       workingDirectory,
       metadata: { cliVersion: version, provider: provider.id },
     });
+    const streaming = new StreamingRun({ enabled: !noStream });
     const loop = new AgentLoop({
       model: provider,
       tools,
@@ -134,14 +144,15 @@ export async function main(argv: string[]): Promise<void> {
       onTurn: (turn) => {
         process.stdout.write(`[turn ${turn}]\n`);
       },
+      ...streaming.callbacks(),
     });
 
     if (oncePrompt) {
-      await runPrompt(loop, context, oncePrompt);
+      await runPrompt(loop, context, streaming, oncePrompt);
       return;
     }
 
-    await interactive(loop, context);
+    await interactive(loop, context, streaming);
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
   }
@@ -152,6 +163,47 @@ function createMemory(sessionId = "default"): FileMemory {
     process.env.DEV_AGENT_MEMORY_FILE ??
     join(homedir(), ".dev-agent", "sessions", `${sessionId}.json`);
   return new FileMemory({ filePath });
+}
+
+function sessionDir(): string {
+  return process.env.DEV_AGENT_SESSION_DIR ??
+    join(homedir(), ".dev-agent", "sessions");
+}
+
+async function listSessions(): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await readdir(sessionDir());
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      console.log("No sessions found.");
+      return;
+    }
+    throw error;
+  }
+
+  const sessionFiles = entries.filter((name) => name.endsWith(".json"));
+  if (sessionFiles.length === 0) {
+    console.log("No sessions found.");
+    return;
+  }
+
+  const rows: Array<{ file: string; size: number; modified: Date }> = [];
+  for (const file of sessionFiles) {
+    const filePath = join(sessionDir(), file);
+    try {
+      const info = await stat(filePath);
+      rows.push({ file, size: info.size, modified: info.mtime });
+    } catch {
+      rows.push({ file, size: 0, modified: new Date(0) });
+    }
+  }
+
+  rows.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+  console.log(`Sessions (${rows.length}) in ${sessionDir()}:`);
+  for (const row of rows) {
+    console.log(`  ${row.file.padEnd(32)} ${String(row.size).padStart(10)} bytes  ${row.modified.toISOString()}`);
+  }
 }
 
 async function checkRust(rustBinaryPath: string | undefined): Promise<void> {
@@ -335,7 +387,7 @@ function resolveWorkingDirectory(): string {
     process.cwd();
 }
 
-async function interactive(loop: AgentLoop, context: AgentContext): Promise<void> {
+async function interactive(loop: AgentLoop, context: AgentContext, streaming: StreamingRun): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
@@ -361,21 +413,90 @@ async function interactive(loop: AgentLoop, context: AgentContext): Promise<void
     if (!prompt) {
       continue;
     }
-    await runPrompt(loop, context, prompt);
+    await runPrompt(loop, context, streaming, prompt);
   }
 
   process.removeListener("SIGINT", onSigint);
   rl.close();
 }
 
-async function runPrompt(loop: AgentLoop, context: AgentContext, prompt: string): Promise<void> {
+async function runPrompt(loop: AgentLoop, context: AgentContext, streaming: StreamingRun, prompt: string): Promise<void> {
   const result = await loop.run(context, prompt);
-  const entries = await result.memory.entries();
-  const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
-  if (lastAssistant) {
-    console.log(lastAssistant.content);
+  if (streaming.isEnabled() && streaming.hasStreamed()) {
+    process.stdout.write("\n");
+  } else {
+    const entries = await result.memory.entries();
+    const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
+    if (lastAssistant) {
+      console.log(lastAssistant.content);
+    }
   }
   console.log(`[state=${result.state.status} turns=${result.state.turns}]`);
+}
+
+interface StreamingCallbacks {
+  onToken?: (token: string, context: AgentContext) => void;
+  onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
+  onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
+}
+
+class StreamingRun {
+  private readonly enabled: boolean;
+  private streamed = false;
+
+  constructor(options: { enabled: boolean }) {
+    this.enabled = options.enabled;
+  }
+
+  isEnabled(): boolean {
+    return this.enabled;
+  }
+
+  hasStreamed(): boolean {
+    return this.streamed;
+  }
+
+  callbacks(): StreamingCallbacks {
+    if (!this.enabled) {
+      return {};
+    }
+    return {
+      onToken: (token) => {
+        this.streamed = true;
+        process.stdout.write(token);
+      },
+      onToolCall: (call) => {
+        const preview = previewInput(call.name, call.input);
+        process.stdout.write(`\n${colorize(`[tool] ${call.name}${preview}`, "cyan")}\n`);
+      },
+      onToolResult: (result) => {
+        const summary = summarizeOutput(result.output);
+        process.stdout.write(`${colorize(`[tool-result] ${result.name}: ${summary}`, "dim")}\n`);
+      },
+    };
+  }
+}
+
+function previewInput(name: string, input: unknown): string {
+  if (input === undefined || input === null) {
+    return "";
+  }
+  try {
+    const text = JSON.stringify(input);
+    if (text.length <= 60) {
+      return ` ${text}`;
+    }
+    return ` ${text.slice(0, 57)}...`;
+  } catch {
+    return "";
+  }
+}
+
+function summarizeOutput(output: string): string {
+  if (output.length <= 80) {
+    return output;
+  }
+  return `${output.slice(0, 77)}...`;
 }
 
 async function registerMcpTools(
@@ -613,6 +734,10 @@ function asRecord(input: unknown): Record<string, unknown> {
     throw new Error("tool input must be an object");
   }
   return input as Record<string, unknown>;
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 main(process.argv).catch((error: unknown) => {

@@ -3,13 +3,13 @@
 Rust side of dev-agent's low-level runtime boundary. The current crate provides
 a working stdio executor binary that is consumed by the TypeScript `RustExecutor`
 through a stable protobuf protocol. Restricted execution is active on macOS via
-`sandbox-exec`; Linux backend support is planned next.
+`sandbox-exec`; the Linux `bwrap` backend is active.
 
 The TypeScript side defines `SandboxProfile` and `SandboxExecutor` in
-`@dev-agent/executor`. The Rust runtime implements the actual sandbox back end
-for those contracts on macOS.
+`@dev-agent/executor`. The Rust runtime implements the actual sandbox back end for
+those contracts on macOS (`sandbox-exec`) and Linux (`bwrap`).
 
-Current capabilities (macOS):
+Current capabilities:
 
 - Sandboxed command execution
 - Process management and isolation
@@ -17,9 +17,14 @@ Current capabilities (macOS):
 - Explicit network policy, read-only paths, writable paths, and per-command
   timeouts
 - CPU, file-size, open-file, process-count, and core-dump resource limits
+- Linux `bwrap` namespace isolation (user/ipc/pid/uts/cgroup), read-only root
+  filesystem with writable/read-only path bind mounts, network policy
+  (`--unshare-net`), environment injection, resource limits, and cwd enforcement
 
 The stdio execution boundary is active, and macOS `sandbox-exec` currently
-enforces the profile. Linux bubblewrap/seccomp support is the next backend.
+enforces the profile. The Linux `bwrap` backend is active, with pure
+argument-builder unit tests on macOS and live `bwrap` tests on Linux when `bwrap`
+is available.
 
 ## Policy Language: Starlark
 
@@ -89,9 +94,14 @@ The TS side is wired end to end:
   `runSandboxed` path routes through this evaluator.
 - Policy evaluation is guarded by tick and heap limits, and sandbox tests cover
  both allow and deny decisions through `RustExecutor`.
- - Linux placeholder improved: `RestrictedExecutor` now detects `bwrap`
-   availability and returns a clearer unsupported message distinguishing
-   "bwrap installed but backend not wired in" from "bwrap not installed".
+- Linux `bwrap` backend active: `RestrictedExecutor` has a real
+   `#[cfg(target_os = "linux")]` execution path using `bwrap`, with a pure
+   `build_bwrap_args` function (testable on any host) covering namespace
+   unsharing, read-only root, writable/read-only binds, network policy, and cwd
+   enforcement. `RestrictedExecutor` detects `bwrap` availability for clear errors.
+- Starlark `ctx.network_policy` now exposes the documented lowercase labels
+   (`"enabled"`, `"disabled"`, `"loopback"`, `"unspecified"`) instead of the Rust
+   enum Debug output, so policy scripts' network checks match correctly.
 - `SandboxExecutor` no longer passes through to `LocalExecutor`: after Starlark
   returns `Allow`, `runSandboxed` executes through `sandbox-exec` with writable
   path, read-only path, network policy, cwd, timeout, and resource constraints.

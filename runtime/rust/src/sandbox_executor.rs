@@ -7,6 +7,24 @@ use starlark::values::list::AllocList;
 use starlark::values::none::NoneType;
 use starlark::values::structs::AllocStruct;
 
+/// Maps a protobuf `NetworkPolicy` enum to the lowercase label exposed to
+/// Starlark policy scripts via `ctx.network_policy`.
+///
+/// The policy contract (documented on `PolicyContext` and in
+/// `examples/sandbox-policy.star`) uses lowercase labels: "unspecified",
+/// "enabled", "disabled", "loopback". The prost-generated Rust enum variants
+/// are `NetworkUnspecified`/`NetworkEnabled`/`NetworkDisabled`/`NetworkLoopback`,
+/// so we cannot rely on `{:?}` here.
+fn network_policy_label(policy: crate::proto::dev_agent::executor::NetworkPolicy) -> &'static str {
+    use crate::proto::dev_agent::executor::NetworkPolicy;
+    match policy {
+        NetworkPolicy::NetworkEnabled => "enabled",
+        NetworkPolicy::NetworkDisabled => "disabled",
+        NetworkPolicy::NetworkLoopback => "loopback",
+        NetworkPolicy::NetworkUnspecified => "unspecified",
+    }
+}
+
 /// Errors that can occur during sandboxed execution.
 ///
 /// These errors are returned to the TypeScript side as `ErrorResult` messages
@@ -56,7 +74,7 @@ impl PolicyContext {
             command: request.command.clone(),
             args: request.args.clone(),
             cwd: request.cwd.clone(),
-            network_policy: format!("{:?}", profile.network()),
+            network_policy: network_policy_label(profile.network()).to_owned(),
             writable_paths: profile.writable_paths.clone(),
             readonly_paths: profile.readonly_paths.clone(),
         }
@@ -313,6 +331,170 @@ def policy(ctx):
         assert_eq!(ctx.cwd, Some("/workspace".to_string()));
         assert_eq!(ctx.writable_paths, vec!["/workspace".to_string()]);
         assert_eq!(ctx.readonly_paths, vec!["/etc".to_string()]);
+    }
+
+    #[test]
+    fn policy_context_exposes_network_policy_as_lowercase_label() {
+        use crate::proto::dev_agent::executor::NetworkPolicy;
+        let run = fake_run("/bin/echo");
+
+        let disabled = PolicyContext::from_request(
+            &run,
+            &SandboxProfile {
+                name: "net-disabled".to_string(),
+                network: NetworkPolicy::NetworkDisabled as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec!["/etc".to_string()],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: Some(30000),
+                policy_script: None,
+            },
+        );
+        assert_eq!(disabled.network_policy, "disabled");
+
+        let enabled = PolicyContext::from_request(
+            &run,
+            &SandboxProfile {
+                name: "net-enabled".to_string(),
+                network: NetworkPolicy::NetworkEnabled as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec!["/etc".to_string()],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: Some(30000),
+                policy_script: None,
+            },
+        );
+        assert_eq!(enabled.network_policy, "enabled");
+
+        let loopback = PolicyContext::from_request(
+            &run,
+            &SandboxProfile {
+                name: "net-loopback".to_string(),
+                network: NetworkPolicy::NetworkLoopback as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec!["/etc".to_string()],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: Some(30000),
+                policy_script: None,
+            },
+        );
+        assert_eq!(loopback.network_policy, "loopback");
+
+        let unspecified = PolicyContext::from_request(
+            &run,
+            &SandboxProfile {
+                name: "net-unspecified".to_string(),
+                network: NetworkPolicy::NetworkUnspecified as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec!["/etc".to_string()],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: Some(30000),
+                policy_script: None,
+            },
+        );
+        assert_eq!(unspecified.network_policy, "unspecified");
+    }
+
+    #[test]
+    fn evaluate_policy_denies_network_commands_when_disabled() {
+        let ctx = PolicyContext::from_request(
+            &fake_run("curl"),
+            &SandboxProfile {
+                name: "network-off".to_string(),
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
+                    as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec![],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: None,
+                policy_script: None,
+            },
+        );
+        let script = r#"
+def policy(ctx):
+    if ctx.network_policy == "disabled":
+        network_commands = ["curl", "wget", "ssh", "scp"]
+        return ctx.command not in network_commands
+    return True
+"#;
+        assert!(matches!(evaluate_policy(script, &ctx), Ok(PolicyDecision::Deny)));
+
+        let local = PolicyContext::from_request(
+            &fake_run("cat"),
+            &SandboxProfile {
+                name: "network-off".to_string(),
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
+                    as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec![],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: None,
+                policy_script: None,
+            },
+        );
+        assert!(matches!(evaluate_policy(script, &local), Ok(PolicyDecision::Allow)));
+    }
+
+    #[test]
+    fn evaluate_policy_allows_network_commands_when_enabled() {
+        let ctx = PolicyContext::from_request(
+            &fake_run("curl"),
+            &SandboxProfile {
+                name: "network-on".to_string(),
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkEnabled
+                    as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec![],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: None,
+                policy_script: None,
+            },
+        );
+        let script = r#"
+def policy(ctx):
+    if ctx.network_policy == "disabled":
+        network_commands = ["curl", "wget", "ssh", "scp"]
+        return ctx.command not in network_commands
+    return True
+"#;
+        assert!(matches!(evaluate_policy(script, &ctx), Ok(PolicyDecision::Allow)));
+    }
+
+    #[test]
+    fn evaluate_example_policy_network_check() {
+        let ctx = PolicyContext::from_request(
+            &fake_run("curl"),
+            &SandboxProfile {
+                name: "network-off".to_string(),
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
+                    as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec![],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: None,
+                policy_script: None,
+            },
+        );
+        assert!(matches!(evaluate_policy(EXAMPLE_POLICY, &ctx), Ok(PolicyDecision::Deny)));
+
+        let git_local = PolicyContext::from_request(
+            &{
+                let mut run = fake_run("git");
+                run.args = vec!["status".to_string()];
+                run
+            },
+            &SandboxProfile {
+                name: "network-off".to_string(),
+                network: crate::proto::dev_agent::executor::NetworkPolicy::NetworkDisabled
+                    as i32,
+                writable_paths: vec!["/workspace".to_string()],
+                readonly_paths: vec![],
+                environment: std::collections::HashMap::new(),
+                timeout_ms: None,
+                policy_script: None,
+            },
+        );
+        assert!(matches!(evaluate_policy(EXAMPLE_POLICY, &git_local), Ok(PolicyDecision::Allow)));
     }
 
     #[cfg(target_os = "macos")]

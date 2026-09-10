@@ -39,7 +39,15 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - `Executor` abstraction with `LocalExecutor` (phase 1).
 - `RustExecutor` for protobuf-based communication with Rust runtime.
 - Quotas: `maxOutputBytes`, `maxConcurrentExecutions`.
-- `SandboxProfile` and `SandboxExecutor` for future Rust sandbox integration.
+- `SandboxProfile` and `SandboxExecutor` for Rust sandbox integration.
+- `RestrictedExecutor` enforces profiles on macOS (`sandbox-exec`) and Linux (`bwrap`).
+
+
+### `apps/desktop`
+- **ChatSession**: Builds the `AgentLoop` with default tools and model provider; bridges `onToken`/`onToolCall`/`onToolResult`/`onTurn` callbacks to streaming events.
+- **HTTP server** (`server.ts`): Serves the static chat UI, `GET /health`, and `POST /api/chat` (Server-Sent Events). Configurable host/port via env.
+- **Chat UI** (`public/index.html`): Single-page dark/light interface; renders live tokens and tool activity from the SSE stream.
+- Reuses `@dev-agent/agent-core`, `@dev-agent/model`, `@dev-agent/tools`, `@dev-agent/mcp`, `@dev-agent/executor`.
 
 ### `runtime/rust`
 - Starlark policy evaluation for filesystem/network rules.
@@ -49,7 +57,8 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 
 ### `apps/cli`
 - Primary CLI entry point.
-- Commands: `--once`, `--tools`, `--metadata`, `--compact`, `--session`, `--reset-memory`.
+- Commands: `--once`, `--tools`, `--metadata`, `--compact`, `--session`, `--session-list`, `--reset-memory`.
+- Live streaming output via `onToken`/`onToolCall`/`onToolResult` callbacks; `--no-stream` to disable.
 - Config file: `~/.dev-agent/config.json`.
 - Ctrl-C interrupt handling with session state preservation.
 
