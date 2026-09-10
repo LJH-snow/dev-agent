@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-10 (Desktop server hardening)
+
+### Fixed: client errors were reported as server errors
+- `POST /api/chat` with a malformed or empty JSON body threw out of `JSON.parse`
+  and surfaced as a 500. Both cases now return 400 with a clear message, so a bad
+  request is no longer indistinguishable from a server fault.
+- Static file misses returned 500 as well: requesting a missing `/public/*` asset
+  or the directory itself propagated `readFile`'s ENOENT/EISDIR to the catch-all
+  handler. `serveFile` now maps unreadable paths to a 404.
+
+### Note on `/public/` path traversal
+- The `/public/` handler normalizes the request path through `new URL`, which
+  resolves `..` segments before `join`, and `join` does not re-base on absolute
+  segments — so the prefix check is not reachable via traversal. Percent-encoded
+  parent segments resolve to a literal directory name and now return 404 rather
+  than 500. This was verified with tests that send the raw path (fetch normalizes
+  `..` client-side, which is why an earlier test passed for the wrong reason).
+
+### Tests
+- New `apps/desktop/tests/server-edge-cases.test.mjs` (11 tests): missing static
+  assets, directory requests, malformed and empty JSON bodies, non-string
+  messages, health content type, streamed `error` events when a session throws,
+  encoded and raw parent-segment paths, and successful static serving.
+- `apps/desktop` tests: 5 -> 16. TypeScript tests: 182 -> 193.
+
 ## 2026-09-10 (Built-in tools hardening)
 
 ### Fixed: code-search ignored relative file paths

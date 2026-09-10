@@ -73,14 +73,29 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 }
 
 async function serveFile(res: ServerResponse, filePath: string, ext: string): Promise<void> {
-  const content = await readFile(filePath);
+  let content: Buffer;
+  try {
+    content = await readFile(filePath);
+  } catch {
+    // Missing files, directories, and unreadable paths are client errors.
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+    return;
+  }
   res.writeHead(200, { "content-type": mimeTypes[ext] ?? "application/octet-stream" });
   res.end(content);
 }
 
 async function handleChat(req: IncomingMessage, res: ServerResponse, session: ChatSession): Promise<void> {
   const body = await readBody(req);
-  const parsed = JSON.parse(body) as { message?: unknown };
+  let parsed: { message?: unknown };
+  try {
+    parsed = JSON.parse(body) as { message?: unknown };
+  } catch {
+    res.writeHead(400, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+    return;
+  }
   const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
 
   if (!message) {
