@@ -5,12 +5,34 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（code-search 索引缓存）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-11 00:08-00:35）
-- 工作区：阶段 1 的改动已提交并推送
+- 当前阶段：阶段 3（模型层重试与限流处理）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-11 00:18-00:40）
+- 工作区：阶段 2 的改动已提交并推送
 
 ## 日志
+
+### 运行 3 — 2026-09-11 00:18-00:40
+
+- 阶段/工作项：阶段 2（code-search 索引缓存）全部完成
+- 做了什么：
+  - `InMemoryCodeIndex` 新增 `removeFile(filePath): boolean`（`CodeIndex` 接口同步），
+    用于增量更新时移除变更/删除文件的旧符号
+  - `CodeSearchTool` 增加按 `root + maxDepth` 缓存的扫描结果：索引、文件签名
+    （mtimeMs + size）与源码
+  - 重复调用只重新读取签名变化的文件；删除的文件从索引与源码缓存中移除；
+    `search` 走缓存的索引，`references` / `definition` 复用缓存的源码
+  - 新增只读统计 `getCacheStats()`（hits / misses / rescanned），工具输出格式不变
+  - 文档：`packages/code-intelligence/README.md`、`packages/tools/README.md`
+- 验证命令与结果：
+  - `packages/tools`：40 passed（新增 4 个：二次命中缓存、修改文件增量重扫、
+    删除文件移除符号、references 复用源码缓存）
+  - `packages/code-intelligence`：25 passed（新增 1 个 `removeFile` 用例）
+  - 自身仓库实测：`query: "AgentLoop"` 首次 261ms / 第二次 65ms，两次结果都是
+    26 个符号，统计 `hits=1, misses=1, rescanned=0`
+  - `pnpm build`、`pnpm typecheck`、`pnpm test`：全绿（TypeScript 226 个测试）
+- 提交：见阶段 2 的 feat 提交
+- 下一步：阶段 3 — 模型层重试与限流处理
 
 ### 运行 2 — 2026-09-11 00:08-00:35
 

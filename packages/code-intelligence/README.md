@@ -28,3 +28,7 @@ index.addSource("export function loadAgent() {}", "src/agent.ts");
 
 const matches = index.searchSymbols({ query: "loadAgent", limit: 10 });
 ```
+
+`InMemoryCodeIndex` also exposes `removeFile(filePath)`, which drops every
+symbol recorded for a file. Callers that cache an index across scans use it to
+update changed or deleted files without rebuilding the whole index.

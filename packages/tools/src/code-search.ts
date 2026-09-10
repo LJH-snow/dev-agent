@@ -1,4 +1,4 @@
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile, stat } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 
 import {
@@ -37,6 +37,24 @@ const symbolKinds = new Set<SymbolKind>([
   "property",
 ]);
 
+interface FileSignature {
+  readonly mtimeMs: number;
+  readonly size: number;
+}
+
+interface CachedScan {
+  readonly index: InMemoryCodeIndex;
+  readonly signatures: Map<string, FileSignature>;
+  readonly sources: Map<string, string>;
+}
+
+/** Read-only cache counters for diagnostics and tests. */
+export interface CodeSearchCacheStats {
+  readonly hits: number;
+  readonly misses: number;
+  readonly rescanned: number;
+}
+
 export class CodeSearchTool implements Tool {
   readonly name = "code-search" as const;
   readonly description =
@@ -60,6 +78,17 @@ export class CodeSearchTool implements Tool {
     required: [],
   };
 
+  private readonly cache = new Map<string, CachedScan>();
+  private readonly cacheStats = { hits: 0, misses: 0, rescanned: 0 };
+
+  /**
+   * Returns how often a scan was served from cache, built from scratch, or
+   * partially re-read because files changed.
+   */
+  getCacheStats(): CodeSearchCacheStats {
+    return { ...this.cacheStats };
+  }
+
   async execute(input: unknown, context?: ToolExecutionContext): Promise<unknown> {
     const record = asRecord(input);
     const mode = parseMode(record.mode);
@@ -73,12 +102,8 @@ export class CodeSearchTool implements Tool {
       const query = requireString(record.query, "query");
       const limit = record.limit === undefined ? defaultLimit : parsePositiveInt(record.limit, "limit");
       const kind = record.kind === undefined ? undefined : parseSymbolKind(record.kind);
-      const index = new InMemoryCodeIndex();
-      const files = await collectFiles(root, 0, maxDepth);
-      for (const [filePath, source] of files) {
-        index.addSource(source, filePath);
-      }
-      const matches = index.searchSymbols({
+      const scan = await this.loadScan(root, maxDepth);
+      const matches = scan.index.searchSymbols({
         query,
         limit,
         kinds: kind ? [kind] : undefined,
@@ -101,8 +126,8 @@ export class CodeSearchTool implements Tool {
     const file = resolve(root, requireString(record.file, "file"));
     const line = parsePositiveInt(record.line, "line");
     const column = record.column === undefined ? 1 : parsePositiveInt(record.column, "column");
-    const files = await collectFiles(root, 0, maxDepth);
-    const referenceIndex = new TypeScriptReferenceIndex({ files });
+    const scan = await this.loadScan(root, maxDepth);
+    const referenceIndex = new TypeScriptReferenceIndex({ files: scan.sources });
 
     if (mode === "references") {
       const references = referenceIndex.findReferences(file, line, column);
@@ -111,6 +136,63 @@ export class CodeSearchTool implements Tool {
 
     const definition = referenceIndex.findDefinition(file, line, column);
     return { mode, file, line, column, definition };
+  }
+
+  /**
+   * Returns the symbol index and file sources for a scan root, re-reading only
+   * the files whose size or mtime changed since the previous call. Deleted
+   * files are dropped from both the index and the cached sources.
+   */
+  private async loadScan(root: string, maxDepth: number): Promise<CachedScan> {
+    const cacheKey = `${root}\u0000${maxDepth}`;
+    const signatures = await collectSignatures(root, 0, maxDepth);
+    const cached = this.cache.get(cacheKey);
+
+    if (!cached) {
+      const index = new InMemoryCodeIndex();
+      const sources = new Map<string, string>();
+      for (const filePath of signatures.keys()) {
+        const source = await readSource(filePath);
+        if (source === undefined) {
+          continue;
+        }
+        sources.set(filePath, source);
+        index.addSource(source, filePath);
+      }
+      this.cacheStats.misses += 1;
+      const scan: CachedScan = { index, signatures, sources };
+      this.cache.set(cacheKey, scan);
+      return scan;
+    }
+
+    this.cacheStats.hits += 1;
+
+    for (const filePath of [...cached.signatures.keys()]) {
+      if (!signatures.has(filePath)) {
+        cached.index.removeFile(filePath);
+        cached.signatures.delete(filePath);
+        cached.sources.delete(filePath);
+        this.cacheStats.rescanned += 1;
+      }
+    }
+
+    for (const [filePath, signature] of signatures) {
+      const previous = cached.signatures.get(filePath);
+      if (previous && previous.mtimeMs === signature.mtimeMs && previous.size === signature.size) {
+        continue;
+      }
+      const source = await readSource(filePath);
+      if (source === undefined) {
+        continue;
+      }
+      cached.index.removeFile(filePath);
+      cached.index.addSource(source, filePath);
+      cached.sources.set(filePath, source);
+      cached.signatures.set(filePath, signature);
+      this.cacheStats.rescanned += 1;
+    }
+
+    return cached;
   }
 }
 
@@ -145,23 +227,27 @@ function parseSymbolKind(value: unknown): SymbolKind {
   return value as SymbolKind;
 }
 
-async function collectFiles(
+/**
+ * Walks the scan root and records a cheap signature per file, so a later call
+ * can tell which files actually changed without reading any of them.
+ */
+async function collectSignatures(
   dir: string,
   depth: number,
   maxDepth: number
-): Promise<Map<string, string>> {
-  const files = new Map<string, string>();
+): Promise<Map<string, FileSignature>> {
+  const signatures = new Map<string, FileSignature>();
   if (depth > maxDepth) {
-    return files;
+    return signatures;
   }
 
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (!skippedDirectories.has(entry.name)) {
-        const nested = await collectFiles(join(dir, entry.name), depth + 1, maxDepth);
-        for (const [filePath, source] of nested) {
-          files.set(filePath, source);
+        const nested = await collectSignatures(join(dir, entry.name), depth + 1, maxDepth);
+        for (const [filePath, signature] of nested) {
+          signatures.set(filePath, signature);
         }
       }
       continue;
@@ -173,12 +259,22 @@ async function collectFiles(
 
     const filePath = join(dir, entry.name);
     try {
-      files.set(filePath, await readFile(filePath, "utf8"));
+      const info = await stat(filePath);
+      signatures.set(filePath, { mtimeMs: info.mtimeMs, size: info.size });
     } catch {
-      // Skip unreadable files instead of failing the whole project scan.
+      // Skip files that disappear or cannot be inspected mid-scan.
     }
   }
-  return files;
+  return signatures;
+}
+
+async function readSource(filePath: string): Promise<string | undefined> {
+  try {
+    return await readFile(filePath, "utf8");
+  } catch {
+    // Skip unreadable files instead of failing the whole project scan.
+    return undefined;
+  }
 }
 
 function asRecord(input: unknown): Record<string, unknown> {

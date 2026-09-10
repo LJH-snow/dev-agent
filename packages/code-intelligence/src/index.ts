@@ -50,6 +50,7 @@ export interface RankedSymbolMatch {
 export interface CodeIndex {
   addSymbol(symbol: CodeSymbol): void;
   addSource(source: string, filePath: string): void;
+  removeFile(filePath: string): boolean;
   search(query: string | CodeQueryOptions): CodeSymbol[];
   searchSymbols(query: CodeQueryOptions): RankedSymbolMatch[];
 }
@@ -67,6 +68,14 @@ export class InMemoryCodeIndex implements CodeIndex {
     for (const symbol of scanFile(source, filePath)) {
       this.addSymbol(symbol);
     }
+  }
+
+  /**
+   * Drops every symbol recorded for a file, e.g. after it was deleted or
+   * changed on disk. Returns whether the file was indexed at all.
+   */
+  removeFile(filePath: string): boolean {
+    return this.symbols.delete(filePath);
   }
 
   search(query: string | CodeQueryOptions): CodeSymbol[] {

@@ -107,3 +107,15 @@ test("deeply nested paths receive a depth penalty", async () => {
   assert.match(matches[0].symbol.filePath, /src\/util/);
   assert.ok(matches[0].score > matches[1].score);
 });
+
+test("in-memory code index drops every symbol of a removed file", () => {
+  const index = new InMemoryCodeIndex();
+  index.addSource("export function keepMe() {}\nexport function dropMe() {}", "src/drop.ts");
+  index.addSource("export function keepMe() {}", "src/keep.ts");
+
+  assert.equal(index.search("dropMe").length, 1);
+  assert.equal(index.removeFile("src/drop.ts"), true);
+  assert.equal(index.search("dropMe").length, 0);
+  assert.equal(index.search("keepMe").length, 1);
+  assert.equal(index.removeFile("src/missing.ts"), false);
+});
