@@ -1,5 +1,31 @@
 # Changelog
 
+## 2026-09-10 (Built-in tools hardening)
+
+### Fixed: code-search ignored relative file paths
+- `CodeSearchTool` builds its index from absolute paths but passed the `file`
+  input through verbatim. A relative path -- what a model naturally emits, e.g.
+  `src/agent.ts` -- matched nothing, so `references` silently returned
+  `count: 0` and `definition` returned `undefined`, with no error.
+- `file` is now resolved against the scanned root (the working directory by
+  default), so relative and absolute paths both work.
+
+### Fixed: filesystem write silently discarded non-string content
+- `write` accepted any `content` type and coerced non-strings to `undefined`,
+  which wrote an empty file. A model sending structured content would silently
+  clobber a file instead of getting an error.
+- `content` must now be a string when provided; omitting it still writes an
+  empty file.
+
+### Tests
+- New `packages/tools/tests/tools-edge-cases.test.mjs` (26 tests) covering the
+  built-in tools beyond their happy paths: filesystem write/read round-trips,
+  `mkdir`, `stat` and input validation; shell and git argument validation and
+  the exact command/args/cwd forwarded to the executor; search argument
+  construction; and code-search relative paths, kind filtering, `limit`, and
+  `node_modules`/`dist` skipping.
+- `packages/tools` tests: 10 -> 36. TypeScript tests: 156 -> 182.
+
 ## 2026-09-10 (Model streaming hardening)
 
 ### Fixed: streaming dropped tool calls, breaking tool use

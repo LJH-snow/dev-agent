@@ -74,10 +74,14 @@ function parseFilesystemInput(input: unknown): FilesystemInput {
   if (typeof record.path !== "string" || record.path.length === 0) {
     throw new Error("filesystem path must be a non-empty string");
   }
+  const content = record.content;
+  if (content !== undefined && typeof content !== "string") {
+    throw new Error("filesystem content must be a string when provided");
+  }
   return {
     action,
     path: record.path,
-    content: typeof record.content === "string" ? record.content : undefined,
+    content,
   };
 }
 

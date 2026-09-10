@@ -132,7 +132,7 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 - Model streaming: `streamChat` for OpenAI, Anthropic, Gemini, and Ollama emits
   tokens via `onToken`, flushes a final event that lacks a trailing newline, and
   surfaces tool calls so the agent can still run tools in streaming mode
-- Test suite: 156 TypeScript tests + 35 Rust tests, all passing
+- Test suite: 182 TypeScript tests + 35 Rust tests, all passing
 
 ### Rust runtime progress
 

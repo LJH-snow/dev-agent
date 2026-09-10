@@ -96,7 +96,9 @@ export class CodeSearchTool implements Tool {
       };
     }
 
-    const file = requireString(record.file, "file");
+    // The scan indexes absolute paths, so a relative `file` must be resolved
+    // against the scanned root (the working directory by default).
+    const file = resolve(root, requireString(record.file, "file"));
     const line = parsePositiveInt(record.line, "line");
     const column = record.column === undefined ? 1 : parsePositiveInt(record.column, "column");
     const files = await collectFiles(root, 0, maxDepth);
