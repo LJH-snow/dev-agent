@@ -57,6 +57,8 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `POST /api/sessions/<id>/rename` — body `{ "sessionId": "new-id" }`; moves the
   memory file, answers `409` when the target exists and `404` when the source is
   missing.
+- `GET /api/sessions/<id>/export` — the session as a Markdown transcript
+  (`text/markdown`, attachment filename `<id>.md`); `404` when unknown.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-result`, `turn`, `usage`, `approval`, `done`,
   `error`. An `approval` frame carries `{ tool, decision, reason }`; a denial is
@@ -86,6 +88,8 @@ unset to get one file per session.
 
 The `Delete` button next to the picker removes the current session after a
 confirmation and switches back to the default one.
+
+The `Download` button saves the current session as a Markdown file.
 
 ## Approvals
 

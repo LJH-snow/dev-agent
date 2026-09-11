@@ -294,3 +294,67 @@ test("POST /api/sessions/<id>/rename returns 404 for an unknown session", async 
     }
   });
 });
+
+test("GET /api/sessions/<id>/export returns a Markdown transcript", async () => {
+  await withSessionDir(async (dir) => {
+    const server = createDesktopServer({ session: fakeSession("default") });
+    const base = await start(server);
+    try {
+      await writeFile(
+        join(dir, "alpha.json"),
+        JSON.stringify({
+          version: 1,
+          metadata: {
+            sessionId: "alpha",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            lastActiveAt: "2026-01-01T00:01:00.000Z",
+            entryCount: 3,
+          },
+          entries: [
+            { id: "e1", role: "user", content: "hello", createdAt: "2026-01-01T00:00:00.000Z" },
+            {
+              id: "e2",
+              role: "assistant",
+              content: "hi there",
+              createdAt: "2026-01-01T00:00:10.000Z",
+            },
+            {
+              id: "e3",
+              role: "tool",
+              content: "ran",
+              toolName: "shell",
+              createdAt: "2026-01-01T00:00:20.000Z",
+            },
+          ],
+        }),
+        "utf8"
+      );
+
+      const res = await fetch(`${base}/api/sessions/alpha/export`);
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get("content-type") ?? "", /text\/markdown/);
+      assert.match(res.headers.get("content-disposition") ?? "", /alpha\.md/);
+
+      const body = await res.text();
+      assert.match(body, /# Session alpha/);
+      assert.match(body, /## user\n\nhello/);
+      assert.match(body, /## assistant\n\nhi there/);
+      assert.match(body, /## tool \(shell\)/);
+    } finally {
+      await close(server);
+    }
+  });
+});
+
+test("GET /api/sessions/<id>/export returns 404 for an unknown session", async () => {
+  await withSessionDir(async () => {
+    const server = createDesktopServer({ session: fakeSession("default") });
+    const base = await start(server);
+    try {
+      const res = await fetch(`${base}/api/sessions/missing/export`);
+      assert.equal(res.status, 404);
+    } finally {
+      await close(server);
+    }
+  });
+});

@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
 
-import { FileMemory } from "@dev-agent/agent-core";
+import { FileMemory, type MemoryEntry, type SessionMetadata } from "@dev-agent/agent-core";
 
 import {
   ChatSession,
@@ -192,6 +192,30 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ from, to, renamed: from !== to }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/export")
+      ) {
+        const rawId = url.pathname.slice("/api/sessions/".length, -"/export".length);
+        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const memory = new FileMemory({ filePath: memoryPathFor(sessionId) });
+        if (!existsSync(memoryPathFor(sessionId))) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+
+        const entries = await memory.entries();
+        const metadata = await memory.getMetadata();
+        res.writeHead(200, {
+          "content-type": "text/markdown; charset=utf-8",
+          "content-disposition": `attachment; filename="${sessionId}.md"`,
+        });
+        res.end(renderTranscript(sessionId, entries, metadata));
         return;
       }
 
@@ -400,6 +424,34 @@ function readBody(req: IncomingMessage): Promise<string> {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+/** Renders a session as a Markdown transcript for download. */
+function renderTranscript(
+  sessionId: string,
+  entries: readonly MemoryEntry[],
+  metadata: SessionMetadata | undefined
+): string {
+  const lines: string[] = [`# Session ${sessionId}`, ""];
+  if (metadata) {
+    lines.push(
+      `- created: ${metadata.createdAt}`,
+      `- last active: ${metadata.lastActiveAt}`,
+      `- entries: ${metadata.entryCount}`,
+      ""
+    );
+  }
+
+  for (const entry of entries) {
+    if (entry.role === "tool") {
+      const label = entry.toolName ? `tool (${entry.toolName})` : "tool";
+      lines.push(`## ${label}`, "", "```", entry.content, "```", "");
+      continue;
+    }
+    lines.push(`## ${entry.role}`, "", entry.content, "");
+  }
+
+  return lines.join("\n");
 }
 
 export function sessionsDir(): string {

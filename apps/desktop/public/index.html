@@ -114,6 +114,7 @@
       <select id="session" title="Session"></select>
       <button type="button" id="new-session" title="New session">+</button>
       <button type="button" id="delete-session" title="Delete session">Delete</button>
+      <button type="button" id="export-session" title="Download transcript">Download</button>
       <span class="status" id="usage"></span>
       <span class="status" id="status">idle</span>
     </div>
@@ -133,6 +134,7 @@
     const sessionSelect = document.getElementById("session");
     const newSessionButton = document.getElementById("new-session");
     const deleteSessionButton = document.getElementById("delete-session");
+    const exportSessionButton = document.getElementById("export-session");
 
     let currentAssistant = null;
     let totalTokens = 0;
@@ -289,6 +291,12 @@
       await loadSessions();
       await loadHistory(currentSessionId);
       setStatus("session deleted");
+    });
+
+    exportSessionButton.addEventListener("click", () => {
+      if (currentSessionId === null) return;
+      window.location.href =
+        "/api/sessions/" + encodeURIComponent(currentSessionId) + "/export";
     });
 
     input.addEventListener("input", () => {

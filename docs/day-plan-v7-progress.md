@@ -5,12 +5,27 @@
 
 ## 当前状态
 
-- 当前阶段：Backlog 2（桌面端会话导出）
+- 当前阶段：Backlog 3（审批规则可配置）
 - 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
 - 最近一次运行：运行 4（2026-09-11 15:50-16:10）
 - 工作区：阶段 3 的改动已提交并推送
 
 ## 日志
+
+### 运行 6 — 2026-09-11 16:30-16:50
+
+- 阶段/工作项：Backlog 2（桌面端会话导出）完成
+- 做了什么：
+  - 桌面端新增 `GET /api/sessions/<id>/export`：输出 Markdown 转录
+    （会话头 + 元数据 + 逐条 user/assistant/tool，tool 内容用代码块包裹），
+    响应头带 `content-disposition: attachment; filename="<id>.md"`，未知会话 404
+  - UI：会话选择器旁新增 `Download` 按钮，点击后下载当前会话
+  - 文档：`apps/desktop/README.md` 同步
+- 验证命令与结果：
+  - `apps/desktop`：新增 2 个用例通过（导出内容包含会话头与三类消息、未知会话 404）
+  - `pnpm test`：全绿（TypeScript 323 个测试）
+- 提交：见 Backlog 2 的 feat 提交
+- 下一步：Backlog 3 — 审批规则可配置（配置文件追加自定义危险模式与白名单）
 
 ### 运行 5 — 2026-09-11 16:10-16:30
 
