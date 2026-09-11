@@ -127,3 +127,63 @@ test("CLI sends the full history when no budget is configured", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("CLI summarizes the trimmed history when summarization is enabled", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-budget-"));
+  const requests = [];
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
+      const isSummaryCall =
+        typeof parsed.messages?.[0]?.content === "string" &&
+        parsed.messages[0].content.startsWith("Summarize the conversation excerpt");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          choices: [{ message: { content: isSummaryCall ? "digest-text" : "done" } }],
+        })
+      );
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  try {
+    const memoryFile = await seedSession(dir, 12);
+    const result = await runCli(["--once", "hello", "--no-stream"], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "openai",
+      OPENAI_API_KEY: "test-key",
+      OPENAI_BASE_URL: `http://127.0.0.1:${port}/v1`,
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+      DEV_AGENT_MAX_CONTEXT_CHARS: "400",
+      DEV_AGENT_SUMMARIZE_CONTEXT: "1",
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const conversation = requests.find(
+      (request) =>
+        !String(request.messages?.[0]?.content ?? "").startsWith("Summarize the conversation excerpt")
+    );
+    assert.ok(conversation, "the CLI should have run the conversation");
+
+    const contents = conversation.messages.map((message) => message.content);
+    assert.ok(
+      contents.some((content) => content.startsWith("[summary]")),
+      "the trimmed history should be replaced by a summary"
+    );
+    assert.ok(contents.some((content) => content.includes("digest-text")));
+    assert.ok(
+      !contents.some((content) => content.startsWith("[context]")),
+      "the plain omission notice should not be used when summarization succeeds"
+    );
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+});

@@ -4,12 +4,36 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（上下文预算改为增量摘要）未开始
-- 已完成阶段：阶段 0（优雅终止）
-- 最近一次运行：运行 1（2026-09-11 09:0x-09:3x）
-- 工作区：阶段 0 的改动已提交并推送
+- 当前阶段：阶段 2（文档、回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-11 09:3x-10:0x）
+- 工作区：阶段 1 的改动已提交并推送
 
 ## 日志
+
+### 运行 2 — 2026-09-11 09:3x-10:0x
+
+- 阶段/工作项：阶段 1（上下文预算改为增量摘要）全部完成
+- 做了什么：
+  - `ContextBudget` 增加 `summarize?: boolean`（默认 false，未开启时行为与之前完全一致）
+  - 开启后，被裁掉的条目不再只留一行提示，而是调用一次模型生成 `[summary] …` 摘要；
+    摘要按"新被裁掉的那一段"增量生成，已有摘要不重复总结
+  - 摘要调用消耗的 token 计入会话 `usage` 并触发 `onUsage`（复用 v4 的统计链路）
+  - 摘要失败（抛错）时回退到 `[context] N earlier entries omitted`，对话不中断
+  - CLI：`DEV_AGENT_SUMMARIZE_CONTEXT` / `summarizeContext` 配置项；
+    桌面端：`ChatSessionOptions.summarizeContext` + 同名环境变量
+  - 文档：agent-core / cli / desktop 三个 README 同步
+- 验证命令与结果：
+  - `packages/agent-core`：33 passed（新增 5 个：摘要替换提示、只总结被裁部分、
+    后续轮次增量总结、摘要 token 计入 usage、摘要失败回退；另含"未开启时不摘要"）
+  - `apps/cli`：41 passed（新增配置解析用例 + 端到端：预算 400 + 开启摘要时，
+    provider 收到的对话请求包含 `[summary] digest-text` 且没有 `[context]` 提示）
+  - `pnpm check/build/typecheck/test`：全绿（TypeScript 270 个测试）
+- 决策记录：摘要缓存保存在 AgentLoop 实例上。CLI 一个进程内复用同一个 loop，
+  因此摘要只算一次；桌面端每次 `session.run` 会新建 loop，跨 run 会重新生成一次
+  摘要——已在文档中说明，若后续需要跨 run 复用，应把摘要写进 memory 元数据。
+- 提交：见阶段 1 的 feat 提交
+- 下一步：阶段 2 — 文档、全量回归与提交
 
 ### 运行 1 — 2026-09-11 09:0x-09:3x
 

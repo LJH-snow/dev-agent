@@ -57,6 +57,10 @@ Configuration is read from the environment:
   history sent to the model. Oldest entries are dropped first (never splitting a
   tool call from its results) and the model is told how many were omitted. Unset
   means the full history is sent, exactly as before.
+- `DEV_AGENT_SUMMARIZE_CONTEXT` - `1`/`true`/`yes` replaces the dropped history
+  with a model-written `[summary]` digest instead of the omission notice; the
+  digest grows incrementally and its tokens are counted in `[usage]`. `0`/`false`
+  turns it off.
 - `DEV_AGENT_RUST_BINARY` - path to the `dev-agent-executor` binary. Applies to
   real tool runs as well as `--check-rust`, so setting it routes every tool
   command through the Rust sandbox. `--rust-executor <path>` wins over it.
@@ -90,6 +94,8 @@ invocation.
 - `maxContextChars` - conversation-history budget; used when
   `DEV_AGENT_MAX_CONTEXT_CHARS` is unset. Must be a positive integer, otherwise
   ignored (the default is no budget).
+- `summarizeContext` - when true, trimmed history is summarized rather than
+  announced; used when `DEV_AGENT_SUMMARIZE_CONTEXT` is unset.
 - `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
 
 A malformed config file is ignored rather than fatal.

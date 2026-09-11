@@ -8,7 +8,10 @@ Implemented in phase 1:
 - `AgentLoop`'s optional `contextBudget` - character budget for the history sent
   to the model. It keeps the newest entries that fit, never splits an assistant
   tool call from its tool results, always keeps the system prompt, and announces
-  how many older entries were omitted
+  how many older entries were omitted. With `summarize: true` the dropped
+  entries are replaced by a model-written `[summary]` digest instead, growing it
+  incrementally as more history is trimmed; if summarization fails the plain
+  omission notice is used and the run continues
 - Usage accounting: every model response that reports tokens fires `onUsage`,
   and the loop adds the totals up on the returned context's `usage` field, so a
   session's consumption survives across runs

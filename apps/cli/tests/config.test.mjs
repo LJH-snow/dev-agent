@@ -9,6 +9,7 @@ import {
   resolveModel,
   resolveProviderId,
   resolveRustBinaryPath,
+  resolveSummarizeContext,
 } from "../dist/config.js";
 
 test("parseConfig returns parsed object for valid JSON config", () => {
@@ -111,4 +112,20 @@ test("resolveMaxContextChars ignores invalid values", () => {
   assert.equal(resolveMaxContextChars({ maxContextChars: 0 }, {}), undefined);
   assert.equal(resolveMaxContextChars({ maxContextChars: 2.5 }, {}), undefined);
   assert.equal(resolveMaxContextChars({ maxContextChars: -1 }, {}), undefined);
+});
+
+test("resolveSummarizeContext reads the environment flag before the config file", () => {
+  assert.equal(resolveSummarizeContext({}, { DEV_AGENT_SUMMARIZE_CONTEXT: "1" }), true);
+  assert.equal(resolveSummarizeContext({}, { DEV_AGENT_SUMMARIZE_CONTEXT: "true" }), true);
+  assert.equal(resolveSummarizeContext({}, { DEV_AGENT_SUMMARIZE_CONTEXT: "YES" }), true);
+  assert.equal(resolveSummarizeContext({ summarizeContext: true }, {}), true);
+  assert.equal(
+    resolveSummarizeContext(
+      { summarizeContext: true },
+      { DEV_AGENT_SUMMARIZE_CONTEXT: "false" }
+    ),
+    false
+  );
+  assert.equal(resolveSummarizeContext({}, { DEV_AGENT_SUMMARIZE_CONTEXT: "maybe" }), false);
+  assert.equal(resolveSummarizeContext({}, {}), false);
 });

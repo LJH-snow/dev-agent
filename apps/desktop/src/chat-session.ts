@@ -29,6 +29,7 @@ export interface ChatSessionOptions {
   readonly systemPrompt?: string;
   readonly maxTurns?: number;
   readonly maxContextChars?: number;
+  readonly summarizeContext?: boolean;
   readonly rustBinaryPath?: string;
 }
 
@@ -40,6 +41,7 @@ export class ChatSession {
   private readonly systemPrompt: string;
   private readonly maxTurns: number;
   private readonly maxContextChars?: number;
+  private readonly summarizeContext: boolean;
   private context: AgentContext;
 
   constructor(options: ChatSessionOptions = {}) {
@@ -58,6 +60,8 @@ export class ChatSession {
     this.maxTurns = options.maxTurns ?? 12;
     this.maxContextChars =
       options.maxContextChars ?? parsePositiveInt(process.env.DEV_AGENT_MAX_CONTEXT_CHARS);
+    this.summarizeContext =
+      options.summarizeContext ?? parseBoolean(process.env.DEV_AGENT_SUMMARIZE_CONTEXT);
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -77,7 +81,9 @@ export class ChatSession {
       systemPrompt: this.systemPrompt,
       maxTurns: this.maxTurns,
       contextBudget:
-        this.maxContextChars === undefined ? undefined : { maxChars: this.maxContextChars },
+        this.maxContextChars === undefined && !this.summarizeContext
+          ? undefined
+          : { maxChars: this.maxContextChars, summarize: this.summarizeContext },
       onTurn: (turn) => {
         turns = turn;
         emit({ type: "turn", data: { turn } });
@@ -138,6 +144,13 @@ function parsePositiveInt(value: string | undefined): number | undefined {
   }
   const parsed = Number.parseInt(value.trim(), 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseBoolean(value: string | undefined): boolean {
+  if (value === undefined) {
+    return false;
+  }
+  return ["1", "true", "yes"].includes(value.trim().toLowerCase());
 }
 
 function createProvider(): ModelProvider {

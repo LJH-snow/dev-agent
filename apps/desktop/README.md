@@ -24,6 +24,8 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `DEV_AGENT_MEMORY_FILE` — session memory file (defaults to `~/.dev-agent/sessions/desktop-default.json`)
 - `DEV_AGENT_MAX_CONTEXT_CHARS` — optional conversation-history budget; oldest
   entries are dropped first (never splitting a tool call from its results)
+- `DEV_AGENT_SUMMARIZE_CONTEXT` — `1`/`true`/`yes` replaces the dropped history
+  with a model-written `[summary]` digest instead of the omission notice
 
 ## How it works
 

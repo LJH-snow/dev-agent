@@ -7,6 +7,7 @@ export interface CliConfig {
   readonly defaultModel?: string;
   readonly maxTurns?: number;
   readonly maxContextChars?: number;
+  readonly summarizeContext?: boolean;
   readonly mcpServers?: ReadonlyArray<{
     readonly name?: string;
     readonly command: string;
@@ -118,4 +119,25 @@ export function resolveMaxContextChars(
   }
 
   return undefined;
+}
+
+/**
+ * Resolves whether trimmed history is summarized instead of just announced.
+ * `DEV_AGENT_SUMMARIZE_CONTEXT` accepts 1/true/yes and 0/false/no; anything
+ * else (or no setting at all) falls back to the config file.
+ */
+export function resolveSummarizeContext(
+  config: CliConfig = {},
+  env: Env = process.env
+): boolean {
+  const fromEnv = env.DEV_AGENT_SUMMARIZE_CONTEXT?.trim().toLowerCase();
+  if (fromEnv) {
+    if (["1", "true", "yes"].includes(fromEnv)) {
+      return true;
+    }
+    if (["0", "false", "no"].includes(fromEnv)) {
+      return false;
+    }
+  }
+  return config.summarizeContext === true;
 }

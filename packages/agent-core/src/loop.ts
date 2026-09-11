@@ -33,9 +33,15 @@ export interface AgentLoopOptions {
  * dropped first, and an assistant message that requested tools is always kept
  * together with the tool results answering it. The newest entry is kept even
  * when it alone exceeds the budget, so the current request is never dropped.
+ *
+ * With `summarize` enabled the dropped entries are not simply announced: the
+ * loop asks the model for a short digest and sends that instead, adding only
+ * the newly dropped entries on later turns. Summarization failures fall back to
+ * the plain omission notice.
  */
 export interface ContextBudget {
   readonly maxChars?: number;
+  readonly summarize?: boolean;
 }
 
 export interface RunOptions {
@@ -45,6 +51,13 @@ export interface RunOptions {
    * call is not killed; the loop stops before the following one.
    */
   readonly signal?: AbortSignal;
+}
+
+/** Mutable state shared by one `run()` call, including its usage total. */
+interface RunState {
+  readonly context: AgentContext;
+  readonly signal?: AbortSignal;
+  totalUsage: ChatUsage | undefined;
 }
 
 export class AgentLoop {
@@ -59,6 +72,8 @@ export class AgentLoop {
   private readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
   private readonly toolDefaults?: ToolDefaults;
   private readonly contextBudget?: ContextBudget;
+  /** Digest of the entries trimmed off so far, grown incrementally. */
+  private summaryState?: { readonly count: number; readonly text: string };
 
   constructor(options: AgentLoopOptions) {
     if (options.maxTurns !== undefined && options.maxTurns < 1) {
@@ -92,12 +107,16 @@ export class AgentLoop {
     };
     let updatedAt = new Date().toISOString();
     let completed = false;
-    let totalUsage = context.usage;
+    const runState: RunState = {
+      context,
+      signal: options.signal,
+      totalUsage: context.usage,
+    };
 
     try {
       for (let turn = 0; turn < this.maxTurns && !completed; turn += 1) {
         throwIfAborted(options.signal);
-        const messages = await this.buildMessages(memory, context);
+        const messages = await this.buildMessages(memory, context, runState);
         const chatOptions = {
           tools: this.buildToolSchemas(),
           signal: options.signal,
@@ -106,8 +125,7 @@ export class AgentLoop {
           ? await this.model.streamChat(messages, { ...chatOptions, onToken: (token) => this.onToken?.(token, context) })
           : await this.model.chat(messages, chatOptions);
         if (completion.usage) {
-          totalUsage = addUsage(totalUsage, completion.usage);
-          this.onUsage?.(completion.usage, context);
+          this.recordUsage(runState, completion.usage);
         }
         const toolCalls = completion.toolCalls ?? [];
 
@@ -144,7 +162,7 @@ export class AgentLoop {
           : state.lastError ?? "Max turns reached without a final answer",
       };
       updatedAt = new Date().toISOString();
-      return { ...context, state, updatedAt, usage: totalUsage };
+      return { ...context, state, updatedAt, usage: runState.totalUsage };
     } catch (error) {
       if (options.signal?.aborted) {
         // Interruptions are not failures: the caller decides how to report
@@ -158,12 +176,16 @@ export class AgentLoop {
         ...context,
         state: { ...state, status: "error", lastError: message },
         updatedAt,
-        usage: totalUsage,
+        usage: runState.totalUsage,
       };
     }
   }
 
-  private async buildMessages(memory: AgentMemory, context: AgentContext): Promise<ChatMessage[]> {
+  private async buildMessages(
+    memory: AgentMemory,
+    context: AgentContext,
+    runState: RunState
+  ): Promise<ChatMessage[]> {
     const entries = await memory.entries();
     const messages: ChatMessage[] = [];
     const systemPrompt = this.buildSystemPrompt(context);
@@ -172,15 +194,78 @@ export class AgentLoop {
     }
     const selection = selectEntriesWithinBudget(entries, normalizeMaxChars(this.contextBudget?.maxChars));
     if (selection.omitted > 0) {
+      const dropped = entries.slice(0, selection.omitted);
+      const summary = this.contextBudget?.summarize
+        ? await this.summarizeDropped(dropped, runState)
+        : undefined;
       messages.push({
         role: "system",
-        content: `[context] ${selection.omitted} earlier entries omitted`,
+        content: summary
+          ? `[summary] ${summary}`
+          : `[context] ${selection.omitted} earlier entries omitted`,
       });
     }
     for (const entry of selection.entries) {
       messages.push(toChatMessage(entry));
     }
     return messages;
+  }
+
+  /**
+   * Returns the digest to send in place of the dropped entries, summarizing
+   * only what has not been summarized yet. Undefined means "fall back to the
+   * omission notice".
+   */
+  private async summarizeDropped(
+    dropped: readonly MemoryEntry[],
+    runState: RunState
+  ): Promise<string | undefined> {
+    const previous = this.summaryState;
+    const covered = previous && previous.count <= dropped.length ? previous.count : 0;
+    const pending = dropped.slice(covered);
+
+    if (pending.length === 0) {
+      return previous?.text;
+    }
+
+    try {
+      const addition = await this.summarizeExcerpt(pending, runState);
+      const text = previous && covered > 0 ? `${previous.text}\n${addition}` : addition;
+      this.summaryState = { count: dropped.length, text };
+      return text;
+    } catch {
+      // A failed summary must not break the conversation.
+      return previous?.text;
+    }
+  }
+
+  private async summarizeExcerpt(
+    entries: readonly MemoryEntry[],
+    runState: RunState
+  ): Promise<string> {
+    const transcript = entries
+      .map((entry) => `${entry.role}: ${entry.content}`)
+      .join("\n");
+    const completion = await this.model.chat(
+      [
+        {
+          role: "system",
+          content:
+            "Summarize the conversation excerpt for later reference. Keep decisions, file paths, commands, results, and open questions. Be concise and do not invent details.",
+        },
+        { role: "user", content: transcript },
+      ],
+      { signal: runState.signal }
+    );
+    if (completion.usage) {
+      this.recordUsage(runState, completion.usage);
+    }
+    return completion.content.trim();
+  }
+
+  private recordUsage(runState: RunState, usage: ChatUsage): void {
+    runState.totalUsage = addUsage(runState.totalUsage, usage);
+    this.onUsage?.(usage, runState.context);
   }
 
   private buildSystemPrompt(context: AgentContext): string {
