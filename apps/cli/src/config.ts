@@ -2,6 +2,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import type { PriceTable } from "@dev-agent/model";
+
 export interface CliConfig {
   readonly defaultProvider?: string;
   readonly defaultModel?: string;
@@ -9,6 +11,8 @@ export interface CliConfig {
   readonly maxContextChars?: number;
   readonly summarizeContext?: boolean;
   readonly summaryMaxChars?: number;
+  /** USD-per-million-token prices keyed by model-name prefix. */
+  readonly pricing?: PriceTable;
   readonly approvalMode?: ApprovalMode;
   readonly approval?: {
     readonly allow?: readonly string[];

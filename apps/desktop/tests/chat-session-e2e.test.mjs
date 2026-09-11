@@ -221,11 +221,20 @@ test("the desktop session sends a trimmed history when a budget is configured", 
 
 test("the desktop stream reports the token usage of each turn", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-usage-"));
+  await mkdir(join(dir, ".dev-agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".dev-agent", "config.json"),
+    JSON.stringify({
+      pricing: { "gpt-4o-mini": { inputPerMillion: 0.15, outputPerMillion: 0.6 } },
+    }),
+    "utf8"
+  );
   const provider = await startStubProvider(() => [
     { choices: [{ delta: { content: "done" } }] },
     { choices: [], usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 } },
   ]);
   const restoreEnv = applyEnv({
+    HOME: dir,
     DEV_AGENT_MODEL_PROVIDER: "openai",
     OPENAI_API_KEY: "test-key",
     OPENAI_BASE_URL: provider.baseUrl,
@@ -245,6 +254,7 @@ test("the desktop stream reports the token usage of each turn", async () => {
 
     assert.match(text, /event: usage/);
     assert.match(text, /"totalTokens":6/);
+    assert.match(text, /"cost":0\.0000018/);
   } finally {
     await new Promise((resolve) => server.close(() => resolve()));
     await provider.close();

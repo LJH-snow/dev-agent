@@ -138,9 +138,23 @@
 
     let currentAssistant = null;
     let totalTokens = 0;
+    let totalCost = 0;
+    let hasCost = false;
     let currentSessionId = null;
 
     function setStatus(text) { status.textContent = text; }
+
+    function formatCost(value) {
+      if (!Number.isFinite(value) || value <= 0) return "0";
+      const fixed = value.toFixed(10).replace(/0+$/, "").replace(/\.$/, "");
+      return fixed === "" ? "0" : fixed;
+    }
+
+    function renderUsage() {
+      const parts = [totalTokens + " tokens"];
+      if (hasCost) parts.push("$" + formatCost(totalCost));
+      usage.textContent = parts.join(" · ");
+    }
 
     function ensureSessionOption(sessionId) {
       const known = Array.from(sessionSelect.options).some((option) => option.value === sessionId);
@@ -261,7 +275,9 @@
     sessionSelect.addEventListener("change", async () => {
       currentSessionId = sessionSelect.value;
       totalTokens = 0;
-      usage.textContent = "";
+      totalCost = 0;
+      hasCost = false;
+      renderUsage();
       await loadHistory(currentSessionId);
       setStatus("session " + currentSessionId);
     });
@@ -270,7 +286,9 @@
       currentSessionId = "session-" + Date.now().toString(36);
       ensureSessionOption(currentSessionId);
       totalTokens = 0;
-      usage.textContent = "";
+      totalCost = 0;
+      hasCost = false;
+      renderUsage();
       await loadHistory(currentSessionId);
       setStatus("new session");
     });
@@ -292,7 +310,9 @@
       }
       currentSessionId = null;
       totalTokens = 0;
-      usage.textContent = "";
+      totalCost = 0;
+      hasCost = false;
+      renderUsage();
       await loadSessions();
       await loadHistory(currentSessionId);
       setStatus("session deleted");
@@ -391,7 +411,11 @@
           break;
         case "usage":
           totalTokens += Number(parsed.totalTokens) || 0;
-          usage.textContent = totalTokens + " tokens";
+          if (typeof parsed.cost === "number" && Number.isFinite(parsed.cost)) {
+            totalCost += parsed.cost;
+            hasCost = true;
+          }
+          renderUsage();
           break;
         case "approval":
           if (parsed.decision === "deny") {

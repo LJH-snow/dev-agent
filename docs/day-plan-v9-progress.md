@@ -4,12 +4,37 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（用量成本估算）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-11 20:0x-20:1x）
-- 工作区：阶段 2 的改动已提交并推送
+- 当前阶段：阶段 4（文档、全量回归与提交）进行中
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-11 20:0x-20:1x）
+- 工作区：阶段 3 的改动待提交
 
 ## 日志
+
+### 运行 4 — 2026-09-11 20:0x-20:1x
+
+- 阶段/工作项：阶段 3（用量成本估算）完成
+- 做了什么：
+  - `packages/model/src/pricing.ts`：新增 `ModelPrice` / `PriceTable` /
+    `estimateCost(usage, model, prices)`；按「最长模型名前缀」匹配，
+    未知模型或价格非法时返回 `undefined`（不猜价格、不显示）
+  - CLI：`CliConfig` 增加 `pricing` 段；`[usage]` 行在配置了价格时追加
+    `cost=$0.00000795`，`--json` 结果增加同级 `cost` 字段（未配置时为 `null`）
+  - 桌面端：`ChatSession` 从同一个 `~/.dev-agent/config.json` 读取 `pricing`，
+    在 `usage` 事件里附带 `cost`；前端按会话累计并显示 `N tokens · $0.0000018`
+  - 未配置价格时 CLI 与桌面端的输出都和以前完全一致
+- 验证命令与结果：
+  - `pnpm build`：通过
+  - `pnpm typecheck`：通过
+  - `packages/model`：46 passed（新增 4 个：已知模型、未知模型、
+    最长前缀匹配、非法价格条目被忽略）
+  - `apps/cli`（`tests/usage-output.test.mjs`）：2 passed（新增 1 个 cost 断言）
+  - `apps/desktop`（`tests/chat-session-e2e.test.mjs`）：6 passed
+    （usage 用例增加 `"cost":0.0000018` 断言）
+  - `pnpm test`：全绿（TypeScript 359 个测试，0 失败）
+- 提交：见阶段 3 的 feat 提交
+- 下一步：阶段 4 — 文档更新 + 完整回归矩阵（check/build/typecheck/test/
+  executor 集成/Rust fmt+clippy+test）后提交推送
 
 ### 运行 3 — 2026-09-11 20:0x-20:1x
 

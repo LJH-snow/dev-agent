@@ -50,7 +50,9 @@ import {
   createGeminiProvider,
   createOllamaProvider,
   createOpenAIProvider,
+  estimateCost,
   type ModelProvider,
+  type PriceTable,
 } from "@dev-agent/model";
 import { createDefaultTools } from "@dev-agent/tools";
 
@@ -353,11 +355,17 @@ export async function main(argv: string[]): Promise<void> {
     });
 
     if (oncePrompt) {
-      await runPrompt(loop, context, streaming, oncePrompt, jsonOutput);
+      await runPrompt(loop, context, streaming, oncePrompt, jsonOutput, {
+        model: provider.model,
+        pricing: config.pricing,
+      });
       return;
     }
 
-    await interactive(loop, context, streaming, questionBox, jsonOutput);
+    await interactive(loop, context, streaming, questionBox, jsonOutput, {
+      model: provider.model,
+      pricing: config.pricing,
+    });
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
   }
@@ -670,7 +678,8 @@ async function interactive(
   context: AgentContext,
   streaming: StreamingRun,
   questionBox: QuestionBox,
-  jsonOutput = false
+  jsonOutput = false,
+  cost?: UsageCostOptions
 ): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
@@ -700,11 +709,16 @@ async function interactive(
     if (!prompt) {
       continue;
     }
-    await runPrompt(loop, context, streaming, prompt, jsonOutput);
+    await runPrompt(loop, context, streaming, prompt, jsonOutput, cost);
   }
 
   process.removeListener("SIGINT", onSigint);
   rl.close();
+}
+
+interface UsageCostOptions {
+  readonly model: string;
+  readonly pricing?: PriceTable;
 }
 
 async function runPrompt(
@@ -712,11 +726,16 @@ async function runPrompt(
   context: AgentContext,
   streaming: StreamingRun,
   prompt: string,
-  jsonOutput = false
+  jsonOutput = false,
+  costOptions?: UsageCostOptions
 ): Promise<void> {
   const result = await loop.run(context, prompt);
   const entries = await result.memory.entries();
   const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
+  const cost =
+    result.usage && costOptions
+      ? estimateCost(result.usage, costOptions.model, costOptions.pricing)
+      : undefined;
 
   if (jsonOutput) {
     console.log(
@@ -726,6 +745,7 @@ async function runPrompt(
         turns: result.state.turns,
         content: lastAssistant?.content ?? "",
         usage: result.usage ?? null,
+        cost: cost ?? null,
       })
     );
     return;
@@ -740,10 +760,20 @@ async function runPrompt(
   }
   console.log(`[state=${result.state.status} turns=${result.state.turns}]`);
   if (result.usage) {
+    const suffix = cost === undefined ? "" : ` cost=$${formatCost(cost)}`;
     console.log(
-      `[usage] prompt=${result.usage.promptTokens} completion=${result.usage.completionTokens} total=${result.usage.totalTokens}`
+      `[usage] prompt=${result.usage.promptTokens} completion=${result.usage.completionTokens} total=${result.usage.totalTokens}${suffix}`
     );
   }
+}
+
+/** Trims trailing zeros so small estimates stay readable. */
+function formatCost(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0";
+  }
+  const fixed = value.toFixed(10).replace(/0+$/, "").replace(/\.$/, "");
+  return fixed === "" ? "0" : fixed;
 }
 
 interface StreamingCallbacks {

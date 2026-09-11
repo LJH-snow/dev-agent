@@ -19,6 +19,8 @@ import {
   createGeminiProvider,
   createOllamaProvider,
   createOpenAIProvider,
+  estimateCost,
+  type PriceTable,
   type ModelProvider,
 } from "@dev-agent/model";
 import { createDefaultTools } from "@dev-agent/tools";
@@ -75,6 +77,7 @@ export class ChatSession {
   private readonly summaryMaxChars?: number;
   private readonly approvalMode: DesktopApprovalMode;
   private readonly compiledApproval: { patterns: readonly RegExp[]; allowlist: readonly string[] };
+  private readonly pricing?: PriceTable;
   private context: AgentContext;
   private readonly sessionId: string;
 
@@ -101,7 +104,9 @@ export class ChatSession {
     this.summaryMaxChars =
       options.summaryMaxChars ?? parsePositiveInt(process.env.DEV_AGENT_SUMMARY_MAX_CHARS);
     this.approvalMode = resolveApprovalMode(options.approvalMode);
-    this.compiledApproval = loadApprovalConfig();
+    const config = loadConfigFile();
+    this.compiledApproval = compileApprovalConfig(config.approval);
+    this.pricing = config.pricing;
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -143,15 +148,18 @@ export class ChatSession {
       onToken: (token) => emit({ type: "token", data: { token } }),
       onToolCall: (call) => emit({ type: "tool", data: { name: call.name, input: call.input } }),
       onToolResult: (result) => emit({ type: "tool-result", data: { name: result.name, output: result.output } }),
-      onUsage: (usage) =>
+      onUsage: (usage) => {
+        const cost = estimateCost(usage, this.model.model, this.pricing);
         emit({
           type: "usage",
           data: {
             promptTokens: usage.promptTokens,
             completionTokens: usage.completionTokens,
             totalTokens: usage.totalTokens,
+            ...(cost === undefined ? {} : { cost }),
           },
-        }),
+        });
+      },
       approval,
       onApproval: (request, outcome) =>
         emit({
@@ -271,17 +279,23 @@ function buildApprovalPolicy(
   };
 }
 
-/** Reads the shared `approval` section of ~/.dev-agent/config.json. */
-function loadApprovalConfig(): { patterns: readonly RegExp[]; allowlist: readonly string[] } {
+interface DesktopConfigFile {
+  readonly approval?: { readonly allow?: readonly string[]; readonly deny?: readonly string[] };
+  readonly pricing?: PriceTable;
+}
+
+/** Reads the shared sections of ~/.dev-agent/config.json. */
+function loadConfigFile(): DesktopConfigFile {
   try {
     const raw = readFileSync(join(homedir(), ".dev-agent", "config.json"), "utf8");
-    const parsed = JSON.parse(raw) as {
-      approval?: { allow?: readonly string[]; deny?: readonly string[] };
-    };
-    return compileApprovalConfig(parsed.approval);
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "object" && parsed !== null) {
+      return parsed as DesktopConfigFile;
+    }
+    return {};
   } catch {
     // A missing or malformed config just means no extra rules.
-    return compileApprovalConfig(undefined);
+    return {};
   }
 }
 
