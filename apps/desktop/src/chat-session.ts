@@ -30,6 +30,7 @@ export interface ChatSessionOptions {
   readonly maxTurns?: number;
   readonly maxContextChars?: number;
   readonly summarizeContext?: boolean;
+  readonly summaryMaxChars?: number;
   readonly rustBinaryPath?: string;
 }
 
@@ -42,6 +43,7 @@ export class ChatSession {
   private readonly maxTurns: number;
   private readonly maxContextChars?: number;
   private readonly summarizeContext: boolean;
+  private readonly summaryMaxChars?: number;
   private context: AgentContext;
 
   constructor(options: ChatSessionOptions = {}) {
@@ -62,6 +64,8 @@ export class ChatSession {
       options.maxContextChars ?? parsePositiveInt(process.env.DEV_AGENT_MAX_CONTEXT_CHARS);
     this.summarizeContext =
       options.summarizeContext ?? parseBoolean(process.env.DEV_AGENT_SUMMARIZE_CONTEXT);
+    this.summaryMaxChars =
+      options.summaryMaxChars ?? parsePositiveInt(process.env.DEV_AGENT_SUMMARY_MAX_CHARS);
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -83,7 +87,11 @@ export class ChatSession {
       contextBudget:
         this.maxContextChars === undefined && !this.summarizeContext
           ? undefined
-          : { maxChars: this.maxContextChars, summarize: this.summarizeContext },
+          : {
+              maxChars: this.maxContextChars,
+              summarize: this.summarizeContext,
+              summaryMaxChars: this.summaryMaxChars,
+            },
       onTurn: (turn) => {
         turns = turn;
         emit({ type: "turn", data: { turn } });

@@ -61,6 +61,8 @@ Configuration is read from the environment:
   with a model-written `[summary]` digest instead of the omission notice; the
   digest grows incrementally and its tokens are counted in `[usage]`. `0`/`false`
   turns it off.
+- `DEV_AGENT_SUMMARY_MAX_CHARS` - cap for the digest; over-long summaries keep
+  their newest part. Defaults to 2000 characters.
 - `DEV_AGENT_RUST_BINARY` - path to the `dev-agent-executor` binary. Applies to
   real tool runs as well as `--check-rust`, so setting it routes every tool
   command through the Rust sandbox. `--rust-executor <path>` wins over it.
@@ -96,6 +98,8 @@ invocation.
   ignored (the default is no budget).
 - `summarizeContext` - when true, trimmed history is summarized rather than
   announced; used when `DEV_AGENT_SUMMARIZE_CONTEXT` is unset.
+- `summaryMaxChars` - digest length cap; used when
+  `DEV_AGENT_SUMMARY_MAX_CHARS` is unset.
 - `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
 
 A malformed config file is ignored rather than fatal.

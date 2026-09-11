@@ -8,6 +8,7 @@ export interface CliConfig {
   readonly maxTurns?: number;
   readonly maxContextChars?: number;
   readonly summarizeContext?: boolean;
+  readonly summaryMaxChars?: number;
   readonly mcpServers?: ReadonlyArray<{
     readonly name?: string;
     readonly command: string;
@@ -140,4 +141,25 @@ export function resolveSummarizeContext(
     }
   }
   return config.summarizeContext === true;
+}
+
+/** Resolves the cap for the generated digest; invalid values fall through. */
+export function resolveSummaryMaxChars(
+  config: CliConfig = {},
+  env: Env = process.env
+): number | undefined {
+  const fromEnv = env.DEV_AGENT_SUMMARY_MAX_CHARS?.trim();
+  if (fromEnv) {
+    const parsed = Number.parseInt(fromEnv, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+
+  const fromConfig = config.summaryMaxChars;
+  if (typeof fromConfig === "number" && Number.isInteger(fromConfig) && fromConfig > 0) {
+    return fromConfig;
+  }
+
+  return undefined;
 }

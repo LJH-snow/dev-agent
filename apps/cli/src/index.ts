@@ -30,6 +30,7 @@ import {
   resolveProviderId,
   resolveRustBinaryPath,
   resolveSummarizeContext,
+  resolveSummaryMaxChars,
   type CliConfig,
 } from "./config.js";
 import { buildMcpSystemPromptSupplement } from "./mcp-system-prompt.js";
@@ -225,13 +226,14 @@ async function runMcpServer(options: {
 
 function buildContextBudget(
   config: CliConfig
-): { maxChars?: number; summarize?: boolean } | undefined {
+): { maxChars?: number; summarize?: boolean; summaryMaxChars?: number } | undefined {
   const maxChars = resolveMaxContextChars(config);
   const summarize = resolveSummarizeContext(config);
+  const summaryMaxChars = resolveSummaryMaxChars(config);
   if (maxChars === undefined && !summarize) {
     return undefined;
   }
-  return { maxChars, summarize };
+  return { maxChars, summarize, summaryMaxChars };
 }
 
 function sessionDir(): string {

@@ -26,6 +26,7 @@ Configure the model provider the same way as the CLI, via environment variables:
   entries are dropped first (never splitting a tool call from its results)
 - `DEV_AGENT_SUMMARIZE_CONTEXT` — `1`/`true`/`yes` replaces the dropped history
   with a model-written `[summary]` digest instead of the omission notice
+- `DEV_AGENT_SUMMARY_MAX_CHARS` — cap for that digest (default 2000 characters)
 
 ## How it works
 

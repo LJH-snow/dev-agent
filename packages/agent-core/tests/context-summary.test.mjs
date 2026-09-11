@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -6,6 +9,7 @@ import {
   AgentToolRegistry,
   createAgentContext,
   createMemoryEntry,
+  FileMemory,
   InMemoryMemory,
 } from "../dist/index.js";
 
@@ -196,4 +200,148 @@ test("summarize stays off unless it is requested", async () => {
 
   assert.equal(calls.filter(isSummaryCall).length, 0);
   assert.ok(calls.at(-1).some((message) => message.content.startsWith("[context]")));
+});
+
+test("a saved digest is reused and only new trims are summarized", async () => {
+  const memory = await seedMemory(longHistory());
+  const context = createAgentContext("summary-reuse", memory);
+
+  const first = createModel({ digest: "first-digest" });
+  const loopOne = new AgentLoop({
+    model: first.model,
+    systemPrompt: "system prompt",
+    contextBudget: { maxChars: 80, summarize: true },
+  });
+  await loopOne.run(context, "first request");
+  assert.equal(first.calls.filter(isSummaryCall).length, 1);
+
+  // A long entry arrives, so the next run has to trim further than run one did.
+  await memory.append(createMemoryEntry("user", `extra-long ${"z".repeat(200)}`));
+
+  const second = createModel({ digest: "second-digest" });
+  const loopTwo = new AgentLoop({
+    model: second.model,
+    systemPrompt: "system prompt",
+    contextBudget: { maxChars: 80, summarize: true },
+  });
+  const result = await loopTwo.run(context, "second request");
+
+  assert.equal(result.state.status, "done");
+  const summarizeCalls = second.calls.filter(isSummaryCall);
+  assert.equal(summarizeCalls.length, 1, "only the newly dropped entries are summarized");
+  assert.ok(
+    !summarizeCalls[0][1].content.includes("old-0"),
+    "already summarized entries must not be summarized again"
+  );
+
+  const conversation = second.calls.filter((messages) => !isSummaryCall(messages)).at(-1);
+  const summaryMessage = conversation.find((message) => message.content.startsWith("[summary]"));
+  assert.match(summaryMessage.content, /first-digest/);
+  assert.match(summaryMessage.content, /second-digest/);
+});
+
+test("a compacted history re-anchors the saved digest", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-summary-"));
+  const filePath = join(dir, "session.json");
+  try {
+    const memory = new FileMemory({ filePath });
+    for (const entry of longHistory()) {
+      await memory.append(entry);
+    }
+    const context = createAgentContext("summary-compact", memory);
+
+    const first = createModel({ digest: "first-digest" });
+    const loopOne = new AgentLoop({
+      model: first.model,
+      systemPrompt: "system prompt",
+      contextBudget: { maxChars: 80, summarize: true },
+    });
+    await loopOne.run(context, "first request");
+
+    // Compaction drops the entries the digest was anchored to.
+    await memory.compact(1);
+
+    const second = createModel({ digest: "second-digest" });
+    const loopTwo = new AgentLoop({
+      model: second.model,
+      systemPrompt: "system prompt",
+      contextBudget: { maxChars: 40, summarize: true },
+    });
+    await loopTwo.run(context, "second request");
+
+    const saved = await memory.getSummary();
+    assert.ok(saved, "the digest should still be saved");
+    assert.match(saved.text, /first-digest/);
+    assert.match(saved.text, /second-digest/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an over-long digest is clamped to summaryMaxChars", async () => {
+  const memory = await seedMemory(longHistory());
+  const context = createAgentContext("summary-clamp", memory);
+  const { model, calls } = createModel({ digest: "d".repeat(500) });
+  const loop = new AgentLoop({
+    model,
+    systemPrompt: "system prompt",
+    contextBudget: { maxChars: 80, summarize: true, summaryMaxChars: 120 },
+  });
+
+  await loop.run(context, "current request");
+
+  const conversation = calls.filter((messages) => !isSummaryCall(messages)).at(-1);
+  const summaryMessage = conversation.find((message) => message.content.startsWith("[summary]"));
+  assert.ok(
+    summaryMessage.content.length <= "[summary] ".length + 120,
+    `digest was not clamped: ${summaryMessage.content.length}`
+  );
+  assert.ok(summaryMessage.content.trimEnd().endsWith("d"), "the newest part is kept");
+});
+
+test("an invalid summaryMaxChars falls back to the default cap", async () => {
+  const memory = await seedMemory(longHistory());
+  const context = createAgentContext("summary-default-cap", memory);
+  const { model, calls } = createModel({ digest: "d".repeat(2500) });
+  const loop = new AgentLoop({
+    model,
+    systemPrompt: "system prompt",
+    contextBudget: { maxChars: 80, summarize: true, summaryMaxChars: 0 },
+  });
+
+  await loop.run(context, "current request");
+
+  const conversation = calls.filter((messages) => !isSummaryCall(messages)).at(-1);
+  const summaryMessage = conversation.find((message) => message.content.startsWith("[summary]"));
+  const body = summaryMessage.content.slice("[summary] ".length);
+  assert.ok(body.length > 1000, "the default cap should be much larger than zero");
+  assert.ok(body.length <= 2000, `default cap exceeded: ${body.length}`);
+});
+
+test("the digest is persisted in the memory file", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-summary-file-"));
+  const filePath = join(dir, "session.json");
+  try {
+    const memory = new FileMemory({ filePath });
+    for (const entry of longHistory()) {
+      await memory.append(entry);
+    }
+    const { model } = createModel({ digest: "persisted-digest" });
+    const loop = new AgentLoop({
+      model,
+      systemPrompt: "system prompt",
+      contextBudget: { maxChars: 80, summarize: true },
+    });
+    await loop.run(createAgentContext("summary-file", memory), "request");
+
+    const raw = JSON.parse(await readFile(filePath, "utf8"));
+    assert.equal(raw.summary.text, "persisted-digest");
+
+    // A fresh instance (as after a restart) sees the same digest.
+    const reloaded = new FileMemory({ filePath });
+    const summary = await reloaded.getSummary();
+    assert.equal(summary?.text, "persisted-digest");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });

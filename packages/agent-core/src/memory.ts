@@ -21,10 +21,22 @@ export interface AgentMemory {
   clear(): Promise<void>;
   getMetadata?(): Promise<SessionMetadata | undefined>;
   compact?(keepRecentTurns: number): Promise<number>;
+  /** Digest of entries that were trimmed off the front of the history. */
+  getSummary?(): Promise<ContextSummary | undefined>;
+  setSummary?(summary: ContextSummary): Promise<void>;
+}
+
+export interface ContextSummary {
+  /** Id of the last entry the digest covers, used to re-anchor after a reload. */
+  readonly lastEntryId: string;
+  /** How many entries the digest covered when it was written. */
+  readonly entriesCovered: number;
+  readonly text: string;
 }
 
 export class InMemoryMemory implements AgentMemory {
   private readonly items: MemoryEntry[] = [];
+  private summary?: ContextSummary;
 
   async append(entry: MemoryEntry): Promise<void> {
     this.items.push(entry);
@@ -36,6 +48,15 @@ export class InMemoryMemory implements AgentMemory {
 
   async clear(): Promise<void> {
     this.items.length = 0;
+    this.summary = undefined;
+  }
+
+  async getSummary(): Promise<ContextSummary | undefined> {
+    return this.summary;
+  }
+
+  async setSummary(summary: ContextSummary): Promise<void> {
+    this.summary = summary;
   }
 }
 
@@ -54,6 +75,7 @@ interface MemoryFile {
   readonly version: 1;
   readonly metadata?: SessionMetadata;
   readonly entries: MemoryEntry[];
+  readonly summary?: ContextSummary;
 }
 
 export class FileMemory implements AgentMemory {
@@ -103,6 +125,22 @@ export class FileMemory implements AgentMemory {
     return this.enqueue(() => rm(this.filePath, { force: true }));
   }
 
+  async getSummary(): Promise<ContextSummary | undefined> {
+    try {
+      const file = await this.readMemoryFile();
+      return file.summary;
+    } catch {
+      return undefined;
+    }
+  }
+
+  setSummary(summary: ContextSummary): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      await this.persist(entries, summary);
+    });
+  }
+
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
     const result = this.chain.then(task, task);
     this.chain = result.then(
@@ -135,7 +173,10 @@ export class FileMemory implements AgentMemory {
     return parsed.entries;
   }
 
-  private async persist(entries: readonly MemoryEntry[]): Promise<void> {
+  private async persist(
+    entries: readonly MemoryEntry[],
+    summary?: ContextSummary
+  ): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     const existing = await this.readMemoryFile().catch(() => undefined);
     const now = new Date().toISOString();
@@ -145,7 +186,13 @@ export class FileMemory implements AgentMemory {
       lastActiveAt: now,
       entryCount: entries.length,
     };
-    const payload: MemoryFile = { version: 1, metadata, entries: [...entries] };
+    const payload: MemoryFile = {
+      version: 1,
+      metadata,
+      entries: [...entries],
+      // Keep an existing digest unless this write replaces it.
+      summary: summary ?? existing?.summary,
+    };
     await writeFile(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   }
 
@@ -187,7 +234,20 @@ function isMemoryFile(value: unknown): value is MemoryFile {
   return (
     candidate.version === 1 &&
     Array.isArray(candidate.entries) &&
-    candidate.entries.every(isMemoryEntry)
+    candidate.entries.every(isMemoryEntry) &&
+    (candidate.summary === undefined || isContextSummary(candidate.summary))
+  );
+}
+
+function isContextSummary(value: unknown): value is ContextSummary {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.lastEntryId === "string" &&
+    typeof candidate.entriesCovered === "number" &&
+    typeof candidate.text === "string"
   );
 }
 

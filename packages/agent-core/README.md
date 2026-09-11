@@ -11,7 +11,10 @@ Implemented in phase 1:
   how many older entries were omitted. With `summarize: true` the dropped
   entries are replaced by a model-written `[summary]` digest instead, growing it
   incrementally as more history is trimmed; if summarization fails the plain
-  omission notice is used and the run continues
+  omission notice is used and the run continues. The digest is stored with the
+  session (`FileMemory` persists it, `InMemoryMemory` keeps it in process), so a
+  later run reuses it instead of summarizing the same history again, and
+  `summaryMaxChars` (default 2000) caps its length by keeping the newest part.
 - Usage accounting: every model response that reports tokens fires `onUsage`,
   and the loop adds the totals up on the returned context's `usage` field, so a
   session's consumption survives across runs

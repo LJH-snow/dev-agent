@@ -10,6 +10,7 @@ import {
   resolveProviderId,
   resolveRustBinaryPath,
   resolveSummarizeContext,
+  resolveSummaryMaxChars,
 } from "../dist/config.js";
 
 test("parseConfig returns parsed object for valid JSON config", () => {
@@ -128,4 +129,20 @@ test("resolveSummarizeContext reads the environment flag before the config file"
   );
   assert.equal(resolveSummarizeContext({}, { DEV_AGENT_SUMMARIZE_CONTEXT: "maybe" }), false);
   assert.equal(resolveSummarizeContext({}, {}), false);
+});
+
+test("resolveSummaryMaxChars prefers env, then config, then no cap", () => {
+  assert.equal(resolveSummaryMaxChars({}, { DEV_AGENT_SUMMARY_MAX_CHARS: "1500" }), 1500);
+  assert.equal(resolveSummaryMaxChars({ summaryMaxChars: 800 }, {}), 800);
+  assert.equal(
+    resolveSummaryMaxChars(
+      { summaryMaxChars: 800 },
+      { DEV_AGENT_SUMMARY_MAX_CHARS: "1500" }
+    ),
+    1500
+  );
+  assert.equal(resolveSummaryMaxChars({}, { DEV_AGENT_SUMMARY_MAX_CHARS: "0" }), undefined);
+  assert.equal(resolveSummaryMaxChars({}, { DEV_AGENT_SUMMARY_MAX_CHARS: "abc" }), undefined);
+  assert.equal(resolveSummaryMaxChars({ summaryMaxChars: -1 }, {}), undefined);
+  assert.equal(resolveSummaryMaxChars({}, {}), undefined);
 });

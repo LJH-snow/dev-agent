@@ -10,6 +10,8 @@ import {
   type ToolExecutionContext,
 } from "./tools.js";
 
+const DEFAULT_SUMMARY_MAX_CHARS = 2000;
+
 export interface AgentLoopOptions {
   readonly model: ModelProvider;
   readonly tools?: ToolCollection;
@@ -42,6 +44,8 @@ export interface AgentLoopOptions {
 export interface ContextBudget {
   readonly maxChars?: number;
   readonly summarize?: boolean;
+  /** Upper bound for the digest; the oldest part is dropped when it overflows. */
+  readonly summaryMaxChars?: number;
 }
 
 export interface RunOptions {
@@ -73,7 +77,7 @@ export class AgentLoop {
   private readonly toolDefaults?: ToolDefaults;
   private readonly contextBudget?: ContextBudget;
   /** Digest of the entries trimmed off so far, grown incrementally. */
-  private summaryState?: { readonly count: number; readonly text: string };
+  private summaryState?: { count: number; text: string; lastEntryId?: string };
 
   constructor(options: AgentLoopOptions) {
     if (options.maxTurns !== undefined && options.maxTurns < 1) {
@@ -99,6 +103,7 @@ export class AgentLoop {
   ): Promise<AgentContext> {
     const memory = context.memory;
     await memory.append(createMemoryEntry("user", input));
+    await this.loadSummary(memory);
     let state: AgentState = {
       ...context.state,
       status: "running",
@@ -196,7 +201,7 @@ export class AgentLoop {
     if (selection.omitted > 0) {
       const dropped = entries.slice(0, selection.omitted);
       const summary = this.contextBudget?.summarize
-        ? await this.summarizeDropped(dropped, runState)
+        ? await this.summarizeDropped(dropped, runState, memory)
         : undefined;
       messages.push({
         role: "system",
@@ -218,7 +223,8 @@ export class AgentLoop {
    */
   private async summarizeDropped(
     dropped: readonly MemoryEntry[],
-    runState: RunState
+    runState: RunState,
+    memory: AgentMemory
   ): Promise<string | undefined> {
     const previous = this.summaryState;
     const covered = previous && previous.count <= dropped.length ? previous.count : 0;
@@ -229,9 +235,16 @@ export class AgentLoop {
     }
 
     try {
-      const addition = await this.summarizeExcerpt(pending, runState);
-      const text = previous && covered > 0 ? `${previous.text}\n${addition}` : addition;
-      this.summaryState = { count: dropped.length, text };
+      const limit = normalizeSummaryLimit(this.contextBudget?.summaryMaxChars);
+      const addition = await this.summarizeExcerpt(pending, runState, limit);
+      const merged = previous?.text ? `${previous.text}\n${addition}` : addition;
+      const text = clampSummary(merged, limit);
+      this.summaryState = {
+        count: dropped.length,
+        text,
+        lastEntryId: dropped[dropped.length - 1]?.id,
+      };
+      await this.persistSummary(memory);
       return text;
     } catch {
       // A failed summary must not break the conversation.
@@ -241,7 +254,8 @@ export class AgentLoop {
 
   private async summarizeExcerpt(
     entries: readonly MemoryEntry[],
-    runState: RunState
+    runState: RunState,
+    limit: number
   ): Promise<string> {
     const transcript = entries
       .map((entry) => `${entry.role}: ${entry.content}`)
@@ -251,7 +265,8 @@ export class AgentLoop {
         {
           role: "system",
           content:
-            "Summarize the conversation excerpt for later reference. Keep decisions, file paths, commands, results, and open questions. Be concise and do not invent details.",
+            "Summarize the conversation excerpt for later reference. Keep decisions, file paths, commands, results, and open questions. Do not invent details. " +
+            `Keep the summary under ${limit} characters.`,
         },
         { role: "user", content: transcript },
       ],
@@ -266,6 +281,44 @@ export class AgentLoop {
   private recordUsage(runState: RunState, usage: ChatUsage): void {
     runState.totalUsage = addUsage(runState.totalUsage, usage);
     this.onUsage?.(usage, runState.context);
+  }
+
+  /**
+   * Restores a digest saved by an earlier run. The anchor id tells us where the
+   * digest stops: entries after it have not been summarized yet.
+   */
+  private async loadSummary(memory: AgentMemory): Promise<void> {
+    const cached = await memory.getSummary?.();
+    if (!cached) {
+      this.summaryState = undefined;
+      return;
+    }
+
+    const entries = await memory.entries();
+    const anchor = entries.findIndex((entry) => entry.id === cached.lastEntryId);
+    this.summaryState = {
+      // When the anchored entry is gone the history it covered was compacted
+      // away: keep the digest and treat every remaining entry as unsummarized.
+      count: anchor >= 0 ? anchor + 1 : 0,
+      text: cached.text,
+      lastEntryId: anchor >= 0 ? cached.lastEntryId : undefined,
+    };
+  }
+
+  private async persistSummary(memory: AgentMemory): Promise<void> {
+    const state = this.summaryState;
+    if (!state?.lastEntryId || !memory.setSummary) {
+      return;
+    }
+    try {
+      await memory.setSummary({
+        lastEntryId: state.lastEntryId,
+        entriesCovered: state.count,
+        text: state.text,
+      });
+    } catch {
+      // Persisting the digest is best-effort; the run must not fail over it.
+    }
   }
 
   private buildSystemPrompt(context: AgentContext): string {
@@ -313,6 +366,21 @@ function normalizeMaxChars(value: number | undefined): number | undefined {
     return undefined;
   }
   return value;
+}
+
+function normalizeSummaryLimit(value: number | undefined): number {
+  if (value === undefined || !Number.isInteger(value) || value <= 0) {
+    return DEFAULT_SUMMARY_MAX_CHARS;
+  }
+  return value;
+}
+
+/** Keeps the newest part of an over-long digest. */
+function clampSummary(text: string, limit: number): string {
+  if (text.length <= limit) {
+    return text;
+  }
+  return `…${text.slice(text.length - limit + 1)}`;
 }
 
 /**
