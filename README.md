@@ -282,7 +282,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 401 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 403 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -347,3 +347,5 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)
+50. ~~MCP `reconnect()` resets its closed state~~ (done)
+51. ~~Always-allow keys keep two leading arguments~~ (done)

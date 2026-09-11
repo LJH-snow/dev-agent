@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-12 (Day plan v15: MCP reconnect state, sharper approval keys)
+
+Executed `docs/day-plan-v15.md`. Two subtle states were wrong: a reconnected MCP
+client kept its closed flag, and "always allow" collapsed `npm run test` and
+`npm run build` onto the same key.
+
+### Fixed: MCP client reconnect resets its closed flag
+- `close()` sets `closed = true`; `connect()` never cleared it, so after
+  `client.reconnect()` a later server crash skipped `rejectAll` and any pending
+  request hung forever instead of failing. `connect()` now resets `closed` and
+  the line buffer.
+- The fake MCP server gained a `crash` tool that exits without answering, and a
+  regression test races the call against a 2s timeout. Removing the fix makes
+  that test fail with `expected a rejection, got timeout`.
+
+### Fixed: the always-allow key keeps two leading arguments
+- `normalizeApprovalKey()` used the first non-flag token only, so `npm run test`
+  became `npm run` and approving it silently covered `npm run build` /
+  `npm run deploy`; `git -C /repo status` similarly covered other git
+  subcommands in that directory.
+- The key is now the command plus up to two leading non-flag tokens. Existing
+  equivalences still hold (`npm test` / `npm test -- --watch`,
+  `git status` / `git status --short`,
+  `chmod 777 x` / `chmod -R 777 x`), while different scripts and different
+  `-C` subcommands stay separate.
+
+### Tests
+- TypeScript: 401 -> 403. Rust: 46 (unchanged).
+- New coverage: MCP reconnect followed by a crashing server, and the
+  two-argument approval key (npm scripts, `git -C`, `chmod` with/without `-R`).
+
 ## 2026-09-12 (Day plan v14: literal search, git exec options, corrupt metadata)
 
 Executed `docs/day-plan-v14.md`. Three holes found by driving the tools rather

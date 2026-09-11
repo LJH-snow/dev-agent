@@ -4,12 +4,34 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-12 01:4x-02:0x）
-- 工作区：阶段 1 的改动待提交
+- 当前阶段：无，`docs/day-plan-v15.md` 的三个阶段已全部完成
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-12 02:0x-02:2x）
+- 工作区：阶段 2 的文档改动提交后即 clean
 
 ## 日志
+
+### 运行 3 — 2026-09-12 02:0x-02:2x
+
+- 阶段/工作项：阶段 2（文档、全量回归与提交）完成
+- 做了什么：
+  - 根 `README.md`：审批键规则说明改为「最多两个前导参数」，测试数更新为
+    403 TS + 46 Rust，Roadmap 追加 50-51（MCP reconnect、两参数键）
+  - `packages/agent-core/README.md`、`docs/architecture.md`：同步新键规则
+  - `docs/CHANGELOG.md`：新增「Day plan v15」条目（401 -> 403），记录 MCP
+    reconnect 的负向验证与 npm run 键过宽问题
+- 验证命令与结果（完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed（13 目录 / 34 文件）
+  - `pnpm build`：通过
+  - `pnpm typecheck`：通过
+  - `pnpm test`：403 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed / 0 failed
+  - `cargo fmt --check`：通过
+  - `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）/ 0 failed
+- 提交：见阶段 2 的 docs 提交
+- 下一步：v15 计划已收尾；下一轮继续实测复现优先，优先看执行器/Rust 沙箱边界、
+  MCP 服务端通知与桌面端长会话场景
 
 ### 运行 2 — 2026-09-12 01:4x-02:0x
 
