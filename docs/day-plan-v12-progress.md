@@ -4,12 +4,34 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（`--doctor` 校验共享配置）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-11 21:5x-22:0x）
-- 工作区：阶段 1 的改动待提交
+- 当前阶段：阶段 3（文档、全量回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-11 22:0x-22:1x）
+- 工作区：阶段 2 的改动待提交
 
 ## 日志
+
+### 运行 3 — 2026-09-11 22:0x-22:1x
+
+- 阶段/工作项：阶段 2（`--doctor` 校验共享配置）完成
+- 做了什么：
+  - `runDoctor` 新增 `config` 检查（可通过 `configPath` 注入，默认
+    `~/.dev-agent/config.json`）：文件缺失 -> ok「defaults are used」；
+    JSON 合法且为对象 -> ok 并列出识别到的 section（defaultProvider /
+    defaultModel / maxTurns / maxContextChars / summarizeContext /
+    summaryMaxChars / approvalMode / approval / mcpServers / pricing）；
+    JSON 非法、非对象或读取失败 -> warn，detail 带原因
+  - 检查顺序放在 provider 与 sessions 之间；`--doctor --json` 与文本报告自动
+    带上该项
+  - 文档：`apps/cli/README.md` 的 `--doctor` 说明补充配置校验语义
+- 验证命令与结果：
+  - `pnpm --filter @dev-agent/cli build`：通过
+  - `apps/cli`（`tests/doctor.test.mjs`）：7 passed（新增 3 个：缺失配置、
+    合法配置列出 section、非法 JSON 报警告；既有用例按新检查项更新）
+  - `pnpm typecheck`：通过
+  - `pnpm test`：全绿（TypeScript 389 个测试，0 失败）
+- 提交：见阶段 2 的 feat 提交
+- 下一步：阶段 3 — 根 README / architecture / CHANGELOG 更新 + 完整回归矩阵
 
 ### 运行 2 — 2026-09-11 21:5x-22:0x
 

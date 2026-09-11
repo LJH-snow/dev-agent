@@ -46,8 +46,10 @@ Options:
   `--session-list`, and `--compact`; implies `--no-stream` so nothing else is
   written to stdout
 - `--doctor` - check the environment (Node version, `rg`, `protoc`, the Rust
-  runtime binary, the provider API key, and the session directory); exits 1 when
-  any check fails. Combine with `--json` for `{ checks, summary }`
+  runtime binary, the provider API key, `~/.dev-agent/config.json`, and the
+  session directory); a missing config is fine, while malformed JSON is reported
+  as a warning instead of being silently ignored. Exits 1 when any check fails.
+  Combine with `--json` for `{ checks, summary }`
 - `--session-delete <id>` - delete a stored session file; a missing session is
   reported (`deleted: false` with `--json`) without failing
 - `--session-rename <old> <new>` - rename a stored session; refuses to overwrite

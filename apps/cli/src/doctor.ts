@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import { join } from "node:path";
 
 export type DoctorStatus = "ok" | "warn" | "fail";
@@ -25,6 +26,8 @@ export interface DoctorOptions {
   readonly providerId: string;
   readonly rustBinaryPath?: string;
   readonly sessionDir: string;
+  /** Shared config file to inspect; defaults to ~/.dev-agent/config.json. */
+  readonly configPath?: string;
   readonly env?: NodeJS.ProcessEnv;
   readonly nodeVersion?: string;
   /** Injectable for tests: returns the version banner, or undefined when missing. */
@@ -75,6 +78,9 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
 
   checks.push(await checkRustRuntime(options));
   checks.push(checkProvider(options.providerId, env));
+  checks.push(
+    await checkConfig(options.configPath ?? join(homedir(), ".dev-agent", "config.json"))
+  );
   checks.push(await checkSessionDir(options.sessionDir));
 
   const summary = { ok: 0, warn: 0, fail: 0 };
@@ -91,6 +97,66 @@ export function printDoctorReport(report: DoctorReport): void {
   const { ok, warn, fail } = report.summary;
   console.log("");
   console.log(`${report.checks.length} checks: ${ok} ok, ${warn} warn, ${fail} fail`);
+}
+
+const CONFIG_SECTIONS = [
+  "defaultProvider",
+  "defaultModel",
+  "maxTurns",
+  "maxContextChars",
+  "summarizeContext",
+  "summaryMaxChars",
+  "approvalMode",
+  "approval",
+  "mcpServers",
+  "pricing",
+] as const;
+
+/**
+ * Every reader silently ignores a broken config, so doctor is the one place
+ * that says so instead of letting the file look active.
+ */
+async function checkConfig(path: string): Promise<DoctorCheck> {
+  let raw: string;
+  try {
+    raw = await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { name: "config", status: "ok", detail: `${path} not found; defaults are used` };
+    }
+    return {
+      name: "config",
+      status: "warn",
+      detail: `${path} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      name: "config",
+      status: "warn",
+      detail: `${path} is not valid JSON (${error instanceof Error ? error.message : String(error)}); the file is ignored`,
+    };
+  }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {
+      name: "config",
+      status: "warn",
+      detail: `${path} must contain a JSON object; the file is ignored`,
+    };
+  }
+
+  const record = parsed as Record<string, unknown>;
+  const known = CONFIG_SECTIONS.filter((key) => record[key] !== undefined);
+  const summary =
+    known.length > 0
+      ? `${known.length} recognised section${known.length === 1 ? "" : "s"} (${known.join(", ")})`
+      : "no recognised sections";
+  return { name: "config", status: "ok", detail: `${path} (${summary})` };
 }
 
 async function checkRustRuntime(options: DoctorOptions): Promise<DoctorCheck> {
