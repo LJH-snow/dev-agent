@@ -153,6 +153,10 @@ rl.on("line", (line) => {
   }
 
   if (request.method === "tools/call") {
+    if (request.params?.name === "crash") {
+      // Simulates a server that dies without answering the pending call.
+      process.exit(1);
+    }
     if (request.params?.name === "hello") {
       send({
         jsonrpc: "2.0",

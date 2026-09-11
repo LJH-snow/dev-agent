@@ -53,6 +53,10 @@ export class McpStdioClient implements McpClient {
       throw new Error("MCP client is already connected");
     }
     this.config = config;
+    // `close()` sets this; a reconnect must clear it or a later crash would
+    // leave pending requests hanging instead of rejecting them.
+    this.closed = false;
+    this.buffer = "";
 
     const child = spawn(config.command, [...(config.args ?? [])], {
       stdio: ["pipe", "pipe", "pipe"],

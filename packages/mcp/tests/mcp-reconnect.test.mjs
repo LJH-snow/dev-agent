@@ -56,3 +56,24 @@ test("MCP client reconnect throws when no previous configuration exists", async 
   const client = new McpStdioClient();
   await assert.rejects(() => client.reconnect(), /no previous configuration/);
 });
+
+test("a crashed server rejects pending calls after a client reconnect", async () => {
+  const client = new McpStdioClient();
+  try {
+    await client.connect({ command: process.execPath, args: [fakeServer], name: "fake" });
+    await client.reconnect();
+
+    const outcome = await Promise.race([
+      client.callTool("crash", {}).then(
+        () => "resolved",
+        (error) => error
+      ),
+      new Promise((resolve) => setTimeout(() => resolve("timeout"), 2000)),
+    ]);
+
+    assert.ok(outcome instanceof Error, `expected a rejection, got ${outcome}`);
+    assert.match(outcome.message, /exited/);
+  } finally {
+    await client.close();
+  }
+});
