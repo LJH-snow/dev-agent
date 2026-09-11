@@ -63,8 +63,92 @@ const version = "0.1.0";
 const defaultSystemPrompt =
   "You are dev-agent, a coding agent. Use tools when they help answer the user.";
 
+/**
+ * How many values each flag consumes.
+ *
+ * The CLI parses with `indexOf`, so anything it does not recognise used to be
+ * ignored silently: `--nope` fell through to interactive mode, `--once --json`
+ * sent the literal string `--json` to the model, and `--session --once hi`
+ * consumed `--once` as the session id (creating `once.json` on disk). This
+ * table is what lets the validator below turn those into errors.
+ */
+const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> = {
+  "--version": "none",
+  "-v": "none",
+  "--tools": "none",
+  "--metadata": "none",
+  "--session-list": "none",
+  "--doctor": "none",
+  "--mcp-server": "none",
+  "--reset-memory": "none",
+  "--no-stream": "none",
+  "--json": "none",
+  "--once": "one",
+  "--session": "one",
+  "--session-delete": "one",
+  "--index": "one",
+  "--rust-executor": "one",
+  "--approval": "one",
+  "--session-rename": "two",
+  "--compact": "optional",
+  "--check-rust": "optional",
+};
+
+/**
+ * Rejects arguments the flag table does not account for, plus values that look
+ * like another flag. Returns a message to print, or undefined when the command
+ * line is well formed.
+ */
+export function validateCliArgs(args: readonly string[]): string | undefined {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i] ?? "";
+    if (!arg.startsWith("-")) {
+      return `Unexpected argument '${arg}'.`;
+    }
+
+    const arity = CLI_FLAGS[arg];
+    if (arity === undefined) {
+      return `Unknown option '${arg}'.`;
+    }
+    if (arity === "none") {
+      continue;
+    }
+
+    // A value may not start with `-`: that is how `--session --once` slipped
+    // through before. Directory names that start with a dash still work as
+    // `./-dir`.
+    const wanted = arity === "two" ? 2 : 1;
+    let found = 0;
+    while (found < wanted) {
+      const next = args[i + 1 + found];
+      if (next === undefined || next.startsWith("-")) {
+        break;
+      }
+      found += 1;
+    }
+
+    if (arity === "optional") {
+      i += found;
+      continue;
+    }
+    if (found < wanted) {
+      return wanted === 2
+        ? `${arg} requires two values.`
+        : `${arg} requires a value.`;
+    }
+    i += wanted;
+  }
+  return undefined;
+}
+
 export async function main(argv: string[]): Promise<void> {
   const args = argv.slice(2);
+  const argError = validateCliArgs(args);
+  if (argError) {
+    console.error(argError);
+    process.exitCode = 1;
+    return;
+  }
   if (args.includes("--version") || args.includes("-v")) {
     console.log(`dev-agent ${version}`);
     return;

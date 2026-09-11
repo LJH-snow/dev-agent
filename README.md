@@ -287,6 +287,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - Usage costs are estimated when `~/.dev-agent/config.json` has a `pricing`
   section: the CLI appends `cost=$…` to its `[usage]` line, the desktop header
   adds `$…`, and an unconfigured or unknown model shows no cost at all
+- The CLI validates its arguments: an unknown flag, a missing value, or a stray
+  positional argument exits `1` instead of being silently ignored (a typo like
+  `--nope` used to drop into interactive mode, and `--session --once hi` used
+  to create a session named `once`)
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
   (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
@@ -355,6 +359,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 44. ~~Dangerous-pattern coverage for long options and short force flags~~ (done)
 45. ~~`async def` support in the Python scanner~~ (done)
 46. ~~Depth-safe `code-search` index write-back~~ (done)
+47. ~~TypeScript-first test suite (compiled `tests/` -> `tests-dist/`)~~ (done)
+48. ~~Strict CLI argument validation~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

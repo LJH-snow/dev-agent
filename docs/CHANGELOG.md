@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-12 (Day plan v18: strict CLI arguments)
+
+Executed `docs/day-plan-v18.md`. A mistyped flag used to do the wrong thing
+quietly, which is the worst failure mode for a CLI that scripts and CI drive.
+
+### Fixed: unknown and malformed arguments are rejected
+- `validateCliArgs()` declares every flag and how many values it consumes, and
+  runs before anything else in `main()`.
+- Unknown flag: `--nope` exited `0` and dropped into interactive mode; it now
+  exits `1` with `Unknown option '--nope'.`
+- Swallowed value: `--session --once hi` consumed `--once` as the session id and
+  wrote `once.json`; a value may no longer start with `-`, so this exits `1`.
+- Flag as prompt: `--once --json` sent the literal string `--json` to the model;
+  it now exits `1` with `--once requires a value.`
+- Stray positional: `dev-agent hello` silently started interactive mode; it now
+  exits `1` with `Unexpected argument 'hello'.`
+- Valid input is unchanged, including the optional values for `--compact` and
+  `--check-rust` and the `-v` short flag.
+
+### Tests
+- TypeScript: 407 -> 413. Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v17: TypeScript-first test suite)
 
 Executed `docs/day-plan-v17.md`. The test suite moved from hand-written ESM

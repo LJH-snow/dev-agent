@@ -64,6 +64,12 @@ Options:
   only re-read what changed.
 - `--version` / `-v` - print the CLI version
 
+Arguments are validated before anything else runs: an unknown flag, a flag that
+is missing its value, and a stray positional argument all exit `1` with a
+message on stderr instead of being ignored. This matters because a typo used to
+fall through to interactive mode (`--nope`), send the next flag as the prompt
+(`--once --json`), or consume it as a session id (`--session --once`).
+
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on
 stdout is a protocol message, so logs (if any) go to stderr:
 
