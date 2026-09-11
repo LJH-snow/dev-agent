@@ -2,7 +2,7 @@ import type { AgentState } from "./agent-state.js";
 import type { ApprovalOutcome, ApprovalPolicy, ApprovalRequest } from "./approval.js";
 import type { AgentContext } from "./context.js";
 import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.js";
-import type { ChatMessage, ModelProvider, ToolSchema } from "@dev-agent/model";
+import type { ChatMessage, ModelProvider, ToolCall, ToolSchema } from "@dev-agent/model";
 import type { ChatUsage } from "@dev-agent/model";
 import { addUsage } from "./usage.js";
 import {
@@ -188,7 +188,7 @@ export class AgentLoop {
             workingDirectory: context.workingDirectory,
             signal: options.signal,
           };
-          const result = await runTool(this.tools, call, toolContext, this.toolDefaults);
+          const result = await this.runToolSafely(call, toolContext, options.signal);
           this.onToolResult?.({ name: call.name, output: result }, context);
           await memory.append(
             createMemoryEntry("tool", result, { toolCallId: call.id, toolName: call.name })
@@ -321,6 +321,27 @@ export class AgentLoop {
     runState.totalUsage = addUsage(runState.totalUsage, usage);
     this.onUsage?.(usage, runState.context);
     await runState.context.memory.recordUsage?.(usage);
+  }
+
+  /**
+   * Runs a tool and turns a thrown error (including an unknown tool name) into
+   * that tool's result, so the model can correct the call instead of losing the
+   * whole run. An abort still propagates.
+   */
+  private async runToolSafely(
+    call: ToolCall,
+    context: ToolExecutionContext,
+    signal: AbortSignal | undefined
+  ): Promise<string> {
+    try {
+      return await runTool(this.tools!, call, context, this.toolDefaults);
+    } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return JSON.stringify({ error: message });
+    }
   }
 
   /**

@@ -166,26 +166,93 @@ test("agent loop passes runtime context to tools and system prompt", async () =>
   assert.match(lastMessages[0].content, /Working directory: \/tmp\/work/);
 });
 
-test("agent loop records an error when a requested tool is missing", async () => {
+test("agent loop reports a missing tool back to the model", async () => {
+  let calls = 0;
   const model = {
     id: "openai",
     model: "test-model",
     async chat() {
-      return { content: "", toolCalls: [{ id: "call-1", name: "missing", input: {} }] };
+      calls += 1;
+      if (calls === 1) {
+        return { content: "", toolCalls: [{ id: "call-1", name: "missing", input: {} }] };
+      }
+      return { content: "recovered without the tool", toolCalls: [] };
     },
   };
 
   const memory = new InMemoryMemory();
   const context = createAgentContext("agent-3", memory);
-  const loop = new AgentLoop({ model, tools: new AgentToolRegistry(), maxTurns: 2 });
+  const loop = new AgentLoop({ model, tools: new AgentToolRegistry(), maxTurns: 4 });
 
   const result = await loop.run(context, "use missing tool");
 
-  assert.equal(result.state.status, "error");
+  assert.equal(result.state.status, "done");
   assert.equal(result.state.currentTask, "use missing tool");
-  assert.equal(result.state.lastError, "Tool not found: missing");
+  assert.equal(calls, 2, "the model should get a second turn to correct itself");
   const entries = await memory.entries();
-  assert.match(entries.at(-1).content, /Tool not found: missing/);
+  const toolEntry = entries.find((entry) => entry.role === "tool");
+  assert.match(toolEntry.content, /Tool not found: missing/);
+  assert.equal(entries.at(-1).content, "recovered without the tool");
+});
+
+test("agent loop reports a thrown tool error back to the model", async () => {
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "broken",
+    description: "Always fails.",
+    async execute() {
+      throw new Error("bad path");
+    },
+  });
+  let calls = 0;
+  const model = {
+    id: "openai",
+    model: "test-model",
+    async chat() {
+      calls += 1;
+      if (calls === 1) {
+        return { content: "", toolCalls: [{ id: "call-1", name: "broken", input: {} }] };
+      }
+      return { content: "recovered", toolCalls: [] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-4", memory);
+  const loop = new AgentLoop({ model, tools, maxTurns: 4 });
+  const result = await loop.run(context, "try the broken tool");
+
+  assert.equal(result.state.status, "done");
+  const entries = await memory.entries();
+  const toolEntry = entries.find((entry) => entry.role === "tool");
+  assert.match(toolEntry.content, /bad path/);
+  assert.equal(entries.at(-1).content, "recovered");
+});
+
+test("a tool that keeps failing still ends at maxTurns", async () => {
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "broken",
+    description: "Always fails.",
+    async execute() {
+      throw new Error("still broken");
+    },
+  });
+  const model = {
+    id: "openai",
+    model: "test-model",
+    async chat() {
+      return { content: "", toolCalls: [{ id: "call-1", name: "broken", input: {} }] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-5", memory);
+  const loop = new AgentLoop({ model, tools, maxTurns: 2 });
+  const result = await loop.run(context, "keep failing");
+
+  assert.equal(result.state.status, "error");
+  assert.match(result.state.lastError, /Max turns reached/);
 });
 
 test("agent loop rejects without calling the model when already aborted", async () => {
