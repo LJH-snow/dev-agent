@@ -12,7 +12,7 @@ import type { Tool, ToolExecutionContext } from "./index.js";
 
 type Mode = "search" | "references" | "definition";
 
-const supportedExtensions = new Set([
+const typeScriptExtensions = new Set([
   ".ts",
   ".tsx",
   ".mts",
@@ -23,8 +23,18 @@ const supportedExtensions = new Set([
   ".cjs",
 ]);
 
-const skippedDirectories = new Set(["node_modules", "dist", ".git", ".next", ".cache"]);
-const defaultMaxDepth = 6;
+/** Matches the scope of `dev-agent --index`, so both can share one file. */
+const supportedExtensions = new Set([...typeScriptExtensions, ".py", ".rs"]);
+
+const skippedDirectories = new Set([
+  "node_modules",
+  "dist",
+  ".git",
+  ".next",
+  ".cache",
+  ".dev-agent",
+]);
+const defaultMaxDepth = 8;
 const defaultLimit = 50;
 const modes: readonly Mode[] = ["search", "references", "definition"];
 const symbolKinds = new Set<SymbolKind>([
@@ -65,7 +75,7 @@ export interface CodeSearchCacheStats {
 export class CodeSearchTool implements Tool {
   readonly name = "code-search" as const;
   readonly description =
-    "Scan TypeScript/JavaScript source files. Supports symbol search by name, reference lookup, and go-to-definition.";
+    "Scan TypeScript/JavaScript/Python/Rust source files. Supports symbol search by name; reference lookup and go-to-definition cover TypeScript/JavaScript.";
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
@@ -140,7 +150,9 @@ export class CodeSearchTool implements Tool {
     const line = parsePositiveInt(record.line, "line");
     const column = record.column === undefined ? 1 : parsePositiveInt(record.column, "column");
     const scan = await this.loadScan(root, maxDepth);
-    const referenceIndex = new TypeScriptReferenceIndex({ files: scan.sources });
+    const referenceIndex = new TypeScriptReferenceIndex({
+      files: typeScriptSources(scan.sources),
+    });
 
     if (mode === "references") {
       const references = referenceIndex.findReferences(file, line, column);
@@ -272,6 +284,17 @@ function parseMode(value: unknown): Mode {
     throw new Error(`code-search mode must be one of: ${modes.join(", ")}`);
   }
   return value as Mode;
+}
+
+/** The TS/JS subset handed to the TypeScript language service. */
+function typeScriptSources(sources: ReadonlyMap<string, string>): Map<string, string> {
+  const files = new Map<string, string>();
+  for (const [filePath, source] of sources) {
+    if (typeScriptExtensions.has(extname(filePath))) {
+      files.set(filePath, source);
+    }
+  }
+  return files;
 }
 
 function requireString(value: unknown, field: string): string {

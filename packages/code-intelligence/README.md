@@ -17,6 +17,13 @@ Phase 1 now includes:
   `findReferences(filePath, line, column)` and `findDefinition(filePath, line, column)`
   queries against in-memory source files. It serves virtual files plus real TS lib files
   resolved from the installed `typescript` package.
+- `scanPythonSymbols(source, filePath)` for Python functions and classes.
+- `scanRustSymbols(source, filePath)` for Rust items: `fn`/`struct`/`enum`/`type`/
+  `mod`/`use`/`trait`, with visibility (`pub`, `pub(crate)`, `pub(in path)`) and
+  item modifiers (`async`, `unsafe`, `const`, `default`, `extern "C"`) handled.
+  Functions inside `impl` and `trait` blocks are reported as `method` symbols
+  carrying the container name.
+- `scanFile(source, filePath)` dispatches to the right scanner by extension.
 
 Typical usage:
 

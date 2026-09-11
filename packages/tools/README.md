@@ -43,3 +43,9 @@ back to the same file (only when it already exists, and a write failure is
 ignored). A missing index falls back to a full scan and is never created by a
 search; an index that exists but cannot be parsed is replaced with a fresh one
 after that scan, so the next process starts from a valid cache.
+
+The scanned file set matches `dev-agent --index`: `.ts`/`.tsx`/`.mts`/`.cts`,
+`.js`/`.jsx`/`.mjs`/`.cjs`, `.py`, and `.rs`, up to depth 8, skipping
+`node_modules`, `dist`, `.git`, `.next`, `.cache`, and `.dev-agent`. Symbol
+search covers all four languages; `references` and `definition` stay
+TypeScript/JavaScript because they use the TypeScript language service.

@@ -4,9 +4,42 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
+import { scanFile } from "@dev-agent/code-intelligence";
+
 import { CodeSearchTool } from "../dist/index.js";
 
 const SOURCE = "export function realSymbol() { return 1; }\n";
+
+const MULTI_LANGUAGE = {
+  "sample.ts": "export function tsOnly() {}\n",
+  "sample.py": "def python_only():\n    return 1\n",
+  "sample.rs": "pub fn rust_only() {}\n",
+};
+
+/** Writes a TS/Python/Rust project and, by default, a matching persisted index. */
+async function createMultiLanguageProject({ persisted = true } = {}) {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-multilang-"));
+  const files = {};
+  const symbols = [];
+  const signatures = {};
+  for (const [name, source] of Object.entries(MULTI_LANGUAGE)) {
+    const file = join(dir, name);
+    await writeFile(file, source, "utf8");
+    const info = await stat(file);
+    files[file] = source;
+    symbols.push(...scanFile(source, file));
+    signatures[file] = { mtimeMs: info.mtimeMs, size: info.size };
+  }
+  if (persisted) {
+    await mkdir(join(dir, ".dev-agent"), { recursive: true });
+    await writeFile(
+      join(dir, ".dev-agent", "index.json"),
+      JSON.stringify({ version: 1, files, symbols, signatures }),
+      "utf8"
+    );
+  }
+  return { dir };
+}
 
 /** Writes a project plus a persisted index that claims a symbol the source lacks. */
 async function createProject({ signatureOverride } = {}) {
@@ -206,6 +239,50 @@ test("a failed write-back does not break the search", async (t) => {
     assert.equal(tool.getCacheStats().persisted, 0);
   } finally {
     await chmod(indexPath, 0o644).catch(() => {});
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("python and rust symbols from a persisted index are searchable and preserved", async () => {
+  const { dir } = await createMultiLanguageProject();
+  const tool = new CodeSearchTool();
+  try {
+    for (const [query, name] of [
+      ["tsOnly", "sample.ts"],
+      ["python_only", "sample.py"],
+      ["rust_only", "sample.rs"],
+    ]) {
+      const result = await tool.execute({ mode: "search", query, path: dir });
+      assert.equal(result.count, 1, `expected one hit for ${query}`);
+      assert.equal(result.results[0].filePath, join(dir, name));
+    }
+    assert.equal(tool.getCacheStats().persisted, 0, "nothing changed, so nothing to rewrite");
+
+    const index = JSON.parse(
+      await readFile(join(dir, ".dev-agent", "index.json"), "utf8")
+    );
+    const names = index.symbols.map((symbol) => symbol.name);
+    for (const expected of ["tsOnly", "python_only", "rust_only"]) {
+      assert.ok(names.includes(expected), `${expected} should stay in the index`);
+    }
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a scan without a persisted index still indexes python and rust", async () => {
+  const { dir } = await createMultiLanguageProject({ persisted: false });
+  const tool = new CodeSearchTool();
+  try {
+    const python = await tool.execute({ mode: "search", query: "python_only", path: dir });
+    const rust = await tool.execute({ mode: "search", query: "rust_only", path: dir });
+
+    assert.equal(python.count, 1);
+    assert.equal(python.results[0].filePath, join(dir, "sample.py"));
+    assert.equal(rust.count, 1);
+    assert.equal(rust.results[0].filePath, join(dir, "sample.rs"));
+    await assert.rejects(stat(join(dir, ".dev-agent", "index.json")));
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
