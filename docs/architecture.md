@@ -20,6 +20,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   turn and tool call and forwards it to the model request. The signal also
   reaches tools through `ToolExecutionContext.signal`, so a running command can
   be cancelled instead of only stopping between turns.
+- **Summarization**: with `contextBudget.summarize` the entries dropped by the
+  budget are replaced by a model-written `[summary]` digest, which grows
+  incrementally as more history is trimmed; a failed summary falls back to the
+  `[context] N earlier entries omitted` notice.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
   loop accumulates the totals on `AgentContext.usage` across runs.
 
@@ -71,6 +75,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - Cancellation crosses it too: `ExecutorRunOptions.signal` makes `LocalExecutor`
   kill the child locally, while `RustExecutor` sends `Envelope.cancel` and the
   runtime kills the matching child and answers `CANCELLED`.
+- Termination is graceful on both sides: commands lead their own process group,
+  receive SIGTERM (group-wide on Unix) and are SIGKILLed only if they are still
+  alive after a two-second grace period. Timeouts use the same sequence, so a
+  sandbox wrapper cannot leave the real command running behind it.
 - `SandboxProfile` and `SandboxExecutor` for Rust sandbox integration.
 - `RestrictedExecutor` enforces profiles on macOS (`sandbox-exec`) and Linux (`bwrap`).
 

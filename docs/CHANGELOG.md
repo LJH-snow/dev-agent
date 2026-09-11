@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-11 (Development plan v5: graceful termination, context summaries)
+
+Executed `docs/night-plan-v5.md`, closing the two boundaries v4 left open:
+cancellation went straight to SIGKILL (and could orphan a sandboxed command),
+and the context budget dropped old history outright.
+
+### Added: graceful process-group termination
+- Commands now run in their own process group — `process_group(0)` in the Rust
+  runtime, `detached: true` in the TypeScript `LocalExecutor` — so a termination
+  signal reaches the whole tree, including `sandbox-exec`/`bwrap` wrappers.
+- Cancellation and timeouts send SIGTERM first and SIGKILL only after a
+  two-second grace period; commands that exit on SIGTERM are unaffected, and
+  commands that ignore it are still stopped. Output truncation keeps ending
+  immediately.
+- Non-Unix falls back to killing the single process.
+
+### Added: incremental context summarization
+- `contextBudget.summarize` (default off) replaces the
+  `[context] N earlier entries omitted` notice with a model-written
+  `[summary]` digest. Only newly trimmed entries are summarized, and the digest
+  is extended rather than regenerated.
+- Summarization tokens count toward the session usage and fire `onUsage`; a
+  failed summary falls back to the omission notice and the run continues.
+- CLI: `DEV_AGENT_SUMMARIZE_CONTEXT` / `summarizeContext`; desktop:
+  `ChatSessionOptions.summarizeContext` with the same env fallback.
+- Known boundary: the digest lives on the `AgentLoop` instance, so the desktop
+  (which builds a loop per run) regenerates it once per run. Persisting it in
+  memory metadata is the follow-up if that cost matters.
+
+### Tests
+- TypeScript: 262 -> 270. Rust: 42 -> 43.
+- New coverage: SIGTERM-ignoring commands on both executors, summary replacing
+  the notice, incremental summarization, summary tokens in usage, summary
+  failure fallback, and a CLI round trip where the provider receives the
+  `[summary]` message.
+
 ## 2026-09-11 (Development plan v4: cancellation, usage, MCP server)
 
 Executed `docs/night-plan-v4.md`, which closed the gaps v3 left behind:

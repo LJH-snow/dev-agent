@@ -187,10 +187,16 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - Interrupting a run now cancels the tool that is already running: the abort
   signal reaches the tool context, `LocalExecutor` kills the child, and
   `RustExecutor` sends `Envelope.cancel` so the runtime kills it too
+- Termination is graceful: commands run in their own process group and get
+  SIGTERM first, SIGKILL only after a two-second grace period, so wrappers and
+  grandchildren are covered and nothing keeps running in the background
 - Token usage: providers report `usage`, the loop accumulates it on the
   context and fires `onUsage`, and the CLI (`[usage] …`) plus the desktop
   (`usage` SSE event and header counter) surface it
-- Test suite: 262 TypeScript tests + 42 Rust tests, all passing
+- Long sessions can summarize instead of forget: `contextBudget.summarize`
+  replaces trimmed history with an incrementally grown `[summary]` digest
+  (`DEV_AGENT_SUMMARIZE_CONTEXT`), falling back to the omission notice on error
+- Test suite: 270 TypeScript tests + 43 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -223,3 +229,5 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 15. ~~Desktop end-to-end coverage for interrupts and the context budget~~ (done)
 16. ~~Session token-usage accounting across providers~~ (done)
 17. ~~MCP server mode (`--mcp-server`) exposing the built-in tools~~ (done)
+18. ~~Graceful process-group termination before SIGKILL~~ (done)
+19. ~~Incremental summarization of trimmed context~~ (done)

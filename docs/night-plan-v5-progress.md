@@ -4,12 +4,57 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（文档、回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-11 09:3x-10:0x）
-- 工作区：阶段 1 的改动已提交并推送
+- 当前阶段：无（v5 计划全部完成）
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-11 10:0x-10:2x）
+- 工作区：阶段 2 的改动已提交并推送
 
 ## 日志
+
+### 运行 3 — 2026-09-11 10:0x-10:2x
+
+- 阶段/工作项：阶段 2（文档、回归与提交）全部完成
+- 做了什么：
+  - 根 `README.md`：Current Status 增加优雅终止与摘要两条，测试数量更新为
+    270 TypeScript + 43 Rust；Roadmap 增加 18-19 项
+  - `docs/architecture.md`：补充终止序列（进程组 + SIGTERM → 宽限 → SIGKILL）
+    与摘要路径
+  - `docs/CHANGELOG.md`：顶部新增 v5 条目
+- 验证命令与结果（完整回归矩阵）：
+  - `node scripts/check.mjs`：通过
+  - `pnpm build`、`pnpm typecheck`：通过
+  - `pnpm test`：270 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：9 passed
+  - `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：43 passed / 0 failed
+- 提交：见阶段 2 的 docs 提交
+- 下一步：无（计划完成）
+
+## 最终总结（2026-09-11 10:20）
+
+### 各阶段产出
+
+| 阶段 | 产出 | 关键提交 |
+|------|------|----------|
+| 0 | 优雅终止：命令自成进程组，SIGTERM → 2s 宽限 → SIGKILL，覆盖包装进程与孙进程 | `feat(executor)` |
+| 1 | 增量摘要：`contextBudget.summarize` 用 `[summary]` 摘要替代丢弃提示，token 计入 usage，失败可回退 | `feat(agent-core)` |
+| 2 | 文档同步、全量回归、提交推送 | `docs` |
+
+### 测试数量
+
+- TypeScript：262 → 270（+8）
+- Rust：42 → 43（+1）
+- 真实二进制集成用例：9（保持不变，取消/截断路径仍全绿）
+
+### 遗留问题（已知边界）
+
+1. 摘要摘要是按 `AgentLoop` 实例缓存的：CLI 一个进程内只算一次，桌面端每次
+   `session.run` 会重建 loop，因此每个新 run 会重新生成一次摘要。要做到跨 run
+   复用需要把摘要写进 memory 元数据。
+2. 摘要会额外消耗一次模型调用；虽然 token 已计入 usage，但没有单独的预算或上限。
+3. MCP server 仍只实现 tools 能力（无 resources / prompts）。
+4. Rust 运行时自身仍不限制并发，上限只在 TS 侧（`RustExecutor`/`LocalExecutor`）。
+5. Linux `bwrap` 实时测试只能在 Linux 上跑；Windows 仍不受支持。
 
 ### 运行 2 — 2026-09-11 09:3x-10:0x
 
