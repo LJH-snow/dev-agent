@@ -5,12 +5,32 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（桌面端审批）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-11 14:05-14:45）
-- 工作区：阶段 2 的改动已提交并推送
+- 当前阶段：阶段 4（MCP server 的 resources 与 prompts）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-11 14:45-15:15）
+- 工作区：阶段 3 的改动已提交并推送
 
 ## 日志
+
+### 运行 4 — 2026-09-11 14:45-15:15
+
+- 阶段/工作项：阶段 3（桌面端审批）全部完成
+- 做了什么：
+  - `ChatSessionOptions.approvalMode`（`allow` / `deny-dangerous` / `ask`），
+    未传时读 `DEV_AGENT_APPROVAL`，默认 `allow`
+  - 边界处理：Web UI 还没有审批交互，`ask` 按 `deny-dangerous` 处理并写进文档，
+    避免"配了 ask 却静默执行"的误解
+  - SSE 新增 `approval` 事件：`{ tool, decision, reason }`；被拒时 agent-core
+    已把 `[denied by policy]` 写回 tool 结果，模型可以改道
+  - UI：新增 `.msg.denied` 样式与 `approval` 事件分支，被拒时在会话里显示
+    `[denied] <工具>: <原因>`
+  - 文档：`apps/desktop/README.md` 增加 `DEV_AGENT_APPROVAL` 与 `approval` 事件说明
+- 验证命令与结果：
+  - `apps/desktop`：24 passed（新增 2 个：`deny-dangerous` 拦截 `chmod 777`、
+    SSE 出现 `approval` 且文件权限未变、模型看到拒绝；默认模式下同一条命令照常执行）
+  - `pnpm build`、`pnpm typecheck`、`pnpm test`：全绿（TypeScript 291 个测试）
+- 提交：见阶段 3 的 feat 提交
+- 下一步：阶段 4 — MCP server 的 resources 与 prompts
 
 ### 运行 3 — 2026-09-11 14:05-14:45
 

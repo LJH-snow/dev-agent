@@ -5,8 +5,10 @@ import {
   AgentLoop,
   AgentToolRegistry,
   createAgentContext,
+  denyDangerousPolicy,
   FileMemory,
   type AgentContext,
+  type ApprovalPolicy,
 } from "@dev-agent/agent-core";
 import { createExecutor } from "@dev-agent/executor";
 import {
@@ -19,9 +21,19 @@ import {
 import { createDefaultTools } from "@dev-agent/tools";
 
 export interface StreamEvent {
-  readonly type: "token" | "tool" | "tool-result" | "turn" | "usage" | "done" | "error";
+  readonly type:
+    | "token"
+    | "tool"
+    | "tool-result"
+    | "turn"
+    | "usage"
+    | "approval"
+    | "done"
+    | "error";
   readonly data: Record<string, unknown>;
 }
+
+export type DesktopApprovalMode = "allow" | "deny-dangerous" | "ask";
 
 export interface ChatSessionOptions {
   readonly sessionId?: string;
@@ -31,6 +43,7 @@ export interface ChatSessionOptions {
   readonly maxContextChars?: number;
   readonly summarizeContext?: boolean;
   readonly summaryMaxChars?: number;
+  readonly approvalMode?: DesktopApprovalMode;
   readonly rustBinaryPath?: string;
 }
 
@@ -44,6 +57,7 @@ export class ChatSession {
   private readonly maxContextChars?: number;
   private readonly summarizeContext: boolean;
   private readonly summaryMaxChars?: number;
+  private readonly approval?: ApprovalPolicy;
   private context: AgentContext;
 
   constructor(options: ChatSessionOptions = {}) {
@@ -66,6 +80,7 @@ export class ChatSession {
       options.summarizeContext ?? parseBoolean(process.env.DEV_AGENT_SUMMARIZE_CONTEXT);
     this.summaryMaxChars =
       options.summaryMaxChars ?? parsePositiveInt(process.env.DEV_AGENT_SUMMARY_MAX_CHARS);
+    this.approval = resolveApprovalPolicy(options.approvalMode);
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -106,6 +121,16 @@ export class ChatSession {
             promptTokens: usage.promptTokens,
             completionTokens: usage.completionTokens,
             totalTokens: usage.totalTokens,
+          },
+        }),
+      approval: this.approval,
+      onApproval: (request, outcome) =>
+        emit({
+          type: "approval",
+          data: {
+            tool: request.toolName,
+            decision: outcome.decision,
+            reason: outcome.reason,
           },
         }),
     });
@@ -159,6 +184,18 @@ function parseBoolean(value: string | undefined): boolean {
     return false;
   }
   return ["1", "true", "yes"].includes(value.trim().toLowerCase());
+}
+
+/**
+ * The web UI has no approval prompt yet, so "ask" maps to the conservative
+ * deny-only policy instead of silently running the command.
+ */
+function resolveApprovalPolicy(mode: DesktopApprovalMode | undefined): ApprovalPolicy | undefined {
+  const resolved = (mode ?? process.env.DEV_AGENT_APPROVAL ?? "allow").trim().toLowerCase();
+  if (resolved === "deny-dangerous" || resolved === "ask") {
+    return denyDangerousPolicy();
+  }
+  return undefined;
 }
 
 function createProvider(): ModelProvider {

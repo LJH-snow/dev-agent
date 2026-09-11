@@ -27,6 +27,10 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `DEV_AGENT_SUMMARIZE_CONTEXT` — `1`/`true`/`yes` replaces the dropped history
   with a model-written `[summary]` digest instead of the omission notice
 - `DEV_AGENT_SUMMARY_MAX_CHARS` — cap for that digest (default 2000 characters)
+- `DEV_AGENT_APPROVAL` — `deny-dangerous` blocks the built-in dangerous command
+  patterns and filesystem writes outside the working directory. The web UI has
+  no approval prompt yet, so `ask` also behaves as `deny-dangerous`; use the CLI
+  when a human should confirm each dangerous call.
 
 ## How it works
 
@@ -44,7 +48,9 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `GET /` — chat UI.
 - `GET /health` — `{ "status": "ok" }`.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
-  frames: `token`, `tool`, `tool-result`, `turn`, `usage`, `done`, `error`.
+  frames: `token`, `tool`, `tool-result`, `turn`, `usage`, `approval`, `done`,
+  `error`. An `approval` frame carries `{ tool, decision, reason }`; a denial is
+  also written back to the model as that tool's result.
 - `POST /api/chat` while another run is in flight — `409`, so two runs never
   interleave the same conversation state.
 

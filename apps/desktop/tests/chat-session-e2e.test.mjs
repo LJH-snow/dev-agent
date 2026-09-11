@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -14,6 +14,9 @@ const ENV_KEYS = [
   "OPENAI_BASE_URL",
   "DEV_AGENT_MEMORY_FILE",
   "DEV_AGENT_MAX_CONTEXT_CHARS",
+  "DEV_AGENT_SUMMARIZE_CONTEXT",
+  "DEV_AGENT_SUMMARY_MAX_CHARS",
+  "DEV_AGENT_APPROVAL",
   "DEV_AGENT_RUST_BINARY",
 ];
 
@@ -241,6 +244,94 @@ test("the desktop stream reports the token usage of each turn", async () => {
 
     assert.match(text, /event: usage/);
     assert.match(text, /"totalTokens":6/);
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve()));
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("deny-dangerous blocks a dangerous tool call and reports it over SSE", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-approval-"));
+  const target = join(dir, "target.txt");
+  await writeFile(target, "keep\n", "utf8");
+  await chmod(target, 0o644);
+
+  const provider = await startStubProvider((_parsed, count) =>
+    count === 1
+      ? [shellToolCall(`chmod 777 ${target}`)]
+      : [{ choices: [{ delta: { content: "done" } }] }]
+  );
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+    DEV_AGENT_APPROVAL: "deny-dangerous",
+  });
+
+  const session = new ChatSession({ workingDirectory: dir });
+  const server = await startServer({ session, host: "127.0.0.1" });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "run it" }),
+    });
+    const text = await response.text();
+
+    assert.match(text, /event: approval/);
+    assert.match(text, /"decision":"deny"/);
+    assert.equal((await stat(target)).mode & 0o777, 0o644, "the denied command must not run");
+
+    const second = provider.requests[1];
+    assert.ok(second, "the loop should continue after the denial");
+    const contents = second.messages.map((message) => String(message.content ?? ""));
+    assert.ok(
+      contents.some((content) => content.includes("[denied by policy]")),
+      "the model should see the denial"
+    );
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve()));
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the default approval mode still runs that command", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-approval-off-"));
+  const target = join(dir, "target.txt");
+  await writeFile(target, "keep\n", "utf8");
+  await chmod(target, 0o644);
+
+  const provider = await startStubProvider((_parsed, count) =>
+    count === 1
+      ? [shellToolCall(`chmod 777 ${target}`)]
+      : [{ choices: [{ delta: { content: "done" } }] }]
+  );
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+
+  const session = new ChatSession({ workingDirectory: dir });
+  const server = await startServer({ session, host: "127.0.0.1" });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "run it" }),
+    });
+    const text = await response.text();
+
+    assert.ok(!text.includes('"decision":"deny"'), "nothing should have been denied");
+    assert.equal((await stat(target)).mode & 0o777, 0o777, "the command should have run");
   } finally {
     await new Promise((resolve) => server.close(() => resolve()));
     await provider.close();
