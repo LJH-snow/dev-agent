@@ -5,12 +5,36 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（CLI 审批交互）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-11 13:35-14:05）
-- 工作区：阶段 1 的改动已提交并推送
+- 当前阶段：阶段 3（桌面端审批）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-11 14:05-14:45）
+- 工作区：阶段 2 的改动已提交并推送
 
 ## 日志
+
+### 运行 3 — 2026-09-11 14:05-14:45
+
+- 阶段/工作项：阶段 2（CLI 审批交互）全部完成
+- 做了什么：
+  - 配置：`ApprovalMode = allow | deny-dangerous | ask`、`parseApprovalMode()`、
+    `resolveApprovalMode()`（env `DEV_AGENT_APPROVAL` > 配置文件 `approvalMode` > allow，
+    非法值一律回落 allow）
+  - CLI 新增 `--approval <mode>`：flag > env > 文件；非法值直接报错退出
+  - `allow` 不安装策略（零开销，行为与之前完全一致）；`deny-dangerous` 直接用内置策略；
+    `ask` 先用内置策略判定，命中后询问 `y/N` —— 交互模式下复用同一个 readline
+    接口，非交互（如 `--once`）从 stdin 读一行；回答不是 y、EOF 或读取失败都按拒绝
+  - 被拒时打印 `[denied] <工具名> <原因>`，并把 `[denied by policy]` 写回 tool 结果
+  - 文档：`apps/cli/README.md` 增加 `--approval`、`DEV_AGENT_APPROVAL`、`approvalMode`
+- 验证命令与结果：
+  - `apps/cli`：47 passed（新增 5 个：模式解析优先级 2 个 + 端到端 3 个——
+    `deny-dangerous` 拦截 `chmod 777` 且模型看到拒绝、`ask` 回答 n 不执行、
+    `ask` 回答 y 真的执行）
+  - `pnpm test`：全绿（TypeScript 289 个测试）
+- 踩坑记录：`--once` 模式下审批读取 stdin 后若父进程不关闭 stdin，CLI 进程不退出，
+  测试会挂住；修法是读取端在拿到一行后 `pause()`，测试端写完输入即 `end()`。
+  同时去掉了 `process.stdin.readable` 的前置判断，避免 EOF 后缓冲数据被忽略。
+- 提交：见阶段 2 的 feat 提交
+- 下一步：阶段 3 — 桌面端审批（`DEV_AGENT_APPROVAL` + `approval` SSE 事件 + UI 徽标）
 
 ### 运行 2 — 2026-09-11 13:35-14:05
 

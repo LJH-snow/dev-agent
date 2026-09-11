@@ -27,6 +27,10 @@ Options:
 - `--check-rust [path]` - send a health check to the Rust runtime binary
 - `--mcp-server` - run as an MCP server over stdio instead of starting the agent,
   exposing the built-in tools to a host agent (no model provider needed)
+- `--approval <mode>` - tool approval policy: `allow` (default, everything runs),
+  `deny-dangerous` (block the built-in dangerous command patterns and writes
+  outside the working directory), or `ask` (same detection, but confirm with
+  `y/N` first; a non-`y` answer, EOF, or a read failure denies the call)
 - `--version` / `-v` - print the CLI version
 
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on
@@ -63,6 +67,8 @@ Configuration is read from the environment:
   turns it off.
 - `DEV_AGENT_SUMMARY_MAX_CHARS` - cap for the digest; over-long summaries keep
   their newest part. Defaults to 2000 characters.
+- `DEV_AGENT_APPROVAL` - approval mode (`allow`, `deny-dangerous`, `ask`);
+  `--approval` wins over it, and it wins over `approvalMode` in the config file.
 - `DEV_AGENT_RUST_BINARY` - path to the `dev-agent-executor` binary. Applies to
   real tool runs as well as `--check-rust`, so setting it routes every tool
   command through the Rust sandbox. `--rust-executor <path>` wins over it.
@@ -100,6 +106,7 @@ invocation.
   announced; used when `DEV_AGENT_SUMMARIZE_CONTEXT` is unset.
 - `summaryMaxChars` - digest length cap; used when
   `DEV_AGENT_SUMMARY_MAX_CHARS` is unset.
+- `approvalMode` - approval policy; used when `DEV_AGENT_APPROVAL` is unset.
 - `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
 
 A malformed config file is ignored rather than fatal.

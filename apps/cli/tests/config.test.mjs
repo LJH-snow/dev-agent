@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   parseConfig,
   loadConfig,
+  parseApprovalMode,
+  resolveApprovalMode,
   resolveMaxContextChars,
   resolveMaxTurns,
   resolveModel,
@@ -145,4 +147,26 @@ test("resolveSummaryMaxChars prefers env, then config, then no cap", () => {
   assert.equal(resolveSummaryMaxChars({}, { DEV_AGENT_SUMMARY_MAX_CHARS: "abc" }), undefined);
   assert.equal(resolveSummaryMaxChars({ summaryMaxChars: -1 }, {}), undefined);
   assert.equal(resolveSummaryMaxChars({}, {}), undefined);
+});
+
+test("resolveApprovalMode prefers env, then config, then allow", () => {
+  assert.equal(
+    resolveApprovalMode(
+      { approvalMode: "ask" },
+      { DEV_AGENT_APPROVAL: "deny-dangerous" }
+    ),
+    "deny-dangerous"
+  );
+  assert.equal(resolveApprovalMode({ approvalMode: "ask" }, {}), "ask");
+  assert.equal(resolveApprovalMode({}, {}), "allow");
+  assert.equal(resolveApprovalMode({}, { DEV_AGENT_APPROVAL: "nonsense" }), "allow");
+  assert.equal(resolveApprovalMode({ approvalMode: "nonsense" }, {}), "allow");
+});
+
+test("parseApprovalMode normalises known modes and rejects the rest", () => {
+  assert.equal(parseApprovalMode("DENY-DANGEROUS"), "deny-dangerous");
+  assert.equal(parseApprovalMode(" ask "), "ask");
+  assert.equal(parseApprovalMode("allow"), "allow");
+  assert.equal(parseApprovalMode("nope"), undefined);
+  assert.equal(parseApprovalMode(undefined), undefined);
 });

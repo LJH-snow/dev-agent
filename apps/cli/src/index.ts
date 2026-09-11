@@ -8,9 +8,11 @@ import {
   AgentLoop,
   AgentToolRegistry,
   createAgentContext,
+  denyDangerousPolicy,
   FileMemory,
   type AgentContext,
   type AgentMemory,
+  type ApprovalPolicy,
   type SessionMetadata,
 } from "@dev-agent/agent-core";
 import { createExecutor } from "@dev-agent/executor";
@@ -24,6 +26,8 @@ import {
 import { colors, colorize } from "./colors.js";
 import {
   loadConfig,
+  parseApprovalMode,
+  resolveApprovalMode,
   resolveMaxContextChars,
   resolveMaxTurns,
   resolveModel,
@@ -31,6 +35,7 @@ import {
   resolveRustBinaryPath,
   resolveSummarizeContext,
   resolveSummaryMaxChars,
+  type ApprovalMode,
   type CliConfig,
 } from "./config.js";
 import { buildMcpSystemPromptSupplement } from "./mcp-system-prompt.js";
@@ -91,6 +96,20 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  const approvalIndex = args.indexOf("--approval");
+  const approvalFlag = approvalIndex >= 0 ? args[approvalIndex + 1] : undefined;
+  if (approvalIndex >= 0 && approvalFlag === undefined) {
+    console.error("--approval requires one of: allow, deny-dangerous, ask");
+    process.exitCode = 1;
+    return;
+  }
+  const approvalFlagMode = approvalFlag === undefined ? undefined : parseApprovalMode(approvalFlag);
+  if (approvalFlag !== undefined && approvalFlagMode === undefined) {
+    console.error(`Unknown approval mode '${approvalFlag}'. Use allow, deny-dangerous, or ask.`);
+    process.exitCode = 1;
+    return;
+  }
+
   if (args.includes("--mcp-server")) {
     // Expose the built-in tools over MCP instead of running the agent. No model
     // provider is needed, and stdout carries only JSON-RPC frames.
@@ -106,6 +125,9 @@ export async function main(argv: string[]): Promise<void> {
   try {
     const config = loadConfig();
     const provider = createProvider(config);
+    const approvalMode = approvalFlagMode ?? resolveApprovalMode(config);
+    const questionBox: QuestionBox = {};
+    const approval = buildApprovalPolicy(approvalMode, questionBox);
     const tools = new AgentToolRegistry();
     for (const tool of createDefaultTools(createExecutor({ rustBinaryPath }))) {
       tools.register(tool);
@@ -174,6 +196,14 @@ export async function main(argv: string[]): Promise<void> {
         .join("\n\n"),
       maxTurns: resolveMaxTurns(config, 8),
       contextBudget: buildContextBudget(config),
+      approval,
+      onApproval: (request, outcome) => {
+        if (outcome.decision === "deny") {
+          process.stdout.write(
+            `${colorize(`[denied] ${request.toolName} ${outcome.reason ?? ""}`.trimEnd(), "yellow")}\n`
+          );
+        }
+      },
       onTurn: (turn) => {
         process.stdout.write(`[turn ${turn}]\n`);
       },
@@ -185,7 +215,7 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
 
-    await interactive(loop, context, streaming);
+    await interactive(loop, context, streaming, questionBox);
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
   }
@@ -234,6 +264,75 @@ function buildContextBudget(
     return undefined;
   }
   return { maxChars, summarize, summaryMaxChars };
+}
+
+/** Filled in by the interactive loop so approval prompts share its reader. */
+interface QuestionBox {
+  ask?: (prompt: string) => Promise<string>;
+}
+
+function buildApprovalPolicy(
+  mode: ApprovalMode,
+  questionBox: QuestionBox
+): ApprovalPolicy | undefined {
+  if (mode === "allow") {
+    // No policy means no per-call overhead, exactly as before.
+    return undefined;
+  }
+  if (mode === "deny-dangerous") {
+    return denyDangerousPolicy();
+  }
+
+  const dangerous = denyDangerousPolicy();
+  return {
+    async decide(request) {
+      const outcome = await dangerous.decide(request);
+      const decision = typeof outcome === "string" ? outcome : outcome.decision;
+      if (decision === "allow") {
+        return { decision: "allow" };
+      }
+
+      const reason = typeof outcome === "string" ? undefined : outcome.reason;
+      const question = `${reason ?? "dangerous call"}\nRun ${request.toolName} anyway? [y/N] `;
+      const answer = questionBox.ask
+        ? await questionBox.ask(question)
+        : await readLineFromStdin(question);
+
+      return answer.trim().toLowerCase().startsWith("y")
+        ? { decision: "allow" }
+        : { decision: "deny", reason: `${reason ?? "dangerous call"} (declined)` };
+    },
+  };
+}
+
+/** Reads one confirmation line; EOF and read failures count as "no". */
+function readLineFromStdin(question: string): Promise<string> {
+  process.stderr.write(question);
+  return new Promise((resolve) => {
+    let buffer = "";
+    const cleanup = (): void => {
+      process.stdin.off("data", onData);
+      process.stdin.off("end", onEnd);
+      process.stdin.pause();
+    };
+    const onData = (chunk: Buffer | string): void => {
+      buffer += chunk.toString();
+      const newline = buffer.indexOf("\n");
+      if (newline >= 0) {
+        cleanup();
+        resolve(buffer.slice(0, newline));
+      }
+    };
+    const onEnd = (): void => {
+      cleanup();
+      resolve(buffer);
+    };
+    process.stdin.on("data", onData);
+    process.stdin.once("end", onEnd);
+    // Buffered input (for example a piped "y\n") is delivered on resume; EOF
+    // resolves with whatever arrived first.
+    process.stdin.resume();
+  });
 }
 
 function sessionDir(): string {
@@ -458,11 +557,19 @@ function resolveWorkingDirectory(): string {
     process.cwd();
 }
 
-async function interactive(loop: AgentLoop, context: AgentContext, streaming: StreamingRun): Promise<void> {
+async function interactive(
+  loop: AgentLoop,
+  context: AgentContext,
+  streaming: StreamingRun,
+  questionBox: QuestionBox
+): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout,
   });
+  // Approval prompts reuse this interface instead of opening a second reader
+  // on the same stdin.
+  questionBox.ask = (prompt) => rl.question(prompt);
 
   console.log("dev-agent CLI. Type 'exit' or 'quit' to stop.");
   let interrupted = false;

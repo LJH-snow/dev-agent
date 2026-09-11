@@ -9,6 +9,7 @@ export interface CliConfig {
   readonly maxContextChars?: number;
   readonly summarizeContext?: boolean;
   readonly summaryMaxChars?: number;
+  readonly approvalMode?: ApprovalMode;
   readonly mcpServers?: ReadonlyArray<{
     readonly name?: string;
     readonly command: string;
@@ -162,4 +163,28 @@ export function resolveSummaryMaxChars(
   }
 
   return undefined;
+}
+
+export type ApprovalMode = "allow" | "deny-dangerous" | "ask";
+
+/** Validates a user-supplied approval mode, returning undefined when unknown. */
+export function parseApprovalMode(value: string | undefined): ApprovalMode | undefined {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "allow" || normalized === "deny-dangerous" || normalized === "ask") {
+    return normalized;
+  }
+  return undefined;
+}
+
+/** Environment wins over the config file; anything unrecognised falls back to allow. */
+export function resolveApprovalMode(
+  config: CliConfig = {},
+  env: Env = process.env
+): ApprovalMode {
+  const fromEnv = parseApprovalMode(env.DEV_AGENT_APPROVAL);
+  if (fromEnv) {
+    return fromEnv;
+  }
+  const fromConfig = parseApprovalMode(config.approvalMode);
+  return fromConfig ?? "allow";
 }
