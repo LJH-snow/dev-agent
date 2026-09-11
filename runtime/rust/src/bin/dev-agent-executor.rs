@@ -16,12 +16,19 @@ use dev_agent_runtime::{
 type CancelSenders = Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>;
 type SharedWriter = Arc<Mutex<io::Stdout>>;
 
+/// How many commands may be in flight before further requests are rejected.
+/// Overridable with `DEV_AGENT_MAX_CONCURRENT`; the TypeScript side keeps its
+/// own cap, so the effective limit is the smaller of the two.
+const DEFAULT_MAX_CONCURRENT: usize = 5;
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let stdin = io::stdin();
     let mut reader = BufReader::new(stdin.lock());
     let writer: SharedWriter = Arc::new(Mutex::new(io::stdout()));
     let pending: CancelSenders = Arc::new(Mutex::new(HashMap::new()));
+    let max_concurrent =
+        parse_max_concurrent(std::env::var("DEV_AGENT_MAX_CONCURRENT").ok().as_deref());
 
     // Requests run concurrently so a cancel envelope can be read while a
     // command is still running. Each run keeps a cancellation sender in
@@ -41,6 +48,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let request_id = envelope.request_id;
         match envelope.payload {
             Some(RequestPayload::Run(run)) => {
+                if at_capacity(&pending, max_concurrent).await {
+                    let mut out = writer.lock().await;
+                    let _ = write_response(&mut *out, &capacity_error(request_id, max_concurrent));
+                    continue;
+                }
                 let cancel = register_cancel(&pending, request_id).await;
                 let writer = Arc::clone(&writer);
                 let pending = Arc::clone(&pending);
@@ -61,6 +73,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 });
             }
             Some(RequestPayload::RunSandboxed(request)) => {
+                if at_capacity(&pending, max_concurrent).await {
+                    let mut out = writer.lock().await;
+                    let _ = write_response(&mut *out, &capacity_error(request_id, max_concurrent));
+                    continue;
+                }
                 let cancel = register_cancel(&pending, request_id).await;
                 let writer = Arc::clone(&writer);
                 let pending = Arc::clone(&pending);
@@ -129,6 +146,28 @@ async fn register_cancel(
     Some(receiver)
 }
 
+async fn at_capacity(pending: &CancelSenders, limit: usize) -> bool {
+    pending.lock().await.len() >= limit
+}
+
+fn capacity_error(request_id: Option<u32>, limit: usize) -> Response {
+    error_response(
+        request_id,
+        "CONCURRENCY_LIMIT",
+        format!("at most {limit} commands may run at once"),
+    )
+}
+
+/// Parses the concurrency limit, falling back to the default for anything that
+/// is not a positive integer.
+fn parse_max_concurrent(value: Option<&str>) -> usize {
+    value
+        .map(str::trim)
+        .and_then(|trimmed| trimmed.parse::<usize>().ok())
+        .filter(|parsed| *parsed > 0)
+        .unwrap_or(DEFAULT_MAX_CONCURRENT)
+}
+
 async fn finish_request(pending: &CancelSenders, request_id: Option<u32>) {
     if let Some(id) = request_id {
         pending.lock().await.remove(&id);
@@ -160,5 +199,38 @@ fn sandbox_error(error: &SandboxError) -> (&'static str, String) {
         SandboxError::Unsupported(message) => ("SANDBOX_UNSUPPORTED", message.clone()),
         SandboxError::Cancelled => ("CANCELLED", error.to_string()),
         SandboxError::Executor(err) => ("EXECUTOR_ERROR", err.to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_max_concurrent_accepts_positive_integers() {
+        assert_eq!(parse_max_concurrent(Some("3")), 3);
+        assert_eq!(parse_max_concurrent(Some(" 8 ")), 8);
+    }
+
+    #[test]
+    fn parse_max_concurrent_falls_back_for_invalid_values() {
+        assert_eq!(parse_max_concurrent(None), DEFAULT_MAX_CONCURRENT);
+        assert_eq!(parse_max_concurrent(Some("")), DEFAULT_MAX_CONCURRENT);
+        assert_eq!(parse_max_concurrent(Some("0")), DEFAULT_MAX_CONCURRENT);
+        assert_eq!(parse_max_concurrent(Some("-2")), DEFAULT_MAX_CONCURRENT);
+        assert_eq!(parse_max_concurrent(Some("many")), DEFAULT_MAX_CONCURRENT);
+    }
+
+    #[test]
+    fn capacity_error_carries_the_limit() {
+        let response = capacity_error(Some(7), 2);
+        assert_eq!(response.request_id, Some(7));
+        match response.payload {
+            Some(ResponsePayload::Error(error)) => {
+                assert_eq!(error.code, "CONCURRENCY_LIMIT");
+                assert!(error.message.contains("at most 2"));
+            }
+            other => panic!("unexpected payload: {other:?}"),
+        }
     }
 }

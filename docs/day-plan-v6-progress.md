@@ -5,12 +5,32 @@
 
 ## 当前状态
 
-- 当前阶段：Backlog 1（Rust 运行时并发上限）
+- 当前阶段：Backlog 2（CLI `--json` 输出）
 - 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4、阶段 5
 - 最近一次运行：运行 6（2026-09-11 13:35-13:50）
 - 工作区：阶段 5 的改动已提交并推送
 
 ## 日志
+
+### 运行 7 — 2026-09-11 13:50-14:05
+
+- 阶段/工作项：Backlog 1（Rust 运行时并发上限）完成
+- 做了什么：
+  - `dev-agent-executor` 读取 `DEV_AGENT_MAX_CONCURRENT`（默认 5，非法值回落），
+    在飞请求达到上限时直接回 `ErrorResult { code: "CONCURRENCY_LIMIT" }`，
+    不再只靠 TS 侧计数
+  - 把上限解析与错误构造抽成纯函数并加了 3 个二进制单元测试
+    （`cargo test` 现在同时跑 lib 与 bin 两个目标）
+  - 文档：`runtime/rust/README.md`、`packages/executor/README.md` 说明
+    "运行时上限与 TS 上限取较小者"
+- 验证命令与结果：
+  - `cargo test`：43（lib）+ 3（bin）全过；`cargo fmt --check`、
+    `cargo clippy --all-targets -- -D warnings` 通过
+  - 真实二进制集成：10 passed（新增用例把 `DEV_AGENT_MAX_CONCURRENT` 设为 1、
+    TS 侧上限设为 10，第二个请求收到 `CONCURRENCY_LIMIT`，第一个请求正常完成）
+  - `pnpm test`：297 passed（TS 未受影响）
+- 提交：见 Backlog 1 的 feat 提交
+- 下一步：Backlog 2 — CLI `--json` 机器可读输出
 
 ### 运行 6 — 2026-09-11 13:35-13:50
 

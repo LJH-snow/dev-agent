@@ -25,6 +25,10 @@ Current capabilities:
   Commands run in their own process group, so termination reaches the whole
   tree — sandbox wrappers included: SIGTERM first, then SIGKILL after a 2s
   grace period if the command is still alive. Timeouts use the same sequence.
+- Concurrency: the binary refuses a request when `DEV_AGENT_MAX_CONCURRENT`
+  (default 5) commands are already running, answering `CONCURRENCY_LIMIT`. The
+  TypeScript executors keep their own cap, so the effective limit is the smaller
+  of the two.
 - Linux `bwrap` namespace isolation (user/ipc/pid/uts/cgroup), read-only root
   filesystem with writable/read-only path bind mounts, network policy
   (`--unshare-net`), environment injection, resource limits, and cwd enforcement

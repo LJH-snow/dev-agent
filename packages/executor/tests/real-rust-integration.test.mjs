@@ -299,3 +299,32 @@ test(
     }
   }
 );
+
+test(
+  "real Rust binary enforces its own concurrency limit",
+  { skip: existsSync(rustBinaryPath) ? false : "Rust binary not built" },
+  async () => {
+    const previous = process.env.DEV_AGENT_MAX_CONCURRENT;
+    process.env.DEV_AGENT_MAX_CONCURRENT = "1";
+    // Raise the TypeScript-side cap so the runtime's own limit is what rejects.
+    const executor = new RustExecutor({ binaryPath: rustBinaryPath, maxConcurrentExecutions: 10 });
+    try {
+      const first = executor.run("/bin/sleep", ["1"]);
+
+      await assert.rejects(
+        () => executor.run("/bin/echo", ["hi"]),
+        /CONCURRENCY_LIMIT/
+      );
+
+      const result = await first;
+      assert.equal(result.exitCode, 0);
+    } finally {
+      await executor.dispose();
+      if (previous === undefined) {
+        delete process.env.DEV_AGENT_MAX_CONCURRENT;
+      } else {
+        process.env.DEV_AGENT_MAX_CONCURRENT = previous;
+      }
+    }
+  }
+);

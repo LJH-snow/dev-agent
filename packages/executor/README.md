@@ -56,6 +56,9 @@ Both executors terminate gracefully: the command gets SIGTERM first (sent to
 its process group on Unix, so wrappers and grandchildren are included) and
 SIGKILL only if it is still alive after two seconds. Timeouts follow the same
 path.
+The runtime also caps in-flight work itself: `DEV_AGENT_MAX_CONCURRENT`
+(default 5) rejects further requests with `CONCURRENCY_LIMIT`, on top of the
+TypeScript-side `maxConcurrentExecutions`.
 The protobuf stream is consumed as raw `Buffer` frames; text encoding is only
 applied to the Rust process's stderr, never to stdio protocol payloads.
 
