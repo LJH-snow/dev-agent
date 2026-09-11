@@ -35,12 +35,23 @@ export interface DangerousPattern {
 
 /** Command shapes that deserve a decision before they run. */
 export const DANGEROUS_PATTERNS: readonly DangerousPattern[] = [
-  { name: "recursive delete", pattern: /\brm\s+(?:-[a-zA-Z]+\s+)*-[a-zA-Z]*[rR][a-zA-Z]*/ },
+  {
+    name: "recursive delete",
+    // Short (`-r`, `-rf`, `-fr`) and long (`--recursive`) options both count;
+    // `rm --force file` without recursion does not.
+    pattern:
+      /\brm\s+(?:[^|;&]*\s)?(?:-(?!-)[a-zA-Z]*[rR][a-zA-Z]*|--recursive\b)/,
+  },
   { name: "privilege escalation", pattern: /(^|[\s;&|])sudo\s/ },
   { name: "disk formatting", pattern: /\bmkfs(?:\.\w+)?\b/ },
   { name: "raw disk write", pattern: /\bdd\b[^|;&]*\bof=/ },
   { name: "power control", pattern: /\b(?:shutdown|reboot|halt|poweroff)\b/ },
-  { name: "force push", pattern: /\bgit\s+push\b[^|;&]*--force(?:-with-lease)?\b/ },
+  {
+    name: "force push",
+    // `-f`, `--force`, its lease variants, and `+refspec` all rewrite history.
+    pattern:
+      /\bgit\s+push\b[^|;&]*(?:--force(?:-with-lease|-if-includes)?\b|(?:^|\s)-f(?:\s|$)|(?:^|\s)\+[^\s|;&]+)/,
+  },
   {
     name: "pipe to shell",
     pattern: /\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:ba|z|d|k)?sh\b/,
