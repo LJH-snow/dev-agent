@@ -33,8 +33,11 @@
 - 下一步：v16 计划已收尾。用户追问「GitHub 语言占比为什么 JS 很多」：实测根因是
   73 个 `.mjs` 测试（Linguist 归类为 JavaScript，380,492 字节）大于 48 个 `.ts`
   源码（297,085 字节）；被跟踪的 `.js` 为 0，磁盘上的 `.js` 全在 gitignore 的
-  `dist/` 里。**用户决定不处理该问题**：不改测试语言、不加 `.gitattributes`、
-  不把语言统计相关改动提交到仓库；测试继续按现有约定写 `.mjs`
+  `dist/` 里。**最终处理**（用户要求 TS 成为主导语言）：新增根 `.gitattributes`，
+  把 `apps/*/tests/**`、`packages/*/tests/**`、`scripts/**` 标记为
+  `linguist-detectable=false`（提交 `3e7fefe`）。GitHub API 复算结果：
+  TypeScript 296,628 / Rust 81,439 / HTML 18,072 / Starlark 2,660，
+  **JavaScript 0，TS 占 74.4%**。测试文件本身仍是 `.mjs`，未改动
 
 ### 运行 2 — 2026-09-12 02:5x-03:1x
 
