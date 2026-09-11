@@ -231,3 +231,71 @@ test("the config file can add a dangerous pattern", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("--approval ask remembers 'always allow' for the rest of the session", async () => {
+  const { dir, target } = await setup();
+  const requests = [];
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      requests.push(JSON.parse(body));
+      const isToolTurn = requests.length <= 2;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: isToolTurn
+                ? {
+                    content: "",
+                    tool_calls: [
+                      {
+                        id: `call_${requests.length}`,
+                        type: "function",
+                        function: {
+                          name: "shell",
+                          arguments: JSON.stringify({
+                            command: "chmod",
+                            args: ["777", target],
+                          }),
+                        },
+                      },
+                    ],
+                  }
+                : { content: "done" },
+            },
+          ],
+        })
+      );
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address();
+
+  try {
+    const result = await runCli(
+      ["--once", "run it", "--no-stream", "--approval", "ask"],
+      {
+        ...process.env,
+        HOME: dir,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: `http://127.0.0.1:${port}/v1`,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      },
+      "a\n"
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    const prompts = result.stderr.split("Run shell anyway? [y/N/a]").length - 1;
+    assert.equal(prompts, 1, "the same command must not be asked twice");
+    assert.equal(requests.length, 3, "two tool turns plus the final answer");
+    assert.equal(await modeOf(target), 0o777);
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+});

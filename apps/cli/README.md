@@ -32,7 +32,8 @@ Options:
 - `--approval <mode>` - tool approval policy: `allow` (default, everything runs),
   `deny-dangerous` (block the built-in dangerous command patterns and writes
   outside the working directory), or `ask` (same detection, but confirm with
-  `y/N` first; a non-`y` answer, EOF, or a read failure denies the call)
+  `y/N/a` first: `y` runs once, `a` runs and remembers the command for the rest
+  of the session, anything else — including EOF or a read failure — denies it)
 - `--json` - machine-readable output for `--once`, `--tools`, `--metadata`,
   `--session-list`, and `--compact`; implies `--no-stream` so nothing else is
   written to stdout
@@ -43,6 +44,9 @@ Options:
   reported (`deleted: false` with `--json`) without failing
 - `--session-rename <old> <new>` - rename a stored session; refuses to overwrite
   an existing one and reports `{ from, to, renamed }` with `--json`
+- `--index <path>` - scan a directory and write a symbol index to
+  `<path>/.dev-agent/index.json` (skips `node_modules`, `dist`, `.git`, …);
+  `--json` reports `{ path, indexPath, files, symbols, languages }`
 - `--version` / `-v` - print the CLI version
 
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on

@@ -142,10 +142,10 @@ async function modeOf(path) {
   return (await stat(path)).mode & 0o777;
 }
 
-async function runAsk({ decision, timeoutMs }) {
+async function runAsk({ decision, timeoutMs, toolTurns = 1 }) {
   const { dir, target } = await setup();
   const provider = await startStubProvider((_parsed, count) =>
-    count === 1
+    count <= toolTurns
       ? [shellToolCall(`chmod 777 ${target}`)]
       : [{ choices: [{ delta: { content: "done" } }] }]
   );
@@ -220,4 +220,19 @@ test("ask mode denies when the UI does not answer in time", async () => {
     events.some((event) => event.type === "approval" && event.data.decision === "deny")
   );
   assert.notEqual(mode, 0o777);
+});
+
+test("ask mode remembers an 'always allow' decision for the session", async () => {
+  const { events, mode, requests } = await runAsk({ decision: "allow-always", toolTurns: 2 });
+
+  assert.equal(requests, 1, "only the first call should prompt");
+  assert.equal(
+    events.filter((event) => event.type === "approval-request").length,
+    1,
+    "the second identical command must not prompt again"
+  );
+  assert.ok(
+    events.some((event) => event.type === "approval" && event.data.decision === "allow")
+  );
+  assert.equal(mode, 0o777);
 });

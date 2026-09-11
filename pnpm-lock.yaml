@@ -121,6 +121,9 @@ importers:
       '@dev-agent/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@dev-agent/code-intelligence':
+        specifier: workspace:*
+        version: link:../../packages/code-intelligence
       '@dev-agent/executor':
         specifier: workspace:*
         version: link:../../packages/executor

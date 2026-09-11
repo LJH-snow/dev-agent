@@ -51,6 +51,8 @@ export interface DesktopHistoryMessage {
   readonly toolCallId?: string;
 }
 
+type ApprovalDecision = "allow" | "deny" | "allow-always";
+
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
 const mimeTypes: Record<string, string> = {
@@ -68,7 +70,8 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     options.createSession ?? ((sessionId: string) => new ChatSession({ sessionId }));
   const sessions = new Map<string, DesktopChatSession>([[defaultSessionId, defaultSession]]);
   const inFlight = new Set<string>();
-  const approvals = new Map<string, (decision: "allow" | "deny") => void>();
+  const approvals = new Map<string, (decision: ApprovalDecision) => void>();
+  const sessionAllowlist = new Map<string, Set<string>>();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
 
@@ -263,7 +266,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
         inFlight.add(id);
         try {
-          await streamChat(res, session, message, approvals);
+          await streamChat(res, session, message, approvals, sessionAllowlist, id);
         } finally {
           inFlight.delete(id);
         }
@@ -283,7 +286,11 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
         const id = typeof parsed.id === "string" ? parsed.id : "";
         const decision =
-          parsed.decision === "allow" || parsed.decision === "deny" ? parsed.decision : undefined;
+          parsed.decision === "allow" ||
+          parsed.decision === "deny" ||
+          parsed.decision === "allow-always"
+            ? parsed.decision
+            : undefined;
         if (!id || !decision) {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "id and decision are required" }));
@@ -336,7 +343,9 @@ async function streamChat(
   res: ServerResponse,
   session: DesktopChatSession,
   message: string,
-  approvals: Map<string, (decision: "allow" | "deny") => void>
+  approvals: Map<string, (decision: ApprovalDecision) => void>,
+  sessionAllowlist: Map<string, Set<string>>,
+  sessionId: string
 ): Promise<void> {
   const controller = new AbortController();
   const onClose = (): void => {
@@ -366,7 +375,23 @@ async function streamChat(
   try {
     await session.run(message, emit, {
       signal: controller.signal,
-      requestApproval: (prompt) => waitForApproval(approvals, emit, prompt),
+      requestApproval: (prompt) => {
+        const allowed = sessionAllowlist.get(sessionId);
+        if (prompt.command && allowed?.has(prompt.command)) {
+          return Promise.resolve("allow");
+        }
+        return waitForApproval(approvals, emit, prompt).then((decision) => {
+          if (decision !== "allow-always") {
+            return decision;
+          }
+          if (prompt.command) {
+            const set = sessionAllowlist.get(sessionId) ?? new Set<string>();
+            set.add(prompt.command);
+            sessionAllowlist.set(sessionId, set);
+          }
+          return "allow";
+        });
+      },
     });
   } catch (error) {
     emit({
@@ -389,10 +414,10 @@ function approvalTimeoutMs(): number {
 
 /** Asks the client for a decision, denying when nothing comes back in time. */
 function waitForApproval(
-  approvals: Map<string, (decision: "allow" | "deny") => void>,
+  approvals: Map<string, (decision: ApprovalDecision) => void>,
   emit: (event: StreamEvent) => void,
   prompt: ApprovalPrompt
-): Promise<"allow" | "deny"> {
+): Promise<ApprovalDecision> {
   const id = randomUUID();
   emit({
     type: "approval-request",

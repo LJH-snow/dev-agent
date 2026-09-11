@@ -4,6 +4,7 @@ coverage/
 *.log
 *.tsbuildinfo
 runtime/rust/target/
+.dev-agent/
 .DS_Store
 .env
 .env.*

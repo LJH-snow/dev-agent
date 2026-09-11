@@ -18,6 +18,7 @@
   "files": ["dist"],
   "dependencies": {
     "@dev-agent/agent-core": "workspace:*",
+    "@dev-agent/code-intelligence": "workspace:*",
     "@dev-agent/executor": "workspace:*",
     "@dev-agent/mcp": "workspace:*",
     "@dev-agent/model": "workspace:*",

@@ -98,9 +98,10 @@ The `Download` button saves the current session as a Markdown file.
 ## Approvals
 
 With `DEV_AGENT_APPROVAL=ask`, a flagged tool call renders an Allow/Deny prompt
-in the conversation and the run waits for the click. The decision is echoed as
-an `approval` frame, and a denial is written back to the model as the tool's
-result so it can pick another path.
+in the conversation and the run waits for the click. "Always allow" remembers
+that exact command line for the rest of the session, so it is not asked again.
+The decision is echoed as an `approval` frame, and a denial is written back to
+the model as the tool's result so it can pick another path.
 
 ## Tests
 

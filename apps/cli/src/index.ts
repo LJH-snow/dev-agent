@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { readdir, rename, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -9,6 +9,7 @@ import {
   AgentLoop,
   AgentToolRegistry,
   compileApprovalConfig,
+  commandText,
   createAgentContext,
   denyDangerousPolicy,
   FileMemory,
@@ -43,6 +44,7 @@ import {
 import { buildMcpSystemPromptSupplement } from "./mcp-system-prompt.js";
 import type { McpResourceLine, McpPromptLine } from "./mcp-system-prompt.js";
 import { printDoctorReport, probeRustBinary, runDoctor } from "./doctor.js";
+import { indexDirectory } from "./index-command.js";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -93,6 +95,13 @@ export async function main(argv: string[]): Promise<void> {
   const renameTo = renameIndex >= 0 ? args[renameIndex + 2] : undefined;
   if (renameIndex >= 0 && (renameFrom === undefined || renameTo === undefined)) {
     console.error("--session-rename requires both the current and the new session id");
+    process.exitCode = 1;
+    return;
+  }
+  const indexIndex = args.indexOf("--index");
+  const indexPath = indexIndex >= 0 ? args[indexIndex + 1] : undefined;
+  if (indexIndex >= 0 && indexPath === undefined) {
+    console.error("--index requires a directory path");
     process.exitCode = 1;
     return;
   }
@@ -207,6 +216,23 @@ export async function main(argv: string[]): Promise<void> {
       console.log(
         renamed ? `Renamed session ${from} to ${to}.` : `Session ${from} not found.`
       );
+    }
+    return;
+  }
+
+  if (indexPath !== undefined) {
+    const report = await indexDirectory(resolve(workingDirectory, indexPath));
+    if (jsonOutput) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      const languages = Object.entries(report.languages)
+        .map(([language, count]) => `${language}: ${count}`)
+        .join(", ");
+      console.log(`Indexed ${report.files} files / ${report.symbols} symbols`);
+      if (languages) {
+        console.log(`Languages: ${languages}`);
+      }
+      console.log(`Index written to ${report.indexPath}`);
     }
     return;
   }
@@ -477,8 +503,14 @@ function buildApprovalPolicy(
   }
 
   const dangerous = denyDangerousPolicy(policyOptions);
+  const sessionAllowed = new Set<string>();
   return {
     async decide(request) {
+      const command = commandText(request);
+      if (command && sessionAllowed.has(command)) {
+        return { decision: "allow" };
+      }
+
       const outcome = await dangerous.decide(request);
       const decision = typeof outcome === "string" ? outcome : outcome.decision;
       if (decision === "allow") {
@@ -486,12 +518,19 @@ function buildApprovalPolicy(
       }
 
       const reason = typeof outcome === "string" ? undefined : outcome.reason;
-      const question = `${reason ?? "dangerous call"}\nRun ${request.toolName} anyway? [y/N] `;
+      const question = `${reason ?? "dangerous call"}\nRun ${request.toolName} anyway? [y/N/a] `;
       const answer = questionBox.ask
         ? await questionBox.ask(question)
         : await readLineFromStdin(question);
+      const normalized = answer.trim().toLowerCase();
 
-      return answer.trim().toLowerCase().startsWith("y")
+      if (normalized.startsWith("a") && command) {
+        // Remembered for this process only; never written to disk.
+        sessionAllowed.add(command);
+        return { decision: "allow" };
+      }
+
+      return normalized.startsWith("y")
         ? { decision: "allow" }
         : { decision: "deny", reason: `${reason ?? "dangerous call"} (declined)` };
     },

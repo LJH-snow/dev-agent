@@ -229,10 +229,14 @@
       const deny = document.createElement("button");
       deny.type = "button";
       deny.textContent = "Deny";
+      const allowAlways = document.createElement("button");
+      allowAlways.type = "button";
+      allowAlways.textContent = "Always allow";
 
       const decide = async (decision) => {
         allow.disabled = true;
         deny.disabled = true;
+        allowAlways.disabled = true;
         label.textContent = label.textContent + " — " + decision;
         try {
           await fetch("/api/approval", {
@@ -247,7 +251,8 @@
 
       allow.addEventListener("click", () => decide("allow"));
       deny.addEventListener("click", () => decide("deny"));
-      actions.append(allow, deny);
+      allowAlways.addEventListener("click", () => decide("allow-always"));
+      actions.append(allow, deny, allowAlways);
       div.append(label, actions);
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;

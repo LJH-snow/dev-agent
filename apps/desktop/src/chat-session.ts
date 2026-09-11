@@ -6,6 +6,7 @@ import {
   AgentLoop,
   AgentToolRegistry,
   compileApprovalConfig,
+  commandText,
   createAgentContext,
   denyDangerousPolicy,
   FileMemory,
@@ -42,6 +43,8 @@ export interface ApprovalPrompt {
   readonly tool: string;
   readonly reason?: string;
   readonly input: unknown;
+  /** The command line, used to remember "always allow" decisions. */
+  readonly command?: string;
 }
 
 export type ApprovalRequester = (prompt: ApprovalPrompt) => Promise<"allow" | "deny">;
@@ -259,6 +262,7 @@ function buildApprovalPolicy(
         tool: request.toolName,
         reason,
         input: request.input,
+        command: commandText(request),
       });
       return answer === "allow"
         ? { decision: "allow" }
