@@ -27,7 +27,7 @@ dev-agent/
 |   `-- rust/             Active Rust runtime for sandbox and isolation
 |-- configs/              Shared TypeScript configuration
 |-- docs/                 Project documentation
-|-- tests/                Test suites (framework to be added)
+|-- tests/                TypeScript test suites, compiled to tests-dist/ before running
 |-- scripts/              Dev and verification scripts
 |-- package.json
 |-- pnpm-workspace.yaml
@@ -58,6 +58,10 @@ pnpm cli -- --version
 `pnpm build` must run before `pnpm typecheck`/`pnpm test` on a fresh checkout:
 workspace packages resolve each other through their published `dist/*.d.ts`,
 which the build step emits.
+
+Tests are written in TypeScript under each `tests/` directory and compiled to a
+sibling `tests-dist/` (git-ignored) before `node --test` runs them, so the
+repository stays TypeScript-first while using only the Node test runner.
 
 To catch Linux-only compile errors while developing on macOS:
 
