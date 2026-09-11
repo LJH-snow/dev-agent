@@ -198,6 +198,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   (`usage` SSE event and header counter) surface it. The total is also written
   to the session (`metadata.usage`), so `--metadata`, `--session-list --json`,
   and a desktop reload can restore it
+- `--metadata` tells an absent session apart from a corrupt one: a file that
+  exists but cannot be parsed exits 1 with its path and the
+  `--reset-memory` / `--session-delete <id>` recovery options, while `--json`
+  reports `{ error, path }`
 - Long sessions can summarize instead of forget: `contextBudget.summarize`
   replaces trimmed history with an incrementally grown `[summary]` digest
   (`DEV_AGENT_SUMMARIZE_CONTEXT`), falling back to the omission notice on error
@@ -241,6 +245,13 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   shapes: `rm --recursive --force` alongside `rm -rf`, and `git push -f` /
   `git push origin +main` alongside `--force`, without flagging
   `rm --force file` or `git push --follow-tags`
+- The table also flags git options that execute another process
+  (`-c alias.x=!cmd`, `--config-env`, `--exec-path`, `--upload-pack`,
+  `--receive-pack`), closing the hole where the git tool could run shell
+  commands without an approval prompt
+- The `search` tool passes its query after `--`, so a query that starts with `-`
+  (including `--files` or `--pre=…`) is a literal pattern instead of a ripgrep
+  option the model could reach
 - `dev-agent --index <path>` scans a directory and writes a symbol index to
   `<path>/.dev-agent/index.json`; TypeScript/JavaScript/Python/Rust up to depth
   8, with the same ignore rules as `code-search`. A second run reuses the files
@@ -270,7 +281,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 395 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 401 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -332,3 +343,6 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 44. ~~Dangerous-pattern coverage for long options and short force flags~~ (done)
 45. ~~`async def` support in the Python scanner~~ (done)
 46. ~~Depth-safe `code-search` index write-back~~ (done)
+47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
+48. ~~Approval coverage for git command-execution options~~ (done)
+49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

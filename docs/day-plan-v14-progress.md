@@ -4,12 +4,36 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-12 00:4x-01:0x）
-- 工作区：阶段 2 的改动待提交
+- 当前阶段：无，`docs/day-plan-v14.md` 的四个阶段已全部完成
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-12 01:0x-01:2x）
+- 工作区：阶段 3 的文档改动提交后即 clean
 
 ## 日志
+
+### 运行 4 — 2026-09-12 01:0x-01:2x
+
+- 阶段/工作项：阶段 3（文档、全量回归与提交）完成
+- 做了什么：
+  - 根 `README.md`：Current Status 增加 search 字面模式、git 命令执行选项、
+    `--metadata` 损坏文件提示三条，测试数更新为 401 TS + 46 Rust；
+    Roadmap 追加 47-49
+  - `docs/architecture.md`：tools 的 `--` 分隔、approval 的 git 执行模式、
+    CLI 的 metadata 读回校验
+  - `docs/CHANGELOG.md`：新增「Day plan v14」条目（395 -> 401），三条修复
+    都带实测复现证据
+- 验证命令与结果（完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed（13 目录 / 34 文件）
+  - `pnpm build`：通过
+  - `pnpm typecheck`：通过
+  - `pnpm test`：401 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed / 0 failed
+  - `cargo fmt --check`：通过
+  - `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）/ 0 failed
+- 提交：见阶段 3 的 docs 提交
+- 下一步：v14 计划已收尾；继续实测复现优先，下一轮优先看 MCP 往返/重连、
+  上下文摘要与工具审批在大输出场景下的边界
 
 ### 运行 3 — 2026-09-12 00:4x-01:0x
 

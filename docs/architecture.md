@@ -40,6 +40,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   The built-in table matches both spellings of a dangerous shape: `rm -rf` and
   `rm --recursive --force`, `git push --force` / `-f` / `+refspec`, while
   `rm --force file` (no recursion) and `git push --follow-tags` stay allowed.
+  Git options that spawn another process (`-c`, `--config-env`, `--exec-path`,
+  `--upload-pack`, `--receive-pack`) are flagged as well, so `git -c alias.x=!cmd`
+  cannot slip past the shell approval.
   A client disconnect aborts the run's signal, which also settles and removes
   any approval prompt still waiting for an answer.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
@@ -75,6 +78,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 ### `packages/tools`
 - `AgentToolRegistry` for registering and looking up tools.
 - Built-in tools: filesystem, shell, git, code-search.
+- The `search` tool passes its query after a `--` separator, so a query such as
+  `--files` or `--pre=…` is a literal ripgrep pattern rather than an option the
+  model can reach.
 - Context-aware execution relative to `workingDirectory`.
 - `filesystem` reads in slices (`offset`/`limit`, 2000 lines by default) and
   edits by replacing a snippet that must match exactly once, so a stale or
@@ -133,6 +139,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   signature still matches instead of re-reading them (`reused` in the report).
 - Session metadata carries the accumulated `usage`; `--metadata` prints it and
   `--session-list --json` includes it per session.
+- `--metadata` reads the file back before answering: a missing file reports
+  "no metadata", while a file that exists but cannot be parsed exits 1 with the
+  path and the `--reset-memory` / `--session-delete` recovery hint.
 - Approval rules can come from `~/.dev-agent/config.json`: `approval.allow`
   lists command substrings that always pass and `approval.deny` adds regular
   expressions to the dangerous table. `ask` decisions can be remembered for the

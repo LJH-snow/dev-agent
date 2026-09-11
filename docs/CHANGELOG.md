@@ -1,5 +1,39 @@
 # Changelog
 
+## 2026-09-12 (Day plan v14: literal search, git exec options, corrupt metadata)
+
+Executed `docs/day-plan-v14.md`. Three holes found by driving the tools rather
+than reading them: the search query was parsed as ripgrep options, git could
+spawn a shell through its own options without an approval, and `--metadata`
+presented a corrupt session file as an empty one.
+
+### Fixed: the `search` tool treats the query as a literal pattern
+- `SearchTool` now passes `--` before the query, so `--files`, `--version`, or
+  `--pre=…` are searched for instead of being interpreted by ripgrep. Before the
+  change `--files` listed the directory and `--version` printed ripgrep's
+  version; both looked like a successful search to the model.
+
+### Fixed: git options that execute another process need approval
+- `denyDangerousPolicy` gained a "git command execution" pattern covering `-c`
+  (including `-calias…`), `--config-env`, `--exec-path`, `--upload-pack`, and
+  `--receive-pack`. Reproduction: `git -c alias.probe=!echo injected-command-ran
+  probe` printed `injected-command-ran` through the git tool while the policy
+  reported nothing. Plain `git status` / `git log` / `git push origin main`
+  stay allowed, and `approval.allow` still takes precedence.
+
+### Fixed: `--metadata` explains a corrupt session file
+- A file that exists but cannot be parsed now exits 1 with the path and
+  `--reset-memory` / `--session-delete <id>` recovery hints instead of printing
+  `No session metadata found.`; `--json` returns `{ error, path }`. A genuinely
+  absent file, and a valid file that simply has no metadata, keep the old
+  exit-0 behaviour.
+
+### Tests
+- TypeScript: 395 -> 401. Rust: 46 (unchanged).
+- New coverage: literal `--files` / `-f` search queries, the git execution
+  pattern plus its allowlist exemption, and the corrupt/missing/valid-but-empty
+  `--metadata` cases.
+
 ## 2026-09-11 (Day plan v13: pattern coverage, async Python, depth-safe index)
 
 Executed `docs/day-plan-v13.md`. All three fixes came from probing the running
