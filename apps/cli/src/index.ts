@@ -235,6 +235,7 @@ async function runMcpServer(options: {
   readonly rustBinaryPath?: string;
 }): Promise<void> {
   const tools = createDefaultTools(createExecutor({ rustBinaryPath: options.rustBinaryPath }));
+  const memory = createMemory(options.sessionId);
   const server = createMcpServer({
     tools: tools.map((tool) => ({
       name: tool.name,
@@ -246,6 +247,77 @@ async function runMcpServer(options: {
           workingDirectory: context?.workingDirectory ?? options.workingDirectory,
         }),
     })),
+    resources: [
+      {
+        uri: "dev-agent://session",
+        name: "Session",
+        description: "Session id, working directory, timestamps, and memory size.",
+        mimeType: "text/plain",
+        async read() {
+          const entries = await memory.entries();
+          const metadata = await memory.getMetadata();
+          return [
+            `session: ${options.sessionId}`,
+            `working directory: ${options.workingDirectory}`,
+            `entries: ${entries.length}`,
+            `created: ${metadata?.createdAt ?? "unknown"}`,
+            `last active: ${metadata?.lastActiveAt ?? "unknown"}`,
+          ].join("\n");
+        },
+      },
+      {
+        uri: "dev-agent://workspace",
+        name: "Workspace",
+        description: "Top-level entries of the working directory.",
+        mimeType: "text/plain",
+        async read() {
+          const entries = await readdir(options.workingDirectory, { withFileTypes: true });
+          const lines = entries
+            .sort((left, right) => left.name.localeCompare(right.name))
+            .map((entry) => `${entry.isDirectory() ? "dir " : "file"} ${entry.name}`);
+          return [`working directory: ${options.workingDirectory}`, ...lines].join("\n");
+        },
+      },
+    ],
+    prompts: [
+      {
+        name: "review-changes",
+        description: "Review the uncommitted changes in this workspace.",
+        get: () => ({
+          description: "Review the working tree.",
+          messages: [
+            {
+              role: "user" as const,
+              content: {
+                type: "text" as const,
+                text: "Review the uncommitted changes in this workspace. Start with git status and git diff, then summarise risks, missing tests, and anything that looks accidental.",
+              },
+            },
+          ],
+        }),
+      },
+      {
+        name: "explain-codebase",
+        description: "Explain how this codebase is put together.",
+        arguments: [
+          { name: "focus", description: "Area or module to focus on", required: false },
+        ],
+        get: (args) => ({
+          description: "Explain the codebase structure.",
+          messages: [
+            {
+              role: "user" as const,
+              content: {
+                type: "text" as const,
+                text: `Explain the structure of this codebase${
+                  args?.focus ? ` with a focus on ${args.focus}` : ""
+                }. Cover the entry points, the main modules, and how data flows between them.`,
+              },
+            },
+          ],
+        }),
+      },
+    ],
     name: "dev-agent",
     version,
     sessionId: options.sessionId,

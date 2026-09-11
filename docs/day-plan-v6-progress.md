@@ -5,12 +5,35 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 4（MCP server 的 resources 与 prompts）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
-- 最近一次运行：运行 4（2026-09-11 14:45-15:15）
-- 工作区：阶段 3 的改动已提交并推送
+- 当前阶段：阶段 5（文档、全量回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4
+- 最近一次运行：运行 5（2026-09-11 15:15-15:45）
+- 工作区：阶段 4 的改动已提交并推送
 
 ## 日志
+
+### 运行 5 — 2026-09-11 15:15-15:45
+
+- 阶段/工作项：阶段 4（MCP server 的 resources 与 prompts）全部完成
+- 做了什么：
+  - `createMcpServer` 增加 `resources` / `prompts` 注入点与四个方法：
+    `resources/list`、`resources/read`、`prompts/list`、`prompts/get`；
+    initialize 的 capabilities 相应声明 resources 与 prompts；
+    未知 uri/name 返回 -32602
+  - CLI `--mcp-server` 暴露两个只读资源：
+    - `dev-agent://session`：session id、工作目录、记忆条数、创建/最近活跃时间
+    - `dev-agent://workspace`：工作目录路径与顶层条目清单（dir/file 前缀）
+  - 两个提示词模板：`review-changes`（审查未提交改动）与 `explain-codebase`
+    （支持可选 `focus` 参数）
+  - 文档：`packages/mcp/README.md`、`apps/cli/README.md`
+- 验证命令与结果：
+  - `packages/mcp`：32 passed（新增 6 个：capabilities 声明、resources/list、
+    resources/read、未知资源报错、prompts/list、prompts/get 带参数与未知提示词报错）
+  - `apps/cli`：宿主脚本端到端扩展为 tools + resources + prompts 全链路，
+    读取 `dev-agent://session` 与渲染 `explain-codebase(focus=the executor)` 均通过
+  - `pnpm build`、`pnpm typecheck`、`pnpm test`：全绿（TypeScript 297 个测试）
+- 提交：见阶段 4 的 feat 提交
+- 下一步：阶段 5 — 文档、全量回归与提交（收尾）
 
 ### 运行 4 — 2026-09-11 14:45-15:15
 

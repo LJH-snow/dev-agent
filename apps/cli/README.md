@@ -26,7 +26,9 @@ Options:
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary
 - `--check-rust [path]` - send a health check to the Rust runtime binary
 - `--mcp-server` - run as an MCP server over stdio instead of starting the agent,
-  exposing the built-in tools to a host agent (no model provider needed)
+  exposing the built-in tools, the `dev-agent://session` and
+  `dev-agent://workspace` resources, and the `review-changes` /
+  `explain-codebase` prompts to a host agent (no model provider needed)
 - `--approval <mode>` - tool approval policy: `allow` (default, everything runs),
   `deny-dangerous` (block the built-in dangerous command patterns and writes
   outside the working directory), or `ask` (same detection, but confirm with

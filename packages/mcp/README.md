@@ -5,13 +5,16 @@ own tools to a host agent.
 
 ## Server mode
 
-`createMcpServer({ tools })` speaks newline-delimited JSON-RPC 2.0 over stdio
-and implements `initialize`, `ping`, `tools/list`, and `tools/call`. Tool
-implementations are injected by the caller, so this package stays free of any
-dependency on `@dev-agent/tools`; the CLI wires the built-in tools in with
-`--mcp-server` (see `apps/cli/README.md`). Tool execution failures come back as
-`{ isError: true }` results so the host model can react, while unknown tools and
-methods are JSON-RPC errors.
+`createMcpServer({ tools, resources, prompts })` speaks newline-delimited
+JSON-RPC 2.0 over stdio and implements `initialize`, `ping`, `tools/list`,
+`tools/call`, `resources/list`, `resources/read`, `prompts/list`, and
+`prompts/get`. Tools, resources, and prompts are injected by the caller, so this
+package stays free of any dependency on `@dev-agent/tools`; the CLI wires the
+built-in tool set plus `dev-agent://session`, `dev-agent://workspace`, and two
+prompt templates in with `--mcp-server` (see `apps/cli/README.md`). Tool
+execution failures come back as `{ isError: true }` results so the host model
+can react, while unknown tools, resources, prompts, and methods are JSON-RPC
+errors.
 
 ## Client
 

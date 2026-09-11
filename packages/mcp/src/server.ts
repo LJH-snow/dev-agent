@@ -17,8 +17,43 @@ export interface McpServerTool {
   ): Promise<unknown>;
 }
 
+export interface McpServerResource {
+  readonly uri: string;
+  readonly name?: string;
+  readonly description?: string;
+  readonly mimeType?: string;
+  read(): Promise<string> | string;
+}
+
+export interface McpServerPromptArgument {
+  readonly name: string;
+  readonly description?: string;
+  readonly required?: boolean;
+}
+
+export interface McpServerPromptMessage {
+  readonly role: "user" | "assistant";
+  readonly content: { readonly type: "text"; readonly text: string };
+}
+
+export interface McpServerPromptResult {
+  readonly description?: string;
+  readonly messages: readonly McpServerPromptMessage[];
+}
+
+export interface McpServerPrompt {
+  readonly name: string;
+  readonly description?: string;
+  readonly arguments?: readonly McpServerPromptArgument[];
+  get(
+    args?: Readonly<Record<string, string>>
+  ): Promise<McpServerPromptResult> | McpServerPromptResult;
+}
+
 export interface McpServerOptions {
   readonly tools: readonly McpServerTool[];
+  readonly resources?: readonly McpServerResource[];
+  readonly prompts?: readonly McpServerPrompt[];
   readonly name?: string;
   readonly version?: string;
   readonly sessionId?: string;
@@ -68,6 +103,8 @@ class McpServerError extends Error {
 
 export function createMcpServer(options: McpServerOptions): McpServer {
   const tools = [...options.tools];
+  const resources = [...(options.resources ?? [])];
+  const prompts = [...(options.prompts ?? [])];
   const toolsByName = new Map(tools.map((tool) => [tool.name, tool]));
   const serverName = options.name ?? "dev-agent";
   const serverVersion = options.version ?? "0.1.0";
@@ -79,7 +116,11 @@ export function createMcpServer(options: McpServerOptions): McpServer {
       case "initialize":
         return {
           protocolVersion: PROTOCOL_VERSION,
-          capabilities: { tools: { listChanged: false } },
+          capabilities: {
+            tools: { listChanged: false },
+            resources: { subscribe: false, listChanged: false },
+            prompts: { listChanged: false },
+          },
           serverInfo: { name: serverName, version: serverVersion },
         };
       case "notifications/initialized":
@@ -95,6 +136,44 @@ export function createMcpServer(options: McpServerOptions): McpServer {
             inputSchema: tool.parameters ?? { type: "object", properties: {} },
           })),
         };
+      case "resources/list":
+        return {
+          resources: resources.map((resource) => ({
+            uri: resource.uri,
+            name: resource.name,
+            description: resource.description,
+            mimeType: resource.mimeType,
+          })),
+        };
+      case "resources/read": {
+        const params = asRecord(request.params);
+        const uri = typeof params.uri === "string" ? params.uri : "";
+        const resource = resources.find((candidate) => candidate.uri === uri);
+        if (!resource) {
+          throw new McpServerError(-32602, `unknown resource: ${uri}`);
+        }
+        const text = await resource.read();
+        return {
+          contents: [{ uri, mimeType: resource.mimeType ?? "text/plain", text }],
+        };
+      }
+      case "prompts/list":
+        return {
+          prompts: prompts.map((prompt) => ({
+            name: prompt.name,
+            description: prompt.description,
+            arguments: prompt.arguments ?? [],
+          })),
+        };
+      case "prompts/get": {
+        const params = asRecord(request.params);
+        const name = typeof params.name === "string" ? params.name : "";
+        const prompt = prompts.find((candidate) => candidate.name === name);
+        if (!prompt) {
+          throw new McpServerError(-32602, `unknown prompt: ${name}`);
+        }
+        return await prompt.get(asStringRecord(params.arguments));
+      }
       case "tools/call": {
         const params = asRecord(request.params);
         const name = typeof params.name === "string" ? params.name : "";
@@ -226,4 +305,17 @@ function asRecord(value: unknown): Record<string, unknown> {
     return {};
   }
   return value as Record<string, unknown>;
+}
+
+function asStringRecord(value: unknown): Record<string, string> {
+  const result: Record<string, string> = {};
+  if (typeof value !== "object" || value === null) {
+    return result;
+  }
+  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof entry === "string") {
+      result[key] = entry;
+    }
+  }
+  return result;
 }

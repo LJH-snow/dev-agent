@@ -121,3 +121,119 @@ test("unknown methods return a JSON-RPC error and notifications get no response"
   );
   assert.equal(notification, undefined);
 });
+
+function sampleServer() {
+  return createMcpServer({
+    tools: [echoTool()],
+    resources: [
+      {
+        uri: "dev-agent://session",
+        name: "Session",
+        description: "Session details.",
+        mimeType: "text/plain",
+        read: () => "session: test\nentries: 2",
+      },
+    ],
+    prompts: [
+      {
+        name: "explain-codebase",
+        description: "Explain the codebase.",
+        arguments: [{ name: "focus", description: "Area to focus on" }],
+        get: (args) => ({
+          description: "Explain it.",
+          messages: [
+            {
+              role: "user",
+              content: {
+                type: "text",
+                text: `Explain the codebase${args?.focus ? ` (${args.focus})` : ""}`,
+              },
+            },
+          ],
+        }),
+      },
+    ],
+  });
+}
+
+test("initialize advertises the resources and prompts capabilities", async () => {
+  const server = sampleServer();
+
+  const response = await request(server, { jsonrpc: "2.0", id: 10, method: "initialize" });
+
+  assert.ok(response.result.capabilities.tools);
+  assert.ok(response.result.capabilities.resources);
+  assert.ok(response.result.capabilities.prompts);
+});
+
+test("resources/list lists the configured resources", async () => {
+  const server = sampleServer();
+
+  const response = await request(server, { jsonrpc: "2.0", id: 11, method: "resources/list" });
+
+  assert.equal(response.result.resources.length, 1);
+  assert.equal(response.result.resources[0].uri, "dev-agent://session");
+  assert.equal(response.result.resources[0].name, "Session");
+  assert.equal(response.result.resources[0].mimeType, "text/plain");
+});
+
+test("resources/read returns the resource contents", async () => {
+  const server = sampleServer();
+
+  const response = await request(server, {
+    jsonrpc: "2.0",
+    id: 12,
+    method: "resources/read",
+    params: { uri: "dev-agent://session" },
+  });
+
+  assert.equal(response.result.contents[0].uri, "dev-agent://session");
+  assert.equal(response.result.contents[0].text, "session: test\nentries: 2");
+});
+
+test("reading an unknown resource is an invalid-params error", async () => {
+  const server = sampleServer();
+
+  const response = await request(server, {
+    jsonrpc: "2.0",
+    id: 13,
+    method: "resources/read",
+    params: { uri: "dev-agent://missing" },
+  });
+
+  assert.equal(response.error.code, -32602);
+  assert.match(response.error.message, /unknown resource/);
+});
+
+test("prompts/list exposes the prompt and its arguments", async () => {
+  const server = sampleServer();
+
+  const response = await request(server, { jsonrpc: "2.0", id: 14, method: "prompts/list" });
+
+  assert.equal(response.result.prompts.length, 1);
+  assert.equal(response.result.prompts[0].name, "explain-codebase");
+  assert.equal(response.result.prompts[0].arguments[0].name, "focus");
+});
+
+test("prompts/get renders the prompt with its arguments", async () => {
+  const server = sampleServer();
+
+  const response = await request(server, {
+    jsonrpc: "2.0",
+    id: 15,
+    method: "prompts/get",
+    params: { name: "explain-codebase", arguments: { focus: "the executor" } },
+  });
+
+  assert.equal(response.result.messages[0].role, "user");
+  assert.match(response.result.messages[0].content.text, /the executor/);
+
+  const missing = await request(server, {
+    jsonrpc: "2.0",
+    id: 16,
+    method: "prompts/get",
+    params: { name: "nope" },
+  });
+  assert.equal(missing.error.code, -32602);
+  assert.match(missing.error.message, /unknown prompt/);
+});

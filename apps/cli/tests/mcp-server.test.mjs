@@ -89,6 +89,32 @@ test("CLI --mcp-server serves its built-in tools to a host over stdio", async ()
       },
     });
     assert.equal(failure.result.isError, true);
+
+    const resources = await send({ jsonrpc: "2.0", id: 5, method: "resources/list" });
+    const uris = resources.result.resources.map((resource) => resource.uri);
+    assert.ok(uris.includes("dev-agent://session"), `expected the session resource in ${uris}`);
+    assert.ok(uris.includes("dev-agent://workspace"), `expected the workspace resource in ${uris}`);
+
+    const sessionResource = await send({
+      jsonrpc: "2.0",
+      id: 6,
+      method: "resources/read",
+      params: { uri: "dev-agent://session" },
+    });
+    assert.match(sessionResource.result.contents[0].text, /session: default/);
+
+    const prompts = await send({ jsonrpc: "2.0", id: 7, method: "prompts/list" });
+    const promptNames = prompts.result.prompts.map((prompt) => prompt.name);
+    assert.ok(promptNames.includes("review-changes"));
+    assert.ok(promptNames.includes("explain-codebase"));
+
+    const prompt = await send({
+      jsonrpc: "2.0",
+      id: 8,
+      method: "prompts/get",
+      params: { name: "explain-codebase", arguments: { focus: "the executor" } },
+    });
+    assert.match(prompt.result.messages[0].content.text, /the executor/);
   } finally {
     child.stdin.end();
     await new Promise((resolve) => child.on("close", resolve));
