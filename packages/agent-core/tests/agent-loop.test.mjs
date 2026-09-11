@@ -59,6 +59,36 @@ test("agent loop asks the model, runs tools, and finishes with a final answer", 
   assert.equal(entries[3].content, "done");
 });
 
+test("a run records provider usage into session metadata", async () => {
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("usage-run", memory);
+  const model = {
+    id: "openai",
+    model: "test-model",
+    async chat() {
+      return {
+        content: "done",
+        usage: { promptTokens: 11, completionTokens: 4, totalTokens: 15 },
+      };
+    },
+  };
+  const loop = new AgentLoop({ model });
+
+  const result = await loop.run(context, "hello");
+
+  assert.deepEqual(result.usage, {
+    promptTokens: 11,
+    completionTokens: 4,
+    totalTokens: 15,
+  });
+  const metadata = await memory.getMetadata();
+  assert.deepEqual(metadata?.usage, {
+    promptTokens: 11,
+    completionTokens: 4,
+    totalTokens: 15,
+  });
+});
+
 test("agent loop stops with an error state when maxTurns is reached", async () => {
   const tools = new AgentToolRegistry();
   tools.register({

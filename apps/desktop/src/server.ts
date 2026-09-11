@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
 
 import { FileMemory, type MemoryEntry, type SessionMetadata } from "@dev-agent/agent-core";
+import type { ChatUsage } from "@dev-agent/model";
 
 import {
   ChatSession,
@@ -19,6 +20,8 @@ import {
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
   readonly id?: string;
+  /** Estimates the USD cost of a usage total with the session's current model. */
+  estimateCost?(usage: ChatUsage): number | undefined;
   run(
     message: string,
     emit: (event: StreamEvent) => void,
@@ -42,6 +45,9 @@ export interface DesktopSessionSummary {
   readonly entryCount: number;
   readonly createdAt?: string;
   readonly lastActiveAt?: string;
+  readonly usage?: ChatUsage;
+  /** Present when the running session could price `usage`. */
+  readonly cost?: number;
 }
 
 export interface DesktopHistoryMessage {
@@ -102,11 +108,20 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "GET" && url.pathname === "/api/sessions") {
+        const summaries = await listSessions([...sessions.keys()]);
+        const withCost = summaries.map((summary) => {
+          if (!summary.usage) {
+            return summary;
+          }
+          const session = sessions.get(summary.sessionId) ?? defaultSession;
+          const cost = session.estimateCost?.(summary.usage);
+          return cost === undefined ? summary : { ...summary, cost };
+        });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
           JSON.stringify({
             activeSessionId: defaultSessionId,
-            sessions: await listSessions([...sessions.keys()]),
+            sessions: withCost,
           })
         );
         return;
@@ -508,6 +523,7 @@ export async function listSessions(
       entryCount: metadata?.entryCount ?? 0,
       createdAt: metadata?.createdAt,
       lastActiveAt: metadata?.lastActiveAt,
+      usage: metadata?.usage,
     });
   }
 

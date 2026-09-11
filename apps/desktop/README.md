@@ -93,6 +93,10 @@ sessions reloads that transcript and sends later messages to it. With
 `DEV_AGENT_MEMORY_FILE` set, every session shares that single file; leave it
 unset to get one file per session.
 
+The header also restores the session's accumulated token count (and its
+estimated cost when the `pricing` config matches the current model) from the
+`usage` stored with the session file, so a page reload no longer resets it.
+
 The `Delete` button next to the picker removes the current session after a
 confirmation and switches back to the default one.
 

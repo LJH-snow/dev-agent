@@ -19,8 +19,10 @@ Options:
 - `--session <id>` - use a separate persisted memory session
 - `--reset-memory` - clear the selected memory before running
 - `--tools` - list registered tools and exit
-- `--metadata` - print metadata for the selected session and exit
-- `--session-list` - list saved sessions, newest first
+- `--metadata` - print metadata for the selected session and exit, including the
+  accumulated token usage when the session has any
+- `--session-list` - list saved sessions, newest first; `--json` includes each
+  session's accumulated `usage` (`null` when it never reported tokens)
 - `--compact <n>` - compact the selected session, keeping the `n` most recent turns
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary

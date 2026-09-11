@@ -4,12 +4,39 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（会话用量持久化）未开始
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-11 20:0x-20:2x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：阶段 2（桌面端会话重命名 UI）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-11 20:2x-20:4x）
+- 工作区：阶段 1 的改动待提交
 
 ## 日志
+
+### 运行 2 — 2026-09-11 20:2x-20:4x
+
+- 阶段/工作项：阶段 1（会话用量持久化）完成
+- 做了什么：
+  - `AgentMemory` 增加可选 `recordUsage(usage)`；`InMemoryMemory` 在进程内累计，
+    `FileMemory` 把累计写进会话文件的 `metadata.usage`
+  - `AgentLoop` 收到 provider usage 时 `await memory.recordUsage(...)`，
+    保证 `--once` 退出前已经落盘；`addUsage` 抽到 `usage.ts` 供 memory 复用
+  - `SessionMetadata` 增加可选 `usage`；CLI `--metadata` 打印
+    `Usage: prompt=… completion=… total=…`，`--session-list --json` 每个会话带
+    `usage`（无记录时为 `null`），文本模式追加 token 数
+  - 桌面端 `GET /api/sessions` 的 summary 带 `usage`，并用当前会话的模型与
+    `pricing` 估算 `cost`；聊天头部在切换/刷新会话时恢复累计 token 与成本
+  - 文档：agent-core / cli / desktop README 同步
+- 验证命令与结果：
+  - `pnpm build`：通过（一处 import 别名写错，修正后重跑全绿）
+  - `pnpm typecheck`：通过
+  - `packages/agent-core`：56 passed（新增 3 个：InMemory 累计、FileMemory
+    跨实例读回、loop 落盘）
+  - `apps/cli`（`tests/cli-e2e.test.mjs`）：6 passed（新增 1 个 metadata usage）
+  - `apps/desktop`（`tests/multi-session.test.mjs`）：10 passed
+    （summary 断言带 usage 与 cost）
+  - `pnpm test`：全绿（TypeScript 368 个测试，0 失败）
+- 提交：见阶段 1 的 feat 提交
+- 下一步：阶段 2 — 桌面端会话重命名 UI（Rename 按钮 + prompt + POST，
+  HTML 冒烟断言）
 
 ### 运行 1 — 2026-09-11 20:0x-20:2x
 

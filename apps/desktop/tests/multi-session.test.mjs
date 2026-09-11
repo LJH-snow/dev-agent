@@ -64,7 +64,12 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
   const previousDir = process.env.DEV_AGENT_SESSION_DIR;
   process.env.DEV_AGENT_SESSION_DIR = dir;
 
-  const server = createDesktopServer({ session: fakeSession("default") });
+  const server = createDesktopServer({
+    session: {
+      ...fakeSession("default"),
+      estimateCost: (usage) => usage.totalTokens / 1000,
+    },
+  });
   const base = await start(server);
   try {
     const entries = [
@@ -76,9 +81,10 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
       JSON.stringify({ version: 1, metadata: {
         sessionId: "alpha",
         createdAt: "2026-01-01T00:00:00.000Z",
-        lastActiveAt: "2026-01-01T00:01:00.000Z",
-        entryCount: entries.length,
-      }, entries }),
+          lastActiveAt: "2026-01-01T00:01:00.000Z",
+          entryCount: entries.length,
+          usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17 },
+        }, entries }),
       "utf8"
     );
 
@@ -90,6 +96,12 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
     assert.ok(ids.includes("alpha"), `expected alpha in ${ids.join(", ")}`);
     const alpha = payload.sessions.find((session) => session.sessionId === "alpha");
     assert.equal(alpha.entryCount, 2);
+    assert.deepEqual(alpha.usage, {
+      promptTokens: 12,
+      completionTokens: 5,
+      totalTokens: 17,
+    });
+    assert.equal(alpha.cost, 0.017);
 
     const history = await fetch(`${base}/api/sessions/alpha/messages`);
     assert.equal(history.status, 200);

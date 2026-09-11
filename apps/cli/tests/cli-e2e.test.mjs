@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -56,6 +56,37 @@ test("CLI --metadata shows no metadata for fresh session", async () => {
     });
     assert.equal(code, 0);
     assert.match(stdout, /No session metadata found/);
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+});
+
+test("CLI --metadata prints the accumulated usage", async () => {
+  const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-cli-"));
+  const sessionFile = join(sessionDir, "usage.json");
+  try {
+    await writeFile(
+      sessionFile,
+      JSON.stringify({
+        version: 1,
+        metadata: {
+          sessionId: "usage",
+          createdAt: "2026-09-11T00:00:00.000Z",
+          lastActiveAt: "2026-09-11T00:05:00.000Z",
+          entryCount: 2,
+          usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17 },
+        },
+        entries: [],
+      }),
+      "utf8"
+    );
+
+    const { stdout, code } = await runCli(["--metadata"], {
+      DEV_AGENT_MEMORY_FILE: sessionFile,
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout, /Usage: prompt=12 completion=5 total=17/);
   } finally {
     await rm(sessionDir, { recursive: true, force: true });
   }

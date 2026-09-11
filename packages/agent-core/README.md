@@ -17,7 +17,10 @@ Implemented in phase 1:
   `summaryMaxChars` (default 2000) caps its length by keeping the newest part.
 - Usage accounting: every model response that reports tokens fires `onUsage`,
   and the loop adds the totals up on the returned context's `usage` field, so a
-  session's consumption survives across runs
+  session's consumption survives across runs. `AgentMemory.recordUsage()` is
+  awaited for every report: `InMemoryMemory` keeps the total in process and
+  `FileMemory` writes it to `metadata.usage`, so `getMetadata()` can restore it
+  after a restart.
 - Approval policies: `AgentLoopOptions.approval` decides whether a tool call may
   run. `denyDangerousPolicy()` blocks commands matching its pattern table
   (recursive delete, `sudo`, force push, pipe-to-shell, disk tools, …) and

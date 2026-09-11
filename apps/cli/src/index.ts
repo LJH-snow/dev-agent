@@ -51,6 +51,7 @@ import {
   createOllamaProvider,
   createOpenAIProvider,
   estimateCost,
+  type ChatUsage,
   type ModelProvider,
   type PriceTable,
 } from "@dev-agent/model";
@@ -291,6 +292,11 @@ export async function main(argv: string[]): Promise<void> {
         console.log(`Created: ${meta.createdAt}`);
         console.log(`Last active: ${meta.lastActiveAt}`);
         console.log(`Entries: ${meta.entryCount}`);
+        if (meta.usage) {
+          console.log(
+            `Usage: prompt=${meta.usage.promptTokens} completion=${meta.usage.completionTokens} total=${meta.usage.totalTokens}`
+          );
+        }
       } else {
         console.log("No session metadata found.");
       }
@@ -600,12 +606,19 @@ async function listSessions(jsonOutput = false): Promise<void> {
     return;
   }
 
-  const rows: Array<{ file: string; size: number; modified: Date }> = [];
+  const rows: Array<{
+    file: string;
+    size: number;
+    modified: Date;
+    usage?: ChatUsage;
+  }> = [];
   for (const file of sessionFiles) {
     const filePath = join(sessionDir(), file);
     try {
       const info = await stat(filePath);
-      rows.push({ file, size: info.size, modified: info.mtime });
+      const memory = new FileMemory({ filePath });
+      const metadata = await memory.getMetadata();
+      rows.push({ file, size: info.size, modified: info.mtime, usage: metadata?.usage });
     } catch {
       rows.push({ file, size: 0, modified: new Date(0) });
     }
@@ -619,6 +632,7 @@ async function listSessions(jsonOutput = false): Promise<void> {
           file: row.file,
           size: row.size,
           modifiedAt: row.modified.toISOString(),
+          usage: row.usage ?? null,
         })),
         null,
         2
@@ -628,7 +642,10 @@ async function listSessions(jsonOutput = false): Promise<void> {
   }
   console.log(`Sessions (${rows.length}) in ${sessionDir()}:`);
   for (const row of rows) {
-    console.log(`  ${row.file.padEnd(32)} ${String(row.size).padStart(10)} bytes  ${row.modified.toISOString()}`);
+    const tokens = row.usage ? `  ${row.usage.totalTokens} tokens` : "";
+    console.log(
+      `  ${row.file.padEnd(32)} ${String(row.size).padStart(10)} bytes${tokens}  ${row.modified.toISOString()}`
+    );
   }
 }
 

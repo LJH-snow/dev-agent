@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import type { ChatMessage, ToolCall } from "@dev-agent/model";
+import type { ChatMessage, ChatUsage, ToolCall } from "@dev-agent/model";
+import { addUsage } from "./usage.js";
 
 export interface MemoryEntry extends ChatMessage {
   readonly id: string;
@@ -20,6 +21,8 @@ export interface AgentMemory {
   entries(): Promise<readonly MemoryEntry[]>;
   clear(): Promise<void>;
   getMetadata?(): Promise<SessionMetadata | undefined>;
+  /** Adds one provider usage report to the session total, when supported. */
+  recordUsage?(usage: ChatUsage): Promise<void>;
   compact?(keepRecentTurns: number): Promise<number>;
   /** Digest of entries that were trimmed off the front of the history. */
   getSummary?(): Promise<ContextSummary | undefined>;
@@ -37,9 +40,13 @@ export interface ContextSummary {
 export class InMemoryMemory implements AgentMemory {
   private readonly items: MemoryEntry[] = [];
   private summary?: ContextSummary;
+  private usage?: ChatUsage;
+  private readonly createdAt = new Date().toISOString();
+  private lastActiveAt = this.createdAt;
 
   async append(entry: MemoryEntry): Promise<void> {
     this.items.push(entry);
+    this.lastActiveAt = new Date().toISOString();
   }
 
   async entries(): Promise<readonly MemoryEntry[]> {
@@ -49,6 +56,23 @@ export class InMemoryMemory implements AgentMemory {
   async clear(): Promise<void> {
     this.items.length = 0;
     this.summary = undefined;
+    this.usage = undefined;
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async getMetadata(): Promise<SessionMetadata> {
+    return {
+      sessionId: "in-memory",
+      createdAt: this.createdAt,
+      lastActiveAt: this.lastActiveAt,
+      entryCount: this.items.length,
+      usage: this.usage,
+    };
+  }
+
+  async recordUsage(usage: ChatUsage): Promise<void> {
+    this.usage = addUsage(this.usage, usage);
+    this.lastActiveAt = new Date().toISOString();
   }
 
   async getSummary(): Promise<ContextSummary | undefined> {
@@ -69,6 +93,8 @@ export interface SessionMetadata {
   readonly createdAt: string;
   readonly lastActiveAt: string;
   readonly entryCount: number;
+  /** Tokens reported by the provider across every run in this session. */
+  readonly usage?: ChatUsage;
 }
 
 interface MemoryFile {
@@ -141,6 +167,13 @@ export class FileMemory implements AgentMemory {
     });
   }
 
+  recordUsage(usage: ChatUsage): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      await this.persist(entries, undefined, usage);
+    });
+  }
+
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
     const result = this.chain.then(task, task);
     this.chain = result.then(
@@ -175,7 +208,8 @@ export class FileMemory implements AgentMemory {
 
   private async persist(
     entries: readonly MemoryEntry[],
-    summary?: ContextSummary
+    summary?: ContextSummary,
+    usage?: ChatUsage
   ): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     const existing = await this.readMemoryFile().catch(() => undefined);
@@ -185,6 +219,7 @@ export class FileMemory implements AgentMemory {
       createdAt: existing?.metadata?.createdAt ?? now,
       lastActiveAt: now,
       entryCount: entries.length,
+      usage: usage === undefined ? existing?.metadata?.usage : addUsage(existing?.metadata?.usage, usage),
     };
     const payload: MemoryFile = {
       version: 1,
@@ -235,7 +270,27 @@ function isMemoryFile(value: unknown): value is MemoryFile {
     candidate.version === 1 &&
     Array.isArray(candidate.entries) &&
     candidate.entries.every(isMemoryEntry) &&
-    (candidate.summary === undefined || isContextSummary(candidate.summary))
+    (candidate.summary === undefined || isContextSummary(candidate.summary)) &&
+    (candidate.metadata === undefined || isSessionMetadataValue(candidate.metadata))
+  );
+}
+
+/** Only the parts a reader relies on are validated; unknown keys are allowed. */
+function isSessionMetadataValue(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const usage = (value as Record<string, unknown>).usage;
+  return usage === undefined || isChatUsage(usage);
+}
+
+function isChatUsage(value: unknown): value is ChatUsage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).promptTokens === "number" &&
+    typeof (value as Record<string, unknown>).completionTokens === "number" &&
+    typeof (value as Record<string, unknown>).totalTokens === "number"
   );
 }
 

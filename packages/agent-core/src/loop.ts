@@ -4,6 +4,7 @@ import type { AgentContext } from "./context.js";
 import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.js";
 import type { ChatMessage, ModelProvider, ToolSchema } from "@dev-agent/model";
 import type { ChatUsage } from "@dev-agent/model";
+import { addUsage } from "./usage.js";
 import {
   runTool,
   type ToolCollection,
@@ -146,7 +147,7 @@ export class AgentLoop {
           ? await this.model.streamChat(messages, { ...chatOptions, onToken: (token) => this.onToken?.(token, context) })
           : await this.model.chat(messages, chatOptions);
         if (completion.usage) {
-          this.recordUsage(runState, completion.usage);
+          await this.recordUsage(runState, completion.usage);
         }
         const toolCalls = completion.toolCalls ?? [];
 
@@ -311,14 +312,15 @@ export class AgentLoop {
       { signal: runState.signal }
     );
     if (completion.usage) {
-      this.recordUsage(runState, completion.usage);
+      await this.recordUsage(runState, completion.usage);
     }
     return completion.content.trim();
   }
 
-  private recordUsage(runState: RunState, usage: ChatUsage): void {
+  private async recordUsage(runState: RunState, usage: ChatUsage): Promise<void> {
     runState.totalUsage = addUsage(runState.totalUsage, usage);
     this.onUsage?.(usage, runState.context);
+    await runState.context.memory.recordUsage?.(usage);
   }
 
   /**
@@ -399,18 +401,6 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw signal.reason ?? new Error("The operation was aborted");
   }
-}
-
-/** Adds the tokens of one model response to a running total. */
-function addUsage(
-  total: ChatUsage | undefined,
-  usage: ChatUsage
-): ChatUsage {
-  return {
-    promptTokens: (total?.promptTokens ?? 0) + usage.promptTokens,
-    completionTokens: (total?.completionTokens ?? 0) + usage.completionTokens,
-    totalTokens: (total?.totalTokens ?? 0) + usage.totalTokens,
-  };
 }
 
 interface HistorySelection {

@@ -19,7 +19,8 @@ import {
   createGeminiProvider,
   createOllamaProvider,
   createOpenAIProvider,
-  estimateCost,
+  estimateCost as estimateUsageCost,
+  type ChatUsage,
   type PriceTable,
   type ModelProvider,
 } from "@dev-agent/model";
@@ -149,7 +150,7 @@ export class ChatSession {
       onToolCall: (call) => emit({ type: "tool", data: { name: call.name, input: call.input } }),
       onToolResult: (result) => emit({ type: "tool-result", data: { name: result.name, output: result.output } }),
       onUsage: (usage) => {
-        const cost = estimateCost(usage, this.model.model, this.pricing);
+        const cost = estimateUsageCost(usage, this.model.model, this.pricing);
         emit({
           type: "usage",
           data: {
@@ -192,6 +193,11 @@ export class ChatSession {
 
   get id(): string {
     return this.sessionId;
+  }
+
+  /** Prices a usage total with this session's model and shared price table. */
+  estimateCost(usage: ChatUsage): number | undefined {
+    return estimateUsageCost(usage, this.model.model, this.pricing);
   }
 }
 

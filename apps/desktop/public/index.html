@@ -141,6 +141,7 @@
     let totalCost = 0;
     let hasCost = false;
     let currentSessionId = null;
+    let sessionSummaries = new Map();
 
     function setStatus(text) { status.textContent = text; }
 
@@ -154,6 +155,18 @@
       const parts = [totalTokens + " tokens"];
       if (hasCost) parts.push("$" + formatCost(totalCost));
       usage.textContent = parts.join(" · ");
+    }
+
+    function applySessionUsage(summary) {
+      totalTokens = Number(summary?.usage?.totalTokens) || 0;
+      if (typeof summary?.cost === "number" && Number.isFinite(summary.cost)) {
+        totalCost = summary.cost;
+        hasCost = true;
+      } else {
+        totalCost = 0;
+        hasCost = false;
+      }
+      renderUsage();
     }
 
     function ensureSessionOption(sessionId) {
@@ -173,6 +186,7 @@
         if (!res.ok) return;
         const data = await res.json();
         sessionSelect.innerHTML = "";
+        sessionSummaries = new Map();
         for (const session of data.sessions ?? []) {
           const option = document.createElement("option");
           option.value = session.sessionId;
@@ -180,11 +194,13 @@
             ? session.sessionId + " (" + session.entryCount + ")"
             : session.sessionId;
           sessionSelect.appendChild(option);
+          sessionSummaries.set(session.sessionId, session);
         }
         if (currentSessionId === null) {
           currentSessionId = data.activeSessionId ?? "desktop-default";
         }
         ensureSessionOption(currentSessionId);
+        applySessionUsage(sessionSummaries.get(currentSessionId));
       } catch {
         // The session picker is optional; keep the current conversation usable.
       }
@@ -274,10 +290,7 @@
 
     sessionSelect.addEventListener("change", async () => {
       currentSessionId = sessionSelect.value;
-      totalTokens = 0;
-      totalCost = 0;
-      hasCost = false;
-      renderUsage();
+      applySessionUsage(sessionSummaries.get(currentSessionId));
       await loadHistory(currentSessionId);
       setStatus("session " + currentSessionId);
     });

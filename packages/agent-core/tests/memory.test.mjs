@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createMemoryEntry, FileMemory } from "../dist/index.js";
+import { createMemoryEntry, FileMemory, InMemoryMemory } from "../dist/index.js";
 
 function makeTempDir() {
   return mkdtempSync(join(tmpdir(), "dev-agent-memory-"));
@@ -56,6 +56,41 @@ test("file memory rejects an invalid file", async () => {
     writeFileSync(filePath, "not json", "utf8");
 
     await assert.rejects(() => memory.entries(), /Invalid memory file/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("in-memory usage accumulates into metadata", async () => {
+  const memory = new InMemoryMemory();
+  await memory.recordUsage({ promptTokens: 5, completionTokens: 2, totalTokens: 7 });
+  await memory.recordUsage({ promptTokens: 3, completionTokens: 1, totalTokens: 4 });
+
+  const metadata = await memory.getMetadata();
+  assert.deepEqual(metadata?.usage, {
+    promptTokens: 8,
+    completionTokens: 3,
+    totalTokens: 11,
+  });
+});
+
+test("file memory persists accumulated usage across instances", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "sessions", "usage.json");
+    const first = new FileMemory({ filePath });
+    await first.append(createMemoryEntry("user", "hello"));
+    await first.recordUsage({ promptTokens: 7, completionTokens: 3, totalTokens: 10 });
+    await first.recordUsage({ promptTokens: 2, completionTokens: 1, totalTokens: 3 });
+
+    const reopened = new FileMemory({ filePath });
+    const metadata = await reopened.getMetadata();
+    assert.deepEqual(metadata?.usage, {
+      promptTokens: 9,
+      completionTokens: 4,
+      totalTokens: 13,
+    });
+    assert.equal(metadata?.entryCount, 1);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
