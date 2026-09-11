@@ -75,3 +75,22 @@ test("RustExecutor rejects a request beyond its concurrency limit", async () => 
     delete process.env.MOCK_EXECUTOR_BEHAVIOR;
   }
 });
+
+test("LocalExecutor escalates to SIGKILL when the command ignores SIGTERM", async () => {
+  const executor = new LocalExecutor();
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), 50);
+
+  const started = Date.now();
+  await assert.rejects(
+    () =>
+      executor.run("/bin/sh", ["-c", "trap '' TERM; while :; do sleep 1; done"], {
+        signal: controller.signal,
+      }),
+    /cancelled/i
+  );
+
+  const elapsed = Date.now() - started;
+  assert.ok(elapsed >= 2000, `expected the grace period to elapse, got ${elapsed}ms`);
+  assert.ok(elapsed < 6000, `expected SIGKILL to take over, got ${elapsed}ms`);
+});

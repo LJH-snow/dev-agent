@@ -22,6 +22,9 @@ pub enum ExecutorError {
 /// specific limit. Matches the TypeScript `LocalExecutor` default.
 pub const DEFAULT_MAX_OUTPUT_BYTES: usize = 1_000_000;
 
+/// How long a command gets to exit on SIGTERM before it is killed outright.
+const TERMINATION_GRACE: Duration = Duration::from_secs(2);
+
 pub struct LocalExecutor;
 
 impl LocalExecutor {
@@ -62,6 +65,11 @@ impl LocalExecutor {
         command.stdout(Stdio::piped());
         command.stderr(Stdio::piped());
         command.kill_on_drop(true);
+        // Each command leads its own process group so a cancel or timeout can
+        // reach the whole tree (sandbox wrappers included) instead of leaving
+        // grandchildren behind.
+        #[cfg(unix)]
+        command.process_group(0);
 
         if let Some(cwd) = &request.cwd {
             command.current_dir(cwd);
@@ -115,8 +123,7 @@ impl LocalExecutor {
                 {
                     Ok(outcome) => outcome.map_err(ExecutorError::Io)?,
                     Err(_) => {
-                        let _ = child.kill().await;
-                        let _ = child.wait().await;
+                        terminate(&mut child).await;
                         WaitOutcome::TimedOut
                     }
                 }
@@ -187,11 +194,31 @@ async fn wait_for_exit(
             Ok(WaitOutcome::Exited(child.wait().await?))
         }
         _ = &mut cancel_wait => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
+            terminate(child).await;
             Ok(WaitOutcome::Cancelled)
         }
     }
+}
+
+/// Stops a running command: SIGTERM to its process group first so it can clean
+/// up, then SIGKILL when it is still alive after the grace period.
+async fn terminate(child: &mut Child) {
+    #[cfg(unix)]
+    {
+        if let Some(pid) = child.id() {
+            // The child leads its own group (see `process_group(0)`), so the
+            // group id is its pid.
+            unsafe {
+                libc::killpg(pid as libc::pid_t, libc::SIGTERM);
+            }
+        }
+        if timeout(TERMINATION_GRACE, child.wait()).await.is_ok() {
+            return;
+        }
+    }
+
+    let _ = child.kill().await;
+    let _ = child.wait().await;
 }
 
 /// Reads a child stream into memory, stopping once `limit` bytes were captured.
@@ -412,5 +439,43 @@ mod tests {
 
         assert_eq!(result.stdout.trim(), "still-runs");
         assert_eq!(result.exit_code, 0);
+    }
+
+    #[tokio::test]
+    async fn cancel_escalates_to_sigkill_when_sigterm_is_ignored() {
+        let executor = LocalExecutor::new();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            let _ = sender.send(());
+        });
+
+        let started = std::time::Instant::now();
+        let result = executor
+            .run_cancellable(
+                &RunRequest {
+                    command: "/bin/sh".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        "trap '' TERM; while :; do sleep 1; done".to_string(),
+                    ],
+                    cwd: None,
+                    env: std::collections::HashMap::new(),
+                    input: None,
+                    timeout_ms: None,
+                    max_output_bytes: Some(1024),
+                },
+                Some(receiver),
+            )
+            .await;
+
+        assert!(matches!(result, Err(ExecutorError::Cancelled)));
+        // The shell ignores SIGTERM, so this can only finish after the grace
+        // period expires and SIGKILL takes over.
+        assert!(
+            started.elapsed() >= TERMINATION_GRACE,
+            "expected the grace period to elapse before the kill"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(6));
     }
 }

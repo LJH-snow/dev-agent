@@ -21,8 +21,10 @@ Current capabilities:
   `max_output_bytes`) enforced while streaming; exceeding it kills the child and
   sets `bytes_truncated` on the result
 - Cancellation: an `Envelope.cancel` stops the in-flight run with the given
-  request id, kills its child process, and answers the run with
-  `ErrorResult { code: "CANCELLED" }`
+  request id and answers the run with `ErrorResult { code: "CANCELLED" }`.
+  Commands run in their own process group, so termination reaches the whole
+  tree — sandbox wrappers included: SIGTERM first, then SIGKILL after a 2s
+  grace period if the command is still alive. Timeouts use the same sequence.
 - Linux `bwrap` namespace isolation (user/ipc/pid/uts/cgroup), read-only root
   filesystem with writable/read-only path bind mounts, network policy
   (`--unshare-net`), environment injection, resource limits, and cwd enforcement

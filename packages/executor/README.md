@@ -52,6 +52,10 @@ Cancellation crosses it as well: `ExecutorRunOptions.signal` makes
 `CancelRequest` and rejects with `ExecutorCancelledError` once the runtime
 answers `CANCELLED`. `RustExecutor` also enforces the same default concurrency
 limit as `LocalExecutor` (5, configurable via `maxConcurrentExecutions`).
+Both executors terminate gracefully: the command gets SIGTERM first (sent to
+its process group on Unix, so wrappers and grandchildren are included) and
+SIGKILL only if it is still alive after two seconds. Timeouts follow the same
+path.
 The protobuf stream is consumed as raw `Buffer` frames; text encoding is only
 applied to the Rust process's stderr, never to stdio protocol payloads.
 

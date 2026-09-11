@@ -11,6 +11,8 @@ export interface LocalExecutorOptions {
 
 export const DEFAULT_MAX_OUTPUT_BYTES = 1_000_000;
 const DEFAULT_MAX_CONCURRENT = 5;
+/** How long a command gets to exit on SIGTERM before it is killed outright. */
+const TERMINATION_GRACE_MS = 2000;
 
 export class LocalExecutor implements Executor {
   private readonly history: ExecutorResult[] = [];
@@ -61,6 +63,9 @@ export class LocalExecutor implements Executor {
         cwd: options.cwd,
         env: mergeEnv(options.env),
         stdio: ["pipe", "pipe", "pipe"],
+        // Each command leads its own process group so a termination signal can
+        // reach the whole tree instead of leaving grandchildren behind.
+        detached: process.platform !== "win32",
       });
 
       let stdout = "";
@@ -70,6 +75,7 @@ export class LocalExecutor implements Executor {
       let cancelled = false;
       let settled = false;
       let timer: NodeJS.Timeout | undefined;
+      let escalation: NodeJS.Timeout | undefined;
       const startedAt = Date.now();
       const signal = options.signal;
 
@@ -77,7 +83,37 @@ export class LocalExecutor implements Executor {
         if (timer) {
           clearTimeout(timer);
         }
+        if (escalation) {
+          clearTimeout(escalation);
+        }
         signal?.removeEventListener("abort", onAbort);
+      };
+
+      const killTree = (killSignal: NodeJS.Signals): void => {
+        const pid = child.pid;
+        if (pid === undefined || process.platform === "win32") {
+          child.kill(killSignal);
+          return;
+        }
+        try {
+          // Negative pid targets the process group the child leads.
+          process.kill(-pid, killSignal);
+        } catch {
+          child.kill(killSignal);
+        }
+      };
+
+      /** SIGTERM first so the command can clean up, SIGKILL after the grace period. */
+      const terminate = (): void => {
+        killTree("SIGTERM");
+        if (escalation) {
+          clearTimeout(escalation);
+        }
+        escalation = setTimeout(() => {
+          if (!settled) {
+            killTree("SIGKILL");
+          }
+        }, TERMINATION_GRACE_MS);
       };
 
       const onAbort = (): void => {
@@ -85,13 +121,13 @@ export class LocalExecutor implements Executor {
           return;
         }
         cancelled = true;
-        child.kill("SIGTERM");
+        terminate();
       };
 
       if (options.timeoutMs !== undefined) {
         timer = setTimeout(() => {
           timedOut = true;
-          child.kill("SIGTERM");
+          terminate();
         }, options.timeoutMs);
       }
 
@@ -108,7 +144,7 @@ export class LocalExecutor implements Executor {
         if (Buffer.byteLength(stdout, "utf8") + Buffer.byteLength(chunkStr, "utf8") > maxOutputBytes) {
           if (!truncated) {
             truncated = true;
-            child.kill("SIGTERM");
+            terminate();
           }
           return;
         }
