@@ -113,6 +113,7 @@
     <div class="header-status">
       <select id="session" title="Session"></select>
       <button type="button" id="new-session" title="New session">+</button>
+      <button type="button" id="delete-session" title="Delete session">Delete</button>
       <span class="status" id="usage"></span>
       <span class="status" id="status">idle</span>
     </div>
@@ -131,6 +132,7 @@
     const usage = document.getElementById("usage");
     const sessionSelect = document.getElementById("session");
     const newSessionButton = document.getElementById("new-session");
+    const deleteSessionButton = document.getElementById("delete-session");
 
     let currentAssistant = null;
     let totalTokens = 0;
@@ -264,6 +266,29 @@
       usage.textContent = "";
       await loadHistory(currentSessionId);
       setStatus("new session");
+    });
+
+    deleteSessionButton.addEventListener("click", async () => {
+      if (currentSessionId === null) return;
+      if (!window.confirm("Delete session " + currentSessionId + "?")) return;
+      try {
+        const res = await fetch("/api/sessions/" + encodeURIComponent(currentSessionId), {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          setStatus("delete failed");
+          return;
+        }
+      } catch {
+        setStatus("delete failed");
+        return;
+      }
+      currentSessionId = null;
+      totalTokens = 0;
+      usage.textContent = "";
+      await loadSessions();
+      await loadHistory(currentSessionId);
+      setStatus("session deleted");
     });
 
     input.addEventListener("input", () => {

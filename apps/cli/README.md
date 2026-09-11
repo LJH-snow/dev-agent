@@ -39,6 +39,8 @@ Options:
 - `--doctor` - check the environment (Node version, `rg`, `protoc`, the Rust
   runtime binary, the provider API key, and the session directory); exits 1 when
   any check fails. Combine with `--json` for `{ checks, summary }`
+- `--session-delete <id>` - delete a stored session file; a missing session is
+  reported (`deleted: false` with `--json`) without failing
 - `--version` / `-v` - print the CLI version
 
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on

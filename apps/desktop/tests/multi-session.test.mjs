@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -30,6 +30,15 @@ async function waitFor(predicate, timeoutMs = 2000) {
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
   throw new Error("condition was not met before the timeout");
+}
+
+async function exists(path) {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function fakeSession(id) {
@@ -154,5 +163,52 @@ test("sessions run concurrently while one session stays serialised", async () =>
     await Promise.all([alpha.text(), beta.text()]);
   } finally {
     await close(server);
+  }
+});
+
+test("DELETE /api/sessions/<id> removes the stored session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-delete-"));
+  const previousDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = dir;
+  const server = createDesktopServer({ session: fakeSession("default") });
+  const base = await start(server);
+
+  try {
+    const file = join(dir, "doomed.json");
+    await writeFile(file, JSON.stringify({ version: 1, entries: [] }), "utf8");
+
+    const res = await fetch(`${base}/api/sessions/doomed`, { method: "DELETE" });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { sessionId: "doomed", deleted: true });
+    assert.equal(await exists(file), false, "the memory file should be gone");
+  } finally {
+    await close(server);
+    if (previousDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDir;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("DELETE /api/sessions/<id> returns 404 for an unknown session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-delete-"));
+  const previousDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = dir;
+  const server = createDesktopServer({ session: fakeSession("default") });
+  const base = await start(server);
+
+  try {
+    const res = await fetch(`${base}/api/sessions/missing`, { method: "DELETE" });
+    assert.equal(res.status, 404);
+  } finally {
+    await close(server);
+    if (previousDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDir;
+    }
+    await rm(dir, { recursive: true, force: true });
   }
 });

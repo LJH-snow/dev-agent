@@ -52,6 +52,8 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `GET /api/sessions` — the default session id plus every session file in
   `DEV_AGENT_SESSION_DIR` (`~/.dev-agent/sessions` by default), newest first.
 - `GET /api/sessions/<id>/messages` — the stored transcript of one session.
+- `DELETE /api/sessions/<id>` — delete a session's memory file and drop it from
+  the in-memory registry; unknown ids return `404`.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-result`, `turn`, `usage`, `approval`, `done`,
   `error`. An `approval` frame carries `{ tool, decision, reason }`; a denial is
@@ -78,6 +80,9 @@ The header has a session picker plus a `+` button for a new one. Switching
 sessions reloads that transcript and sends later messages to it. With
 `DEV_AGENT_MEMORY_FILE` set, every session shares that single file; leave it
 unset to get one file per session.
+
+The `Delete` button next to the picker removes the current session after a
+confirmation and switches back to the default one.
 
 ## Approvals
 

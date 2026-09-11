@@ -1,6 +1,6 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
@@ -117,6 +117,32 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const sessionId = normalizeSessionId(decodeURIComponent(rawId));
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ sessionId, messages: await readHistory(sessionId) }));
+        return;
+      }
+
+      if (req.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {
+        const rawId = url.pathname.slice("/api/sessions/".length);
+        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        sessions.delete(sessionId);
+
+        let deleted = false;
+        try {
+          await rm(memoryPathFor(sessionId));
+          deleted = true;
+        } catch (error) {
+          if (!isNodeError(error) || error.code !== "ENOENT") {
+            throw error;
+          }
+        }
+
+        if (!deleted) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId, deleted: true }));
         return;
       }
 
@@ -321,6 +347,10 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("error", reject);
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
   });
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 export function sessionsDir(): string {

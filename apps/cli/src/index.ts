@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { readdir, stat } from "node:fs/promises";
+import { readdir, rm, stat } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import {
@@ -79,6 +79,13 @@ export async function main(argv: string[]): Promise<void> {
   const resetMemory = args.includes("--reset-memory");
   const noStream = args.includes("--no-stream");
   const jsonOutput = args.includes("--json");
+  const sessionDeleteIndex = args.indexOf("--session-delete");
+  const sessionDeleteId = sessionDeleteIndex >= 0 ? args[sessionDeleteIndex + 1] : undefined;
+  if (sessionDeleteIndex >= 0 && sessionDeleteId === undefined) {
+    console.error("--session-delete requires a session id");
+    process.exitCode = 1;
+    return;
+  }
   const normalizedSessionId = normalizeSessionId(sessionId ?? "default");
   const workingDirectory = resolveWorkingDirectory();
   const rustIndex = args.indexOf("--rust-executor");
@@ -137,6 +144,25 @@ export async function main(argv: string[]): Promise<void> {
     }
     if (report.summary.fail > 0) {
       process.exitCode = 1;
+    }
+    return;
+  }
+
+  if (sessionDeleteId !== undefined) {
+    const id = normalizeSessionId(sessionDeleteId);
+    let deleted = false;
+    try {
+      await rm(join(sessionDir(), `${id}.json`));
+      deleted = true;
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "ENOENT")) {
+        throw error;
+      }
+    }
+    if (jsonOutput) {
+      console.log(JSON.stringify({ sessionId: id, deleted }, null, 2));
+    } else {
+      console.log(deleted ? `Deleted session ${id}.` : `Session ${id} not found.`);
     }
     return;
   }
