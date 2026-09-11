@@ -218,7 +218,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - Desktop approvals are interactive: `DEV_AGENT_APPROVAL=ask` renders an
   Allow/Deny prompt in the chat, waits for the click (denying after
   `DEV_AGENT_APPROVAL_TIMEOUT_MS`), and reports the decision as an `approval`
-  frame
+  frame. If the client disconnects while a prompt is open, that prompt is
+  dropped immediately instead of lingering until the timeout
 - `dev-agent --doctor` checks Node, `rg`, `protoc`, the Rust runtime binary, the
   provider key, `~/.dev-agent/config.json`, and the session directory, with
   `--json` output and a non-zero exit when something fails. A malformed config
@@ -269,7 +270,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 394 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 395 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 

@@ -30,11 +30,18 @@ short force pushes, the Python scanner ignored `async def`, and a narrow
   survive untouched, while a deep file that really is gone is still removed by a
   scan that covers its depth.
 
+### Fixed: a disconnect drops a pending desktop approval
+- When the SSE client went away while an `ask` prompt was open, the pending
+  approval stayed in the server's map until the 120s timeout fired. The prompt
+  is now settled as a denial and removed as soon as the request's abort signal
+  fires, and the endpoint answers `404` for that id afterwards.
+
 ### Tests
-- TypeScript: 389 -> 394. Rust: 46 (unchanged).
+- TypeScript: 389 -> 395. Rust: 46 (unchanged).
 - New coverage: long-option `rm`, `-f`/`+refspec` pushes and their look-alike
   false positives, async Python functions and methods, and both directions of
-  the depth-safe index write-back.
+  the depth-safe index write-back, plus a client-disconnect approval cleanup
+  case.
 
 ## 2026-09-11 (Day plan v12: multi-language search, cache writes, config doctor)
 

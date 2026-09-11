@@ -40,6 +40,8 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   The built-in table matches both spellings of a dangerous shape: `rm -rf` and
   `rm --recursive --force`, `git push --force` / `-f` / `+refspec`, while
   `rm --force file` (no recursion) and `git push --follow-tags` stay allowed.
+  A client disconnect aborts the run's signal, which also settles and removes
+  any approval prompt still waiting for an answer.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
   loop accumulates the totals on `AgentContext.usage` across runs. Each report
   is also handed to `AgentMemory.recordUsage()`, which `InMemoryMemory` keeps in

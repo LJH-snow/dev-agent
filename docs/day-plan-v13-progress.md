@@ -5,11 +5,37 @@
 ## 当前状态
 
 - 当前阶段：无，`docs/day-plan-v13.md` 的四个阶段已全部完成
-- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
-- 最近一次运行：运行 4（2026-09-11 23:2x-23:4x）
-- 工作区：阶段 3 的文档改动提交后即 clean
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3（另附阶段 3 探查阶段发现的
+  桌面端审批断线清理修复）
+- 最近一次运行：运行 5（2026-09-11 23:4x-24:0x）
+- 工作区：阶段 3 + 额外修复提交后即 clean
 
 ## 日志
+
+### 运行 5 — 2026-09-11 23:4x-24:0x
+
+- 阶段/工作项：阶段 3 收尾期间按「实测复现」继续探查，发现并修复桌面端
+  审批断线泄漏（作为 v13 的额外修复记录，计划文档本身未改动）
+- 复现与问题：`DEV_AGENT_APPROVAL=ask` 时客户端在 `approval-request` 后断开，
+  服务端 `waitForApproval` 的条目会留在 `approvals` map 里直到
+  `DEV_AGENT_APPROVAL_TIMEOUT_MS`（默认 120s）才被清理；期间
+  `POST /api/approval` 对该 id 仍返回 200
+- 做了什么：
+  - `waitForApproval` 接收 `AbortSignal`：断线（run 的 abort signal）时立即以
+    `deny` 结算、清掉定时器、移除 map 条目；已 abort 的信号也能同步清理
+  - 新增桌面端用例：拿到 `approval-request` 后断开 fetch，再向该 id 提交审批
+    必须得到 404，且命令不能执行
+  - 文档：README / architecture / CHANGELOG 的 v13 条目补充该修复
+- 验证命令与结果（最终完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed
+  - `pnpm build` / `pnpm typecheck`：通过
+  - `pnpm test`：395 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed / 0 failed
+  - `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings` / `cargo test`：
+    通过，46 passed（43 lib + 3 bin）
+- 提交：先 `fix(desktop): drop pending approvals on disconnect`，再 docs 提交
+- 下一步：v13 计划已收尾；下一轮继续实测复现优先，优先看上下文预算/摘要、
+  MCP 客户端重连与执行器配额边界
 
 ### 运行 4 — 2026-09-11 23:2x-23:4x
 
