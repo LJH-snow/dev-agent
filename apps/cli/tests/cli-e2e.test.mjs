@@ -61,6 +61,61 @@ test("CLI --metadata shows no metadata for fresh session", async () => {
   }
 });
 
+test("CLI --metadata reports a corrupt memory file", async () => {
+  const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-cli-"));
+  const sessionFile = join(sessionDir, "broken.json");
+  try {
+    await writeFile(sessionFile, "{ not json", "utf8");
+
+    const { stdout, stderr, code } = await runCli(["--metadata"], {
+      DEV_AGENT_MEMORY_FILE: sessionFile,
+    });
+
+    assert.equal(code, 1);
+    assert.equal(stdout, "");
+    assert.match(stderr, /Invalid memory file/);
+    assert.match(stderr, /--reset-memory/);
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+});
+
+test("CLI --metadata --json reports a corrupt memory file", async () => {
+  const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-cli-"));
+  const sessionFile = join(sessionDir, "broken.json");
+  try {
+    await writeFile(sessionFile, "{ not json", "utf8");
+
+    const { stdout, code } = await runCli(["--metadata", "--json"], {
+      DEV_AGENT_MEMORY_FILE: sessionFile,
+    });
+
+    assert.equal(code, 1);
+    const payload = JSON.parse(stdout);
+    assert.equal(payload.error, "invalid memory file");
+    assert.equal(payload.path, sessionFile);
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+});
+
+test("CLI --metadata accepts a valid file without metadata", async () => {
+  const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-cli-"));
+  const sessionFile = join(sessionDir, "plain.json");
+  try {
+    await writeFile(sessionFile, JSON.stringify({ version: 1, entries: [] }), "utf8");
+
+    const { stdout, code } = await runCli(["--metadata"], {
+      DEV_AGENT_MEMORY_FILE: sessionFile,
+    });
+
+    assert.equal(code, 0);
+    assert.match(stdout, /No session metadata found/);
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+});
+
 test("CLI --metadata prints the accumulated usage", async () => {
   const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-cli-"));
   const sessionFile = join(sessionDir, "usage.json");

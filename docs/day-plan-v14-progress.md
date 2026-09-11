@@ -4,12 +4,37 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（损坏会话文件的 `--metadata` 提示）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-12 00:2x-00:4x）
-- 工作区：阶段 1 的改动待提交
+- 当前阶段：阶段 3（文档、全量回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-12 00:4x-01:0x）
+- 工作区：阶段 2 的改动待提交
 
 ## 日志
+
+### 运行 3 — 2026-09-12 00:4x-01:0x
+
+- 阶段/工作项：阶段 2（损坏会话文件的 `--metadata` 提示）完成
+- 复现：会话文件为 `{ not json` 时 `--metadata` 输出
+  `No session metadata found.` 且 exit 0；同一文件 `--compact` 会 exit 1 报
+  `Invalid memory file`
+- 做了什么：
+  - 抽出 `memoryFilePath(sessionId)` 供 `createMemory` 与 metadata 共用
+  - 新增 `isInvalidMemoryFile(filePath, memory)`：文件不存在返回 false；存在时
+    尝试 `entries()`，能读回说明是「合法但没有 metadata」，读不回来才是损坏
+  - `--metadata` 分支：损坏时文本模式在 stderr 打印 `Invalid memory file: <路径>.
+    Use --reset-memory or --session-delete <id> to recover.` 并 exit 1；
+    `--json` 输出 `{ error: "invalid memory file", path }`；文件缺失仍是原行为
+  - 新增 3 个用例：损坏文件（文本）、损坏文件（`--json`）、合法但无 metadata 的
+    文件仍 exit 0
+  - 实测复测：损坏 -> exit 1 + 恢复提示；缺失 -> exit 0
+    `No session metadata found.`；`--json` -> `{ error, path }`
+- 验证命令与结果：
+  - `pnpm --filter @dev-agent/cli build`：通过
+  - `apps/cli`（`tests/cli-e2e.test.mjs`）：9 passed（6 + 3）
+  - `pnpm typecheck`：通过
+  - `pnpm test`：全绿（TypeScript 401 个测试，0 失败）
+- 提交：见阶段 2 的 fix 提交
+- 下一步：阶段 3 — 根 README / architecture / CHANGELOG 更新 + 完整回归矩阵
 
 ### 运行 2 — 2026-09-12 00:2x-00:4x
 

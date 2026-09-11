@@ -287,7 +287,21 @@ export async function main(argv: string[]): Promise<void> {
 
     if (args.includes("--metadata")) {
       const memory = createMemory(normalizedSessionId);
+      const filePath = memoryFilePath(normalizedSessionId);
       const meta = await memory.getMetadata();
+      if (!meta && (await isInvalidMemoryFile(filePath, memory))) {
+        if (jsonOutput) {
+          console.log(
+            JSON.stringify({ error: "invalid memory file", path: filePath }, null, 2)
+          );
+        } else {
+          console.error(
+            `Invalid memory file: ${filePath}. Use --reset-memory or --session-delete ${normalizedSessionId} to recover.`
+          );
+        }
+        process.exitCode = 1;
+        return;
+      }
       if (jsonOutput) {
         console.log(JSON.stringify(meta ?? null, null, 2));
         return;
@@ -387,9 +401,24 @@ export async function main(argv: string[]): Promise<void> {
 function createMemory(sessionId = "default"): FileMemory {
   // Keep this consistent with sessionDir() so sessions written by the CLI are
   // the same ones --session-list and --compact operate on.
-  const filePath =
-    process.env.DEV_AGENT_MEMORY_FILE ?? join(sessionDir(), `${sessionId}.json`);
-  return new FileMemory({ filePath });
+  return new FileMemory({ filePath: memoryFilePath(sessionId) });
+}
+
+function memoryFilePath(sessionId = "default"): string {
+  return process.env.DEV_AGENT_MEMORY_FILE ?? join(sessionDir(), `${sessionId}.json`);
+}
+
+/** True when the file exists but cannot be read back as a memory file. */
+async function isInvalidMemoryFile(filePath: string, memory: FileMemory): Promise<boolean> {
+  if (!existsSync(filePath)) {
+    return false;
+  }
+  try {
+    await memory.entries();
+    return false;
+  } catch {
+    return true;
+  }
 }
 
 /** Throws when a policy denies a call, so MCP answers with `isError: true`. */
