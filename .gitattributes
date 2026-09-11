@@ -1,0 +1,7 @@
+# Tests and helper scripts are `.mjs` (Linguist counts them as JavaScript) and
+# are byte-heavier than the TypeScript sources they exercise, which made the
+# GitHub language bar look JavaScript-first. Keep them out of the statistics so
+# the bar reflects the shipped source.
+apps/*/tests/** linguist-detectable=false
+packages/*/tests/** linguist-detectable=false
+scripts/** linguist-detectable=false
