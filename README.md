@@ -239,8 +239,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   slices
 - Approval can be remembered per session: the CLI accepts `a` and the desktop
   shows "Always allow", so the same command is not asked about twice. The memory
-  key is the command plus its first subcommand (`npm test`, `git status`), so
-  extra flags such as `npm test -- --watch` do not trigger a second prompt
+  key is the command plus up to two leading arguments (`npm test`, `git status`,
+  `npm run test`), so extra flags such as `npm test -- --watch` do not trigger a
+  second prompt while `npm run test` and `npm run build` stay separate
 - The dangerous-command table covers the long and short spellings of the same
   shapes: `rm --recursive --force` alongside `rm -rf`, and `git push -f` /
   `git push origin +main` alongside `--force`, without flagging

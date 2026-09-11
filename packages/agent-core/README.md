@@ -28,10 +28,11 @@ Implemented in phase 1:
   treated as a denial. Denials are written back as the tool's result so the
   model can choose another path. Unset means every call runs, exactly as before.
 - `normalizeApprovalKey(request)` returns the key an "always allow" decision
-  should be remembered under: the command name plus its first non-flag token
-  (`npm test`, `git status`, `chmod 777`), unwrapping `sh -c "…"` first. Extra
-  flags and arguments therefore share one key, while unrelated commands do not.
-  Tools that run no command return `undefined`.
+  should be remembered under: the command name plus up to two leading non-flag
+  tokens (`npm test`, `git status`, `npm run test`, `chmod 777 /tmp/x`),
+  unwrapping `sh -c "…"` first. Extra flags share one key, while `npm run test`
+  and `npm run build` stay separate. Tools that run no command return
+  `undefined`.
 - `AgentContext` - holds session id, working directory, runtime metadata, timestamps,
   `AgentState`, and `AgentMemory`
 - `AgentState` - id, status, turn counter, current task, and last error

@@ -358,6 +358,24 @@ test("normalizeApprovalKey groups a command with its subcommand", () => {
     key("shell", { command: "/bin/sh", args: ["-c", "npm test"] }),
     key("shell", { command: "/bin/sh", args: ["-c", "npm run build"] })
   );
+  assert.notEqual(
+    key("shell", { command: "/bin/sh", args: ["-c", "npm run test"] }),
+    key("shell", { command: "/bin/sh", args: ["-c", "npm run build"] }),
+    "different npm scripts must not share one key"
+  );
+  assert.equal(
+    key("shell", { command: "/bin/sh", args: ["-c", "npm run test"] }),
+    key("shell", { command: "/bin/sh", args: ["-c", "npm run test -- --watch"] })
+  );
+  assert.notEqual(
+    key("git", { args: ["-C", "/repo", "status"] }),
+    key("git", { args: ["-C", "/repo", "push"] }),
+    "the -C value must not swallow the subcommand"
+  );
+  assert.equal(
+    key("git", { args: ["-C", "/repo", "status", "--short"] }),
+    key("git", { args: ["-C", "/repo", "status"] })
+  );
   assert.equal(key("filesystem", { action: "write", path: "a.ts" }), undefined);
 });
 
@@ -369,5 +387,18 @@ test("normalizeApprovalKey unwraps the shell script", () => {
     workingDirectory: "/workspace",
   });
 
-  assert.equal(key, "chmod 777");
+  assert.equal(key, "chmod 777 /tmp/target");
+});
+
+test("normalizeApprovalKey keeps chmod with and without -R compatible", () => {
+  const key = (command) =>
+    normalizeApprovalKey({
+      toolName: "shell",
+      input: { command: "/bin/sh", args: ["-c", command] },
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    });
+
+  assert.equal(key("chmod 777 /tmp/target"), key("chmod -R 777 /tmp/target"));
+  assert.notEqual(key("chmod 777 /a"), key("chmod 777 /b"));
 });

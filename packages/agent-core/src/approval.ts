@@ -184,9 +184,10 @@ export function commandText(request: ApprovalRequest): string | undefined {
 }
 
 /**
- * A stable key for "always allow" decisions: the command plus its first
- * non-flag token, so `npm test` and `npm test -- --watch` share a key while
- * unrelated commands do not. Returns undefined for tools that run no command.
+ * A stable key for "always allow" decisions: the command plus up to two
+ * leading non-flag tokens, so `npm test` and `npm test -- --watch` share a key
+ * while `npm run test` and `npm run build` do not. Returns undefined for tools
+ * that run no command.
  */
 export function normalizeApprovalKey(request: ApprovalRequest): string | undefined {
   const command = shellScript(request) ?? commandText(request);
@@ -199,8 +200,8 @@ export function normalizeApprovalKey(request: ApprovalRequest): string | undefin
   if (!name) {
     return undefined;
   }
-  const subcommand = rest.find((token) => !token.startsWith("-"));
-  return subcommand ? `${name} ${subcommand}` : name;
+  const leading = rest.filter((token) => !token.startsWith("-")).slice(0, 2);
+  return leading.length > 0 ? `${name} ${leading.join(" ")}` : name;
 }
 
 /** The script handed to `sh -c`-style invocations, when there is one. */

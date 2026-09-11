@@ -4,12 +4,35 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（收紧「总是允许」的键）未开始
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-12 01:2x-01:4x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：阶段 2（文档、全量回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-12 01:4x-02:0x）
+- 工作区：阶段 1 的改动待提交
 
 ## 日志
+
+### 运行 2 — 2026-09-12 01:4x-02:0x
+
+- 阶段/工作项：阶段 1（收紧「总是允许」的键）完成
+- 问题：`normalizeApprovalKey()` 只取第一个非选项 token，`npm run test` →
+  `npm run`，于是批准后 `npm run build` / `npm run deploy` 不再询问；
+  `git -C /repo status` → `git /repo`，同目录下其它 git 子命令共用该键
+- 做了什么：
+  - 键改为「命令名 + 最多两个前导非选项 token」：`npm run test` →
+    `npm run test`、`git -C /repo status` → `git /repo status`，
+    同时保持 `npm test`/`npm test -- --watch`、`git status`/`git status --short`、
+    `chmod 777 x`/`chmod -R 777 x` 同键
+  - agent-core 用例扩充：不同 npm 脚本不同键、同脚本带 flag 同键、
+    `-C` 目录后的子命令不同键、chmod 同目标带/不带 `-R` 同键且不同目标不同键
+  - 文档：README / agent-core README / architecture 的键规则说明同步
+- 验证命令与结果：
+  - `packages/agent-core`：60 passed（59 + 1；既有 normalize 断言按新语义更新）
+  - `apps/cli`（`tests/approval.test.mjs`）：6 passed（always-allow 流程不变）
+  - `apps/desktop`（`tests/approval-interactive.test.mjs`）：5 passed
+  - `pnpm typecheck`：通过
+  - `pnpm test`：全绿（TypeScript 403 个测试，0 失败）
+- 提交：见阶段 1 的 fix 提交
+- 下一步：阶段 2 — CHANGELOG + 完整回归矩阵 + 推送
 
 ### 运行 1 — 2026-09-12 01:2x-01:4x
 

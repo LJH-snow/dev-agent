@@ -36,7 +36,8 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   can prompt the user over SSE (`approval-request` / `POST /api/approval`) and
   deny when nothing answers within the timeout. `normalizeApprovalKey()` turns a
   request into the key an "always allow" decision is remembered under (command
-  name + first non-flag token, `sh -c` unwrapped), so extra flags share one key.
+  name + up to two leading non-flag tokens, `sh -c` unwrapped), so extra flags
+  share one key while `npm run test` and `npm run build` stay separate.
   The built-in table matches both spellings of a dangerous shape: `rm -rf` and
   `rm --recursive --force`, `git push --force` / `-f` / `+refspec`, while
   `rm --force file` (no recursion) and `git push --follow-tags` stay allowed.
