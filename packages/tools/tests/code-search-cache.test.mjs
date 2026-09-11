@@ -28,6 +28,7 @@ test("a repeated symbol search reuses the cached index", async () => {
       misses: 1,
       rescanned: 0,
       loadedFromDisk: 0,
+      persisted: 0,
     });
   } finally {
     await rm(dir, { recursive: true, force: true });

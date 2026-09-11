@@ -230,7 +230,9 @@ export async function main(argv: string[]): Promise<void> {
       const languages = Object.entries(report.languages)
         .map(([language, count]) => `${language}: ${count}`)
         .join(", ");
-      console.log(`Indexed ${report.files} files / ${report.symbols} symbols`);
+      console.log(
+        `Indexed ${report.files} files / ${report.symbols} symbols (${report.reused} reused)`
+      );
       if (languages) {
         console.log(`Languages: ${languages}`);
       }

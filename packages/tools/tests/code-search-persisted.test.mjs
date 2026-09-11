@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -101,6 +101,87 @@ test("a corrupted index falls back to a full scan", async () => {
     assert.equal(stats.loadedFromDisk, 0);
     assert.equal(stats.misses, 1);
   } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a changed scan is written back to the persisted index", async () => {
+  const { dir, file } = await createProject({ signatureOverride: { mtimeMs: 1, size: 1 } });
+  const tool = new CodeSearchTool();
+  try {
+    const result = await tool.execute({ mode: "search", query: "realSymbol", path: dir });
+
+    assert.equal(result.count, 1);
+    assert.equal(tool.getCacheStats().persisted, 1);
+
+    const index = JSON.parse(
+      await readFile(join(dir, ".dev-agent", "index.json"), "utf8")
+    );
+    const names = index.symbols.map((symbol) => symbol.name);
+    assert.ok(names.includes("realSymbol"), "the refreshed symbol should be persisted");
+    assert.ok(!names.includes("ghostSymbol"), "the stale symbol should be gone");
+    const info = await stat(file);
+    assert.equal(index.signatures[file].size, info.size);
+    assert.equal(index.files[file], SOURCE);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("an unchanged persisted index is not rewritten", async () => {
+  const { dir } = await createProject();
+  const tool = new CodeSearchTool();
+  const indexPath = join(dir, ".dev-agent", "index.json");
+  try {
+    const before = await stat(indexPath);
+    const result = await tool.execute({ mode: "search", query: "ghostSymbol", path: dir });
+    const after = await stat(indexPath);
+
+    assert.equal(result.count, 1);
+    assert.equal(tool.getCacheStats().persisted, 0);
+    assert.equal(after.mtimeMs, before.mtimeMs);
+    assert.equal(after.size, before.size);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a scan that did not start from an index does not create one", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-persisted-"));
+  const file = join(dir, "sample.ts");
+  const tool = new CodeSearchTool();
+  try {
+    await writeFile(file, SOURCE, "utf8");
+    await tool.execute({ mode: "search", query: "realSymbol", path: dir });
+
+    await writeFile(file, "export function otherSymbol() {}\n", "utf8");
+    const result = await tool.execute({ mode: "search", query: "otherSymbol", path: dir });
+
+    assert.equal(result.count, 1);
+    assert.equal(tool.getCacheStats().persisted, 0);
+    await assert.rejects(stat(join(dir, ".dev-agent", "index.json")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a failed write-back does not break the search", async (t) => {
+  if (typeof process.getuid === "function" && process.getuid() === 0) {
+    t.skip("directory permissions are not enforced for root");
+    return;
+  }
+
+  const { dir } = await createProject({ signatureOverride: { mtimeMs: 1, size: 1 } });
+  const tool = new CodeSearchTool();
+  const indexPath = join(dir, ".dev-agent", "index.json");
+  await chmod(indexPath, 0o444);
+  try {
+    const result = await tool.execute({ mode: "search", query: "realSymbol", path: dir });
+
+    assert.equal(result.count, 1);
+    assert.equal(tool.getCacheStats().persisted, 0);
+  } finally {
+    await chmod(indexPath, 0o644).catch(() => {});
     await rm(dir, { recursive: true, force: true });
   }
 });

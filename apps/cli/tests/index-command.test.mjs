@@ -94,3 +94,28 @@ test("--index fails for a missing directory", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("--index reuses unchanged files on the next run", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-"));
+  try {
+    await writeFile(join(dir, "changed.ts"), "export function first() {}\n", "utf8");
+    await writeFile(join(dir, "stable.ts"), "export function stable() {}\n", "utf8");
+
+    const first = JSON.parse((await runCli(["--index", dir, "--json"])).stdout);
+    assert.equal(first.reused, 0, "a first run has nothing to reuse");
+
+    await writeFile(join(dir, "changed.ts"), "export function second() {}\n", "utf8");
+
+    const second = JSON.parse((await runCli(["--index", dir, "--json"])).stdout);
+    assert.equal(second.files, 2);
+    assert.equal(second.reused, 1, "only the untouched file should be reused");
+
+    const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
+    const names = index.symbols.map((symbol) => symbol.name);
+    assert.ok(names.includes("second"));
+    assert.ok(!names.includes("first"), "the stale symbol should be replaced");
+    assert.ok(names.includes("stable"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

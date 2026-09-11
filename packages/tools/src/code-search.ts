@@ -1,4 +1,4 @@
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { extname, join, resolve } from "node:path";
 
 import {
@@ -47,6 +47,8 @@ interface CachedScan {
   readonly index: InMemoryCodeIndex;
   readonly signatures: Map<string, FileSignature>;
   readonly sources: Map<string, string>;
+  /** True when this cache entry started from `<root>/.dev-agent/index.json`. */
+  readonly fromDisk: boolean;
 }
 
 /** Read-only cache counters for diagnostics and tests. */
@@ -56,6 +58,8 @@ export interface CodeSearchCacheStats {
   readonly rescanned: number;
   /** Times a scan started from `<root>/.dev-agent/index.json`. */
   readonly loadedFromDisk: number;
+  /** Times a changed scan was written back to that file. */
+  readonly persisted: number;
 }
 
 export class CodeSearchTool implements Tool {
@@ -82,7 +86,13 @@ export class CodeSearchTool implements Tool {
   };
 
   private readonly cache = new Map<string, CachedScan>();
-  private readonly cacheStats = { hits: 0, misses: 0, rescanned: 0, loadedFromDisk: 0 };
+  private readonly cacheStats = {
+    hits: 0,
+    misses: 0,
+    rescanned: 0,
+    loadedFromDisk: 0,
+    persisted: 0,
+  };
 
   /**
    * Returns how often a scan was served from cache, built from scratch, or
@@ -172,12 +182,13 @@ export class CodeSearchTool implements Tool {
         index.addSource(source, filePath);
       }
       this.cacheStats.misses += 1;
-      const scan: CachedScan = { index, signatures, sources };
+      const scan: CachedScan = { index, signatures, sources, fromDisk: false };
       this.cache.set(cacheKey, scan);
       return scan;
     }
 
     this.cacheStats.hits += 1;
+    let changed = 0;
 
     // Anything the cache knows about but the disk no longer has is dropped;
     // that includes files that only appear in the persisted index.
@@ -188,6 +199,7 @@ export class CodeSearchTool implements Tool {
         cached.signatures.delete(filePath);
         cached.sources.delete(filePath);
         this.cacheStats.rescanned += 1;
+        changed += 1;
       }
     }
 
@@ -205,9 +217,39 @@ export class CodeSearchTool implements Tool {
       cached.sources.set(filePath, source);
       cached.signatures.set(filePath, signature);
       this.cacheStats.rescanned += 1;
+      changed += 1;
+    }
+
+    if (changed > 0 && cached.fromDisk) {
+      await this.persistScan(root, cached);
     }
 
     return cached;
+  }
+
+  /**
+   * Refreshes the index file this scan started from, so the next process does
+   * not have to re-read the same changed files. Only an existing index is
+   * touched, and a failure never fails the search.
+   */
+  private async persistScan(root: string, scan: CachedScan): Promise<void> {
+    const indexPath = join(root, ".dev-agent", "index.json");
+    try {
+      const info = await stat(indexPath);
+      if (!info.isFile()) {
+        return;
+      }
+      const payload = {
+        version: 1,
+        files: Object.fromEntries(scan.sources),
+        symbols: scan.index.listSymbols(),
+        signatures: Object.fromEntries(scan.signatures),
+      };
+      await writeFile(indexPath, `${JSON.stringify(payload)}\n`, "utf8");
+      this.cacheStats.persisted += 1;
+    } catch {
+      // Refreshing the on-disk cache is best-effort; the search result stands.
+    }
   }
 }
 
@@ -337,7 +379,7 @@ async function readPersistedScan(root: string): Promise<CachedScan | undefined> 
       }
     }
 
-    return { index, sources, signatures };
+    return { index, sources, signatures, fromDisk: true };
   } catch {
     return undefined;
   }

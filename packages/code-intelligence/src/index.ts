@@ -78,6 +78,11 @@ export class InMemoryCodeIndex implements CodeIndex {
     return this.symbols.delete(filePath);
   }
 
+  /** Every indexed symbol, in insertion order. */
+  listSymbols(): CodeSymbol[] {
+    return [...this.symbols.values()].flat();
+  }
+
   search(query: string | CodeQueryOptions): CodeSymbol[] {
     return this.searchSymbols(
       typeof query === "string" ? { query } : query
