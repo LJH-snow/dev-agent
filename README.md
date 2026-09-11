@@ -213,6 +213,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   working directory, and a denial is written back to the model so it can pick
   another path. The CLI exposes it as `--approval allow|deny-dangerous|ask`,
   the desktop via `DEV_AGENT_APPROVAL` and an `approval` SSE frame
+- A tool that throws is reported back to the model as that tool's result
+  (`{"error": "…"}`) instead of ending the run, so it can fix its arguments or
+  pick another tool; an unknown tool name goes through the same path, and
+  `maxTurns` still bounds a model that keeps failing
 - MCP server mode also serves `resources` (`dev-agent://session`,
   `dev-agent://workspace`) and `prompts` (`review-changes`, `explain-codebase`)
 - `--mcp-server` honours the approval policy too: `--approval deny-dangerous`
@@ -270,6 +274,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   index; `references`/`definition` remain TypeScript/JavaScript
 - A narrow `code-search` call (`maxDepth`) only replaces the entries inside that
   depth: deeper entries stay in the index instead of being pruned as "deleted"
+- `code-search` references/definition validate the requested position against
+  the source first, so a line/column past the end of the file gets a readable
+  error instead of a TypeScript `Debug Failure`
 - `filesystem` gained a `patch` action that applies several `oldText`/`newText`
   hunks in one write: every hunk must match exactly once and not overlap, and a
   failure leaves the file untouched
@@ -282,7 +289,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 403 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 407 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -349,3 +356,5 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)
 50. ~~MCP `reconnect()` resets its closed state~~ (done)
 51. ~~Always-allow keys keep two leading arguments~~ (done)
+52. ~~Tool errors are reported back to the model instead of ending the run~~ (done)
+53. ~~Readable `code-search` errors for out-of-range positions~~ (done)

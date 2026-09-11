@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-12 (Day plan v16: recoverable tool errors, readable code-search positions)
+
+Executed `docs/day-plan-v16.md`. Two failure paths made the agent unable to
+help itself: a thrown tool error ended the whole run, and an out-of-range
+`code-search` position surfaced a TypeScript debug failure.
+
+### Fixed: tool errors are reported back to the model
+- `AgentLoop` runs tools through a new `runToolSafely()`: an exception (including
+  `Tool not found: X`) is written back as `{"error": "…"}` in that tool's
+  result and the loop continues, so the model can correct its arguments or pick
+  another tool. An abort still propagates, and `maxTurns` bounds a model that
+  keeps calling a failing tool.
+- Reproduction: a tool that threw `bad path` used to end after one model call
+  with `status: "error"`; now the model gets a second turn and can finish.
+
+### Fixed: `code-search` validates line and column
+- `references`/`definition` used to hand the position straight to the TypeScript
+  language service, so `line: 99` on a one-line file produced
+  `Debug Failure. Bad line number` (and `line: 0` did the same).
+- The requested position is now checked against the scanned source (and line and
+  column must be >= 1), answering `code-search line 99 is beyond the end of …`
+  or `… column 999 is beyond the end of line 1 …` instead.
+
+### Tests
+- TypeScript: 403 -> 407. Rust: 46 (unchanged).
+- New coverage: missing tool recovered by the model, a throwing tool recovered
+  by the model, a permanently failing tool stopped by `maxTurns`, and both
+  out-of-range position cases.
+
 ## 2026-09-12 (Day plan v15: MCP reconnect state, sharper approval keys)
 
 Executed `docs/day-plan-v15.md`. Two subtle states were wrong: a reconnected MCP

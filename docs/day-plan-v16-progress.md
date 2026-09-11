@@ -4,12 +4,37 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-12 02:5x-03:1x）
-- 工作区：阶段 1 的改动待提交
+- 当前阶段：无，`docs/day-plan-v16.md` 的三个阶段已全部完成
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-12 03:1x-03:3x）
+- 工作区：阶段 2 的文档改动提交后即 clean
 
 ## 日志
+
+### 运行 3 — 2026-09-12 03:1x-03:3x
+
+- 阶段/工作项：阶段 2（文档、全量回归与提交）完成
+- 做了什么：
+  - 根 `README.md`：Current Status 增加「工具错误写回模型」「code-search
+    位置校验」两条，测试数更新为 407 TS + 46 Rust，Roadmap 追加 52-53
+  - `docs/architecture.md`：agent-core 的 `runToolSafely` 语义、tools 的位置校验
+  - `docs/CHANGELOG.md`：新增「Day plan v16」条目（403 -> 407），两条修复都带
+    实测复现证据
+- 验证命令与结果（完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed（13 目录 / 34 文件）
+  - `pnpm build`：通过
+  - `pnpm typecheck`：通过
+  - `pnpm test`：407 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed / 0 failed
+  - `cargo fmt --check`：通过
+  - `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）/ 0 failed
+- 提交：见阶段 2 的 docs 提交
+- 下一步：v16 计划已收尾。用户中途追问「GitHub 语言占比为什么 JS 很多」——
+  实测根因是 73 个 `.mjs` 测试（Linguist 归类为 JavaScript，共 380,492 字节）
+  大于 48 个 `.ts` 源码（297,085 字节）；被跟踪的 `.js` 为 0，磁盘上的 `.js`
+  全在 gitignore 的 `dist/` 里。等待用户选择「迁移测试到 TS」还是
+  「用 .gitattributes 把 tests 排除出语言统计」后再动手
 
 ### 运行 2 — 2026-09-12 02:5x-03:1x
 

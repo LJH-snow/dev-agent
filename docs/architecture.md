@@ -46,6 +46,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   cannot slip past the shell approval.
   A client disconnect aborts the run's signal, which also settles and removes
   any approval prompt still waiting for an answer.
+- **Tool failures**: a tool that throws (including an unknown tool name) is
+  turned into that tool's result (`{"error": "…"}`) so the model can correct
+  itself; only an abort still propagates. `maxTurns` bounds a model that keeps
+  calling a failing tool.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
   loop accumulates the totals on `AgentContext.usage` across runs. Each report
   is also handed to `AgentMemory.recordUsage()`, which `InMemoryMemory` keeps in
@@ -107,6 +111,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - A narrow `maxDepth` scan restricts the cache to that depth and merges the
   write-back with the on-disk index, so deeper entries are neither searched nor
   deleted by a shallower call.
+- `references`/`definition` validate the line and column against the scanned
+  source before calling the TypeScript language service, so an out-of-range
+  position answers with `code-search line N is beyond the end of …` instead of
+  the service's `Debug Failure`.
 
 ### `packages/mcp`
 - `McpStdioClient`: JSON-RPC 2.0 over stdio transport.
