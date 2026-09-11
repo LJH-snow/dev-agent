@@ -10,6 +10,10 @@ export interface CliConfig {
   readonly summarizeContext?: boolean;
   readonly summaryMaxChars?: number;
   readonly approvalMode?: ApprovalMode;
+  readonly approval?: {
+    readonly allow?: readonly string[];
+    readonly deny?: readonly string[];
+  };
   readonly mcpServers?: ReadonlyArray<{
     readonly name?: string;
     readonly command: string;

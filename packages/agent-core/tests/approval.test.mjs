@@ -5,6 +5,7 @@ import {
   AgentLoop,
   AgentToolRegistry,
   allowAllPolicy,
+  compileApprovalConfig,
   createAgentContext,
   denyDangerousPolicy,
   InMemoryMemory,
@@ -175,4 +176,35 @@ test("no policy means no approval checks", async () => {
 
   assert.equal(runs.length, 1);
   assert.equal(events.length, 0);
+});
+
+test("an allowlisted command bypasses the dangerous patterns", () => {
+  const policy = denyDangerousPolicy({ allowlist: ["npm test"] });
+  const decide = (command) =>
+    policy.decide({
+      toolName: "shell",
+      input: { command: "/bin/sh", args: ["-c", command] },
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    }).decision;
+
+  assert.equal(decide("npm test --silent"), "allow");
+  assert.equal(decide("chmod 777 file"), "deny", "the rest of the table still applies");
+});
+
+test("compileApprovalConfig turns config strings into patterns and an allowlist", () => {
+  const compiled = compileApprovalConfig({
+    allow: ["  npm test  ", ""],
+    deny: ["\\bdeploy\\b", "   ", "([unclosed"],
+  });
+
+  assert.deepEqual(compiled.allowlist, ["npm test"]);
+  assert.equal(compiled.patterns.length, 1, "the malformed pattern is skipped");
+  assert.equal(compiled.patterns[0].test("deploy prod"), true);
+});
+
+test("compileApprovalConfig handles missing config", () => {
+  const compiled = compileApprovalConfig(undefined);
+  assert.deepEqual(compiled.allowlist, []);
+  assert.deepEqual(compiled.patterns, []);
 });

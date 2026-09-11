@@ -56,6 +56,48 @@ export interface DenyDangerousOptions {
   readonly patterns?: readonly RegExp[];
   /** Set false to skip the "write outside the working directory" check. */
   readonly checkFilesystem?: boolean;
+  /**
+   * Commands containing any of these substrings are always allowed, even when
+   * a pattern matches. Meant for user-approved workflows like "npm test".
+   */
+  readonly allowlist?: readonly string[];
+}
+
+/** The `approval` section of `~/.dev-agent/config.json`. */
+export interface ApprovalConfig {
+  readonly allow?: readonly string[];
+  readonly deny?: readonly string[];
+}
+
+export interface CompiledApprovalConfig {
+  readonly allowlist: readonly string[];
+  readonly patterns: readonly RegExp[];
+}
+
+/**
+ * Turns the config strings into what `denyDangerousPolicy` wants. Malformed
+ * regular expressions are skipped (with the rest of the list still applied)
+ * rather than failing every tool call.
+ */
+export function compileApprovalConfig(
+  config: ApprovalConfig | undefined
+): CompiledApprovalConfig {
+  const allowlist = (config?.allow ?? []).map((entry) => entry.trim()).filter(Boolean);
+  const patterns: RegExp[] = [];
+
+  for (const source of config?.deny ?? []) {
+    const trimmed = source.trim();
+    if (!trimmed) {
+      continue;
+    }
+    try {
+      patterns.push(new RegExp(trimmed));
+    } catch {
+      // Ignore an unusable pattern instead of breaking every call.
+    }
+  }
+
+  return { allowlist, patterns };
 }
 
 /** Allows everything: the default, matching the behaviour before policies existed. */
@@ -73,11 +115,15 @@ export function denyDangerousPolicy(options: DenyDangerousOptions = {}): Approva
     })),
   ];
   const checkFilesystem = options.checkFilesystem ?? true;
+  const allowlist = options.allowlist ?? [];
 
   return {
     decide(request) {
       const command = commandText(request);
       if (command !== undefined) {
+        if (allowlist.some((entry) => command.includes(entry))) {
+          return { decision: "allow" };
+        }
         for (const { name, pattern } of patterns) {
           // Reset so a caller-supplied /g pattern cannot skip matches.
           pattern.lastIndex = 0;

@@ -5,12 +5,33 @@
 
 ## 当前状态
 
-- 当前阶段：Backlog 3（审批规则可配置）
+- 当前阶段：无（阶段 0-3 与 backlog 全部完成）
 - 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
 - 最近一次运行：运行 4（2026-09-11 15:50-16:10）
 - 工作区：阶段 3 的改动已提交并推送
 
 ## 日志
+
+### 运行 7 — 2026-09-11 16:50-17:15
+
+- 阶段/工作项：Backlog 3（审批规则可配置）完成；v7 全部收口
+- 做了什么：
+  - agent-core：`denyDangerousPolicy({ allowlist })` 支持白名单（命令包含任一条即放行，
+    优先于危险模式）；新增 `compileApprovalConfig()` 把配置里的字符串编译成
+    `{ allowlist, patterns }`，非法正则跳过而不是让所有调用失败
+  - CLI：配置文件新增 `approval: { allow: string[], deny: string[] }`，
+    `--approval deny-dangerous` 与 `ask` 都会带上这些规则
+  - 桌面端：同样读取 `~/.dev-agent/config.json` 的 `approval` 段（缺失/损坏按无规则处理）
+  - 文档：CLI/桌面端 README 说明配置形状与匹配语义
+- 验证命令与结果：
+  - `packages/agent-core`：49 passed（新增 3 个：白名单绕过危险模式、配置编译
+    （跳过非法正则）、缺失配置）
+  - `apps/cli`：新增 2 个端到端用例通过（配置白名单让 `chmod 777` 放行、
+    配置 deny 模式拦截 `deploy` 并让模型看到 custom pattern 1）
+  - `apps/desktop`：新增 1 个用例通过（桌面端同样遵守配置白名单）
+  - `pnpm test`：全绿
+- 提交：见 Backlog 3 的 feat 提交
+- 下一步：无（v7 阶段与 backlog 均完成）
 
 ### 运行 6 — 2026-09-11 16:30-16:50
 

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -18,6 +18,7 @@ const ENV_KEYS = [
   "DEV_AGENT_SUMMARY_MAX_CHARS",
   "DEV_AGENT_APPROVAL",
   "DEV_AGENT_RUST_BINARY",
+  "HOME",
 ];
 
 function applyEnv(values) {
@@ -332,6 +333,56 @@ test("the default approval mode still runs that command", async () => {
 
     assert.ok(!text.includes('"decision":"deny"'), "nothing should have been denied");
     assert.equal((await stat(target)).mode & 0o777, 0o777, "the command should have run");
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve()));
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the config file allowlist is honoured by the desktop session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-allow-"));
+  const target = join(dir, "target.txt");
+  await writeFile(target, "keep\n", "utf8");
+  await chmod(target, 0o644);
+  await mkdir(join(dir, ".dev-agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".dev-agent", "config.json"),
+    JSON.stringify({ approval: { allow: ["chmod 777"] } }),
+    "utf8"
+  );
+
+  const provider = await startStubProvider((_parsed, count) =>
+    count === 1
+      ? [shellToolCall(`chmod 777 ${target}`)]
+      : [{ choices: [{ delta: { content: "done" } }] }]
+  );
+  const restoreEnv = applyEnv({
+    HOME: dir,
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+    DEV_AGENT_APPROVAL: "deny-dangerous",
+  });
+
+  const session = new ChatSession({ workingDirectory: dir });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "run it" }),
+    });
+    await response.text();
+
+    assert.equal(
+      (await stat(target)).mode & 0o777,
+      0o777,
+      "the allowlisted command should have run"
+    );
   } finally {
     await new Promise((resolve) => server.close(() => resolve()));
     await provider.close();

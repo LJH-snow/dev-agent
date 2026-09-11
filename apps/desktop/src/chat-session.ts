@@ -1,9 +1,11 @@
 import { homedir } from "node:os";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
   AgentLoop,
   AgentToolRegistry,
+  compileApprovalConfig,
   createAgentContext,
   denyDangerousPolicy,
   FileMemory,
@@ -69,6 +71,7 @@ export class ChatSession {
   private readonly summarizeContext: boolean;
   private readonly summaryMaxChars?: number;
   private readonly approvalMode: DesktopApprovalMode;
+  private readonly compiledApproval: { patterns: readonly RegExp[]; allowlist: readonly string[] };
   private context: AgentContext;
   private readonly sessionId: string;
 
@@ -95,6 +98,7 @@ export class ChatSession {
     this.summaryMaxChars =
       options.summaryMaxChars ?? parsePositiveInt(process.env.DEV_AGENT_SUMMARY_MAX_CHARS);
     this.approvalMode = resolveApprovalMode(options.approvalMode);
+    this.compiledApproval = loadApprovalConfig();
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -111,7 +115,11 @@ export class ChatSession {
     } = {}
   ): Promise<void> {
     let turns = this.context.state.turns;
-    const approval = buildApprovalPolicy(this.approvalMode, options.requestApproval);
+    const approval = buildApprovalPolicy(
+      this.approvalMode,
+      options.requestApproval,
+      this.compiledApproval
+    );
     const loop = new AgentLoop({
       model: this.model,
       tools: this.tools,
@@ -223,13 +231,17 @@ function resolveApprovalMode(mode: DesktopApprovalMode | undefined): DesktopAppr
  */
 function buildApprovalPolicy(
   mode: DesktopApprovalMode,
-  requestApproval: ApprovalRequester | undefined
+  requestApproval: ApprovalRequester | undefined,
+  compiled: { patterns: readonly RegExp[]; allowlist: readonly string[] }
 ): ApprovalPolicy | undefined {
   if (mode === "allow") {
     return undefined;
   }
 
-  const dangerous = denyDangerousPolicy();
+  const dangerous = denyDangerousPolicy({
+    patterns: [...compiled.patterns],
+    allowlist: [...compiled.allowlist],
+  });
   if (mode === "deny-dangerous" || !requestApproval) {
     return dangerous;
   }
@@ -253,6 +265,20 @@ function buildApprovalPolicy(
         : { decision: "deny", reason: `${reason ?? "dangerous call"} (declined)` };
     },
   };
+}
+
+/** Reads the shared `approval` section of ~/.dev-agent/config.json. */
+function loadApprovalConfig(): { patterns: readonly RegExp[]; allowlist: readonly string[] } {
+  try {
+    const raw = readFileSync(join(homedir(), ".dev-agent", "config.json"), "utf8");
+    const parsed = JSON.parse(raw) as {
+      approval?: { allow?: readonly string[]; deny?: readonly string[] };
+    };
+    return compileApprovalConfig(parsed.approval);
+  } catch {
+    // A missing or malformed config just means no extra rules.
+    return compileApprovalConfig(undefined);
+  }
 }
 
 function createProvider(): ModelProvider {

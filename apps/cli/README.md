@@ -119,6 +119,10 @@ invocation.
 - `summaryMaxChars` - digest length cap; used when
   `DEV_AGENT_SUMMARY_MAX_CHARS` is unset.
 - `approvalMode` - approval policy; used when `DEV_AGENT_APPROVAL` is unset.
+- `approval.allow` / `approval.deny` - extra approval rules shared with the
+  desktop app. `allow` entries are command substrings that always pass (for
+  example `"npm test"`); `deny` entries are regular expressions added to the
+  built-in dangerous table. Malformed patterns are ignored.
 - `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
 
 A malformed config file is ignored rather than fatal.

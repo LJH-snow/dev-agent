@@ -8,6 +8,7 @@ import { dirname } from "node:path";
 import {
   AgentLoop,
   AgentToolRegistry,
+  compileApprovalConfig,
   createAgentContext,
   denyDangerousPolicy,
   FileMemory,
@@ -216,7 +217,7 @@ export async function main(argv: string[]): Promise<void> {
     const provider = createProvider(config);
     const approvalMode = approvalFlagMode ?? resolveApprovalMode(config);
     const questionBox: QuestionBox = {};
-    const approval = buildApprovalPolicy(approvalMode, questionBox);
+    const approval = buildApprovalPolicy(approvalMode, questionBox, config);
     const tools = new AgentToolRegistry();
     for (const tool of createDefaultTools(createExecutor({ rustBinaryPath }))) {
       tools.register(tool);
@@ -460,17 +461,22 @@ interface QuestionBox {
 
 function buildApprovalPolicy(
   mode: ApprovalMode,
-  questionBox: QuestionBox
+  questionBox: QuestionBox,
+  config: CliConfig = {}
 ): ApprovalPolicy | undefined {
   if (mode === "allow") {
     // No policy means no per-call overhead, exactly as before.
     return undefined;
   }
+
+  const { patterns, allowlist } = compileApprovalConfig(config.approval);
+  const policyOptions = { patterns: [...patterns], allowlist: [...allowlist] };
+
   if (mode === "deny-dangerous") {
-    return denyDangerousPolicy();
+    return denyDangerousPolicy(policyOptions);
   }
 
-  const dangerous = denyDangerousPolicy();
+  const dangerous = denyDangerousPolicy(policyOptions);
   return {
     async decide(request) {
       const outcome = await dangerous.decide(request);

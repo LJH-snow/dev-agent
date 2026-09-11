@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { chmod, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
@@ -167,6 +167,65 @@ test("--approval ask runs the command when the answer starts with y", async () =
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal(await modeOf(target), 0o777, "the approved command should have run");
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+async function writeConfig(dir, config) {
+  const configDir = join(dir, ".dev-agent");
+  await mkdir(configDir, { recursive: true });
+  await writeFile(join(configDir, "config.json"), JSON.stringify(config), "utf8");
+}
+
+test("the config file can allowlist a command that would otherwise be denied", async () => {
+  const { dir, target } = await setup();
+  await writeConfig(dir, { approval: { allow: ["chmod 777"] } });
+  const provider = await startStubProvider({ command: "chmod", args: ["777", target] });
+  try {
+    const result = await runCli(
+      ["--once", "run it", "--no-stream", "--approval", "deny-dangerous"],
+      {
+        ...process.env,
+        HOME: dir,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: provider.baseUrl,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      }
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(await modeOf(target), 0o777, "the allowlisted command should run");
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("the config file can add a dangerous pattern", async () => {
+  const { dir } = await setup();
+  await writeConfig(dir, { approval: { deny: ["\\bdeploy\\b"] } });
+  const provider = await startStubProvider({ command: "deploy", args: ["prod"] });
+  try {
+    const result = await runCli(
+      ["--once", "run it", "--no-stream", "--approval", "deny-dangerous"],
+      {
+        ...process.env,
+        HOME: dir,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: provider.baseUrl,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      }
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /\[denied\] shell/);
+    const second = provider.requests[1];
+    const contents = second.messages.map((message) => String(message.content ?? ""));
+    assert.ok(contents.some((content) => content.includes("custom pattern 1")));
   } finally {
     await provider.close();
     await rm(dir, { recursive: true, force: true });

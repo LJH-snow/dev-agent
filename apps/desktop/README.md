@@ -34,6 +34,10 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `DEV_AGENT_APPROVAL_TIMEOUT_MS` — how long an `ask` prompt may stay unanswered
   before it is denied (default 120000).
 
+Both surfaces also read the `approval` section of `~/.dev-agent/config.json`:
+`allow` lists command substrings that always pass (`"npm test"`), `deny` adds
+regular expressions to the dangerous table.
+
 ## How it works
 
 - `src/index.ts` — entry point; starts the server.
