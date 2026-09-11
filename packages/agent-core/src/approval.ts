@@ -53,6 +53,13 @@ export const DANGEROUS_PATTERNS: readonly DangerousPattern[] = [
       /\bgit\s+push\b[^|;&]*(?:--force(?:-with-lease|-if-includes)?\b|(?:^|\s)-f(?:\s|$)|(?:^|\s)\+[^\s|;&]+)/,
   },
   {
+    name: "git command execution",
+    // `-c`/`--config-env`/`--exec-path` and the pack options let git spawn
+    // another process (e.g. `-c alias.x=!cmd`), so they need a decision.
+    pattern:
+      /\bgit\b[^|;&]*(?:(?:^|\s)-c|(?:^|\s)--(?:config-env|exec-path|upload-pack|receive-pack)(?:\s|=|$))/,
+  },
+  {
     name: "pipe to shell",
     pattern: /\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:ba|z|d|k)?sh\b/,
   },

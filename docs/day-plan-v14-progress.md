@@ -4,12 +4,36 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（审批策略拦住 `git` 的命令执行选项）未开始
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-12 00:0x-00:2x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：阶段 2（损坏会话文件的 `--metadata` 提示）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-12 00:2x-00:4x）
+- 工作区：阶段 1 的改动待提交
 
 ## 日志
+
+### 运行 2 — 2026-09-12 00:2x-00:4x
+
+- 阶段/工作项：阶段 1（审批策略拦住 `git` 的命令执行选项）完成
+- 复现：`GitTool` + 空白目录下 `git -c alias.probe=!echo injected-command-ran probe`
+  实际返回 exit 0、stdout 含 `injected-command-ran`，而 `denyDangerousPolicy`
+  对 git 工具没有任何拦截
+- 做了什么：
+  - 危险模式表新增 "git command execution"：命令行里以 `-c` 开头（含
+    `-calias...` 形式）或出现 `--config-env` / `--exec-path` /
+    `--upload-pack` / `--receive-pack` 时标记为危险；token 边界避免把
+    `feature-c` 这类参数误判
+  - 测试：内置模式表断言扩充（`-c` 别名、`--exec-path`、`--receive-pack`
+    均 DENY；`status` / `log --oneline` / `push origin feature-c` 仍 ALLOW），
+    并新增 1 个白名单豁免用例
+  - 实测复测：三条危险形态 DENY 且 reason 为 `git command execution`；
+    普通 git 命令保持 ALLOW
+- 验证命令与结果：
+  - `pnpm --filter @dev-agent/agent-core build`：通过
+  - `packages/agent-core`：59 passed（58 + 1）
+  - `pnpm typecheck`：通过
+  - `pnpm test`：全绿（TypeScript 398 个测试，0 失败）
+- 提交：见阶段 1 的 fix 提交
+- 下一步：阶段 2 — `--metadata` 对损坏会话文件给出明确错误与恢复提示
 
 ### 运行 1 — 2026-09-12 00:0x-00:2x
 

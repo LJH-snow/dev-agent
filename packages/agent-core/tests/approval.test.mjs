@@ -257,7 +257,20 @@ test("the built-in pattern table flags dangerous shapes and allows normal ones",
     "allow",
     "a branch name containing -f is not a force push"
   );
+  assert.equal(
+    decide("git", { args: ["-c", "alias.probe=!echo pwned", "probe"] }),
+    "deny",
+    "git config aliases can execute commands"
+  );
+  assert.equal(decide("git", { args: ["--exec-path=/tmp/bin", "status"] }), "deny");
+  assert.equal(decide("git", { args: ["--receive-pack=/bin/sh", "push"] }), "deny");
+  assert.equal(
+    decide("git", { args: ["push", "origin", "feature-c"] }),
+    "allow",
+    "a branch name containing -c is not a config option"
+  );
   assert.equal(decide("git", { args: ["push", "origin", "main"] }), "allow");
+  assert.equal(decide("git", { args: ["log", "--oneline"] }), "allow");
   assert.equal(decide("shell", { command: "echo", args: ["hello"] }), "allow");
   assert.equal(decide("search", { query: "rm -rf" }), "allow");
 });
@@ -291,6 +304,18 @@ test("an allowlisted long-option command bypasses the dangerous patterns", () =>
   const decision = policy.decide({
     toolName: "shell",
     input: { command: "/bin/sh", args: ["-c", command] },
+    sessionId: "s",
+    workingDirectory: "/workspace",
+  }).decision;
+
+  assert.equal(decision, "allow");
+});
+
+test("an allowlisted git command bypasses the execution pattern", () => {
+  const policy = denyDangerousPolicy({ allowlist: ["git -c user.name=dev"] });
+  const decision = policy.decide({
+    toolName: "git",
+    input: { args: ["-c", "user.name=dev", "status"] },
     sessionId: "s",
     workingDirectory: "/workspace",
   }).decision;
