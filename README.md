@@ -177,9 +177,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   never splits a tool call from its results, always keeps the system prompt and
   the newest entry, and announces the omission; configured with
   `DEV_AGENT_MAX_CONTEXT_CHARS` or `maxContextChars`
-- `code-search` caches its scan per root and re-reads only files whose size or
-  mtime changed; deleted files leave the index and `getCacheStats()` reports
-  hits/misses/rescanned
+- `code-search` scans TypeScript/JavaScript/Python/Rust, caches per root, and
+  re-reads only files whose size or mtime changed; deleted files leave the index
+  and `getCacheStats()` reports hits/misses/rescanned
 - `code-search` also reuses the index written by `--index` when it starts in a
   new process: the persisted file/symbol/signature map loads first and only the
   files whose mtime or size changed are re-read (`getCacheStats().loadedFromDisk`)
@@ -220,8 +220,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   `DEV_AGENT_APPROVAL_TIMEOUT_MS`), and reports the decision as an `approval`
   frame
 - `dev-agent --doctor` checks Node, `rg`, `protoc`, the Rust runtime binary, the
-  provider key, and the session directory, with `--json` output and a non-zero
-  exit when something fails
+  provider key, `~/.dev-agent/config.json`, and the session directory, with
+  `--json` output and a non-zero exit when something fails. A malformed config
+  is reported as a warning instead of being silently ignored
 - Sessions can be removed: `--session-delete <id>` in the CLI and
   `DELETE /api/sessions/<id>` plus a Delete button in the desktop picker
 - Sessions can be renamed from both surfaces: `--session-rename <old> <new>` in
@@ -236,11 +237,18 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   key is the command plus its first subcommand (`npm test`, `git status`), so
   extra flags such as `npm test -- --watch` do not trigger a second prompt
 - `dev-agent --index <path>` scans a directory and writes a symbol index to
-  `<path>/.dev-agent/index.json` (same ignore rules as `code-search`); a second
-  run reuses the files whose mtime/size did not change (`reused` in the report)
+  `<path>/.dev-agent/index.json`; TypeScript/JavaScript/Python/Rust up to depth
+  8, with the same ignore rules as `code-search`. A second run reuses the files
+  whose mtime/size did not change (`reused` in the report)
+- The Rust scanner understands visibility and item modifiers (`pub`,
+  `pub(crate)`, `async`, `unsafe`, `const`, `default`, `extern "C"`), traits,
+  and `impl`/trait methods (which carry their container), so real Rust files
+  produce symbols instead of silently scanning to nothing
 - `code-search` refreshes that same index file after its incremental scan finds
   changed files, so the next process starts from a current cache; an index that
-  exists but is corrupt is replaced with a freshly scanned one
+  exists but is corrupt is replaced with a freshly scanned one. The scan scope
+  matches `--index`, so Python/Rust symbols are never pruned from a reused
+  index; `references`/`definition` remain TypeScript/JavaScript
 - `filesystem` gained a `patch` action that applies several `oldText`/`newText`
   hunks in one write: every hunk must match exactly once and not overlap, and a
   failure leaves the file untouched
@@ -249,10 +257,11 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   adds `$…`, and an unconfigured or unknown model shows no cost at all
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
-  (`cache_read_input_tokens`, with cache writes counted as prompt tokens) report
-  `cachedPromptTokens`, the session totals keep it, and `pricing` can price it
-  separately with `cachedInputPerMillion`
-- Test suite: 379 TypeScript tests + 46 Rust tests, all passing
+  (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
+  writes report `cacheCreationPromptTokens`, the session totals keep both, and
+  `pricing` can price them with `cachedInputPerMillion` /
+  `cacheCreationInputPerMillion`
+- Test suite: 389 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -307,3 +316,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 37. ~~Approval gating for `--mcp-server`~~ (done)
 38. ~~Cached prompt-token accounting and cache-aware pricing~~ (done)
 39. ~~Self-repair for a corrupt persisted code-search index~~ (done)
+40. ~~Multi-language `code-search` scope aligned with `--index`~~ (done)
+41. ~~Rust scanner coverage for visibility, modifiers, traits, and impl methods~~ (done)
+42. ~~Cache-write token accounting and pricing~~ (done)
+43. ~~Config-file validation in `--doctor`~~ (done)

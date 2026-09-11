@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-09-11 (Day plan v12: multi-language search, cache writes, config doctor)
+
+Executed `docs/day-plan-v12.md`. These gaps only showed up once the pieces were
+exercised end to end: the shared index silently lost Python/Rust entries, the
+Rust scanner ignored `pub`, Anthropic cache writes were priced as plain input,
+and a malformed config file failed without saying so.
+
+### Fixed: `code-search` and `--index` now share one scope
+- Reproduction: `--index` reported `files: 3, symbols: 2` for a TS/Python/Rust
+  project, then `code-search` loaded the index (`loadedFromDisk: 1`) but
+  returned zero hits for the Python/Rust symbols and rewrote the file with
+  `rescanned: 2, persisted: 1` — the entries were pruned as "deleted".
+- `code-search` now scans the same set as `--index`: `.ts`/`.tsx`/`.mts`/`.cts`,
+  `.js`/`.jsx`/`.mjs`/`.cjs`, `.py`, `.rs`, depth 8, skipping
+  `node_modules`/`dist`/`.git`/`.next`/`.cache`/`.dev-agent`. Symbol search
+  covers all four languages; `references` and `definition` deliberately keep
+  handing only TS/JS sources to the TypeScript language service.
+- End-to-end check after the fix: `--index` 3 files / 3 symbols, one hit per
+  language, `rescanned: 0, persisted: 0`.
+
+### Fixed: the Rust scanner understands real Rust
+- Visibility (`pub`, `pub(crate)`, `pub(in path)`) and item modifiers (`async`,
+  `unsafe`, `const`, `default`, `extern "C"`) are stripped before matching, so
+  `pub fn`/`pub struct`/`pub enum`/`pub type`/`pub mod`/`pub use` all produce
+  symbols.
+- `trait` becomes an `interface` symbol; functions inside `impl`/`trait` blocks
+  are `method` symbols carrying `containerName`; `impl<T> Foo<T>` and
+  `impl Trait for Foo` resolve to `Foo`; one-line `impl` blocks do not leak a
+  container into the lines that follow.
+
+### Added: Anthropic cache-write accounting and pricing
+- `ChatUsage.cacheCreationPromptTokens` records Anthropic's
+  `cache_creation_input_tokens` (inside `promptTokens`); streamed output-only
+  deltas no longer risk double counting. `addUsage` keeps it in session totals.
+- `ModelPrice.cacheCreationInputPerMillion` prices those tokens; prompt cost is
+  now split into plain input, cache reads, and cache writes, each falling back
+  to the input price when its own price is unset, with both cache buckets
+  clamped to `promptTokens`.
+
+### Added: `--doctor` validates the shared config
+- The report gained a `config` check: a missing file is `ok` (defaults are
+  used), a valid object is `ok` and lists the recognised sections, and invalid
+  JSON, a non-object, or an unreadable file is a `warn` with the reason — the
+  runtime readers still ignore it, but the user is no longer left guessing.
+
+### Tests
+- TypeScript: 379 -> 389. Rust: 46 (unchanged).
+- New coverage: multi-language index round-trip (search + no pruning, with and
+  without a persisted index), Rust visibility/modifier/trait/impl-method
+  scanning, cache-write pricing with fallback, and the three config states in
+  `--doctor`.
+
 ## 2026-09-11 (Day plan v11: MCP approvals, cache accounting, index repair)
 
 Executed `docs/day-plan-v11.md`. Three boundaries that were still half-open:

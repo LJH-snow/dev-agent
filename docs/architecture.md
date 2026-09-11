@@ -64,7 +64,8 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   `inputPerMillion` / `outputPerMillion`). The longest matching prefix wins;
   unknown models, malformed prices, and an empty table return `undefined`
   instead of guessing. `cachedInputPerMillion` optionally prices the cached
-  prompt tokens at a discount; without it they use the regular input price.
+  prompt tokens at a discount and `cacheCreationInputPerMillion` prices
+  Anthropic cache writes; either falls back to the regular input price.
 
 ### `packages/tools`
 - `AgentToolRegistry` for registering and looking up tools.
@@ -86,6 +87,11 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   replaced with the freshly scanned index instead of being left broken.
   `getCacheStats()` exposes
   hits/misses/rescanned/loadedFromDisk/persisted.
+- The scanned file set matches `--index` (`.ts`/`.tsx`/`.mts`/`.cts`,
+  `.js`/`.jsx`/`.mjs`/`.cjs`, `.py`, `.rs`, depth 8, the same ignored
+  directories), so a reused index round-trips without losing Python/Rust
+  entries. Symbol search covers all four languages; `references` and
+  `definition` hand only TS/JS sources to the TypeScript language service.
 
 ### `packages/mcp`
 - `McpStdioClient`: JSON-RPC 2.0 over stdio transport.
@@ -106,7 +112,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 ### `apps/cli` operational surface
 - `--doctor` probes the environment (Node, `rg`, `protoc`, the Rust runtime
   binary via a HealthCheck envelope, the provider key, and the session
-  directory) and reports `{ ok, warn, fail }`, exiting 1 on any failure.
+  directory), validates the shared `~/.dev-agent/config.json` (missing = ok,
+  malformed or non-object = warn with the reason), and reports
+  `{ ok, warn, fail }`, exiting 1 on any failure.
 - Sessions are managed end to end: `--session-list`, `--metadata`, `--compact`,
   `--session-delete`, and a shared `DEV_AGENT_SESSION_DIR`.
 - `--index <path>` walks a directory (skipping `node_modules`, `dist`, `.git`,
@@ -131,6 +139,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 
 ### `packages/code-intelligence`
 - Multi-language symbol scanning: TypeScript (AST), Python (regex), Rust (regex).
+  The Rust scanner handles visibility (`pub`, `pub(crate)`, `pub(in path)`) and
+  modifiers (`async`, `unsafe`, `const`, `default`, `extern "C"`), `trait` as
+  `interface`, and functions inside `impl`/`trait` blocks as `method` symbols
+  carrying their container name.
 - `InMemoryCodeIndex` with ranked search (exact, prefix, token, path scoring).
 - `JsonFileCodeIndex` for persistent indexing.
 - `TypeScriptReferenceIndex` for go-to-definition and find-references.
