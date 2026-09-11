@@ -4,10 +4,10 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（`apps/cli` + `apps/desktop`）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-12 04:3x-05:0x）
-- 工作区：阶段 2 的改动待提交
+- 当前阶段：已完成（阶段 0-3 + 收尾回归）
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、收尾
+- 最近一次运行：运行 4（2026-09-12 05:1x-06:0x）
+- 工作区：全部已提交并推送
 
 ## 日志
 
@@ -82,6 +82,34 @@
 - 提交：见阶段 0 的 test 提交
 - 下一步：阶段 1 — 把同一管线套到 `packages/agent-core`、`packages/tools`、
   `packages/code-intelligence`
+
+### 运行 4 — 2026-09-12 05:1x-06:0x
+
+- 阶段/工作项：阶段 3（`apps/cli` + `apps/desktop`）与收尾完成
+- 做了什么：
+  - 两个 app 新增 `tsconfig.test.json`，`test` 改为
+    `tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test tests-dist/*.test.js`
+  - 24 个测试 `*.test.mjs` -> `*.test.ts`（git mv 保留历史），修掉
+    159 + 43 个类型错误，主要是重复模式：`server.listen` 的
+    `new Promise<void>((resolve) => …)`、`server.address() as any`、
+    `runCli` 返回 `Promise<any>`、`res.json()` 结果标注、
+    `process.env[key] = value as string`、`options.signal` 显式类型
+  - 删除 `.gitattributes`：测试已是 TypeScript，原先的
+    `linguist-detectable=false` 会少算 TS，已无必要
+  - README：结构树与 Getting Started 说明测试为 TypeScript、
+    编译到 git-ignored 的 `tests-dist/` 后由 `node --test` 执行
+- 验证命令与结果：
+  - `apps/cli`：78 passed；`apps/desktop`：40 passed（新管线）
+  - `node scripts/check.mjs`、`pnpm build`、`pnpm typecheck`：通过
+  - `pnpm test`：全绿（407 个测试）
+  - `cargo fmt/clippy/test`：46 passed；真实二进制集成 10 passed
+  - GitHub 语言统计（`gh api repos/LJH-snow/dev-agent/languages`）：
+    TypeScript 655592、Rust 81439、JavaScript 24199、HTML 18072、
+    Starlark 2660 —— TypeScript 约 83.8%，JavaScript 从 48.8% 降到约 3.1%
+  - 仓库内被跟踪的 `*.mjs` 从 73 个降到 5 个（3 个测试 fixture +
+    2 个脚本）；`*.ts` 从 48 个升到 116 个
+- 提交：见阶段 3 与收尾的 test/chore 提交
+- 下一步：v17 计划已收尾
 
 ## 错误与卡点
 

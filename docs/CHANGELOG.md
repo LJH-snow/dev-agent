@@ -1,5 +1,35 @@
 # Changelog
 
+## 2026-09-12 (Day plan v17: TypeScript-first test suite)
+
+Executed `docs/day-plan-v17.md`. The test suite moved from hand-written ESM
+JavaScript to TypeScript, so the repository is TypeScript-first end to end —
+including the tests.
+
+### Changed: tests are TypeScript now
+- Every `tests/*.test.mjs` became `tests/*.test.ts` (73 files across
+  `apps/cli`, `apps/desktop`, and the six packages), preserving git history.
+- Each workspace gained a `tsconfig.test.json`: `rootDir: tests`,
+  `outDir: tests-dist`, declarations/source maps off, and `strict` relaxed for
+  test ergonomics. The `test` script compiles that config and then runs
+  `node --test tests-dist/*.test.js`, so the Node test runner and the
+  zero-extra-dependency policy are unchanged.
+- `tests-dist/` is git-ignored, like `dist/`.
+- Three fixtures stay `.mjs` because they are spawned as child processes:
+  `fake-mcp-server`, `flaky-mcp-server`, and `mock-executor-binary`.
+- README documents the two-step test pipeline.
+
+### Removed
+- `.gitattributes` no longer excludes `tests/**` and `scripts/**` from GitHub
+  Linguist. That exclusion existed only because the tests were JavaScript files
+  that out-weighed the TypeScript sources; with the tests in TypeScript it
+  would under-count the real language. GitHub now reports TypeScript at about
+  83.8% (was 38.1%), with JavaScript down to about 3.1% (was 48.8%).
+
+### Tests
+- TypeScript: 407 tests, still all passing after the migration; Rust: 46;
+  real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v16: recoverable tool errors, readable code-search positions)
 
 Executed `docs/day-plan-v16.md`. Two failure paths made the agent unable to
