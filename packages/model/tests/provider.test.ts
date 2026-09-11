@@ -54,7 +54,7 @@ test("OpenAI provider sends messages and parses tool calls", async () => {
   assert.equal(requestBody.messages[0].content, "read a.txt");
   assert.equal(requestBody.tools[0].function.name, "filesystem");
   assert.equal(completion.toolCalls?.[0]?.name, "filesystem");
-  assert.equal(completion.toolCalls?.[0]?.input.action, "read");
+  assert.equal((completion.toolCalls?.[0]?.input as { action: string }).action, "read");
 });
 
 test("Ollama provider sends chat request and parses tool calls", async () => {
@@ -87,7 +87,7 @@ test("Ollama provider sends chat request and parses tool calls", async () => {
   assert.equal(requestBody.model, "qwen3:4b-instruct");
   assert.equal(requestBody.messages[0].content, "run ls");
   assert.equal(completion.toolCalls?.[0]?.name, "shell");
-  assert.equal(completion.toolCalls?.[0]?.input.command, "ls");
+  assert.equal((completion.toolCalls?.[0]?.input as { command: string }).command, "ls");
 });
 
 test("Anthropic provider sends separate system and maps tool messages", async () => {
@@ -170,5 +170,8 @@ test("Gemini provider sends contents and parses function calls", async () => {
   assert.equal(requestBody.tools[0].functionDeclarations[0].name, "git");
   assert.equal(completion.content, "calling");
   assert.equal(completion.toolCalls?.[0]?.name, "git");
-  assert.equal(completion.toolCalls?.[0]?.input.args[0], "status");
+  assert.equal(
+    (completion.toolCalls?.[0]?.input as { args: string[] }).args[0],
+    "status"
+  );
 });

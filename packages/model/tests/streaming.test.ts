@@ -40,8 +40,8 @@ test("OpenAI streamChat streams tokens, invokes onToken, and returns content", a
     model: "gpt-4.1",
     apiKey: "secret",
     fetch: async (url, init) => {
-      assert.equal(url, "https://api.openai.com/v1/chat/completions");
-      const body = JSON.parse(init.body);
+      assert.equal(String(url), "https://api.openai.com/v1/chat/completions");
+      const body = JSON.parse(String(init.body));
       assert.equal(body.stream, true);
       return streamFromStrings([openAIEvent("Hel"), openAIEvent("lo"), "data: [DONE]\n\n"]);
     },
@@ -209,8 +209,8 @@ test("Anthropic streamChat streams text deltas and returns content", async () =>
     apiKey: "secret",
     baseUrl: "https://api.anthropic.com",
     fetch: async (url, init) => {
-      assert.equal(url, "https://api.anthropic.com/v1/messages");
-      const body = JSON.parse(init.body);
+      assert.equal(String(url), "https://api.anthropic.com/v1/messages");
+      const body = JSON.parse(String(init.body));
       assert.equal(body.stream, true);
       return streamFromStrings([
         'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hey"}}\n\n',
@@ -312,8 +312,8 @@ test("Gemini streamChat streams candidate text parts", async () => {
     apiKey: "secret",
     baseUrl: "https://generativelanguage.googleapis.com",
     fetch: async (url) => {
-      assert.match(url, /streamGenerateContent/);
-      assert.match(url, /alt=sse/);
+      assert.match(String(url), /streamGenerateContent/);
+      assert.match(String(url), /alt=sse/);
       return streamFromStrings([
         'data: {"candidates":[{"content":{"parts":[{"text":"Gem"}]}}]}\n\n',
         'data: {"candidates":[{"content":{"parts":[{"text":"ini"}]}}]}\n\n',
@@ -389,8 +389,8 @@ test("Ollama streamChat streams NDJSON content", async () => {
     model: "qwen3:4b-instruct",
     baseUrl: "http://localhost:11434",
     fetch: async (url, init) => {
-      assert.equal(url, "http://localhost:11434/api/chat");
-      const body = JSON.parse(init.body);
+      assert.equal(String(url), "http://localhost:11434/api/chat");
+      const body = JSON.parse(String(init.body));
       assert.equal(body.stream, true);
       return streamFromStrings([
         '{"message":{"content":"Ol"}}\n',

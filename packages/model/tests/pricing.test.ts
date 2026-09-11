@@ -33,7 +33,7 @@ test("estimateCost prefers the longest matching model prefix", () => {
 test("estimateCost ignores malformed price entries", () => {
   const prices = {
     "gpt-4o-mini": { inputPerMillion: "free" },
-  };
+  } as unknown as Parameters<typeof estimateCost>[2];
 
   assert.equal(estimateCost(usage, "gpt-4o-mini", prices), undefined);
 });
