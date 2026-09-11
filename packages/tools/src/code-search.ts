@@ -147,9 +147,12 @@ export class CodeSearchTool implements Tool {
     // The scan indexes absolute paths, so a relative `file` must be resolved
     // against the scanned root (the working directory by default).
     const file = resolve(root, requireString(record.file, "file"));
-    const line = parsePositiveInt(record.line, "line");
-    const column = record.column === undefined ? 1 : parsePositiveInt(record.column, "column");
+    const line = parseLineOrColumn(record.line, "line");
+    const column = record.column === undefined
+      ? 1
+      : parseLineOrColumn(record.column, "column");
     const scan = await this.loadScan(root, maxDepth);
+    assertPositionWithinSource(scan.sources.get(file), file, line, column);
     const referenceIndex = new TypeScriptReferenceIndex({
       files: typeScriptSources(scan.sources),
     });
@@ -383,6 +386,38 @@ function parsePositiveInt(value: unknown, field: string): number {
     throw new Error(`code-search ${field} must be a non-negative integer`);
   }
   return value;
+}
+
+/** Line and column numbers are 1-based; 0 would crash the TS language service. */
+function parseLineOrColumn(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+    throw new Error(`code-search ${field} must be a positive integer`);
+  }
+  return value;
+}
+
+/** The TypeScript language service throws a debug failure on a bad position. */
+function assertPositionWithinSource(
+  source: string | undefined,
+  file: string,
+  line: number,
+  column: number
+): void {
+  if (source === undefined) {
+    return;
+  }
+  const lines = source.split("\n");
+  if (line > lines.length) {
+    throw new Error(
+      `code-search line ${line} is beyond the end of ${file} (${lines.length} lines)`
+    );
+  }
+  const lineText = lines[line - 1] ?? "";
+  if (column > lineText.length + 1) {
+    throw new Error(
+      `code-search column ${column} is beyond the end of line ${line} in ${file}`
+    );
+  }
 }
 
 function parseSymbolKind(value: unknown): SymbolKind {

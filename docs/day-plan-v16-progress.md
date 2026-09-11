@@ -4,12 +4,33 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（`code-search` 校验行号/列号）未开始
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-12 02:2x-02:4x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：阶段 2（文档、全量回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-12 02:5x-03:1x）
+- 工作区：阶段 1 的改动待提交
 
 ## 日志
+
+### 运行 2 — 2026-09-12 02:5x-03:1x
+
+- 阶段/工作项：阶段 1（`code-search` 校验行号/列号）完成
+- 复现：对只有 1 行的文件请求 `mode: "references", line: 99`，工具抛出
+  TypeScript 内部错误 `Debug Failure. Bad line number. Line: 98 …`
+- 做了什么：
+  - references / definition 在调用 language service 前用扫描到的源码校验：
+    行号超过文件行数、列号超过该行长度时给出可读错误
+    （`code-search line 99 is beyond the end of …`）
+  - 行号/列号改为必须 >= 1（`parseLineOrColumn`）：`line: 0` 以前会触发
+    `Debug Failure`，现在报 `line must be a positive integer`
+  - 新增 2 个用例：行号越界 + line 0、列号越界；既有 references/definition 用例不变
+  - 实测复测：三种越界输入都返回可读错误
+- 验证命令与结果：
+  - `pnpm --filter @dev-agent/tools build`：通过
+  - `packages/tools`：70 passed（68 + 2）
+  - `pnpm typecheck`：通过
+  - `pnpm test`：全绿（TypeScript 407 个测试，0 失败）
+- 提交：见阶段 1 的 fix 提交
+- 下一步：阶段 2 — 根 README / architecture / CHANGELOG 更新 + 完整回归矩阵
 
 ### 运行 1 — 2026-09-12 02:2x-02:4x
 

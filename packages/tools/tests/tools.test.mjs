@@ -197,6 +197,47 @@ test("code-search references mode locates symbol usages via TypeScript language 
   await rm(dir, { recursive: true, force: true });
 });
 
+test("code-search rejects a line beyond the end of the file", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-refs-"));
+  await writeFile(join(dir, "a.ts"), "export function alpha() { return 1; }\n", "utf8");
+  const tool = new CodeSearchTool();
+
+  try {
+    await assert.rejects(
+      () => tool.execute({ mode: "references", file: "a.ts", line: 99, path: dir }),
+      /line 99 is beyond the end of/
+    );
+    await assert.rejects(
+      () => tool.execute({ mode: "references", file: "a.ts", line: 0, path: dir }),
+      /line must be a positive integer/
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("code-search rejects a column beyond the end of the line", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-refs-"));
+  await writeFile(join(dir, "a.ts"), "export function alpha() { return 1; }\n", "utf8");
+  const tool = new CodeSearchTool();
+
+  try {
+    await assert.rejects(
+      () =>
+        tool.execute({
+          mode: "definition",
+          file: "a.ts",
+          line: 1,
+          column: 999,
+          path: dir,
+        }),
+      /column 999 is beyond the end of line 1/
+    );
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("code-search definition mode resolves a symbol via TypeScript language service", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-defn-"));
   await mkdir(join(dir, "src"));
