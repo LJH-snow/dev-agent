@@ -211,6 +211,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   the desktop via `DEV_AGENT_APPROVAL` and an `approval` SSE frame
 - MCP server mode also serves `resources` (`dev-agent://session`,
   `dev-agent://workspace`) and `prompts` (`review-changes`, `explain-codebase`)
+- `--mcp-server` honours the approval policy too: `--approval deny-dangerous`
+  (or the config file's `approval` section) answers a flagged tool call with
+  `isError` and the reason instead of running it. MCP has no prompt channel, so
+  `ask` behaves like `deny-dangerous` there
 - Desktop approvals are interactive: `DEV_AGENT_APPROVAL=ask` renders an
   Allow/Deny prompt in the chat, waits for the click (denying after
   `DEV_AGENT_APPROVAL_TIMEOUT_MS`), and reports the decision as an `approval`
@@ -235,14 +239,20 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   `<path>/.dev-agent/index.json` (same ignore rules as `code-search`); a second
   run reuses the files whose mtime/size did not change (`reused` in the report)
 - `code-search` refreshes that same index file after its incremental scan finds
-  changed files, so the next process starts from a current cache
+  changed files, so the next process starts from a current cache; an index that
+  exists but is corrupt is replaced with a freshly scanned one
 - `filesystem` gained a `patch` action that applies several `oldText`/`newText`
   hunks in one write: every hunk must match exactly once and not overlap, and a
   failure leaves the file untouched
 - Usage costs are estimated when `~/.dev-agent/config.json` has a `pricing`
   section: the CLI appends `cost=$…` to its `[usage]` line, the desktop header
   adds `$…`, and an unconfigured or unknown model shows no cost at all
-- Test suite: 368 TypeScript tests + 46 Rust tests, all passing
+- Cache-hit tokens are accounted for: OpenAI
+  (`prompt_tokens_details.cached_tokens`) and Anthropic
+  (`cache_read_input_tokens`, with cache writes counted as prompt tokens) report
+  `cachedPromptTokens`, the session totals keep it, and `pricing` can price it
+  separately with `cachedInputPerMillion`
+- Test suite: 379 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -294,3 +304,6 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 34. ~~Incremental `--index` refresh and `code-search` write-back~~ (done)
 35. ~~Session token usage persisted with the session~~ (done)
 36. ~~Desktop session rename control~~ (done)
+37. ~~Approval gating for `--mcp-server`~~ (done)
+38. ~~Cached prompt-token accounting and cache-aware pricing~~ (done)
+39. ~~Self-repair for a corrupt persisted code-search index~~ (done)

@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-09-11 (Day plan v11: MCP approvals, cache accounting, index repair)
+
+Executed `docs/day-plan-v11.md`. Three boundaries that were still half-open:
+MCP server mode bypassed the approval policy entirely, provider cache hits were
+discarded before accounting, and a corrupt index file stayed broken forever.
+
+### Added: `--mcp-server` obeys the approval policy
+- The MCP branch now loads `~/.dev-agent/config.json`, resolves
+  `--approval` / `approvalMode`, and runs every tool call through
+  `denyDangerousPolicy` (built-in patterns plus `approval.deny`, with
+  `approval.allow` exemptions).
+- A denied call throws `[denied by approval policy] …`, which the MCP server
+  returns as `{ isError: true }` with the reason, so the host model can adapt.
+  MCP has no prompt channel, so `ask` behaves like `deny-dangerous` there.
+
+### Added: cached prompt tokens are accounted for and priced
+- `ChatUsage.cachedPromptTokens` records the cached part of the prompt. OpenAI
+  maps `prompt_tokens_details.cached_tokens`; Anthropic maps
+  `cache_read_input_tokens` and counts `cache_creation_input_tokens` as prompt
+  tokens too (only the event carrying `input_tokens` contributes them, so a
+  stream's output-only delta cannot double count). The field stays absent when
+  a response reports no cache hits.
+- `ModelPrice.cachedInputPerMillion` optionally prices that part at a discount;
+  without it cached tokens use the regular input price. Cached counts are
+  clamped to `promptTokens`, and `addUsage` carries them into session totals.
+
+### Fixed: a corrupt persisted index is rewritten
+- `code-search` already refreshed an index it had loaded; now, when the file
+  exists but cannot be parsed (bad JSON, wrong version, missing fields), the
+  full scan that follows replaces it with a valid
+  `{ version, files, symbols, signatures }`. A missing index is still never
+  created by a search, and a failed write is still ignored.
+
+### Tests
+- TypeScript: 368 -> 379. Rust: 46 (unchanged).
+- New coverage: MCP gating (deny, allow, config allowlist), OpenAI/Anthropic
+  cache parsing including a streaming no-double-count case, cache-aware pricing
+  and its fallback/clamp paths, cached-token accumulation, and corrupt-index
+  replacement.
+
 ## 2026-09-11 (Day plan v10: incremental indexing, session usage, rename UI)
 
 Executed `docs/day-plan-v10.md`. This pass closes the loops v9 left open: the

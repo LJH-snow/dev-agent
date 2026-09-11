@@ -4,12 +4,34 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-11 21:0x-21:1x）
-- 工作区：阶段 2 的改动待提交
+- 当前阶段：无，`docs/day-plan-v11.md` 的四个阶段已全部完成
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-11 21:0x-21:2x）
+- 工作区：阶段 3 的文档改动提交后即 clean
 
 ## 日志
+
+### 运行 4 — 2026-09-11 21:0x-21:2x
+
+- 阶段/工作项：阶段 3（文档、全量回归与提交）完成
+- 做了什么：
+  - 根 `README.md`：Current Status 增加 MCP 审批门禁、缓存 token 记账与
+    索引自修复三条，测试数更新为 379 TS + 46 Rust；Roadmap 追加 37-39
+  - `docs/architecture.md`：model 的缓存记账与 `cachedInputPerMillion`、
+    tools 的损坏索引重写、CLI/MCP 的审批语义、agent-core 的缓存累计
+  - `docs/CHANGELOG.md`：新增「Day plan v11」条目（368 -> 379）
+- 验证命令与结果（完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed（13 目录 / 34 文件）
+  - `pnpm build`：通过
+  - `pnpm typecheck`：通过
+  - `pnpm test`：379 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed / 0 failed
+  - `cargo fmt --check`：通过
+  - `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）/ 0 failed
+- 提交：见阶段 3 的 docs 提交
+- 下一步：v11 计划已收尾；下一轮先核实 `code-search` 与 `--index` 的
+  文件类型/深度不一致问题，再决定 v12 计划
 
 ### 运行 3 — 2026-09-11 21:0x-21:1x
 

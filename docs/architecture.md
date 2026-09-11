@@ -41,7 +41,8 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   loop accumulates the totals on `AgentContext.usage` across runs. Each report
   is also handed to `AgentMemory.recordUsage()`, which `InMemoryMemory` keeps in
   process and `FileMemory` persists as `metadata.usage`, so a restarted CLI or
-  desktop session can restore the total.
+  desktop session can restore the total. Cache-hit prompt tokens
+  (`ChatUsage.cachedPromptTokens`) are carried through the same total.
 
 ### `packages/model`
 - Unified `ModelProvider` interface with `chat()` and `streamChat()` methods.
@@ -54,12 +55,16 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - **Usage**: `ChatCompletion.usage` normalises each provider's field names
   (OpenAI `usage`, Anthropic `input_tokens`/`output_tokens`, Gemini
   `usageMetadata`, Ollama `prompt_eval_count`/`eval_count`), including usage
-  that arrives in a stream's final event.
+  that arrives in a stream's final event. OpenAI's
+  `prompt_tokens_details.cached_tokens` and Anthropic's
+  `cache_read_input_tokens` become `cachedPromptTokens`; Anthropic cache writes
+  are counted as prompt tokens.
 - **Cost estimation**: `estimateCost(usage, model, prices)` converts a
   `ChatUsage` into USD using a caller-supplied `PriceTable` (model-name prefix →
   `inputPerMillion` / `outputPerMillion`). The longest matching prefix wins;
   unknown models, malformed prices, and an empty table return `undefined`
-  instead of guessing.
+  instead of guessing. `cachedInputPerMillion` optionally prices the cached
+  prompt tokens at a discount; without it they use the regular input price.
 
 ### `packages/tools`
 - `AgentToolRegistry` for registering and looking up tools.
@@ -77,7 +82,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   leave the index. A cold cache first loads the signature map written by
   `--index` into `<root>/.dev-agent/index.json` (when present) and only rescans
   what changed, then writes the refreshed index back to that file (best effort,
-  only when it already exists). `getCacheStats()` exposes
+  only when it already exists). A file that exists but cannot be parsed is
+  replaced with the freshly scanned index instead of being left broken.
+  `getCacheStats()` exposes
   hits/misses/rescanned/loadedFromDisk/persisted.
 
 ### `packages/mcp`
@@ -115,6 +122,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   expressions to the dangerous table. `ask` decisions can be remembered for the
   session only (`a` in the CLI, "Always allow" in the desktop), keyed by the
   normalized command + subcommand rather than the full argument list.
+- `--mcp-server` reuses the same policy: flagged calls come back as `isError`
+  with the denial reason, and `ask` degrades to `deny-dangerous` because MCP
+  has no interactive prompt channel.
 - `pricing` in the same config file maps model-name prefixes to USD per million
   input/output tokens; the CLI appends `cost=$…` to its `[usage]` line and adds
   a `cost` field to `--json`, while an unmatched model prints no cost.
