@@ -54,6 +54,9 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `GET /api/sessions/<id>/messages` — the stored transcript of one session.
 - `DELETE /api/sessions/<id>` — delete a session's memory file and drop it from
   the in-memory registry; unknown ids return `404`.
+- `POST /api/sessions/<id>/rename` — body `{ "sessionId": "new-id" }`; moves the
+  memory file, answers `409` when the target exists and `404` when the source is
+  missing.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-result`, `turn`, `usage`, `approval`, `done`,
   `error`. An `approval` frame carries `{ tool, decision, reason }`; a denial is

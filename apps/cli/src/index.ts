@@ -1,7 +1,8 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { readdir, rm, stat } from "node:fs/promises";
+import { readdir, rename, rm, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { dirname } from "node:path";
 
 import {
@@ -86,6 +87,14 @@ export async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  const renameIndex = args.indexOf("--session-rename");
+  const renameFrom = renameIndex >= 0 ? args[renameIndex + 1] : undefined;
+  const renameTo = renameIndex >= 0 ? args[renameIndex + 2] : undefined;
+  if (renameIndex >= 0 && (renameFrom === undefined || renameTo === undefined)) {
+    console.error("--session-rename requires both the current and the new session id");
+    process.exitCode = 1;
+    return;
+  }
   const normalizedSessionId = normalizeSessionId(sessionId ?? "default");
   const workingDirectory = resolveWorkingDirectory();
   const rustIndex = args.indexOf("--rust-executor");
@@ -163,6 +172,40 @@ export async function main(argv: string[]): Promise<void> {
       console.log(JSON.stringify({ sessionId: id, deleted }, null, 2));
     } else {
       console.log(deleted ? `Deleted session ${id}.` : `Session ${id} not found.`);
+    }
+    return;
+  }
+
+  if (renameFrom !== undefined && renameTo !== undefined) {
+    const from = normalizeSessionId(renameFrom);
+    const to = normalizeSessionId(renameTo);
+    const source = join(sessionDir(), `${from}.json`);
+    const target = join(sessionDir(), `${to}.json`);
+
+    if (from !== to && existsSync(target)) {
+      console.error(`Session ${to} already exists.`);
+      process.exitCode = 1;
+      return;
+    }
+
+    let renamed = false;
+    if (from !== to) {
+      try {
+        await rename(source, target);
+        renamed = true;
+      } catch (error) {
+        if (!(isNodeError(error) && error.code === "ENOENT")) {
+          throw error;
+        }
+      }
+    }
+
+    if (jsonOutput) {
+      console.log(JSON.stringify({ from, to, renamed }, null, 2));
+    } else {
+      console.log(
+        renamed ? `Renamed session ${from} to ${to}.` : `Session ${from} not found.`
+      );
     }
     return;
   }

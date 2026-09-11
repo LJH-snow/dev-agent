@@ -212,3 +212,85 @@ test("DELETE /api/sessions/<id> returns 404 for an unknown session", async () =>
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+async function withSessionDir(run) {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-rename-"));
+  const previousDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = dir;
+  try {
+    return await run(dir);
+  } finally {
+    if (previousDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDir;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+test("POST /api/sessions/<id>/rename moves the session file", async () => {
+  await withSessionDir(async (dir) => {
+    const server = createDesktopServer({ session: fakeSession("default") });
+    const base = await start(server);
+    try {
+      await writeFile(join(dir, "before.json"), JSON.stringify({ version: 1, entries: [] }));
+
+      const res = await fetch(`${base}/api/sessions/before/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: "After Session" }),
+      });
+
+      assert.equal(res.status, 200);
+      assert.deepEqual(await res.json(), {
+        from: "before",
+        to: "after-session",
+        renamed: true,
+      });
+      assert.equal(await exists(join(dir, "before.json")), false);
+      assert.equal(await exists(join(dir, "after-session.json")), true);
+    } finally {
+      await close(server);
+    }
+  });
+});
+
+test("POST /api/sessions/<id>/rename refuses to overwrite", async () => {
+  await withSessionDir(async (dir) => {
+    const server = createDesktopServer({ session: fakeSession("default") });
+    const base = await start(server);
+    try {
+      await writeFile(join(dir, "before.json"), JSON.stringify({ version: 1, entries: [] }));
+      await writeFile(join(dir, "taken.json"), JSON.stringify({ version: 1, entries: [] }));
+
+      const res = await fetch(`${base}/api/sessions/before/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: "taken" }),
+      });
+
+      assert.equal(res.status, 409);
+      assert.equal(await exists(join(dir, "before.json")), true);
+    } finally {
+      await close(server);
+    }
+  });
+});
+
+test("POST /api/sessions/<id>/rename returns 404 for an unknown session", async () => {
+  await withSessionDir(async () => {
+    const server = createDesktopServer({ session: fakeSession("default") });
+    const base = await start(server);
+    try {
+      const res = await fetch(`${base}/api/sessions/missing/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: "next" }),
+      });
+      assert.equal(res.status, 404);
+    } finally {
+      await close(server);
+    }
+  });
+});

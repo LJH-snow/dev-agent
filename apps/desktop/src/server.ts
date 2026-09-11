@@ -1,6 +1,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
-import { readFile, readdir, rm } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { readFile, readdir, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
@@ -143,6 +144,54 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ sessionId, deleted: true }));
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/rename")
+      ) {
+        const rawId = url.pathname.slice("/api/sessions/".length, -"/rename".length);
+        const from = normalizeSessionId(decodeURIComponent(rawId));
+        const body = await readBody(req);
+        let parsed: { sessionId?: unknown };
+        try {
+          parsed = JSON.parse(body) as { sessionId?: unknown };
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          return;
+        }
+
+        const to =
+          typeof parsed.sessionId === "string" ? normalizeSessionId(parsed.sessionId) : "";
+        if (!to) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is required" }));
+          return;
+        }
+
+        if (from !== to) {
+          const source = memoryPathFor(from);
+          if (!existsSync(source)) {
+            res.writeHead(404, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "unknown session" }));
+            return;
+          }
+          if (existsSync(memoryPathFor(to))) {
+            res.writeHead(409, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: `session ${to} already exists` }));
+            return;
+          }
+          await rename(source, memoryPathFor(to));
+          // The in-memory session is bound to the old path; drop it so the new
+          // id is created fresh against the renamed file.
+          sessions.delete(from);
+        }
+
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ from, to, renamed: from !== to }));
         return;
       }
 

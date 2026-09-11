@@ -41,6 +41,8 @@ Options:
   any check fails. Combine with `--json` for `{ checks, summary }`
 - `--session-delete <id>` - delete a stored session file; a missing session is
   reported (`deleted: false` with `--json`) without failing
+- `--session-rename <old> <new>` - rename a stored session; refuses to overwrite
+  an existing one and reports `{ from, to, renamed }` with `--json`
 - `--version` / `-v` - print the CLI version
 
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on
