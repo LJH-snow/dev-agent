@@ -242,3 +242,59 @@ test("ask mode remembers an 'always allow' decision for the session", async () =
   );
   assert.equal(mode, 0o777);
 });
+
+test("a client disconnect clears a pending approval", async () => {
+  const { dir, target } = await setup();
+  const provider = await startStubProvider(() => [shellToolCall(`chmod 777 ${target}`)]);
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+    DEV_AGENT_APPROVAL: "ask",
+    DEV_AGENT_APPROVAL_TIMEOUT_MS: "60000",
+  });
+  const session = new ChatSession({ workingDirectory: dir });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
+  const controller = new AbortController();
+  let approvalId;
+
+  try {
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "run it" }),
+      signal: controller.signal,
+    });
+
+    try {
+      await streamEvents(response, (event) => {
+        if (event.type === "approval-request") {
+          approvalId = event.data.id;
+          controller.abort();
+        }
+      });
+    } catch (error) {
+      if (!approvalId) {
+        throw error;
+      }
+    }
+
+    assert.ok(approvalId, "an approval request should have been emitted");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const res = await fetch(`${base}/api/approval`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: approvalId, decision: "allow" }),
+    });
+    assert.equal(res.status, 404, "the disconnected approval must be dropped");
+    assert.notEqual(await modeOf(target), 0o777, "the call must not run after a disconnect");
+  } finally {
+    await new Promise((resolve) => server.close(() => resolve()));
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});

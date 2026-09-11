@@ -395,7 +395,7 @@ async function streamChat(
         if (prompt.key && allowed?.has(prompt.key)) {
           return Promise.resolve("allow");
         }
-        return waitForApproval(approvals, emit, prompt).then((decision) => {
+        return waitForApproval(approvals, emit, prompt, controller.signal).then((decision) => {
           if (decision !== "allow-always") {
             return decision;
           }
@@ -431,7 +431,8 @@ function approvalTimeoutMs(): number {
 function waitForApproval(
   approvals: Map<string, (decision: ApprovalDecision) => void>,
   emit: (event: StreamEvent) => void,
-  prompt: ApprovalPrompt
+  prompt: ApprovalPrompt,
+  signal?: AbortSignal
 ): Promise<ApprovalDecision> {
   const id = randomUUID();
   emit({
@@ -440,16 +441,29 @@ function waitForApproval(
   });
 
   return new Promise((resolve) => {
-    const timer = setTimeout(() => {
-      approvals.delete(id);
-      resolve("deny");
-    }, approvalTimeoutMs());
-
-    approvals.set(id, (decision) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const settle = (decision: ApprovalDecision): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
       approvals.delete(id);
       resolve(decision);
-    });
+    };
+    const onAbort = (): void => settle("deny");
+    timer = setTimeout(() => settle("deny"), approvalTimeoutMs());
+    approvals.set(id, settle);
+
+    // A disconnected client can never answer, so drop the prompt immediately
+    // instead of leaving it in the map until the timeout fires.
+    if (signal?.aborted) {
+      onAbort();
+    } else {
+      signal?.addEventListener("abort", onAbort, { once: true });
+    }
   });
 }
 
