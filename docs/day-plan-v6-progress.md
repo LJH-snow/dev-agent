@@ -5,12 +5,35 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（命令审批策略核心）未开始
-- 已完成阶段：阶段 0（摘要跨 run 复用与长度上限）
-- 最近一次运行：运行 1（2026-09-11 12:54-13:35）
-- 工作区：阶段 0 的改动已提交并推送
+- 当前阶段：阶段 2（CLI 审批交互）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-11 13:35-14:05）
+- 工作区：阶段 1 的改动已提交并推送
 
 ## 日志
+
+### 运行 2 — 2026-09-11 13:35-14:05
+
+- 阶段/工作项：阶段 1（命令审批策略核心）全部完成
+- 做了什么：
+  - 新增 `packages/agent-core/src/approval.ts`：`ApprovalPolicy` /
+    `ApprovalRequest { toolName, input, sessionId, workingDirectory }` /
+    `ApprovalOutcome { decision, reason? }`
+  - 内置策略：`allowAllPolicy()`（默认、保持现状）与 `denyDangerousPolicy()`
+    - 内置危险模式表：递归删除、sudo、mkfs、dd of=、关机/重启、`git push --force`、
+      `curl|wget | sh`、`chmod 777`、fork bomb、`git reset --hard`/`git clean -f`、
+      特权容器；支持追加自定义正则（并处理 /g 状态的 lastIndex）
+    - 额外规则：filesystem 的 write/mkdir 目标落在工作目录之外时拒绝
+  - `AgentLoop`：新增 `approval` 与 `onApproval`；每个工具调用前询问策略，
+    拒绝时不执行命令，而是把 `[denied by policy] <原因>` 写回 tool 结果让模型改道，
+    整轮对话继续；策略抛错按拒绝处理；未配置策略时不触发任何回调
+- 验证命令与结果：
+  - `packages/agent-core`：46 passed（新增 8 个：危险命令被拒且模型看到原因、
+    安全命令放行、allowAll 保持旧行为、自定义 pattern、策略抛错按拒绝、
+    工作目录外写入被拒/目录内放行、模式表正反例、未配策略不触发回调）
+  - `pnpm build`、`pnpm typecheck`、`pnpm test`：全绿（TypeScript 284 个测试）
+- 提交：见阶段 1 的 feat 提交
+- 下一步：阶段 2 — CLI 审批交互（`--approval allow|deny-dangerous|ask`）
 
 ### 运行 1 — 2026-09-11 12:54-13:35
 

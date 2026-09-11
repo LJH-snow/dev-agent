@@ -1,4 +1,5 @@
 export * from "./agent-state.js";
+export * from "./approval.js";
 export type {
   ChatCompletion,
   ChatMessage,

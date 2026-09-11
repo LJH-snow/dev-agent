@@ -18,6 +18,12 @@ Implemented in phase 1:
 - Usage accounting: every model response that reports tokens fires `onUsage`,
   and the loop adds the totals up on the returned context's `usage` field, so a
   session's consumption survives across runs
+- Approval policies: `AgentLoopOptions.approval` decides whether a tool call may
+  run. `denyDangerousPolicy()` blocks commands matching its pattern table
+  (recursive delete, `sudo`, force push, pipe-to-shell, disk tools, …) and
+  filesystem writes outside the working directory; a policy that throws is
+  treated as a denial. Denials are written back as the tool's result so the
+  model can choose another path. Unset means every call runs, exactly as before.
 - `AgentContext` - holds session id, working directory, runtime metadata, timestamps,
   `AgentState`, and `AgentMemory`
 - `AgentState` - id, status, turn counter, current task, and last error

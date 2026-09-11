@@ -1,4 +1,5 @@
 import type { AgentState } from "./agent-state.js";
+import type { ApprovalOutcome, ApprovalPolicy, ApprovalRequest } from "./approval.js";
 import type { AgentContext } from "./context.js";
 import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.js";
 import type { ChatMessage, ModelProvider, ToolSchema } from "@dev-agent/model";
@@ -23,6 +24,13 @@ export interface AgentLoopOptions {
   readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
   /** Fired for every model response that reported token usage. */
   readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
+  /** Decides whether each tool call may run; unset means every call runs. */
+  readonly approval?: ApprovalPolicy;
+  readonly onApproval?: (
+    request: ApprovalRequest,
+    outcome: ApprovalOutcome,
+    context: AgentContext
+  ) => void;
   readonly toolDefaults?: ToolDefaults;
   readonly contextBudget?: ContextBudget;
 }
@@ -74,6 +82,12 @@ export class AgentLoop {
   private readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
   private readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
   private readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
+  private readonly approval?: ApprovalPolicy;
+  private readonly onApproval?: (
+    request: ApprovalRequest,
+    outcome: ApprovalOutcome,
+    context: AgentContext
+  ) => void;
   private readonly toolDefaults?: ToolDefaults;
   private readonly contextBudget?: ContextBudget;
   /** Digest of the entries trimmed off so far, grown incrementally. */
@@ -92,6 +106,8 @@ export class AgentLoop {
     this.onToolCall = options.onToolCall;
     this.onToolResult = options.onToolResult;
     this.onUsage = options.onUsage;
+    this.approval = options.approval;
+    this.onApproval = options.onApproval;
     this.toolDefaults = options.toolDefaults;
     this.contextBudget = options.contextBudget;
   }
@@ -144,6 +160,28 @@ export class AgentLoop {
             throw new Error(`Agent requested tool "${call.name}" but no tools are configured.`);
           }
           this.onToolCall?.({ name: call.name, input: call.input }, context);
+
+          const approvalRequest: ApprovalRequest = {
+            toolName: call.name,
+            input: call.input,
+            sessionId: context.sessionId,
+            workingDirectory: context.workingDirectory,
+          };
+          const outcome = await this.checkApproval(approvalRequest);
+          if (outcome) {
+            this.onApproval?.(approvalRequest, outcome, context);
+            if (outcome.decision === "deny") {
+              const denial = `[denied by policy] ${
+                outcome.reason ?? "the approval policy denied this call"
+              }`;
+              this.onToolResult?.({ name: call.name, output: denial }, context);
+              await memory.append(
+                createMemoryEntry("tool", denial, { toolCallId: call.id, toolName: call.name })
+              );
+              continue;
+            }
+          }
+
           const toolContext: ToolExecutionContext = {
             sessionId: context.sessionId,
             workingDirectory: context.workingDirectory,
@@ -281,6 +319,25 @@ export class AgentLoop {
   private recordUsage(runState: RunState, usage: ChatUsage): void {
     runState.totalUsage = addUsage(runState.totalUsage, usage);
     this.onUsage?.(usage, runState.context);
+  }
+
+  /**
+   * Runs the policy, treating a broken policy as a denial. Returns undefined
+   * when no policy is configured, so callers can skip the callback entirely.
+   */
+  private async checkApproval(request: ApprovalRequest): Promise<ApprovalOutcome | undefined> {
+    if (!this.approval) {
+      return undefined;
+    }
+    try {
+      const outcome = await this.approval.decide(request);
+      return typeof outcome === "string" ? { decision: outcome } : outcome;
+    } catch (error) {
+      return {
+        decision: "deny",
+        reason: `approval check failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
   }
 
   /**
