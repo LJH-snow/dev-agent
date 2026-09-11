@@ -3,10 +3,15 @@ import { resolve } from "node:path";
 
 import type { Tool, ToolExecutionContext } from "./index.js";
 
-type FilesystemAction = "read" | "write" | "edit" | "list" | "stat" | "mkdir";
+type FilesystemAction = "read" | "write" | "edit" | "patch" | "list" | "stat" | "mkdir";
 
 /** Reading without an explicit limit stops after this many lines. */
 const DEFAULT_READ_LIMIT = 2000;
+
+interface PatchHunk {
+  readonly oldText: string;
+  readonly newText: string;
+}
 
 interface FilesystemInput {
   readonly action: FilesystemAction;
@@ -16,22 +21,38 @@ interface FilesystemInput {
   readonly newText?: string;
   readonly offset?: number;
   readonly limit?: number;
+  readonly hunks?: readonly PatchHunk[];
 }
 
 export class FilesystemTool implements Tool {
   readonly name = "filesystem" as const;
   readonly description =
-    "Read (optionally a line range), write, edit by replacing a unique snippet, list, stat, or create directories on the local filesystem.";
+    "Read (optionally a line range), write, edit by replacing a unique snippet, patch several snippets atomically, list, stat, or create directories on the local filesystem.";
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
-      action: { type: "string", enum: ["read", "write", "edit", "list", "stat", "mkdir"] },
+      action: {
+        type: "string",
+        enum: ["read", "write", "edit", "patch", "list", "stat", "mkdir"],
+      },
       path: { type: "string" },
       content: { type: "string" },
       oldText: { type: "string", description: "Text to replace in an edit; must match exactly once." },
       newText: { type: "string", description: "Replacement text for an edit; may be empty." },
       offset: { type: "integer", minimum: 1, description: "First line to read (1-based)." },
       limit: { type: "integer", minimum: 1, description: "Maximum lines to read." },
+      hunks: {
+        type: "array",
+        description: "Patch hunks; every hunk must match exactly once or nothing is written.",
+        items: {
+          type: "object",
+          properties: {
+            oldText: { type: "string" },
+            newText: { type: "string" },
+          },
+          required: ["oldText", "newText"],
+        },
+      },
     },
     required: ["action", "path"],
   };
@@ -49,6 +70,8 @@ export class FilesystemTool implements Tool {
         return { ok: true, path: target };
       case "edit":
         return editFile(target, params.oldText ?? "", params.newText ?? "");
+      case "patch":
+        return patchFile(target, params.hunks ?? []);
       case "list": {
         const entries = await readdir(target, { withFileTypes: true });
         return {
@@ -82,11 +105,14 @@ function parseFilesystemInput(input: unknown): FilesystemInput {
     action !== "read" &&
     action !== "write" &&
     action !== "edit" &&
+    action !== "patch" &&
     action !== "list" &&
     action !== "stat" &&
     action !== "mkdir"
   ) {
-    throw new Error("filesystem action must be one of: read, write, edit, list, stat, mkdir");
+    throw new Error(
+      "filesystem action must be one of: read, write, edit, patch, list, stat, mkdir"
+    );
   }
   if (typeof record.path !== "string" || record.path.length === 0) {
     throw new Error("filesystem path must be a non-empty string");
@@ -109,6 +135,10 @@ function parseFilesystemInput(input: unknown): FilesystemInput {
 
   const offset = parseOptionalPositiveInt(record.offset, "offset");
   const limit = parseOptionalPositiveInt(record.limit, "limit");
+  const hunks = parseHunks(record.hunks);
+  if (action === "patch" && hunks.length === 0) {
+    throw new Error("filesystem patch requires a non-empty hunks array");
+  }
 
   return {
     action,
@@ -118,7 +148,30 @@ function parseFilesystemInput(input: unknown): FilesystemInput {
     newText: typeof newText === "string" ? newText : undefined,
     offset,
     limit,
+    hunks,
   };
+}
+
+function parseHunks(value: unknown): PatchHunk[] {
+  if (value === undefined) {
+    return [];
+  }
+  if (!Array.isArray(value)) {
+    throw new Error("filesystem hunks must be an array");
+  }
+  return value.map((entry, index) => {
+    if (typeof entry !== "object" || entry === null) {
+      throw new Error(`filesystem hunk ${index + 1} must be an object`);
+    }
+    const hunk = entry as Record<string, unknown>;
+    if (typeof hunk.oldText !== "string" || hunk.oldText.length === 0) {
+      throw new Error(`filesystem hunk ${index + 1} requires a non-empty oldText`);
+    }
+    if (typeof hunk.newText !== "string") {
+      throw new Error(`filesystem hunk ${index + 1} requires newText`);
+    }
+    return { oldText: hunk.oldText, newText: hunk.newText };
+  });
 }
 
 function parseOptionalPositiveInt(value: unknown, field: string): number | undefined {
@@ -197,6 +250,57 @@ function countOccurrences(source: string, needle: string): number {
     index = source.indexOf(needle, index + needle.length);
   }
   return count;
+}
+
+/**
+ * Applies every hunk in order to an in-memory copy and writes once at the end,
+ * so a failing or ambiguous hunk leaves the file exactly as it was.
+ */
+async function patchFile(
+  path: string,
+  hunks: readonly PatchHunk[]
+): Promise<Record<string, unknown>> {
+  const source = await readFile(path, "utf8");
+  let working = source;
+  const applied: Array<{ hunk: number; start: number; end: number }> = [];
+
+  for (let index = 0; index < hunks.length; index += 1) {
+    const hunk = hunks[index]!;
+    const first = working.indexOf(hunk.oldText);
+    if (first < 0) {
+      throw new Error(
+        `filesystem patch: hunk ${index + 1} search text was not found in ${path}`
+      );
+    }
+
+    const matches = countOccurrences(working, hunk.oldText);
+    if (matches > 1) {
+      throw new Error(
+        `filesystem patch: hunk ${index + 1} matches ${matches} locations in ${path}; include more context to make it unique`
+      );
+    }
+
+    const end = first + hunk.oldText.length;
+    const overlapping = applied.find((range) => first < range.end && end > range.start);
+    if (overlapping) {
+      throw new Error(
+        `filesystem patch: hunk ${index + 1} overlaps hunk ${overlapping.hunk} in ${path}`
+      );
+    }
+
+    const delta = hunk.newText.length - hunk.oldText.length;
+    for (const range of applied) {
+      if (range.start >= end) {
+        range.start += delta;
+        range.end += delta;
+      }
+    }
+    applied.push({ hunk: index + 1, start: first, end: first + hunk.newText.length });
+    working = working.slice(0, first) + hunk.newText + working.slice(end);
+  }
+
+  await writeFile(path, working, "utf8");
+  return { ok: true, path, hunks: hunks.length };
 }
 
 function asRecord(input: unknown): Record<string, unknown> {

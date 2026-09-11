@@ -22,6 +22,11 @@ model can correct instead of a silent mis-edit. The same workspace rules apply
 to `edit` as to `write`: the approval policy denies targets outside the working
 directory.
 
+`patch` takes several `{ oldText, newText }` hunks and applies them to an
+in-memory copy: every hunk must match exactly once and hunks must not overlap,
+otherwise nothing is written. The file is saved once at the end, so a failing
+patch leaves it byte-for-byte unchanged.
+
 Built-in tools accept an optional context object with `sessionId` and
 `workingDirectory`. Shell/git/search commands run in that working directory,
 and filesystem and code-search paths are resolved relative to it. `code-search`
