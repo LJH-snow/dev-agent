@@ -1,14 +1,43 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
+import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
 
-import { ChatSession, type StreamEvent } from "./chat-session.js";
+import { FileMemory } from "@dev-agent/agent-core";
+
+import { ChatSession, normalizeSessionId, type StreamEvent } from "./chat-session.js";
+
+/** The slice of a chat session the server needs; tests inject fakes. */
+export interface DesktopChatSession {
+  readonly id?: string;
+  run(
+    message: string,
+    emit: (event: StreamEvent) => void,
+    options?: { readonly signal?: AbortSignal }
+  ): Promise<void>;
+}
 
 export interface DesktopServerOptions {
   readonly host?: string;
   readonly port?: number;
-  readonly session?: ChatSession;
+  readonly session?: DesktopChatSession;
+  /** Builds a session that is not in memory yet. */
+  readonly createSession?: (sessionId: string) => DesktopChatSession;
+}
+
+export interface DesktopSessionSummary {
+  readonly sessionId: string;
+  readonly entryCount: number;
+  readonly createdAt?: string;
+  readonly lastActiveAt?: string;
+}
+
+export interface DesktopHistoryMessage {
+  readonly role: string;
+  readonly content: string;
+  readonly toolName?: string;
+  readonly toolCallId?: string;
 }
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
@@ -22,10 +51,25 @@ const mimeTypes: Record<string, string> = {
 };
 
 export function createDesktopServer(options: DesktopServerOptions = {}): Server {
-  const session = options.session ?? new ChatSession();
+  const defaultSession: DesktopChatSession = options.session ?? new ChatSession();
+  const defaultSessionId = defaultSession.id ?? "desktop-default";
+  const createSession =
+    options.createSession ?? ((sessionId: string) => new ChatSession({ sessionId }));
+  const sessions = new Map<string, DesktopChatSession>([[defaultSessionId, defaultSession]]);
+  const inFlight = new Set<string>();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
-  let chatInFlight = false;
+
+  const sessionFor = (sessionId?: string): { id: string; session: DesktopChatSession } => {
+    const id = normalizeSessionId(sessionId ?? defaultSessionId);
+    const existing = sessions.get(id);
+    if (existing) {
+      return { id, session: existing };
+    }
+    const created = createSession(id);
+    sessions.set(id, created);
+    return { id, session: created };
+  };
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${host}:${port}`);
@@ -42,6 +86,29 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/api/sessions") {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            activeSessionId: defaultSessionId,
+            sessions: await listSessions([...sessions.keys()]),
+          })
+        );
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/messages")
+      ) {
+        const rawId = url.pathname.slice("/api/sessions/".length, -"/messages".length);
+        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ sessionId, messages: await readHistory(sessionId) }));
+        return;
+      }
+
       if (req.method === "GET" && url.pathname.startsWith("/public/")) {
         const relative = url.pathname.slice("/public/".length);
         const filePath = join(publicDir, relative);
@@ -54,19 +121,41 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "POST" && url.pathname === "/api/chat") {
-        if (chatInFlight) {
-          // The session keeps its conversation state between requests, so a
-          // second concurrent run would interleave two histories.
-          req.resume();
-          res.writeHead(409, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "a chat request is already running" }));
+        const body = await readBody(req);
+        let parsed: { message?: unknown; sessionId?: unknown };
+        try {
+          parsed = JSON.parse(body) as { message?: unknown; sessionId?: unknown };
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
           return;
         }
-        chatInFlight = true;
+
+        const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
+        if (!message) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "message is required" }));
+          return;
+        }
+
+        const { id, session } = sessionFor(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
+        );
+        if (inFlight.has(id)) {
+          // A second run would interleave two histories in the same session.
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({ error: "a chat request is already running in this session" })
+          );
+          return;
+        }
+
+        inFlight.add(id);
         try {
-          await handleChat(req, res, session);
+          await streamChat(res, session, message);
         } finally {
-          chatInFlight = false;
+          inFlight.delete(id);
         }
         return;
       }
@@ -100,24 +189,11 @@ async function serveFile(res: ServerResponse, filePath: string, ext: string): Pr
   res.end(content);
 }
 
-async function handleChat(req: IncomingMessage, res: ServerResponse, session: ChatSession): Promise<void> {
-  const body = await readBody(req);
-  let parsed: { message?: unknown };
-  try {
-    parsed = JSON.parse(body) as { message?: unknown };
-  } catch {
-    res.writeHead(400, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "request body must be valid JSON" }));
-    return;
-  }
-  const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
-
-  if (!message) {
-    res.writeHead(400, { "content-type": "application/json" });
-    res.end(JSON.stringify({ error: "message is required" }));
-    return;
-  }
-
+async function streamChat(
+  res: ServerResponse,
+  session: DesktopChatSession,
+  message: string
+): Promise<void> {
   const controller = new AbortController();
   const onClose = (): void => {
     // `close` also fires after a normal end; only a real disconnect aborts.
@@ -146,7 +222,10 @@ async function handleChat(req: IncomingMessage, res: ServerResponse, session: Ch
   try {
     await session.run(message, emit, { signal: controller.signal });
   } catch (error) {
-    emit({ type: "error", data: { message: error instanceof Error ? error.message : String(error) } });
+    emit({
+      type: "error",
+      data: { message: error instanceof Error ? error.message : String(error) },
+    });
   } finally {
     res.off("close", onClose);
   }
@@ -163,6 +242,64 @@ function readBody(req: IncomingMessage): Promise<string> {
     req.on("error", reject);
     req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
   });
+}
+
+export function sessionsDir(): string {
+  return process.env.DEV_AGENT_SESSION_DIR ?? join(homedir(), ".dev-agent", "sessions");
+}
+
+export function memoryPathFor(sessionId: string): string {
+  return process.env.DEV_AGENT_MEMORY_FILE ?? join(sessionsDir(), `${sessionId}.json`);
+}
+
+/** Merges session files on disk with sessions this process already created. */
+export async function listSessions(
+  knownSessionIds: readonly string[] = []
+): Promise<DesktopSessionSummary[]> {
+  const summaries = new Map<string, DesktopSessionSummary>();
+  let files: string[] = [];
+  try {
+    files = await readdir(sessionsDir());
+  } catch {
+    files = [];
+  }
+
+  for (const file of files.filter((name) => name.endsWith(".json"))) {
+    const sessionId = file.slice(0, -".json".length);
+    const memory = new FileMemory({ filePath: join(sessionsDir(), file) });
+    const metadata = await memory.getMetadata();
+    summaries.set(sessionId, {
+      sessionId,
+      entryCount: metadata?.entryCount ?? 0,
+      createdAt: metadata?.createdAt,
+      lastActiveAt: metadata?.lastActiveAt,
+    });
+  }
+
+  for (const sessionId of knownSessionIds) {
+    if (!summaries.has(sessionId)) {
+      summaries.set(sessionId, { sessionId, entryCount: 0 });
+    }
+  }
+
+  return [...summaries.values()].sort((left, right) =>
+    (right.lastActiveAt ?? "").localeCompare(left.lastActiveAt ?? "")
+  );
+}
+
+async function readHistory(sessionId: string): Promise<DesktopHistoryMessage[]> {
+  const memory = new FileMemory({ filePath: memoryPathFor(sessionId) });
+  try {
+    const entries = await memory.entries();
+    return entries.map((entry) => ({
+      role: entry.role,
+      content: entry.content,
+      toolName: entry.toolName,
+      toolCallId: entry.toolCallId,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export function startServer(options: DesktopServerOptions = {}): Promise<Server> {

@@ -100,6 +100,8 @@
       cursor: pointer;
     }
     button:disabled { opacity: 0.5; cursor: default; }
+    select { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 6px; border-radius: 6px; max-width: 170px; }
+    #new-session { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
     .empty { color: var(--muted); font-size: 14px; align-self: center; margin-top: 40px; }
   </style>
 </head>
@@ -107,6 +109,8 @@
   <header>
     <span>dev-agent</span>
     <div class="header-status">
+      <select id="session" title="Session"></select>
+      <button type="button" id="new-session" title="New session">+</button>
       <span class="status" id="usage"></span>
       <span class="status" id="status">idle</span>
     </div>
@@ -123,11 +127,72 @@
     const send = document.getElementById("send");
     const status = document.getElementById("status");
     const usage = document.getElementById("usage");
+    const sessionSelect = document.getElementById("session");
+    const newSessionButton = document.getElementById("new-session");
 
     let currentAssistant = null;
     let totalTokens = 0;
+    let currentSessionId = null;
 
     function setStatus(text) { status.textContent = text; }
+
+    function ensureSessionOption(sessionId) {
+      const known = Array.from(sessionSelect.options).some((option) => option.value === sessionId);
+      if (!known) {
+        const option = document.createElement("option");
+        option.value = sessionId;
+        option.textContent = sessionId;
+        sessionSelect.appendChild(option);
+      }
+      sessionSelect.value = sessionId;
+    }
+
+    async function loadSessions() {
+      try {
+        const res = await fetch("/api/sessions");
+        if (!res.ok) return;
+        const data = await res.json();
+        sessionSelect.innerHTML = "";
+        for (const session of data.sessions ?? []) {
+          const option = document.createElement("option");
+          option.value = session.sessionId;
+          option.textContent = session.entryCount
+            ? session.sessionId + " (" + session.entryCount + ")"
+            : session.sessionId;
+          sessionSelect.appendChild(option);
+        }
+        if (currentSessionId === null) {
+          currentSessionId = data.activeSessionId ?? "desktop-default";
+        }
+        ensureSessionOption(currentSessionId);
+      } catch {
+        // The session picker is optional; keep the current conversation usable.
+      }
+    }
+
+    async function loadHistory(sessionId) {
+      messages.innerHTML = "";
+      currentAssistant = null;
+      try {
+        const res = await fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/messages");
+        const data = await res.json();
+        const history = data.messages ?? [];
+        if (history.length === 0) {
+          const empty = document.createElement("div");
+          empty.className = "empty";
+          empty.textContent = "Ask dev-agent anything. Tools run in your working directory.";
+          messages.appendChild(empty);
+          return;
+        }
+        for (const entry of history) {
+          if (entry.role === "user") appendMessage("user", entry.content);
+          else if (entry.role === "assistant" && entry.content) appendMessage("assistant", entry.content);
+          else if (entry.role === "tool") appendMessage("tool", entry.content);
+        }
+      } catch {
+        // Leave the transcript empty rather than blocking the UI.
+      }
+    }
 
     function appendMessage(kind, text) {
       const div = document.createElement("div");
@@ -144,6 +209,23 @@
       }
       return currentAssistant;
     }
+
+    sessionSelect.addEventListener("change", async () => {
+      currentSessionId = sessionSelect.value;
+      totalTokens = 0;
+      usage.textContent = "";
+      await loadHistory(currentSessionId);
+      setStatus("session " + currentSessionId);
+    });
+
+    newSessionButton.addEventListener("click", async () => {
+      currentSessionId = "session-" + Date.now().toString(36);
+      ensureSessionOption(currentSessionId);
+      totalTokens = 0;
+      usage.textContent = "";
+      await loadHistory(currentSessionId);
+      setStatus("new session");
+    });
 
     input.addEventListener("input", () => {
       input.style.height = "auto";
@@ -173,7 +255,7 @@
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ message }),
+          body: JSON.stringify({ message, sessionId: currentSessionId }),
         });
         if (!res.ok || !res.body) {
           const text = await res.text().catch(() => "");
@@ -247,6 +329,7 @@
           break;
         case "done":
           setStatus("done · " + parsed.turns + " turn(s)");
+          loadSessions();
           break;
       }
     }
@@ -255,6 +338,8 @@
       if (typeof output !== "string") return JSON.stringify(output);
       return output.length > 120 ? output.slice(0, 117) + "..." : output;
     }
+
+    loadSessions().then(() => loadHistory(currentSessionId));
   </script>
 </body>
 </html>

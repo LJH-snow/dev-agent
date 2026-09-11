@@ -45,6 +45,8 @@ export interface ChatSessionOptions {
   readonly summaryMaxChars?: number;
   readonly approvalMode?: DesktopApprovalMode;
   readonly rustBinaryPath?: string;
+  /** Overrides where the session history is stored. */
+  readonly memoryFilePath?: string;
 }
 
 export class ChatSession {
@@ -59,6 +61,7 @@ export class ChatSession {
   private readonly summaryMaxChars?: number;
   private readonly approval?: ApprovalPolicy;
   private context: AgentContext;
+  private readonly sessionId: string;
 
   constructor(options: ChatSessionOptions = {}) {
     this.model = createProvider();
@@ -69,8 +72,10 @@ export class ChatSession {
     }
 
     const sessionId = normalizeSessionId(options.sessionId ?? "desktop-default");
-    const memoryFile = process.env.DEV_AGENT_MEMORY_FILE ?? defaultMemoryPath(sessionId);
+    const memoryFile =
+      options.memoryFilePath ?? process.env.DEV_AGENT_MEMORY_FILE ?? defaultMemoryPath(sessionId);
     this.memory = new FileMemory({ filePath: memoryFile });
+    this.sessionId = sessionId;
     this.workingDirectory = options.workingDirectory ?? process.cwd();
     this.systemPrompt = options.systemPrompt ?? defaultSystemPrompt;
     this.maxTurns = options.maxTurns ?? 12;
@@ -152,12 +157,16 @@ export class ChatSession {
       throw error;
     }
   }
+
+  get id(): string {
+    return this.sessionId;
+  }
 }
 
 const defaultSystemPrompt =
   "You are dev-agent, a coding agent running in a desktop chat UI. Use tools when they help answer the user.";
 
-function normalizeSessionId(sessionId: string): string {
+export function normalizeSessionId(sessionId: string): string {
   const normalized = sessionId
     .trim()
     .toLowerCase()
@@ -168,7 +177,8 @@ function normalizeSessionId(sessionId: string): string {
 }
 
 function defaultMemoryPath(sessionId: string): string {
-  return join(homedir(), ".dev-agent", "sessions", `${sessionId}.json`);
+  const dir = process.env.DEV_AGENT_SESSION_DIR ?? join(homedir(), ".dev-agent", "sessions");
+  return join(dir, `${sessionId}.json`);
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {

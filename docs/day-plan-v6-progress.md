@@ -5,12 +5,36 @@
 
 ## 当前状态
 
-- 当前阶段：Backlog 3（桌面端多会话）
+- 当前阶段：无（阶段 0-5 与 backlog 全部完成）
 - 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4、阶段 5
 - 最近一次运行：运行 6（2026-09-11 13:35-13:50）
 - 工作区：阶段 5 的改动已提交并推送
 
 ## 日志
+
+### 运行 9 — 2026-09-11 14:20-14:50
+
+- 阶段/工作项：Backlog 3（桌面端多会话）完成；v6 计划与 backlog 全部收口
+- 做了什么：
+  - `ChatSession`：新增 `id` getter 与 `memoryFilePath` 选项，
+    `defaultMemoryPath` 现在也尊重 `DEV_AGENT_SESSION_DIR`，
+    `normalizeSessionId` 导出给服务端复用
+  - `server.ts`：会话注册表（默认会话 + 按需创建，测试可注入工厂）；
+    in-flight 标记从"全局一个"改成"按 session 一个"
+  - 新路由：`GET /api/sessions`（磁盘上的会话文件 + 内存会话，按最近活跃排序）、
+    `GET /api/sessions/<id>/messages`（历史记录）
+  - `POST /api/chat` 接受可选 `sessionId`，未知 id 首次使用时创建；同一会话仍
+    串行（409），不同会话可并行
+  - UI：头部新增会话下拉框与 `+` 新建按钮；切换会重载该会话历史，发送请求带上
+    `sessionId`，`done` 后刷新会话列表
+  - 文档：`apps/desktop/README.md` 增加会话 API 与说明，并修正"运行中的工具不会被
+    取消"的旧描述（v4 已实现取消）
+- 验证命令与结果：
+  - `apps/desktop`：27 passed（新增 3 个：会话列表 + 历史读取、`sessionId` 路由到
+    对应会话、不同会话并行且同会话仍 409）
+  - `pnpm build`、`pnpm typecheck`、`pnpm test`：全绿（TypeScript 304 个测试）
+- 提交：见 Backlog 3 的 feat 提交
+- 下一步：无（阶段 0-5 与 backlog 均完成）
 
 ### 运行 8 — 2026-09-11 14:05-14:20
 
@@ -83,6 +107,17 @@
 
 已知边界：桌面端没有交互式审批按钮（ask 按 deny 处理）；审批只覆盖 shell/git 命令与
 filesystem 写入，其他工具一律放行；摘要与审批都需要显式开启，默认行为与之前一致。
+
+## Backlog 收口（2026-09-11 14:50）
+
+| 项 | 产出 |
+|----|------|
+| 1 | Rust 运行时并发上限：`DEV_AGENT_MAX_CONCURRENT`（默认 5），超出返回 `CONCURRENCY_LIMIT`，含 3 个二进制单元测试与真实二进制集成用例 |
+| 2 | CLI `--json`：`--once`、`--tools`、`--metadata`、`--session-list`、`--compact` 输出机器可读 JSON，隐含关闭流式 |
+| 3 | 桌面端多会话：`GET /api/sessions`、`GET /api/sessions/<id>/messages`、`POST /api/chat` 的 `sessionId`、按会话串行、UI 会话选择器与历史重载 |
+
+最终测试数量：TypeScript 304（+34），Rust 46（43 lib + 3 bin，+3），真实二进制集成 10（+1）。
+`node scripts/check.mjs`、`pnpm build/typecheck/test`、`cargo fmt/clippy/test` 全部通过。
 
 ### 运行 5 — 2026-09-11 15:15-15:45
 

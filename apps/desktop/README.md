@@ -47,12 +47,16 @@ Configure the model provider the same way as the CLI, via environment variables:
 
 - `GET /` — chat UI.
 - `GET /health` — `{ "status": "ok" }`.
+- `GET /api/sessions` — the default session id plus every session file in
+  `DEV_AGENT_SESSION_DIR` (`~/.dev-agent/sessions` by default), newest first.
+- `GET /api/sessions/<id>/messages` — the stored transcript of one session.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-result`, `turn`, `usage`, `approval`, `done`,
   `error`. An `approval` frame carries `{ tool, decision, reason }`; a denial is
   also written back to the model as that tool's result.
-- `POST /api/chat` while another run is in flight — `409`, so two runs never
-  interleave the same conversation state.
+- `POST /api/chat` takes an optional `sessionId` (unknown ids are created on
+  first use). The `409` guard is per session: different sessions run
+  concurrently while one session stays serialised.
 
 ## Interrupts
 
@@ -60,9 +64,15 @@ Disconnecting the client aborts the running agent: the abort signal is forwarded
 to the model request and checked before each turn and each tool call. The
 stream closes with a `done` frame carrying `{ "status": "aborted" }`.
 
-A tool call that is already executing is not killed; the run stops before the
-next one. Cancelling an in-flight sandboxed command would need a cancel message
-in the Rust executor protocol and is out of scope for now.
+A tool call that is already executing is cancelled too: the signal reaches the
+executor, which kills the command (see `packages/executor`).
+
+## Sessions
+
+The header has a session picker plus a `+` button for a new one. Switching
+sessions reloads that transcript and sends later messages to it. With
+`DEV_AGENT_MEMORY_FILE` set, every session shares that single file; leave it
+unset to get one file per session.
 
 ## Tests
 
