@@ -24,7 +24,7 @@ export function scanPythonSymbols(source: string, filePath: string): CodeSymbol[
       continue;
     }
 
-    const funcMatch = /^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(trimmed);
+    const funcMatch = /^(?:async\s+)?def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/.exec(trimmed);
     if (funcMatch && funcMatch[1]) {
       const name = funcMatch[1];
       const kind: SymbolKind = currentClass !== undefined && indent > 0 ? "method" : "function";

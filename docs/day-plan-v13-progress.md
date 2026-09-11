@@ -4,12 +4,29 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（Python 扫描器支持 `async def`）未开始
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-11 22:3x-22:5x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：阶段 2（`code-search` 不再裁剪扫描范围之外的索引条目）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-11 22:5x-23:0x）
+- 工作区：阶段 1 的改动待提交
 
 ## 日志
+
+### 运行 2 — 2026-09-11 22:5x-23:0x
+
+- 阶段/工作项：阶段 1（Python 扫描器支持 `async def`）完成
+- 做了什么：
+  - `scanPythonSymbols` 的声明正则改为 `^(?:async\s+)?def\s+…`：顶层
+    `async def` 记为 `function`，类内 `async def` 记为 `method` 并带
+    `containerName`；装饰器行本来就被跳过，所以 `@cached` + `async def` 也覆盖
+  - 新增 2 个测试：async 顶层函数（并确认 `await write(...)` 不会被当成声明）、
+    装饰器 + 类内 async 方法
+- 验证命令与结果：
+  - `pnpm --filter @dev-agent/code-intelligence build`：通过
+  - `packages/code-intelligence`：30 passed（28 + 2）
+  - `pnpm typecheck`：通过
+  - `pnpm test`：全绿（TypeScript 392 个测试，0 失败）
+- 提交：见阶段 1 的 fix 提交
+- 下一步：阶段 2 — 窄 `maxDepth` 的 `code-search` 不再把深层索引条目写回删除
 
 ### 运行 1 — 2026-09-11 22:3x-22:5x
 

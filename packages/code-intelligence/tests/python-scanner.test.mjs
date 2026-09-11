@@ -41,3 +41,36 @@ test("python scanner handles empty files", () => {
   const symbols = scanPythonSymbols("", "empty.py");
   assert.equal(symbols.length, 0);
 });
+
+test("python scanner detects async functions", () => {
+  const source = `
+async def fetch(url):
+    return url
+
+async def save(value):
+    await write(value)
+`;
+  const symbols = scanPythonSymbols(source, "async.py");
+  const names = symbols.map((symbol) => symbol.name);
+
+  assert.ok(names.includes("fetch"));
+  assert.ok(names.includes("save"));
+  assert.equal(symbols.find((symbol) => symbol.name === "fetch").kind, "function");
+  assert.ok(!names.includes("write"), "await calls are not declarations");
+});
+
+test("python scanner detects decorated async methods", () => {
+  const source = `
+class Client:
+    @cached
+    async def get(self, url):
+        return await fetch(url)
+`;
+  const symbols = scanPythonSymbols(source, "client.py");
+  const method = symbols.find((symbol) => symbol.name === "get");
+
+  assert.ok(method);
+  assert.equal(method.kind, "method");
+  assert.equal(method.containerName, "Client");
+  assert.equal(symbols.filter((symbol) => symbol.name === "fetch").length, 0);
+});
