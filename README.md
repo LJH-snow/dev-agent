@@ -195,7 +195,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   grandchildren are covered and nothing keeps running in the background
 - Token usage: providers report `usage`, the loop accumulates it on the
   context and fires `onUsage`, and the CLI (`[usage] …`) plus the desktop
-  (`usage` SSE event and header counter) surface it
+  (`usage` SSE event and header counter) surface it. The total is also written
+  to the session (`metadata.usage`), so `--metadata`, `--session-list --json`,
+  and a desktop reload can restore it
 - Long sessions can summarize instead of forget: `contextBudget.summarize`
   replaces trimmed history with an incrementally grown `[summary]` digest
   (`DEV_AGENT_SUMMARIZE_CONTEXT`), falling back to the omission notice on error
@@ -218,6 +220,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   exit when something fails
 - Sessions can be removed: `--session-delete <id>` in the CLI and
   `DELETE /api/sessions/<id>` plus a Delete button in the desktop picker
+- Sessions can be renamed from both surfaces: `--session-rename <old> <new>` in
+  the CLI, and `POST /api/sessions/<id>/rename` plus a Rename button in the
+  desktop picker; an existing target is refused instead of overwritten
 - Editing stopped being "rewrite the whole file": `filesystem` gained an `edit`
   action that replaces a snippet only when it matches exactly once, and `read`
   takes `offset`/`limit` (2000 lines by default) so large files come back in
@@ -227,14 +232,17 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   key is the command plus its first subcommand (`npm test`, `git status`), so
   extra flags such as `npm test -- --watch` do not trigger a second prompt
 - `dev-agent --index <path>` scans a directory and writes a symbol index to
-  `<path>/.dev-agent/index.json` (same ignore rules as `code-search`)
+  `<path>/.dev-agent/index.json` (same ignore rules as `code-search`); a second
+  run reuses the files whose mtime/size did not change (`reused` in the report)
+- `code-search` refreshes that same index file after its incremental scan finds
+  changed files, so the next process starts from a current cache
 - `filesystem` gained a `patch` action that applies several `oldText`/`newText`
   hunks in one write: every hunk must match exactly once and not overlap, and a
   failure leaves the file untouched
 - Usage costs are estimated when `~/.dev-agent/config.json` has a `pricing`
   section: the CLI appends `cost=$…` to its `[usage]` line, the desktop header
   adds `$…`, and an unconfigured or unknown model shows no cost at all
-- Test suite: 359 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 368 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -283,3 +291,6 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 31. ~~Atomic multi-hunk `filesystem patch`~~ (done)
 32. ~~Normalized always-allow keys across flags and arguments~~ (done)
 33. ~~Usage cost estimation from a configurable price table~~ (done)
+34. ~~Incremental `--index` refresh and `code-search` write-back~~ (done)
+35. ~~Session token usage persisted with the session~~ (done)
+36. ~~Desktop session rename control~~ (done)

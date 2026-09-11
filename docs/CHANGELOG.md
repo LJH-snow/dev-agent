@@ -1,5 +1,53 @@
 # Changelog
 
+## 2026-09-11 (Day plan v10: incremental indexing, session usage, rename UI)
+
+Executed `docs/day-plan-v10.md`. This pass closes the loops v9 left open: the
+symbol index refreshes itself instead of only being read back, token usage
+survives the process that produced it, and the desktop exposes the session
+rename API it already had.
+
+### Changed: `--index` reuses unchanged files
+- `indexDirectory` stats the tree first and loads the previous
+  `.dev-agent/index.json`; files whose mtime/size signature still matches keep
+  their stored sources and symbols instead of being re-read, changed or new
+  files are rescanned, and deleted files drop out. First runs and malformed
+  indexes still do a full scan.
+- `IndexReport` gained `reused`; the human output reads
+  `Indexed N files / M symbols (K reused)` and `--json` carries the field.
+
+### Added: `code-search` writes refreshed scans back
+- When a scan that started from `<root>/.dev-agent/index.json` finds changed or
+  deleted files, the tool rewrites the refreshed
+  `{ version, files, symbols, signatures }` to that file. It only touches an
+  index that already exists, and a failed write never fails the search.
+- `getCacheStats()` gained `persisted`; `InMemoryCodeIndex` gained
+  `listSymbols()` for the write-back.
+
+### Added: session token usage survives a restart
+- `AgentMemory.recordUsage()` is awaited for every provider usage report.
+  `InMemoryMemory` accumulates it in process; `FileMemory` merges it into the
+  session file as `metadata.usage` (and `addUsage` moved to `usage.ts` so both
+  paths share the arithmetic).
+- CLI `--metadata` prints `Usage: prompt=… completion=… total=…`, and
+  `--session-list --json` includes each session's `usage` (`null` when absent).
+- Desktop `GET /api/sessions` returns `usage` plus a `cost` estimate made with
+  the current model and `pricing` table; the chat header restores both when a
+  session is switched or the page is reloaded.
+
+### Added: desktop session rename control
+- The picker gained a `Rename` button that prompts for a new id and calls the
+  existing `POST /api/sessions/<id>/rename`, then reloads the list and history;
+  conflicts and failures surface in the status line.
+
+### Tests
+- TypeScript: 359 -> 368. Rust: 46 (unchanged).
+- New coverage: index reuse and `reused` reporting, code-search write-back
+  (changed scan, unchanged no-write, no index created, failed write tolerated),
+  usage accumulation in both memory implementations and through a full agent
+  run, CLI metadata usage output, desktop session summaries with usage/cost,
+  and the served rename control.
+
 ## 2026-09-11 (Day plan v9: index reuse, atomic patches, cost estimates)
 
 Executed `docs/day-plan-v9.md`. The theme is making the agent's own bookkeeping

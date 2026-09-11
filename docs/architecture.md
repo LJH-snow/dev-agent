@@ -38,7 +38,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   request into the key an "always allow" decision is remembered under (command
   name + first non-flag token, `sh -c` unwrapped), so extra flags share one key.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
-  loop accumulates the totals on `AgentContext.usage` across runs.
+  loop accumulates the totals on `AgentContext.usage` across runs. Each report
+  is also handed to `AgentMemory.recordUsage()`, which `InMemoryMemory` keeps in
+  process and `FileMemory` persists as `metadata.usage`, so a restarted CLI or
+  desktop session can restore the total.
 
 ### `packages/model`
 - Unified `ModelProvider` interface with `chat()` and `streamChat()` methods.
@@ -73,7 +76,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   sources) and re-reads only files whose size or mtime changed; deleted files
   leave the index. A cold cache first loads the signature map written by
   `--index` into `<root>/.dev-agent/index.json` (when present) and only rescans
-  what changed. `getCacheStats()` exposes hits/misses/rescanned/loadedFromDisk.
+  what changed, then writes the refreshed index back to that file (best effort,
+  only when it already exists). `getCacheStats()` exposes
+  hits/misses/rescanned/loadedFromDisk/persisted.
 
 ### `packages/mcp`
 - `McpStdioClient`: JSON-RPC 2.0 over stdio transport.
@@ -101,7 +106,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   `.next`, `.cache`, `.dev-agent`), scans TS/JS/Python/Rust with `scanFile`, and
   writes `{ version, files, symbols, signatures }` to
   `<path>/.dev-agent/index.json` in the same shape `JsonFileCodeIndex.load()`
-  understands.
+  understands. A later run reuses the sources and symbols of files whose
+  signature still matches instead of re-reading them (`reused` in the report).
+- Session metadata carries the accumulated `usage`; `--metadata` prints it and
+  `--session-list --json` includes it per session.
 - Approval rules can come from `~/.dev-agent/config.json`: `approval.allow`
   lists command substrings that always pass and `approval.deny` adds regular
   expressions to the dangerous table. `ask` decisions can be remembered for the
@@ -141,6 +149,10 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - **Usage cost**: `usage` SSE frames carry an optional `cost` when the shared
   config has a matching `pricing` entry; the header accumulates tokens and cost
   per session and shows `$…` only when at least one frame was priced.
+- **Sessions**: the picker can rename the current session (same
+  `POST /api/sessions/<id>/rename` contract as the CLI), and `GET /api/sessions`
+  returns each session's persisted `usage` plus a cost estimate for the current
+  model, so switching or reloading restores the header counters.
 - **Interrupts**: a client disconnect aborts the run (the stream closes with
   `done { "status": "aborted" }`), and a second concurrent chat is rejected with
   409 so two runs never share one conversation state.

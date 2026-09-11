@@ -4,13 +4,36 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-11 20:4x-20:5x）
-- 工作区：阶段 2 的改动待提交；`bf20461` 起的推送被 GitHub 403 阻塞
-  （账号邮箱未验证，见错误与卡点）
+- 当前阶段：无，`docs/day-plan-v10.md` 的四个阶段已全部完成
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-11 20:2x-20:3x）
+- 工作区：阶段 3 的文档改动提交后即 clean；`bf20461` 与 `4a405cd`
+  已在 403 解除后成功推送
 
 ## 日志
+
+### 运行 4 — 2026-09-11 20:2x-20:3x
+
+- 阶段/工作项：阶段 3（文档、全量回归与提交）完成
+- 做了什么：
+  - 根 `README.md`：Current Status 更新 `--index` 复用/回写、会话用量持久化、
+    会话重命名入口，测试数更新为 368 TS + 46 Rust；Roadmap 追加 34-36
+  - `docs/architecture.md`：agent-core 用量持久化、tools 回写与 `persisted`、
+    CLI `reused`/`usage`、desktop 重命名与头部恢复
+  - `docs/CHANGELOG.md`：新增「Day plan v10」条目（359 -> 368）
+  - 推送卡点复查：阶段 1 的 403（GitHub 要求验证邮箱）在阶段 3 收尾时自行
+    恢复，`bf20461`、`4a405cd` 已推送成功
+- 验证命令与结果（完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed（13 目录 / 34 文件）
+  - `pnpm build`：通过
+  - `pnpm typecheck`：通过
+  - `pnpm test`：368 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed / 0 failed
+  - `cargo fmt --check`：通过
+  - `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）/ 0 failed
+- 提交：见阶段 3 的 docs 提交
+- 下一步：v10 计划已收尾；如需继续，可基于本账本开新的 day-plan
 
 ### 运行 3 — 2026-09-11 20:4x-20:5x
 
@@ -88,4 +111,4 @@
 
 | 时间 | 阶段 | 问题 | 处理 |
 |------|------|------|------|
-| 2026-09-11 20:4x | 阶段 1 推送 | GitHub 返回 403：`You must verify your email address`（HTTPS 与 SSH 均不可用，SSH 无公钥） | 提交保留在本地，继续做剩余阶段并周期性重试；需要账号邮箱在 github.com/settings/emails 验证后才能推送 |
+| 2026-09-11 20:4x | 阶段 1 推送 | GitHub 返回 403：`You must verify your email address`（HTTPS 与 SSH 均不可用，SSH 无公钥） | 提交保留在本地，继续做剩余阶段并重试；20:3x 重试成功（`bf20461`、`4a405cd` 已推送），若再次出现需在 github.com/settings/emails 验证账号邮箱 |
