@@ -41,6 +41,39 @@ async function createMultiLanguageProject({ persisted = true } = {}) {
   return { dir };
 }
 
+/** A shallow file plus a file two levels down, both present in one index. */
+async function createDepthProject() {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-depth-"));
+  const shallowFile = join(dir, "shallow.ts");
+  const deepFile = join(dir, "deep", "nested", "deep.ts");
+  const shallowSource = "export function shallow() {}\n";
+  const deepSource = "export function deepSymbol() {}\n";
+  await mkdir(join(dir, "deep", "nested"), { recursive: true });
+  await writeFile(shallowFile, shallowSource, "utf8");
+  await writeFile(deepFile, deepSource, "utf8");
+  const shallowInfo = await stat(shallowFile);
+  const deepInfo = await stat(deepFile);
+
+  await mkdir(join(dir, ".dev-agent"), { recursive: true });
+  await writeFile(
+    join(dir, ".dev-agent", "index.json"),
+    JSON.stringify({
+      version: 1,
+      files: { [shallowFile]: shallowSource, [deepFile]: deepSource },
+      symbols: [
+        { name: "shallow", kind: "function", filePath: shallowFile, line: 1 },
+        { name: "deepSymbol", kind: "function", filePath: deepFile, line: 1 },
+      ],
+      signatures: {
+        [shallowFile]: { mtimeMs: shallowInfo.mtimeMs, size: shallowInfo.size },
+        [deepFile]: { mtimeMs: deepInfo.mtimeMs, size: deepInfo.size },
+      },
+    }),
+    "utf8"
+  );
+  return { dir, shallowFile, deepFile };
+}
+
 /** Writes a project plus a persisted index that claims a symbol the source lacks. */
 async function createProject({ signatureOverride } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-persisted-"));
@@ -282,6 +315,52 @@ test("a scan without a persisted index still indexes python and rust", async () 
     assert.equal(rust.count, 1);
     assert.equal(rust.results[0].filePath, join(dir, "sample.rs"));
     await assert.rejects(stat(join(dir, ".dev-agent", "index.json")));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a narrow maxDepth scan keeps deeper index entries on disk", async () => {
+  const { dir, shallowFile, deepFile } = await createDepthProject();
+  const tool = new CodeSearchTool();
+  try {
+    const result = await tool.execute({
+      mode: "search",
+      query: "shallow",
+      path: dir,
+      maxDepth: 1,
+    });
+
+    assert.equal(result.count, 1);
+    const stats = tool.getCacheStats();
+    assert.equal(stats.persisted, 0, "nothing in scope changed, so nothing is rewritten");
+
+    const index = JSON.parse(
+      await readFile(join(dir, ".dev-agent", "index.json"), "utf8")
+    );
+    assert.ok(index.files[shallowFile], "the shallow file stays indexed");
+    assert.ok(index.files[deepFile], "the deeper file must not be pruned");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a deleted deep file is removed when the scan covers its depth", async () => {
+  const { dir, shallowFile, deepFile } = await createDepthProject();
+  const tool = new CodeSearchTool();
+  try {
+    await rm(deepFile, { force: true });
+
+    const result = await tool.execute({ mode: "search", query: "shallow", path: dir });
+
+    assert.equal(result.count, 1);
+    assert.equal(tool.getCacheStats().persisted, 1);
+    const index = JSON.parse(
+      await readFile(join(dir, ".dev-agent", "index.json"), "utf8")
+    );
+    assert.ok(index.files[shallowFile]);
+    assert.equal(index.files[deepFile], undefined);
+    assert.ok(!index.symbols.some((symbol) => symbol.name === "deepSymbol"));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

@@ -1,5 +1,5 @@
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { extname, join, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   InMemoryCodeIndex,
@@ -178,8 +178,8 @@ export class CodeSearchTool implements Tool {
       const persisted = await readPersistedScan(root);
       if (persisted) {
         this.cacheStats.loadedFromDisk += 1;
-        cached = persisted;
-        this.cache.set(cacheKey, persisted);
+        cached = restrictToDepth(root, persisted, maxDepth);
+        this.cache.set(cacheKey, cached);
       } else if (await isFile(join(root, ".dev-agent", "index.json"))) {
         // The index exists but could not be used; the full scan below replaces
         // it, so the next process starts from a valid cache instead of
@@ -205,7 +205,7 @@ export class CodeSearchTool implements Tool {
       const scan: CachedScan = { index, signatures, sources, fromDisk: replaceBrokenIndex };
       this.cache.set(cacheKey, scan);
       if (replaceBrokenIndex) {
-        await this.persistScan(root, scan);
+        await this.persistScan(root, scan, maxDepth);
       }
       return scan;
     }
@@ -244,7 +244,7 @@ export class CodeSearchTool implements Tool {
     }
 
     if (changed > 0 && cached.fromDisk) {
-      await this.persistScan(root, cached);
+      await this.persistScan(root, cached, maxDepth);
     }
 
     return cached;
@@ -255,18 +255,54 @@ export class CodeSearchTool implements Tool {
    * not have to re-read the same changed files. Only an existing index is
    * touched, and a failure never fails the search.
    */
-  private async persistScan(root: string, scan: CachedScan): Promise<void> {
+  private async persistScan(
+    root: string,
+    scan: CachedScan,
+    maxDepth: number
+  ): Promise<void> {
     const indexPath = join(root, ".dev-agent", "index.json");
     try {
       const info = await stat(indexPath);
       if (!info.isFile()) {
         return;
       }
+      // Keep entries deeper than this scan: a narrow `maxDepth` must not
+      // delete what a wider scan indexed.
+      const files = new Map<string, string>();
+      const symbols: CodeSymbol[] = [];
+      const signatures = new Map<string, FileSignature>();
+      const existing = await readPersistedScan(root);
+      if (existing) {
+        for (const [filePath, source] of existing.sources) {
+          if (!isWithinDepth(root, filePath, maxDepth)) {
+            files.set(filePath, source);
+          }
+        }
+        for (const [filePath, signature] of existing.signatures) {
+          if (!isWithinDepth(root, filePath, maxDepth)) {
+            signatures.set(filePath, signature);
+          }
+        }
+        for (const symbol of existing.index.listSymbols()) {
+          if (!isWithinDepth(root, symbol.filePath, maxDepth)) {
+            symbols.push(symbol);
+          }
+        }
+      }
+
+      for (const [filePath, source] of scan.sources) {
+        files.set(filePath, source);
+      }
+      for (const [filePath, signature] of scan.signatures) {
+        signatures.set(filePath, signature);
+      }
+      symbols.push(...scan.index.listSymbols());
+
       const payload = {
         version: 1,
-        files: Object.fromEntries(scan.sources),
-        symbols: scan.index.listSymbols(),
-        signatures: Object.fromEntries(scan.signatures),
+        files: Object.fromEntries(files),
+        symbols,
+        signatures: Object.fromEntries(signatures),
       };
       await writeFile(indexPath, `${JSON.stringify(payload)}\n`, "utf8");
       this.cacheStats.persisted += 1;
@@ -295,6 +331,44 @@ function typeScriptSources(sources: ReadonlyMap<string, string>): Map<string, st
     }
   }
   return files;
+}
+
+/** Whether `filePath` sits at or above `maxDepth` below `root`. */
+function isWithinDepth(root: string, filePath: string, maxDepth: number): boolean {
+  const relativePath = relative(root, filePath);
+  if (!relativePath || relativePath.startsWith("..") || isAbsolute(relativePath)) {
+    return false;
+  }
+  return relativePath.split(sep).length - 1 <= maxDepth;
+}
+
+/**
+ * Drops everything deeper than the requested scan depth, so a narrow scan
+ * neither returns stale deep symbols nor mistakes them for deleted files.
+ */
+function restrictToDepth(root: string, scan: CachedScan, maxDepth: number): CachedScan {
+  const sources = new Map<string, string>();
+  for (const [filePath, source] of scan.sources) {
+    if (isWithinDepth(root, filePath, maxDepth)) {
+      sources.set(filePath, source);
+    }
+  }
+
+  const signatures = new Map<string, FileSignature>();
+  for (const [filePath, signature] of scan.signatures) {
+    if (isWithinDepth(root, filePath, maxDepth)) {
+      signatures.set(filePath, signature);
+    }
+  }
+
+  const index = new InMemoryCodeIndex();
+  for (const symbol of scan.index.listSymbols()) {
+    if (sources.has(symbol.filePath)) {
+      index.addSymbol(symbol);
+    }
+  }
+
+  return { index, sources, signatures, fromDisk: scan.fromDisk };
 }
 
 function requireString(value: unknown, field: string): string {
