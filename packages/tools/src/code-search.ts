@@ -160,6 +160,7 @@ export class CodeSearchTool implements Tool {
     const cacheKey = `${root}\u0000${maxDepth}`;
     const signatures = await collectSignatures(root, 0, maxDepth);
     let cached = this.cache.get(cacheKey);
+    let replaceBrokenIndex = false;
 
     if (!cached) {
       const persisted = await readPersistedScan(root);
@@ -167,6 +168,11 @@ export class CodeSearchTool implements Tool {
         this.cacheStats.loadedFromDisk += 1;
         cached = persisted;
         this.cache.set(cacheKey, persisted);
+      } else if (await isFile(join(root, ".dev-agent", "index.json"))) {
+        // The index exists but could not be used; the full scan below replaces
+        // it, so the next process starts from a valid cache instead of
+        // scanning everything again.
+        replaceBrokenIndex = true;
       }
     }
 
@@ -182,8 +188,13 @@ export class CodeSearchTool implements Tool {
         index.addSource(source, filePath);
       }
       this.cacheStats.misses += 1;
-      const scan: CachedScan = { index, signatures, sources, fromDisk: false };
+      // A repaired index is treated as disk-backed so later changes are
+      // written back too.
+      const scan: CachedScan = { index, signatures, sources, fromDisk: replaceBrokenIndex };
       this.cache.set(cacheKey, scan);
+      if (replaceBrokenIndex) {
+        await this.persistScan(root, scan);
+      }
       return scan;
     }
 
@@ -331,6 +342,14 @@ async function readSource(filePath: string): Promise<string | undefined> {
   } catch {
     // Skip unreadable files instead of failing the whole project scan.
     return undefined;
+  }
+}
+
+async function isFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
   }
 }
 

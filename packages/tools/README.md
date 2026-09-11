@@ -40,5 +40,6 @@ cache is empty it first tries `<root>/.dev-agent/index.json` — the file writte
 by `dev-agent --index` — and re-reads only the files whose stored signature no
 longer matches. If that scan changed anything, the refreshed index is written
 back to the same file (only when it already exists, and a write failure is
-ignored). A missing, stale-shaped, or corrupt index just falls back to a full
-scan, and a root without an index never gets one created by a search.
+ignored). A missing index falls back to a full scan and is never created by a
+search; an index that exists but cannot be parsed is replaced with a fresh one
+after that scan, so the next process starts from a valid cache.

@@ -105,6 +105,30 @@ test("a corrupted index falls back to a full scan", async () => {
   }
 });
 
+test("a corrupted index is rewritten from the full scan", async () => {
+  const { dir } = await createProject();
+  const tool = new CodeSearchTool();
+  const indexPath = join(dir, ".dev-agent", "index.json");
+  try {
+    await writeFile(indexPath, "{ not json", "utf8");
+
+    const result = await tool.execute({ mode: "search", query: "realSymbol", path: dir });
+
+    assert.equal(result.count, 1);
+    const stats = tool.getCacheStats();
+    assert.equal(stats.loadedFromDisk, 0);
+    assert.equal(stats.persisted, 1);
+
+    const index = JSON.parse(await readFile(indexPath, "utf8"));
+    assert.equal(index.version, 1);
+    const names = index.symbols.map((symbol) => symbol.name);
+    assert.ok(names.includes("realSymbol"), "the scan should be persisted");
+    assert.ok(!names.includes("ghostSymbol"), "the stale symbol should be gone");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a changed scan is written back to the persisted index", async () => {
   const { dir, file } = await createProject({ signatureOverride: { mtimeMs: 1, size: 1 } });
   const tool = new CodeSearchTool();
