@@ -5,12 +5,45 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-11 15:25-15:50）
-- 工作区：阶段 2 的改动已提交并推送
+- 当前阶段：Backlog 1（会话重命名）
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-11 15:50-16:10）
+- 工作区：阶段 3 的改动已提交并推送
 
 ## 日志
+
+### 运行 4 — 2026-09-11 15:50-16:10
+
+- 阶段/工作项：阶段 3（文档、全量回归与提交）完成；v7 阶段 0-3 收口
+- 做了什么：
+  - 根 `README.md`：Current Status 增加交互式审批、`--doctor`、会话删除三条，
+    测试数量更新为 315 TypeScript + 46 Rust；Roadmap 增加 24-26 项
+  - `docs/architecture.md`：补充交互式审批链路、doctor 检查项、会话管理命令
+  - `docs/CHANGELOG.md`：新增 v7 条目（含两个测试套件修复记录）
+- 验证命令与结果（完整回归矩阵）：
+  - `node scripts/check.mjs`：通过
+  - `pnpm build`、`pnpm typecheck`：通过
+  - `pnpm test`：315 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed
+  - `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：43（lib）+ 3（bin）passed
+- 提交：见阶段 3 的 docs 提交
+- 下一步：Backlog 1 — 会话重命名（CLI `--session-rename` + 桌面端接口）
+
+## 阶段 0-3 总结（2026-09-11 16:10）
+
+| 阶段 | 产出 |
+|------|------|
+| 0 | 桌面端交互式审批：`approval-request` SSE + `POST /api/approval` + UI Allow/Deny，超时按拒绝 |
+| 1 | `--doctor` 自检：Node/rg/protoc/Rust 运行时/provider key/会话目录，`--json` 与退出码 |
+| 2 | 会话删除：CLI `--session-delete`、桌面 `DELETE /api/sessions/<id>`、UI Delete 按钮 |
+| 3 | 文档、全量回归、提交推送 |
+
+测试数量：TypeScript 304 → 315（+11），Rust 46（未变），真实二进制集成 10。
+
+已知边界：审批提示没有"记住这个决定"的选项（每次都问）；doctor 不会真的调用
+模型 API 验证 key 是否有效，只检查是否配置；`--session-delete` 操作的是会话目录，
+当 `DEV_AGENT_MEMORY_FILE` 设置时该文件不受影响。
 
 ### 运行 3 — 2026-09-11 15:25-15:50
 

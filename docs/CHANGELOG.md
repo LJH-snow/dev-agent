@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-09-11 (Day plan v7: interactive approvals, doctor, session deletion)
+
+Executed `docs/day-plan-v7.md`, closing the approval boundary v6 left open and
+adding the operational tooling that was missing for real use.
+
+### Added: interactive approval prompts in the desktop UI
+- `ChatSession.run` accepts a `requestApproval` callback; with `ask` it confirms
+  flagged calls instead of denying them outright, and still denies when no
+  requester is available.
+- The server tracks pending approvals, emits `approval-request` over SSE, and
+  answers `POST /api/approval`; unanswered prompts are denied after
+  `DEV_AGENT_APPROVAL_TIMEOUT_MS` (default 120s).
+- The chat UI renders Allow/Deny buttons and shows the resulting decision.
+
+### Added: `dev-agent --doctor`
+- Checks Node (>=20), `rg`, `protoc` (warn only), the Rust runtime binary
+  (missing or failing health check is a failure; unconfigured is a warning),
+  the provider API key, and whether the session directory is writable.
+- `--doctor --json` prints `{ checks, summary }` and the process exits 1 when
+  any check fails. The runtime health probe is shared with `--check-rust`.
+
+### Added: session deletion
+- CLI `--session-delete <id>` removes `<sessionDir>/<id>.json` and reports
+  `{ sessionId, deleted }` with `--json`; a missing session is not an error.
+- Desktop `DELETE /api/sessions/<id>` removes the file and forgets the session
+  (404 when unknown), with a Delete button in the session picker.
+
+### Tests
+- TypeScript: 304 -> 315. Rust: 46 (unchanged this plan).
+- New coverage: interactive approval (deny, allow, timeout), doctor checks
+  (healthy, missing key, missing binary, JSON round trip), and session deletion
+  on both surfaces.
+
+### Fixed
+- `streamChat` referenced a closure variable it could not see, which only
+  surfaced once the desktop approval tests ran against a fresh build.
+- Desktop tests bound the shared default port 4317; they now use port 0 so test
+  files can run in parallel.
+
 ## 2026-09-11 (Day plan v6: approval policies, persistent digests, MCP resources)
 
 Executed `docs/day-plan-v6.md`. The main line is a command-approval layer: the

@@ -206,7 +206,16 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   the desktop via `DEV_AGENT_APPROVAL` and an `approval` SSE frame
 - MCP server mode also serves `resources` (`dev-agent://session`,
   `dev-agent://workspace`) and `prompts` (`review-changes`, `explain-codebase`)
-- Test suite: 297 TypeScript tests + 43 Rust tests, all passing
+- Desktop approvals are interactive: `DEV_AGENT_APPROVAL=ask` renders an
+  Allow/Deny prompt in the chat, waits for the click (denying after
+  `DEV_AGENT_APPROVAL_TIMEOUT_MS`), and reports the decision as an `approval`
+  frame
+- `dev-agent --doctor` checks Node, `rg`, `protoc`, the Rust runtime binary, the
+  provider key, and the session directory, with `--json` output and a non-zero
+  exit when something fails
+- Sessions can be removed: `--session-delete <id>` in the CLI and
+  `DELETE /api/sessions/<id>` plus a Delete button in the desktop picker
+- Test suite: 315 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -245,3 +254,6 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 21. ~~Approval policies for dangerous commands~~ (done)
 22. ~~CLI `--approval` modes and desktop approval wiring~~ (done)
 23. ~~MCP server resources and prompts~~ (done)
+24. ~~Interactive approval prompts in the desktop UI~~ (done)
+25. ~~`--doctor` environment self-check~~ (done)
+26. ~~Session deletion in the CLI and desktop~~ (done)

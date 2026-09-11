@@ -32,6 +32,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   run. `denyDangerousPolicy()` matches a built-in pattern table and blocks
   filesystem writes outside the working directory; a denial becomes the tool's
   result so the model can adapt, and a policy that throws counts as a denial.
+  Callers can install their own policy: the desktop passes a requester so `ask`
+  can prompt the user over SSE (`approval-request` / `POST /api/approval`) and
+  deny when nothing answers within the timeout.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
   loop accumulates the totals on `AgentContext.usage` across runs.
 
@@ -71,6 +74,13 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   `resources/read`) and `prompts` (`prompts/list`, `prompts/get`); the CLI
   serves `dev-agent://session`, `dev-agent://workspace`, `review-changes`, and
   `explain-codebase`.
+
+### `apps/cli` operational surface
+- `--doctor` probes the environment (Node, `rg`, `protoc`, the Rust runtime
+  binary via a HealthCheck envelope, the provider key, and the session
+  directory) and reports `{ ok, warn, fail }`, exiting 1 on any failure.
+- Sessions are managed end to end: `--session-list`, `--metadata`, `--compact`,
+  `--session-delete`, and a shared `DEV_AGENT_SESSION_DIR`.
 
 ### `packages/code-intelligence`
 - Multi-language symbol scanning: TypeScript (AST), Python (regex), Rust (regex).
