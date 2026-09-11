@@ -108,6 +108,7 @@ test("Anthropic chat counts cache reads and writes as prompt tokens", async () =
     completionTokens: 2,
     totalTokens: 14,
     cachedPromptTokens: 4,
+    cacheCreationPromptTokens: 3,
   });
 });
 
@@ -138,6 +139,7 @@ test("Anthropic streamChat does not double count cache tokens", async () => {
     completionTokens: 2,
     totalTokens: 14,
     cachedPromptTokens: 4,
+    cacheCreationPromptTokens: 3,
   });
 });
 

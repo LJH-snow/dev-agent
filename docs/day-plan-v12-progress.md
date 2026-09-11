@@ -4,12 +4,34 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（Anthropic 缓存写入 token 单独计价）未开始
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-11 21:2x-21:5x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：阶段 2（`--doctor` 校验共享配置）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-11 21:5x-22:0x）
+- 工作区：阶段 1 的改动待提交
 
 ## 日志
+
+### 运行 2 — 2026-09-11 21:5x-22:0x
+
+- 阶段/工作项：阶段 1（Anthropic 缓存写入 token 单独计价）完成
+- 做了什么：
+  - `ChatUsage` 增加可选 `cacheCreationPromptTokens`（包含在 `promptTokens` 内）；
+    Anthropic 的 `cache_creation_input_tokens` 解析到该字段，流式仍只在带
+    `input_tokens` 的事件上取值，避免 output-only delta 重复计数
+  - `addUsage` 同步累计缓存写入 token，会话总量与重新计价的成本保持一致
+  - `ModelPrice` 增加可选 `cacheCreationInputPerMillion`；`estimateCost` 现在
+    把 prompt 拆成「普通输入 / 缓存读取 / 缓存写入」三段分别计价，缺少对应
+    价格时回退输入价；两类缓存 token 相加后按 `promptTokens` 截断，不会出现负价
+  - 文档：model / cli README 同步新字段与回退语义
+- 验证命令与结果：
+  - `pnpm build`：通过
+  - `packages/model`：54 passed（新增 2 个：缓存写入按创建价、缺省回退输入价；
+    既有 Anthropic 解析用例断言补充 cacheCreationPromptTokens）
+  - `packages/agent-core`：57 passed（addUsage 断言覆盖缓存写入累计）
+  - `pnpm typecheck`：通过
+  - `pnpm test`：全绿（TypeScript 386 个测试，0 失败）
+- 提交：见阶段 1 的 feat 提交
+- 下一步：阶段 2 — `--doctor` 校验 `~/.dev-agent/config.json`（缺失/合法/非法）
 
 ### 运行 1 — 2026-09-11 21:2x-21:5x
 

@@ -150,7 +150,8 @@ invocation.
   (`inputPerMillion` / `outputPerMillion`), used to estimate the cost shown in
   `[usage]` and `--json`. An optional `cachedInputPerMillion` prices cache-hit
   prompt tokens (OpenAI/Anthropic report them separately) at a discount;
-  without it they are charged at the normal input price. The longest matching
+  `cacheCreationInputPerMillion` does the same for Anthropic cache writes.
+  Either falls back to the normal input price when unset. The longest matching
   prefix wins, so a dated snapshot such as `gpt-4o-mini-2024-07-18` can share
   the `gpt-4o-mini` entry. Entries with missing or negative values are ignored,
   and an unknown model simply shows no cost.

@@ -6,6 +6,8 @@ export interface ModelPrice {
   readonly outputPerMillion: number;
   /** Optional discounted price for prompt tokens served from a cache. */
   readonly cachedInputPerMillion?: number;
+  /** Optional price for prompt tokens written to a cache. */
+  readonly cacheCreationInputPerMillion?: number;
 }
 
 /**
@@ -47,20 +49,33 @@ export function estimateCost(
     return undefined;
   }
 
-  const cachedTokens = Math.min(
-    Math.max(usage.cachedPromptTokens ?? 0, 0),
-    usage.promptTokens
+  const cachedTokens = clampTokens(usage.cachedPromptTokens, usage.promptTokens);
+  const creationTokens = clampTokens(
+    usage.cacheCreationPromptTokens,
+    usage.promptTokens - cachedTokens
   );
-  const cachedPrice = best.price.cachedInputPerMillion;
-  const discounted =
-    typeof cachedPrice === "number" && Number.isFinite(cachedPrice) && cachedPrice >= 0;
-  const inputCost = discounted
-    ? (usage.promptTokens - cachedTokens) * best.price.inputPerMillion +
-      cachedTokens * cachedPrice
-    : usage.promptTokens * best.price.inputPerMillion;
+  const plainTokens = usage.promptTokens - cachedTokens - creationTokens;
+  const inputCost =
+    plainTokens * best.price.inputPerMillion +
+    cachedTokens * priceOr(best.price.cachedInputPerMillion, best.price.inputPerMillion) +
+    creationTokens *
+      priceOr(best.price.cacheCreationInputPerMillion, best.price.inputPerMillion);
   const cost =
     (inputCost + usage.completionTokens * best.price.outputPerMillion) / 1_000_000;
   return Number.isFinite(cost) ? cost : undefined;
+}
+
+function clampTokens(value: number | undefined, limit: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0 || limit <= 0) {
+    return 0;
+  }
+  return Math.min(value, limit);
+}
+
+function priceOr(value: number | undefined, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : fallback;
 }
 
 function isUsableUsage(usage: ChatUsage): boolean {

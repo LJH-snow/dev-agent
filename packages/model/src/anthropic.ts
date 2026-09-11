@@ -252,12 +252,17 @@ function applyAnthropicUsage(
     (hasInput ? wire.cache_read_input_tokens : undefined) ??
     current?.cachedPromptTokens ??
     0;
+  const cacheCreationPromptTokens =
+    (hasInput ? wire.cache_creation_input_tokens : undefined) ??
+    current?.cacheCreationPromptTokens ??
+    0;
   const completionTokens = wire.output_tokens ?? current?.completionTokens ?? 0;
   return {
     promptTokens,
     completionTokens,
     totalTokens: promptTokens + completionTokens,
     ...(cachedPromptTokens > 0 ? { cachedPromptTokens } : {}),
+    ...(cacheCreationPromptTokens > 0 ? { cacheCreationPromptTokens } : {}),
   };
 }
 

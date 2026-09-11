@@ -21,8 +21,9 @@ field undefined rather than reporting zeros.
 When a provider bills cache hits separately, `usage.cachedPromptTokens` carries
 the cached part of `promptTokens` (OpenAI
 `prompt_tokens_details.cached_tokens`, Anthropic `cache_read_input_tokens`).
-Anthropic's `cache_creation_input_tokens` also count as prompt tokens; the field
-is omitted when a response has no cached tokens.
+Anthropic's `cache_creation_input_tokens` become
+`usage.cacheCreationPromptTokens` and also count as prompt tokens. Both fields
+are omitted when a response has no cache tokens.
 
 ## Cost estimation
 
@@ -40,9 +41,10 @@ estimateCost(
 - `PriceTable` maps a model-name prefix to `inputPerMillion` /
   `outputPerMillion` (USD per one million tokens). The optional
   `cachedInputPerMillion` prices the cached part of the prompt instead of the
-  regular input price; without it cached tokens are charged at the full input
-  price. The longest matching prefix wins, so `gpt-4o` and `gpt-4o-mini` can
-  coexist and a dated snapshot picks the more specific entry.
+  regular input price, and `cacheCreationInputPerMillion` does the same for
+  cache writes; either falls back to the full input price when unset. The
+  longest matching prefix wins, so `gpt-4o` and `gpt-4o-mini` can coexist and a
+  dated snapshot picks the more specific entry.
 - No match, an empty model name, or a malformed/negative price returns
   `undefined`; this package never guesses a price or assumes the defaults of a
   provider.

@@ -80,12 +80,14 @@ test("addUsage keeps cached prompt tokens in the running total", () => {
     completionTokens: 2,
     totalTokens: 12,
     cachedPromptTokens: 6,
+    cacheCreationPromptTokens: 2,
   });
   const second = addUsage(first, {
     promptTokens: 5,
     completionTokens: 1,
     totalTokens: 6,
     cachedPromptTokens: 4,
+    cacheCreationPromptTokens: 1,
   });
 
   assert.deepEqual(second, {
@@ -93,6 +95,7 @@ test("addUsage keeps cached prompt tokens in the running total", () => {
     completionTokens: 3,
     totalTokens: 18,
     cachedPromptTokens: 10,
+    cacheCreationPromptTokens: 3,
   });
 });
 

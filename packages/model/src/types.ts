@@ -37,6 +37,8 @@ export interface ChatUsage {
   readonly totalTokens: number;
   /** Prompt tokens served from a provider cache, included in `promptTokens`. */
   readonly cachedPromptTokens?: number;
+  /** Prompt tokens written to a provider cache, included in `promptTokens`. */
+  readonly cacheCreationPromptTokens?: number;
 }
 
 export interface ChatOptions {
