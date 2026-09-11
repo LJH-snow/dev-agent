@@ -170,7 +170,7 @@ function outsideWorkingDirectoryWrite(request: ApprovalRequest): string | undefi
     return undefined;
   }
   const input = asRecord(request.input);
-  if (input.action !== "write" && input.action !== "mkdir") {
+  if (input.action !== "write" && input.action !== "edit" && input.action !== "mkdir") {
     return undefined;
   }
   const path = typeof input.path === "string" ? input.path : "";

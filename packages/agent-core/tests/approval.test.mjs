@@ -154,6 +154,34 @@ test("filesystem writes outside the working directory are denied", async () => {
   assert.equal(inside.runs.length, 1);
 });
 
+test("filesystem edits outside the working directory are denied", async () => {
+  const outside = await runOnce({
+    toolCall: {
+      id: "c1",
+      name: "filesystem",
+      input: { action: "edit", path: "/tmp/elsewhere.ts", oldText: "a", newText: "b" },
+    },
+    approval: denyDangerousPolicy(),
+    workingDirectory: "/workspace/project",
+  });
+  assert.equal(outside.runs.length, 0);
+  assert.match(
+    outside.entries.find((entry) => entry.role === "tool").content,
+    /outside the working directory/
+  );
+
+  const inside = await runOnce({
+    toolCall: {
+      id: "c1",
+      name: "filesystem",
+      input: { action: "edit", path: "src/agent.ts", oldText: "a", newText: "b" },
+    },
+    approval: denyDangerousPolicy(),
+    workingDirectory: "/workspace/project",
+  });
+  assert.equal(inside.runs.length, 1);
+});
+
 test("the built-in pattern table flags dangerous shapes and allows normal ones", () => {
   const policy = denyDangerousPolicy();
   const decide = (toolName, input) =>

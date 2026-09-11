@@ -13,6 +13,15 @@ Implemented in phase 1:
   container metadata
 - `createDefaultTools` - creates the default tool set from one executor
 
+`FilesystemTool` reads, writes, edits, lists, stats, and creates directories.
+`read` takes an optional `offset` (1-based) and `limit` (default 2000 lines) and
+answers with `{ content, startLine, endLine, totalLines, truncated }`, so large
+files can be read in slices. `edit` replaces `oldText` with `newText` only when
+that snippet appears exactly once; a missing or ambiguous match is an error the
+model can correct instead of a silent mis-edit. The same workspace rules apply
+to `edit` as to `write`: the approval policy denies targets outside the working
+directory.
+
 Built-in tools accept an optional context object with `sessionId` and
 `workingDirectory`. Shell/git/search commands run in that working directory,
 and filesystem and code-search paths are resolved relative to it. `code-search`
