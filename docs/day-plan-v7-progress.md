@@ -5,12 +5,33 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（`dev-agent doctor` 自检）未开始
-- 已完成阶段：阶段 0（桌面端交互式审批）
-- 最近一次运行：运行 1（2026-09-11 14:20-15:05）
-- 工作区：阶段 0 的改动已提交并推送
+- 当前阶段：阶段 2（会话删除）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-11 14:53-15:25）
+- 工作区：阶段 1 的改动已提交并推送
 
 ## 日志
+
+### 运行 2 — 2026-09-11 14:53-15:25
+
+- 阶段/工作项：阶段 1（`dev-agent doctor` 自检）全部完成
+- 做了什么：
+  - 新增 `apps/cli/src/doctor.ts`：`runDoctor()` 检查 Node 版本（>=20）、`rg`、
+    `protoc`（缺失只 warn）、Rust 执行器（未配置 warn / 路径不存在或健康检查失败
+    fail / 正常显示版本与能力）、provider API key（ollama 免 key，其余缺失 fail）、
+    会话目录可写；汇总 `{ ok, warn, fail }`
+  - 把 `checkRust` 的探测逻辑抽成 `probeRustBinary()`（含 protobuf 解码）供两处复用，
+    删掉 index.ts 里重复的解码实现
+  - CLI 新增 `--doctor`，支持 `--json`，有 fail 时退出码 1
+  - 文档：`apps/cli/README.md` 增加 `--doctor`
+- 验证命令与结果：
+  - 本机实跑：`node apps/cli/dist/index.js --doctor` → 6 checks: 5 ok, 1 warn
+    （未配置 Rust 执行器），退出码 0
+  - `apps/cli`：新增 4 个用例全部通过（健康环境全 ok、缺 provider key 记 fail、
+    Rust 路径不存在记 fail、`--doctor --json` 可解析且退出码与 fail 对应）
+  - `pnpm test`：全绿
+- 提交：见阶段 1 的 feat 提交
+- 下一步：阶段 2 — 会话删除（CLI `--session-delete` + 桌面端 `DELETE /api/sessions/<id>`）
 
 ### 运行 1 — 2026-09-11 14:20-15:05
 

@@ -36,6 +36,9 @@ Options:
 - `--json` - machine-readable output for `--once`, `--tools`, `--metadata`,
   `--session-list`, and `--compact`; implies `--no-stream` so nothing else is
   written to stdout
+- `--doctor` - check the environment (Node version, `rg`, `protoc`, the Rust
+  runtime binary, the provider API key, and the session directory); exits 1 when
+  any check fails. Combine with `--json` for `{ checks, summary }`
 - `--version` / `-v` - print the CLI version
 
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on

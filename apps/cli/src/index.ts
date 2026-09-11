@@ -40,6 +40,7 @@ import {
 } from "./config.js";
 import { buildMcpSystemPromptSupplement } from "./mcp-system-prompt.js";
 import type { McpResourceLine, McpPromptLine } from "./mcp-system-prompt.js";
+import { printDoctorReport, probeRustBinary, runDoctor } from "./doctor.js";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -119,6 +120,24 @@ export async function main(argv: string[]): Promise<void> {
       workingDirectory,
       rustBinaryPath,
     });
+    return;
+  }
+
+  if (args.includes("--doctor")) {
+    const config = loadConfig();
+    const report = await runDoctor({
+      providerId: resolveProviderId(config),
+      rustBinaryPath,
+      sessionDir: sessionDir(),
+    });
+    if (jsonOutput) {
+      console.log(JSON.stringify(report, null, 2));
+    } else {
+      printDoctorReport(report);
+    }
+    if (report.summary.fail > 0) {
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -506,153 +525,15 @@ async function checkRust(rustBinaryPath: string | undefined): Promise<void> {
     return;
   }
 
-  const { spawn } = await import("node:child_process");
-  const result = await new Promise<Buffer>((resolve, reject) => {
-    const child = spawn(path, { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = Buffer.alloc(0);
-    let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => { stdout = Buffer.concat([stdout, chunk]); });
-    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(`Rust executor exited with code ${code}: ${stderr}`));
-      }
-    });
-    // Send a HealthCheck envelope (request_id=1, health_check=4).
-    const envelope = [0x08, 0x01, 0x22, 0x00];
-    const frame = Buffer.alloc(4 + envelope.length);
-    frame.writeUInt32BE(envelope.length, 0);
-    Buffer.from(envelope).copy(frame, 4);
-    child.stdin.write(frame);
-    child.stdin.end();
-  });
-
-  if (result.length < 4) {
-    console.error("Rust executor returned no response");
+  try {
+    const healthCheck = await probeRustBinary(path);
+    console.log(`Rust executor binary: ${path}`);
+    console.log(`Runtime version: ${healthCheck.runtimeVersion}`);
+    console.log(`Capabilities: ${healthCheck.capabilities.join(", ")}`);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
-    return;
   }
-
-  const len = result.readUInt32BE(0);
-  const payload = result.subarray(4, 4 + len);
-  const healthCheck = decodeHealthCheckResponse(payload);
-  if (!healthCheck) {
-    console.error("Rust executor returned an unexpected response");
-    process.exitCode = 1;
-    return;
-  }
-  console.log(`Rust executor binary: ${path}`);
-  console.log(`Runtime version: ${healthCheck.runtimeVersion}`);
-  console.log(`Capabilities: ${healthCheck.capabilities.join(", ")}`);
-}
-
-interface DecodedHealthCheck {
-  readonly runtimeVersion: string;
-  readonly capabilities: string[];
-}
-
-function readProtobufVarint(buffer: Buffer, offset: number): { readonly value: number; readonly offset: number } {
-  let value = 0;
-  let shift = 0;
-  while (offset < buffer.length) {
-    const byte = buffer.readUInt8(offset);
-    offset += 1;
-    value |= (byte & 0x7f) << shift;
-    if ((byte & 0x80) === 0) {
-      return { value, offset };
-    }
-    shift += 7;
-  }
-  throw new Error("malformed protobuf varint");
-}
-
-function decodeLengthDelimited(buffer: Buffer, offset: number): { readonly data: Buffer; readonly offset: number } {
-  const length = readProtobufVarint(buffer, offset);
-  const end = length.offset + length.value;
-  if (end > buffer.length) {
-    throw new Error("malformed protobuf length-delimited field");
-  }
-  return {
-    data: buffer.subarray(length.offset, end),
-    offset: end,
-  };
-}
-
-function decodeHealthCheckResult(data: Buffer): DecodedHealthCheck {
-  let offset = 0;
-  let version = "";
-  const capabilities: string[] = [];
-  while (offset < data.length) {
-    const tag = readProtobufVarint(data, offset);
-    offset = tag.offset;
-    const field = tag.value >>> 3;
-    const wireType = tag.value & 0x07;
-    if (wireType !== 2) {
-      offset = readProtobufVarint(data, offset).offset;
-      continue;
-    }
-    const fieldData = decodeLengthDelimited(data, offset);
-    offset = fieldData.offset;
-    if (field === 1) {
-      version = fieldData.data.toString("utf8");
-    } else if (field === 2) {
-      capabilities.push(fieldData.data.toString("utf8"));
-    }
-  }
-  return { runtimeVersion: version, capabilities };
-}
-
-function decodeErrorResult(data: Buffer): string {
-  let offset = 0;
-  let message = "";
-  let code = "";
-  while (offset < data.length) {
-    const tag = readProtobufVarint(data, offset);
-    offset = tag.offset;
-    const field = tag.value >>> 3;
-    const wireType = tag.value & 0x07;
-    if (wireType !== 2) {
-      offset = readProtobufVarint(data, offset).offset;
-      continue;
-    }
-    const fieldData = decodeLengthDelimited(data, offset);
-    offset = fieldData.offset;
-    if (field === 1) {
-      message = fieldData.data.toString("utf8");
-    } else if (field === 2) {
-      code = fieldData.data.toString("utf8");
-    }
-  }
-  return `${code}: ${message}`;
-}
-
-function decodeHealthCheckResponse(payload: Buffer): DecodedHealthCheck | undefined {
-  let offset = 0;
-  let healthCheckData: Buffer | undefined;
-  while (offset < payload.length) {
-    const tag = readProtobufVarint(payload, offset);
-    offset = tag.offset;
-    const field = tag.value >>> 3;
-    const wireType = tag.value & 0x07;
-    if (wireType === 0) {
-      offset = readProtobufVarint(payload, offset).offset;
-      continue;
-    }
-    if (wireType !== 2) {
-      return undefined;
-    }
-    const fieldData = decodeLengthDelimited(payload, offset);
-    offset = fieldData.offset;
-    if (field === 3) {
-      healthCheckData = fieldData.data;
-    } else if (field === 4) {
-      throw new Error(`Rust executor returned an error: ${decodeErrorResult(fieldData.data)}`);
-    }
-  }
-  return healthCheckData ? decodeHealthCheckResult(healthCheckData) : undefined;
 }
 
 function normalizeSessionId(sessionId: string): string {
