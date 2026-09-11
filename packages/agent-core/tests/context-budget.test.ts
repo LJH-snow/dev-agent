@@ -11,7 +11,7 @@ import {
 function captureModel() {
   const state = { messages: undefined };
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat(messages) {
       state.messages = messages;
@@ -21,7 +21,11 @@ function captureModel() {
   return { model, state };
 }
 
-async function runWithHistory(entries, contextBudget, options = {}) {
+async function runWithHistory(
+  entries,
+  contextBudget,
+  options: { systemPrompt?: string; input?: string } = {}
+) {
   const memory = new InMemoryMemory();
   for (const entry of entries) {
     await memory.append(entry);

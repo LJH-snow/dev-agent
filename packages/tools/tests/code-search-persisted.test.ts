@@ -75,7 +75,9 @@ async function createDepthProject() {
 }
 
 /** Writes a project plus a persisted index that claims a symbol the source lacks. */
-async function createProject({ signatureOverride } = {}) {
+async function createProject({
+  signatureOverride,
+}: { signatureOverride?: { mtimeMs: number; size: number } } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-persisted-"));
   const file = join(dir, "sample.ts");
   await writeFile(file, SOURCE, "utf8");
@@ -100,7 +102,7 @@ async function createProject({ signatureOverride } = {}) {
 
 test("a persisted index is loaded on the first search", async () => {
   const { dir } = await createProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     const result = await tool.execute({ mode: "search", query: "ghostSymbol", path: dir });
 
@@ -113,7 +115,7 @@ test("a persisted index is loaded on the first search", async () => {
 
 test("files whose signature changed are re-read after loading the index", async () => {
   const { dir, file } = await createProject({ signatureOverride: { mtimeMs: 1, size: 1 } });
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     const stale = await tool.execute({ mode: "search", query: "ghostSymbol", path: dir });
     assert.equal(stale.count, 0, "the stale symbol should be dropped");
@@ -129,7 +131,7 @@ test("files whose signature changed are re-read after loading the index", async 
 
 test("files missing from disk are dropped from a loaded index", async () => {
   const { dir, file } = await createProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     // Point the index at a file that does not exist.
     await writeFile(
@@ -156,7 +158,7 @@ test("files missing from disk are dropped from a loaded index", async () => {
 
 test("a corrupted index falls back to a full scan", async () => {
   const { dir } = await createProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     await writeFile(join(dir, ".dev-agent", "index.json"), "{ not json", "utf8");
 
@@ -173,7 +175,7 @@ test("a corrupted index falls back to a full scan", async () => {
 
 test("a corrupted index is rewritten from the full scan", async () => {
   const { dir } = await createProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   const indexPath = join(dir, ".dev-agent", "index.json");
   try {
     await writeFile(indexPath, "{ not json", "utf8");
@@ -197,7 +199,7 @@ test("a corrupted index is rewritten from the full scan", async () => {
 
 test("a changed scan is written back to the persisted index", async () => {
   const { dir, file } = await createProject({ signatureOverride: { mtimeMs: 1, size: 1 } });
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     const result = await tool.execute({ mode: "search", query: "realSymbol", path: dir });
 
@@ -220,7 +222,7 @@ test("a changed scan is written back to the persisted index", async () => {
 
 test("an unchanged persisted index is not rewritten", async () => {
   const { dir } = await createProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   const indexPath = join(dir, ".dev-agent", "index.json");
   try {
     const before = await stat(indexPath);
@@ -239,7 +241,7 @@ test("an unchanged persisted index is not rewritten", async () => {
 test("a scan that did not start from an index does not create one", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-persisted-"));
   const file = join(dir, "sample.ts");
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     await writeFile(file, SOURCE, "utf8");
     await tool.execute({ mode: "search", query: "realSymbol", path: dir });
@@ -262,7 +264,7 @@ test("a failed write-back does not break the search", async (t) => {
   }
 
   const { dir } = await createProject({ signatureOverride: { mtimeMs: 1, size: 1 } });
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   const indexPath = join(dir, ".dev-agent", "index.json");
   await chmod(indexPath, 0o444);
   try {
@@ -278,7 +280,7 @@ test("a failed write-back does not break the search", async (t) => {
 
 test("python and rust symbols from a persisted index are searchable and preserved", async () => {
   const { dir } = await createMultiLanguageProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     for (const [query, name] of [
       ["tsOnly", "sample.ts"],
@@ -305,7 +307,7 @@ test("python and rust symbols from a persisted index are searchable and preserve
 
 test("a scan without a persisted index still indexes python and rust", async () => {
   const { dir } = await createMultiLanguageProject({ persisted: false });
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     const python = await tool.execute({ mode: "search", query: "python_only", path: dir });
     const rust = await tool.execute({ mode: "search", query: "rust_only", path: dir });
@@ -322,7 +324,7 @@ test("a scan without a persisted index still indexes python and rust", async () 
 
 test("a narrow maxDepth scan keeps deeper index entries on disk", async () => {
   const { dir, shallowFile, deepFile } = await createDepthProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     const result = await tool.execute({
       mode: "search",
@@ -347,7 +349,7 @@ test("a narrow maxDepth scan keeps deeper index entries on disk", async () => {
 
 test("a deleted deep file is removed when the scan covers its depth", async () => {
   const { dir, shallowFile, deepFile } = await createDepthProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     await rm(deepFile, { force: true });
 

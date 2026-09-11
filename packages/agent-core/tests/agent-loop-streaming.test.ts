@@ -24,7 +24,7 @@ test("agent loop invokes onToken callback when model provides streamChat", async
 
   let callCount = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       return { content: "should not be called", toolCalls: [] };
@@ -69,7 +69,7 @@ test("agent loop falls back to chat when onToken is not provided", async () => {
   let chatCalled = false;
 
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       chatCalled = true;
@@ -101,7 +101,7 @@ test("agent loop emits onToolCall then onToolResult for each tool invocation", a
     name: "add",
     description: "Adds two numbers.",
     async execute(input) {
-      const { a, b } = input;
+      const { a, b } = input as { a: number; b: number };
       return { sum: a + b };
     },
   });
@@ -109,14 +109,14 @@ test("agent loop emits onToolCall then onToolResult for each tool invocation", a
     name: "multiply",
     description: "Multiplies two numbers.",
     async execute(input) {
-      const { a, b } = input;
+      const { a, b } = input as { a: number; b: number };
       return { product: a * b };
     },
   });
 
   let callCount = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       callCount += 1;

@@ -15,7 +15,7 @@ async function createProject(source = "export function alphaSymbol() { return 1;
 
 test("a repeated symbol search reuses the cached index", async () => {
   const { dir } = await createProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     const first = await tool.execute({ mode: "search", query: "alphaSymbol", path: dir });
     assert.equal(first.count, 1);
@@ -37,7 +37,7 @@ test("a repeated symbol search reuses the cached index", async () => {
 
 test("a changed file is re-indexed without rebuilding the whole cache", async () => {
   const { dir, file } = await createProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     await tool.execute({ mode: "search", query: "alphaSymbol", path: dir });
     await writeFile(file, "export function betaSymbolName() { return 2; }\n", "utf8");
@@ -58,7 +58,7 @@ test("a changed file is re-indexed without rebuilding the whole cache", async ()
 
 test("a deleted file is dropped from the cached index", async () => {
   const { dir, file } = await createProject();
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     const before = await tool.execute({ mode: "search", query: "alphaSymbol", path: dir });
     assert.equal(before.count, 1);
@@ -83,7 +83,7 @@ test("reference lookups reuse the cached sources", async () => {
       "",
     ].join("\n")
   );
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   try {
     await tool.execute({ mode: "search", query: "alphaSymbol", path: dir });
 

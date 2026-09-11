@@ -21,7 +21,7 @@ async function withFile(content, run) {
 
 test("patch applies several hunks in one write", async () => {
   await withFile(ORIGINAL, async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     const result = await tool.execute({
       action: "patch",
       path,
@@ -41,7 +41,7 @@ test("patch applies several hunks in one write", async () => {
 
 test("patch leaves the file untouched when a later hunk fails", async () => {
   await withFile(ORIGINAL, async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     await assert.rejects(
       () =>
         tool.execute({
@@ -61,7 +61,7 @@ test("patch leaves the file untouched when a later hunk fails", async () => {
 
 test("patch rejects overlapping hunks", async () => {
   await withFile("abcdef\n", async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     await assert.rejects(
       () =>
         tool.execute({
@@ -80,7 +80,7 @@ test("patch rejects overlapping hunks", async () => {
 
 test("patch requires at least one well-formed hunk", async () => {
   await withFile(ORIGINAL, async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     await assert.rejects(
       () => tool.execute({ action: "patch", path, hunks: [] }),
       /non-empty hunks array/
@@ -99,7 +99,7 @@ test("patch requires at least one well-formed hunk", async () => {
 
 test("a single hunk behaves like edit", async () => {
   await withFile(ORIGINAL, async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     const result = await tool.execute({
       action: "patch",
       path,

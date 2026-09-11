@@ -65,7 +65,7 @@ test("agent loop runs tools from tool call deltas of a streaming provider", asyn
     description: "Reads a file.",
     async execute(input) {
       executed.push(input);
-      return `contents of ${input.path}`;
+      return `contents of ${(input as { path: string }).path}`;
     },
   });
 

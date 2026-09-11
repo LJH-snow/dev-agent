@@ -14,7 +14,7 @@ test("tool output exceeding maxOutputChars is truncated with notice", async () =
   });
 
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       return {
@@ -61,7 +61,7 @@ test("tool output within limit is not truncated", async () => {
   });
 
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       return {

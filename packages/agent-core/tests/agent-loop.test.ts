@@ -21,7 +21,7 @@ test("agent loop asks the model, runs tools, and finishes with a final answer", 
   let modelCalls = 0;
   let lastTools;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat(_messages, options) {
       modelCalls += 1;
@@ -63,7 +63,7 @@ test("a run records provider usage into session metadata", async () => {
   const memory = new InMemoryMemory();
   const context = createAgentContext("usage-run", memory);
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       return {
@@ -100,7 +100,7 @@ test("agent loop stops with an error state when maxTurns is reached", async () =
   });
 
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       return { content: "", toolCalls: [{ id: "call-1", name: "echo", input: {} }] };
@@ -133,7 +133,7 @@ test("agent loop passes runtime context to tools and system prompt", async () =>
   });
 
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat(messages) {
       lastMessages = messages;
@@ -169,7 +169,7 @@ test("agent loop passes runtime context to tools and system prompt", async () =>
 test("agent loop reports a missing tool back to the model", async () => {
   let calls = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       calls += 1;
@@ -206,7 +206,7 @@ test("agent loop reports a thrown tool error back to the model", async () => {
   });
   let calls = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       calls += 1;
@@ -239,7 +239,7 @@ test("a tool that keeps failing still ends at maxTurns", async () => {
     },
   });
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       return { content: "", toolCalls: [{ id: "call-1", name: "broken", input: {} }] };
@@ -258,7 +258,7 @@ test("a tool that keeps failing still ends at maxTurns", async () => {
 test("agent loop rejects without calling the model when already aborted", async () => {
   let modelCalls = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       modelCalls += 1;
@@ -294,7 +294,7 @@ test("agent loop stops before running a tool when the signal aborts mid-turn", a
   });
 
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       controller.abort();
@@ -328,7 +328,7 @@ test("agent loop passes the run signal into tool execution contexts", async () =
   });
 
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       modelCalls += 1;
@@ -355,7 +355,7 @@ test("agent loop accumulates usage across runs and reports each turn", async () 
   const usage = { promptTokens: 10, completionTokens: 5, totalTokens: 15 };
   const reported = [];
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       return { content: "done", toolCalls: [], usage };

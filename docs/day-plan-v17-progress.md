@@ -4,12 +4,35 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（`agent-core` + `tools` + `code-intelligence`）未开始
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-12 03:4x-04:0x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：阶段 2（`mcp` + `executor`，含 fixture）未开始
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-12 04:0x-04:3x）
+- 工作区：阶段 1 的改动待提交
 
 ## 日志
+
+### 运行 2 — 2026-09-12 04:0x-04:3x
+
+- 阶段/工作项：阶段 1（`agent-core` + `tools` + `code-intelligence`）完成
+- 做了什么：
+  - 三个包新增 `tsconfig.test.json`，`test` 脚本切到
+    `tsc -p tsconfig.test.json && node --test tests-dist/*.test.js`，
+    `clean` 追加 `tests-dist`
+  - 11 + 6 + 6 个测试文件改为 `.test.ts`（git mv 保留历史）
+  - 类型修复：24 处 model stub `id: "openai" as const`；69 处工具构造加
+    `: any`（`Tool.execute` 返回 `unknown`，测试按 JS 习惯读结果字段）；
+    approval 测试的 `decide` 辅助函数与 `runOnce` 参数补类型；
+    4 处工具入参按 `{ name/path/a/b }` 窄化
+- 验证命令与结果：
+  - 三个包 `tsc -p tsconfig.test.json`：0 error
+  - `packages/agent-core`：62 passed；`packages/tools`：70 passed；
+    `packages/code-intelligence`：30 passed
+  - `pnpm typecheck`：通过
+  - `pnpm test`：全绿（407 个测试）
+  - `git ls-files` 检查：三个包 tests 下已无 `.test.mjs`
+- 提交：见阶段 1 的 test 提交
+- 下一步：阶段 2 — `packages/mcp`（fake/flaky server fixture）与
+  `packages/executor`（mock-executor-binary fixture、集成测试）
 
 ### 运行 1 — 2026-09-12 03:4x-04:0x
 

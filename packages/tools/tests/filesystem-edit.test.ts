@@ -19,7 +19,7 @@ async function withFile(content, run) {
 
 test("edit replaces a unique snippet", async () => {
   await withFile("const answer = 1;\n", async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     const result = await tool.execute({
       action: "edit",
       path,
@@ -34,7 +34,7 @@ test("edit replaces a unique snippet", async () => {
 
 test("edit reports a missing snippet", async () => {
   await withFile("hello\n", async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     await assert.rejects(
       () => tool.execute({ action: "edit", path, oldText: "nope", newText: "x" }),
       /was not found/
@@ -44,7 +44,7 @@ test("edit reports a missing snippet", async () => {
 
 test("edit refuses an ambiguous snippet and leaves the file alone", async () => {
   await withFile("dup\ndup\n", async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     await assert.rejects(
       () => tool.execute({ action: "edit", path, oldText: "dup", newText: "x" }),
       /matches 2 locations/
@@ -55,7 +55,7 @@ test("edit refuses an ambiguous snippet and leaves the file alone", async () => 
 
 test("edit deletes a snippet when newText is empty", async () => {
   await withFile("keep\nremove me\n", async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     await tool.execute({ action: "edit", path, oldText: "remove me\n", newText: "" });
     assert.equal(await readFile(path, "utf8"), "keep\n");
   });
@@ -63,7 +63,7 @@ test("edit deletes a snippet when newText is empty", async () => {
 
 test("edit requires oldText and newText", async () => {
   await withFile("hello\n", async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     await assert.rejects(
       () => tool.execute({ action: "edit", path, newText: "x" }),
       /non-empty oldText/
@@ -78,7 +78,7 @@ test("edit requires oldText and newText", async () => {
 test("read returns a line range and marks truncation", async () => {
   const lines = Array.from({ length: 10 }, (_, index) => `line-${index + 1}`);
   await withFile(lines.join("\n"), async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     const slice = await tool.execute({ action: "read", path, offset: 3, limit: 2 });
 
     assert.equal(slice.content, "line-3\nline-4");
@@ -91,7 +91,7 @@ test("read returns a line range and marks truncation", async () => {
 
 test("read handles an offset past the end of the file", async () => {
   await withFile("only\n", async (path) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     const slice = await tool.execute({ action: "read", path, offset: 5 });
 
     assert.equal(slice.content, "");

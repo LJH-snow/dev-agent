@@ -15,13 +15,13 @@ test("full pipeline: user input -> tool execution -> final answer -> memory pers
     name: "greet",
     description: "Greet someone",
     async execute(input) {
-      return { greeting: `Hello, ${input.name}!` };
+      return { greeting: `Hello, ${(input as { name: string }).name}!` };
     },
   });
 
   let callCount = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       callCount += 1;
@@ -80,7 +80,7 @@ test("full pipeline with FileMemory persists entries to disk", async () => {
     });
 
     const model = {
-      id: "openai",
+      id: "openai" as const,
       model: "test",
       async chat() {
         return { content: "pong received", toolCalls: [] };

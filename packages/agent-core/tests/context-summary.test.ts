@@ -28,7 +28,7 @@ function createModel({ digest = "digest-text", answer = "done", toolOnFirstTurn 
   const calls = [];
   let conversationTurns = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat(messages) {
       calls.push(messages);
@@ -161,7 +161,7 @@ test("a failing summary falls back to the omission notice", async () => {
   const context = createAgentContext("summary-4", memory);
   const calls = [];
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat(messages) {
       calls.push(messages);

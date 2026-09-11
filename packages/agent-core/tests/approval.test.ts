@@ -15,7 +15,7 @@ import {
 function scriptedModel(toolCall) {
   let conversationTurns = 0;
   return {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       conversationTurns += 1;
@@ -49,7 +49,17 @@ function recordingTools() {
   return { tools, runs };
 }
 
-async function runOnce({ toolCall, approval, workingDirectory = "/workspace", events = [] }) {
+async function runOnce({
+  toolCall,
+  approval,
+  workingDirectory = "/workspace",
+  events = [],
+}: {
+  toolCall: any;
+  approval?: any;
+  workingDirectory?: string;
+  events?: any[];
+}) {
   const { tools, runs } = recordingTools();
   const memory = new InMemoryMemory();
   const loop = new AgentLoop({
@@ -222,7 +232,14 @@ test("filesystem patches outside the working directory are denied", async () => 
 test("the built-in pattern table flags dangerous shapes and allows normal ones", () => {
   const policy = denyDangerousPolicy();
   const decide = (toolName, input) =>
-    policy.decide({ toolName, input, sessionId: "s", workingDirectory: "/workspace" }).decision;
+    (
+      policy.decide({
+        toolName,
+        input,
+        sessionId: "s",
+        workingDirectory: "/workspace",
+      }) as { decision: string }
+    ).decision;
 
   assert.equal(decide("shell", { command: "rm", args: ["-rf", "/"] }), "deny");
   assert.equal(
@@ -287,12 +304,14 @@ test("no policy means no approval checks", async () => {
 test("an allowlisted command bypasses the dangerous patterns", () => {
   const policy = denyDangerousPolicy({ allowlist: ["npm test"] });
   const decide = (command) =>
-    policy.decide({
-      toolName: "shell",
-      input: { command: "/bin/sh", args: ["-c", command] },
-      sessionId: "s",
-      workingDirectory: "/workspace",
-    }).decision;
+    (
+      policy.decide({
+        toolName: "shell",
+        input: { command: "/bin/sh", args: ["-c", command] },
+        sessionId: "s",
+        workingDirectory: "/workspace",
+      }) as { decision: string }
+    ).decision;
 
   assert.equal(decide("npm test --silent"), "allow");
   assert.equal(decide("chmod 777 file"), "deny", "the rest of the table still applies");
@@ -301,24 +320,28 @@ test("an allowlisted command bypasses the dangerous patterns", () => {
 test("an allowlisted long-option command bypasses the dangerous patterns", () => {
   const command = "rm --force --recursive /tmp/junk";
   const policy = denyDangerousPolicy({ allowlist: [command] });
-  const decision = policy.decide({
-    toolName: "shell",
-    input: { command: "/bin/sh", args: ["-c", command] },
-    sessionId: "s",
-    workingDirectory: "/workspace",
-  }).decision;
+  const decision = (
+    policy.decide({
+      toolName: "shell",
+      input: { command: "/bin/sh", args: ["-c", command] },
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    }) as { decision: string }
+  ).decision;
 
   assert.equal(decision, "allow");
 });
 
 test("an allowlisted git command bypasses the execution pattern", () => {
   const policy = denyDangerousPolicy({ allowlist: ["git -c user.name=dev"] });
-  const decision = policy.decide({
-    toolName: "git",
-    input: { args: ["-c", "user.name=dev", "status"] },
-    sessionId: "s",
-    workingDirectory: "/workspace",
-  }).decision;
+  const decision = (
+    policy.decide({
+      toolName: "git",
+      input: { args: ["-c", "user.name=dev", "status"] },
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    }) as { decision: string }
+  ).decision;
 
   assert.equal(decision, "allow");
 });

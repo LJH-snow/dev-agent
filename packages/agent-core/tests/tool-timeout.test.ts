@@ -16,7 +16,7 @@ test("tool that exceeds timeoutMs returns timeout error in result", async () => 
 
   let calls = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       calls += 1;
@@ -60,7 +60,7 @@ test("tool that completes within timeout returns normal result", async () => {
 
   let calls = 0;
   const model = {
-    id: "openai",
+    id: "openai" as const,
     model: "test-model",
     async chat() {
       calls += 1;

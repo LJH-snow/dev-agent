@@ -19,8 +19,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.json && node --test tests/*.test.mjs",
-    "clean": "rm -rf dist"
+    "test": "tsc -p tsconfig.test.json && node --test tests-dist/*.test.js",
+    "clean": "rm -rf dist tests-dist"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

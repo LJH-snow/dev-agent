@@ -39,7 +39,7 @@ function recordingExecutor(result = { stdout: "", stderr: "", exitCode: 0 }) {
 
 test("filesystem tool writes and reads back a file", async () => {
   await withTempDir("dev-agent-fs-rw-", async (dir) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     const path = join(dir, "note.txt");
 
     const written = await tool.execute({ action: "write", path, content: "hello" });
@@ -52,7 +52,7 @@ test("filesystem tool writes and reads back a file", async () => {
 
 test("filesystem tool writes an empty file when content is omitted", async () => {
   await withTempDir("dev-agent-fs-empty-", async (dir) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     const path = join(dir, "empty.txt");
 
     await tool.execute({ action: "write", path });
@@ -64,7 +64,7 @@ test("filesystem tool writes an empty file when content is omitted", async () =>
 
 test("filesystem tool rejects non-string content instead of writing an empty file", async () => {
   await withTempDir("dev-agent-fs-badcontent-", async (dir) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     await assert.rejects(
       () => tool.execute({ action: "write", path: join(dir, "x.txt"), content: { a: 1 } }),
       /filesystem content must be a string when provided/
@@ -74,7 +74,7 @@ test("filesystem tool rejects non-string content instead of writing an empty fil
 
 test("filesystem tool mkdir creates nested directories", async () => {
   await withTempDir("dev-agent-fs-mkdir-", async (dir) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
 
     const created = await tool.execute({ action: "mkdir", path: join(dir, "a", "b", "c") });
     assert.equal(created.ok, true);
@@ -90,7 +90,7 @@ test("filesystem tool mkdir creates nested directories", async () => {
 
 test("filesystem tool stat reports file metadata", async () => {
   await withTempDir("dev-agent-fs-stat-", async (dir) => {
-    const tool = new FilesystemTool();
+    const tool: any = new FilesystemTool();
     const path = join(dir, "sized.txt");
     await writeFile(path, "12345");
 
@@ -103,7 +103,7 @@ test("filesystem tool stat reports file metadata", async () => {
 });
 
 test("filesystem tool rejects an unknown action", async () => {
-  const tool = new FilesystemTool();
+  const tool: any = new FilesystemTool();
   await assert.rejects(
     () => tool.execute({ action: "delete", path: "x" }),
     /filesystem action must be one of/
@@ -111,7 +111,7 @@ test("filesystem tool rejects an unknown action", async () => {
 });
 
 test("filesystem tool rejects an empty path", async () => {
-  const tool = new FilesystemTool();
+  const tool: any = new FilesystemTool();
   await assert.rejects(
     () => tool.execute({ action: "read", path: "" }),
     /filesystem path must be a non-empty string/
@@ -119,7 +119,7 @@ test("filesystem tool rejects an empty path", async () => {
 });
 
 test("filesystem tool rejects non-object input", async () => {
-  const tool = new FilesystemTool();
+  const tool: any = new FilesystemTool();
   await assert.rejects(() => tool.execute("nope"), /tool input must be an object/);
 });
 
@@ -129,7 +129,7 @@ test("filesystem tool rejects non-object input", async () => {
 
 test("shell tool forwards command, args, and working directory to the executor", async () => {
   const executor = recordingExecutor();
-  const tool = new ShellTool(executor);
+  const tool: any = new ShellTool(executor);
 
   await tool.execute(
     { command: "echo", args: ["hi"] },
@@ -143,7 +143,7 @@ test("shell tool forwards command, args, and working directory to the executor",
 
 test("shell tool forwards the abort signal to the executor", async () => {
   const executor = recordingExecutor();
-  const tool = new ShellTool(executor);
+  const tool: any = new ShellTool(executor);
   const controller = new AbortController();
 
   await tool.execute(
@@ -156,7 +156,7 @@ test("shell tool forwards the abort signal to the executor", async () => {
 
 test("shell tool treats missing args as an empty list", async () => {
   const executor = recordingExecutor();
-  const tool = new ShellTool(executor);
+  const tool: any = new ShellTool(executor);
 
   await tool.execute({ command: "pwd" });
 
@@ -164,7 +164,7 @@ test("shell tool treats missing args as an empty list", async () => {
 });
 
 test("shell tool rejects an empty command", async () => {
-  const tool = new ShellTool(recordingExecutor());
+  const tool: any = new ShellTool(recordingExecutor());
   await assert.rejects(
     () => tool.execute({ command: "" }),
     /shell command must be a non-empty string/
@@ -172,7 +172,7 @@ test("shell tool rejects an empty command", async () => {
 });
 
 test("shell tool rejects non-string args", async () => {
-  const tool = new ShellTool(recordingExecutor());
+  const tool: any = new ShellTool(recordingExecutor());
   await assert.rejects(
     () => tool.execute({ command: "echo", args: [1] }),
     /expected an array of strings/
@@ -189,7 +189,7 @@ test("shell tool rejects non-string args", async () => {
 
 test("git tool forwards args to git in the working directory", async () => {
   const executor = recordingExecutor();
-  const tool = new GitTool(executor);
+  const tool: any = new GitTool(executor);
 
   await tool.execute({ args: ["status", "--short"] }, { sessionId: "s", workingDirectory: "/repo" });
 
@@ -199,12 +199,12 @@ test("git tool forwards args to git in the working directory", async () => {
 });
 
 test("git tool requires at least one argument", async () => {
-  const tool = new GitTool(recordingExecutor());
+  const tool: any = new GitTool(recordingExecutor());
   await assert.rejects(() => tool.execute({ args: [] }), /git tool requires args/);
 });
 
 test("git tool rejects non-array args", async () => {
-  const tool = new GitTool(recordingExecutor());
+  const tool: any = new GitTool(recordingExecutor());
   await assert.rejects(() => tool.execute({ args: "status" }), /git args must be an array/);
 });
 
@@ -214,7 +214,7 @@ test("git tool rejects non-array args", async () => {
 
 test("search tool defaults the path to the working directory", async () => {
   const executor = recordingExecutor();
-  const tool = new SearchTool(executor);
+  const tool: any = new SearchTool(executor);
 
   await tool.execute({ query: "needle" }, { sessionId: "s", workingDirectory: "/repo" });
 
@@ -229,7 +229,7 @@ test("search tool defaults the path to the working directory", async () => {
 
 test("search tool adds -l when filesOnly is set", async () => {
   const executor = recordingExecutor();
-  const tool = new SearchTool(executor);
+  const tool: any = new SearchTool(executor);
 
   await tool.execute({ query: "needle", path: "src", filesOnly: true });
 
@@ -245,7 +245,7 @@ test("search tool adds -l when filesOnly is set", async () => {
 });
 
 test("search tool rejects an empty query", async () => {
-  const tool = new SearchTool(recordingExecutor());
+  const tool: any = new SearchTool(recordingExecutor());
   await assert.rejects(
     () => tool.execute({ query: "" }),
     /search query must be a non-empty string/
@@ -275,7 +275,7 @@ async function writeSearchProject(dir) {
 test("code-search references mode accepts a path relative to the working directory", async () => {
   await withTempDir("dev-agent-cs-rel-refs-", async (dir) => {
     await writeSearchProject(dir);
-    const tool = new CodeSearchTool();
+    const tool: any = new CodeSearchTool();
 
     const result = await tool.execute(
       { mode: "references", file: "src/agent.ts", line: 3, column: 10 },
@@ -289,7 +289,7 @@ test("code-search references mode accepts a path relative to the working directo
 test("code-search definition mode accepts a path relative to the working directory", async () => {
   await withTempDir("dev-agent-cs-rel-def-", async (dir) => {
     await writeSearchProject(dir);
-    const tool = new CodeSearchTool();
+    const tool: any = new CodeSearchTool();
 
     const result = await tool.execute(
       { mode: "definition", file: "src/agent.ts", line: 6, column: 5 },
@@ -303,7 +303,7 @@ test("code-search definition mode accepts a path relative to the working directo
 test("code-search search mode filters by symbol kind", async () => {
   await withTempDir("dev-agent-cs-kind-", async (dir) => {
     await writeSearchProject(dir);
-    const tool = new CodeSearchTool();
+    const tool: any = new CodeSearchTool();
 
     const result = await tool.execute(
       { mode: "search", query: "AgentContext", kind: "class" },
@@ -318,7 +318,7 @@ test("code-search search mode filters by symbol kind", async () => {
 test("code-search search mode honors the limit", async () => {
   await withTempDir("dev-agent-cs-limit-", async (dir) => {
     await writeSearchProject(dir);
-    const tool = new CodeSearchTool();
+    const tool: any = new CodeSearchTool();
 
     const result = await tool.execute(
       { mode: "search", query: "agent", limit: 1 },
@@ -337,7 +337,7 @@ test("code-search skips node_modules and dist during a scan", async () => {
     await mkdir(join(dir, "dist"));
     await writeFile(join(dir, "dist", "bundle.ts"), "export const BundledSymbol = 1;");
 
-    const tool = new CodeSearchTool();
+    const tool: any = new CodeSearchTool();
     const result = await tool.execute(
       { mode: "search", query: "Symbol" },
       { sessionId: "s", workingDirectory: dir }
@@ -348,7 +348,7 @@ test("code-search skips node_modules and dist during a scan", async () => {
 });
 
 test("code-search rejects an invalid mode", async () => {
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   await assert.rejects(
     () => tool.execute({ mode: "rename" }),
     /code-search mode must be one of/
@@ -356,7 +356,7 @@ test("code-search rejects an invalid mode", async () => {
 });
 
 test("code-search search mode requires a query", async () => {
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   await assert.rejects(
     () => tool.execute({ mode: "search" }),
     /code-search query must be a non-empty string/
@@ -364,7 +364,7 @@ test("code-search search mode requires a query", async () => {
 });
 
 test("code-search rejects an invalid symbol kind", async () => {
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   await assert.rejects(
     () => tool.execute({ mode: "search", query: "x", kind: "namespace" }),
     /code-search kind must be a valid symbol kind/

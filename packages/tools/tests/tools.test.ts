@@ -19,7 +19,7 @@ import {
 test("filesystem tool reads and lists a directory", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-fs-"));
   await writeFile(join(dir, "a.txt"), "hello");
-  const tool = new FilesystemTool();
+  const tool: any = new FilesystemTool();
 
   const read = await tool.execute({ action: "read", path: join(dir, "a.txt") });
   assert.equal(read.content, "hello");
@@ -31,7 +31,7 @@ test("filesystem tool reads and lists a directory", async () => {
 });
 
 test("shell tool runs a command through LocalExecutor", async () => {
-  const tool = new ShellTool(new LocalExecutor());
+  const tool: any = new ShellTool(new LocalExecutor());
   const result = await tool.execute({
     command: "node",
     args: ["-e", "console.log('ok')"],
@@ -45,7 +45,7 @@ test("filesystem tool resolves relative paths against tool context", async () =>
   await mkdir(join(dir, "nested"));
   await writeFile(join(dir, "nested", "a.txt"), "hello");
 
-  const tool = new FilesystemTool();
+  const tool: any = new FilesystemTool();
   const context = { sessionId: "ctx-test", workingDirectory: dir };
 
   const list = await tool.execute({ action: "list", path: "nested" }, context);
@@ -60,7 +60,7 @@ test("filesystem tool resolves relative paths against tool context", async () =>
 test("shell tool honors working directory from tool context", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-shell-ctx-"));
 
-  const tool = new ShellTool(new LocalExecutor());
+  const tool: any = new ShellTool(new LocalExecutor());
   const result = await tool.execute(
     { command: "node", args: ["-e", "console.log(process.cwd())"] },
     { sessionId: "ctx-test", workingDirectory: dir }
@@ -72,7 +72,7 @@ test("shell tool honors working directory from tool context", async () => {
 });
 
 test("git tool reports git version", async () => {
-  const tool = new GitTool(new LocalExecutor());
+  const tool: any = new GitTool(new LocalExecutor());
   const result = await tool.execute({ args: ["--version"] });
   assert.equal(result.exitCode, 0);
   assert.match(result.stdout, /git version/);
@@ -82,7 +82,7 @@ test("search tool finds text with ripgrep", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-search-"));
   await writeFile(join(dir, "sample.txt"), "needle line\n");
 
-  const tool = new SearchTool(new LocalExecutor());
+  const tool: any = new SearchTool(new LocalExecutor());
   const result = await tool.execute({ query: "needle", path: dir });
 
   assert.equal(result.exitCode, 0);
@@ -93,7 +93,7 @@ test("search tool finds text with ripgrep", async () => {
 test("search tool treats a flag-like query as a literal pattern", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-search-"));
   await writeFile(join(dir, "a.txt"), "this file mentions --files in its text\n");
-  const tool = new SearchTool(new LocalExecutor());
+  const tool: any = new SearchTool(new LocalExecutor());
 
   try {
     const result = await tool.execute({ query: "--files", path: dir });
@@ -108,7 +108,7 @@ test("search tool treats a flag-like query as a literal pattern", async () => {
 test("search tool does not let a flag-like query swallow the path", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-search-"));
   await writeFile(join(dir, "b.txt"), "pattern-file.txt appears here\n");
-  const tool = new SearchTool(new LocalExecutor());
+  const tool: any = new SearchTool(new LocalExecutor());
 
   try {
     const result = await tool.execute({ query: "-f", path: dir });
@@ -140,7 +140,7 @@ test("code-search tool scans a project and returns matching symbols", async () =
     "export function findAgent() {}\nexport class AgentContext { runAgent() {} }\n"
   );
 
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   const result = await tool.execute(
     { query: "findAgent", path: "." },
     { sessionId: "ctx-test", workingDirectory: dir }
@@ -179,7 +179,7 @@ test("code-search references mode locates symbol usages via TypeScript language 
     ].join("\n")
   );
 
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   const result = await tool.execute(
     { mode: "references", file: join(dir, "src", "agent.ts"), line: 3, column: 10 },
     { sessionId: "ctx-test", workingDirectory: dir }
@@ -200,7 +200,7 @@ test("code-search references mode locates symbol usages via TypeScript language 
 test("code-search rejects a line beyond the end of the file", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-refs-"));
   await writeFile(join(dir, "a.ts"), "export function alpha() { return 1; }\n", "utf8");
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
 
   try {
     await assert.rejects(
@@ -219,7 +219,7 @@ test("code-search rejects a line beyond the end of the file", async () => {
 test("code-search rejects a column beyond the end of the line", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-refs-"));
   await writeFile(join(dir, "a.ts"), "export function alpha() { return 1; }\n", "utf8");
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
 
   try {
     await assert.rejects(
@@ -253,7 +253,7 @@ test("code-search definition mode resolves a symbol via TypeScript language serv
     ].join("\n")
   );
 
-  const tool = new CodeSearchTool();
+  const tool: any = new CodeSearchTool();
   const result = await tool.execute(
     { mode: "definition", file: join(dir, "src", "agent.ts"), line: 6, column: 10 },
     { sessionId: "ctx-test", workingDirectory: dir }
