@@ -1,5 +1,60 @@
 # Changelog
 
+## 2026-09-11 (Day plan v6: approval policies, persistent digests, MCP resources)
+
+Executed `docs/day-plan-v6.md`. The main line is a command-approval layer: the
+sandbox decides how a command runs, nothing decided whether it should.
+
+### Added: approval policies
+- `packages/agent-core/src/approval.ts`: `ApprovalPolicy`, `ApprovalRequest`
+  (tool, input, session, working directory), `ApprovalOutcome` (decision plus
+  reason), `allowAllPolicy()`, and `denyDangerousPolicy()`.
+- The dangerous table covers recursive delete, `sudo`, `mkfs`, `dd of=`, power
+  control, force push, pipe-to-shell, `chmod 777`, fork bombs, `git reset
+  --hard`/`clean -f`, and privileged containers; extra patterns can be added.
+  Filesystem writes outside the working directory are blocked too.
+- `AgentLoop` consults the policy before each tool call. A denial is written
+  back as that tool's result so the model can adapt, a throwing policy counts as
+  a denial, and no policy means every call runs exactly as before.
+
+### Added: CLI `--approval allow|deny-dangerous|ask`
+- `--approval` wins over `DEV_AGENT_APPROVAL`, which wins over the config file's
+  `approvalMode`; invalid values are rejected (flag) or ignored (env/config).
+- `ask` confirms flagged calls with `y/N`, reusing the interactive readline
+  interface and falling back to one line of stdin for `--once`. Anything but
+  `y`, EOF, or a read failure denies the call.
+
+### Added: desktop approval
+- `DEV_AGENT_APPROVAL` and `ChatSessionOptions.approvalMode`. The web UI has no
+  approval prompt yet, so `ask` maps to `deny-dangerous` rather than silently
+  running the command.
+- New `approval` SSE frame `{ tool, decision, reason }`; the chat UI renders a
+  `[denied]` line for denials.
+
+### Added: persistent, length-capped context digests
+- `AgentMemory` gained optional `getSummary`/`setSummary`. `FileMemory` stores
+  the digest alongside the session (optional field, older files still load) and
+  `InMemoryMemory` keeps it in process, so a new run reuses it instead of
+  summarizing the same history again.
+- The digest re-anchors by the id of its last covered entry: when compaction
+  removed that entry the digest text is kept while new trims are summarized.
+- `summaryMaxChars` (default 2000) caps the digest, and
+  `DEV_AGENT_SUMMARY_MAX_CHARS` / `summaryMaxChars` expose it.
+
+### Added: MCP server resources and prompts
+- Server mode implements `resources/list`, `resources/read`, `prompts/list`,
+  and `prompts/get` and advertises both capabilities.
+- `--mcp-server` serves `dev-agent://session` (id, working directory,
+  timestamps, memory size), `dev-agent://workspace` (top-level entries),
+  `review-changes`, and `explain-codebase` (optional `focus` argument).
+
+### Tests
+- TypeScript: 270 -> 297. Rust: 43 (unchanged).
+- New coverage: approval policies and their loop integration, CLI mode
+  resolution plus three approval round trips, desktop denial over SSE, digest
+  reuse/compaction/clamping/persistence, and MCP resources and prompts
+  (including the host-script round trip).
+
 ## 2026-09-11 (Development plan v5: graceful termination, context summaries)
 
 Executed `docs/night-plan-v5.md`, closing the two boundaries v4 left open:

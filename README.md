@@ -196,7 +196,17 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - Long sessions can summarize instead of forget: `contextBudget.summarize`
   replaces trimmed history with an incrementally grown `[summary]` digest
   (`DEV_AGENT_SUMMARIZE_CONTEXT`), falling back to the omission notice on error
-- Test suite: 270 TypeScript tests + 43 Rust tests, all passing
+- The digest is stored with the session (`FileMemory` persists it, `InMemoryMemory`
+  keeps it in process), re-anchors by entry id after compaction, and is capped
+  by `summaryMaxChars`
+- Tool calls can go through an approval policy: `denyDangerousPolicy()` blocks
+  the built-in dangerous command table plus filesystem writes outside the
+  working directory, and a denial is written back to the model so it can pick
+  another path. The CLI exposes it as `--approval allow|deny-dangerous|ask`,
+  the desktop via `DEV_AGENT_APPROVAL` and an `approval` SSE frame
+- MCP server mode also serves `resources` (`dev-agent://session`,
+  `dev-agent://workspace`) and `prompts` (`review-changes`, `explain-codebase`)
+- Test suite: 297 TypeScript tests + 43 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -231,3 +241,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 17. ~~MCP server mode (`--mcp-server`) exposing the built-in tools~~ (done)
 18. ~~Graceful process-group termination before SIGKILL~~ (done)
 19. ~~Incremental summarization of trimmed context~~ (done)
+20. ~~Persistent, length-capped context digests~~ (done)
+21. ~~Approval policies for dangerous commands~~ (done)
+22. ~~CLI `--approval` modes and desktop approval wiring~~ (done)
+23. ~~MCP server resources and prompts~~ (done)

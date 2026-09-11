@@ -24,6 +24,14 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   budget are replaced by a model-written `[summary]` digest, which grows
   incrementally as more history is trimmed; a failed summary falls back to the
   `[context] N earlier entries omitted` notice.
+- **Summary persistence**: the digest is saved with the session memory and
+  re-anchored by the id of its last covered entry, so later runs reuse it and
+  only summarize what has been trimmed since. `summaryMaxChars` (default 2000)
+  caps its length.
+- **Approval**: `AgentLoopOptions.approval` decides whether each tool call may
+  run. `denyDangerousPolicy()` matches a built-in pattern table and blocks
+  filesystem writes outside the working directory; a denial becomes the tool's
+  result so the model can adapt, and a policy that throws counts as a denial.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
   loop accumulates the totals on `AgentContext.usage` across runs.
 
@@ -53,12 +61,16 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - `McpServerSession`: Session lifecycle, debounced notifications, reconnect with backoff.
 - Resource subscription via `watchResource()`.
 - Structured error codes (`McpRequestError`).
-- **Server mode**: `createMcpServer({ tools })` speaks newline-delimited
+- **Server mode**: `createMcpServer({ tools, resources, prompts })` speaks newline-delimited
   JSON-RPC over stdio and implements `initialize`, `ping`, `tools/list`, and
   `tools/call`. Tool implementations are injected, so the package keeps no
   dependency on `@dev-agent/tools`; the CLI's `--mcp-server` wires the built-in
   tools in. Tool failures answer `{ isError: true }`; unknown tools and methods
   are JSON-RPC errors.
+- Server mode also exposes injected `resources` (`resources/list`,
+  `resources/read`) and `prompts` (`prompts/list`, `prompts/get`); the CLI
+  serves `dev-agent://session`, `dev-agent://workspace`, `review-changes`, and
+  `explain-codebase`.
 
 ### `packages/code-intelligence`
 - Multi-language symbol scanning: TypeScript (AST), Python (regex), Rust (regex).

@@ -5,12 +5,46 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 5（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4
-- 最近一次运行：运行 5（2026-09-11 15:15-15:45）
-- 工作区：阶段 4 的改动已提交并推送
+- 当前阶段：Backlog 1（Rust 运行时并发上限）
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4、阶段 5
+- 最近一次运行：运行 6（2026-09-11 13:35-13:50）
+- 工作区：阶段 5 的改动已提交并推送
 
 ## 日志
+
+### 运行 6 — 2026-09-11 13:35-13:50
+
+- 阶段/工作项：阶段 5（文档、全量回归与提交）全部完成；阶段 0-5 收口
+- 做了什么：
+  - 根 `README.md`：Current Status 增加审批、摘要持久化、MCP resources/prompts
+    三条，测试数量更新为 297 TypeScript + 43 Rust；Roadmap 增加 20-23 项
+  - `docs/architecture.md`：补充审批层、摘要持久化与重锚、MCP resources/prompts
+  - `docs/CHANGELOG.md`：顶部新增 v6 条目
+- 验证命令与结果（完整回归矩阵）：
+  - `node scripts/check.mjs`：通过
+  - `pnpm build`、`pnpm typecheck`：通过
+  - `pnpm test`：297 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：9 passed
+  - `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：43 passed / 0 failed
+- 提交：见阶段 5 的 docs 提交
+- 下一步：Backlog 1 — Rust 运行时并发上限（阶段 0-5 已全部完成，按计划继续 backlog）
+
+## 阶段 0-5 总结（2026-09-11 13:50）
+
+| 阶段 | 产出 |
+|------|------|
+| 0 | 摘要持久化：`ContextSummary` 存入 memory（FileMemory 持久化、InMemory 进程内），按 `lastEntryId` 重锚，`summaryMaxChars` 默认 2000 |
+| 1 | 审批策略：`ApprovalPolicy` + `denyDangerousPolicy()`（危险命令表 + 工作目录外写入），拒绝写回 tool 结果 |
+| 2 | CLI：`--approval allow\|deny-dangerous\|ask`，env/配置优先级，ask 用 y/N 确认（非 y / EOF 一律拒绝） |
+| 3 | 桌面端：`DEV_AGENT_APPROVAL`（ask 映射为 deny-dangerous）、`approval` SSE 事件、UI `[denied]` 行 |
+| 4 | MCP server：`resources/list|read`、`prompts/list|get`，暴露 session/workspace 资源与两个提示词模板 |
+| 5 | 文档、全量回归、提交推送 |
+
+测试数量：TypeScript 270 → 297（+27），Rust 43（未变），真实二进制集成 9。
+
+已知边界：桌面端没有交互式审批按钮（ask 按 deny 处理）；审批只覆盖 shell/git 命令与
+filesystem 写入，其他工具一律放行；摘要与审批都需要显式开启，默认行为与之前一致。
 
 ### 运行 5 — 2026-09-11 15:15-15:45
 
