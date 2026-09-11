@@ -243,6 +243,7 @@ test("--approval ask remembers 'always allow' for the rest of the session", asyn
     req.on("end", () => {
       requests.push(JSON.parse(body));
       const isToolTurn = requests.length <= 2;
+      const args = requests.length === 1 ? ["777", target] : ["-R", "777", target];
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
         JSON.stringify({
@@ -259,7 +260,7 @@ test("--approval ask remembers 'always allow' for the rest of the session", asyn
                           name: "shell",
                           arguments: JSON.stringify({
                             command: "chmod",
-                            args: ["777", target],
+                            args,
                           }),
                         },
                       },

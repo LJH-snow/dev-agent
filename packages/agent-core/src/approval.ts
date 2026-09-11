@@ -165,6 +165,42 @@ export function commandText(request: ApprovalRequest): string | undefined {
   return undefined;
 }
 
+/**
+ * A stable key for "always allow" decisions: the command plus its first
+ * non-flag token, so `npm test` and `npm test -- --watch` share a key while
+ * unrelated commands do not. Returns undefined for tools that run no command.
+ */
+export function normalizeApprovalKey(request: ApprovalRequest): string | undefined {
+  const command = shellScript(request) ?? commandText(request);
+  if (!command) {
+    return undefined;
+  }
+
+  const tokens = command.trim().split(/\s+/).filter(Boolean);
+  const [name, ...rest] = tokens;
+  if (!name) {
+    return undefined;
+  }
+  const subcommand = rest.find((token) => !token.startsWith("-"));
+  return subcommand ? `${name} ${subcommand}` : name;
+}
+
+/** The script handed to `sh -c`-style invocations, when there is one. */
+function shellScript(request: ApprovalRequest): string | undefined {
+  if (request.toolName !== "shell") {
+    return undefined;
+  }
+  const input = asRecord(request.input);
+  const command = typeof input.command === "string" ? input.command : "";
+  if (!/(^|\/)(sh|bash|zsh)$/.test(command)) {
+    return undefined;
+  }
+  const args = toStringArray(input.args);
+  const flagIndex = args.indexOf("-c");
+  const script = flagIndex >= 0 ? args[flagIndex + 1] : undefined;
+  return typeof script === "string" && script.trim().length > 0 ? script : undefined;
+}
+
 function outsideWorkingDirectoryWrite(request: ApprovalRequest): string | undefined {
   if (request.toolName !== "filesystem") {
     return undefined;

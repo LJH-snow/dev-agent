@@ -142,11 +142,11 @@ async function modeOf(path) {
   return (await stat(path)).mode & 0o777;
 }
 
-async function runAsk({ decision, timeoutMs, toolTurns = 1 }) {
+async function runAsk({ decision, timeoutMs, toolTurns = 1, toolCommand }) {
   const { dir, target } = await setup();
   const provider = await startStubProvider((_parsed, count) =>
     count <= toolTurns
-      ? [shellToolCall(`chmod 777 ${target}`)]
+      ? [shellToolCall(toolCommand ? toolCommand(target, count) : `chmod 777 ${target}`)]
       : [{ choices: [{ delta: { content: "done" } }] }]
   );
   const restoreEnv = applyEnv({
@@ -223,7 +223,13 @@ test("ask mode denies when the UI does not answer in time", async () => {
 });
 
 test("ask mode remembers an 'always allow' decision for the session", async () => {
-  const { events, mode, requests } = await runAsk({ decision: "allow-always", toolTurns: 2 });
+  const { events, mode, requests } = await runAsk({
+    decision: "allow-always",
+    toolTurns: 2,
+    // The same key with an extra flag must not prompt a second time.
+    toolCommand: (target, turn) =>
+      turn === 1 ? `chmod 777 ${target}` : `chmod -R 777 ${target}`,
+  });
 
   assert.equal(requests, 1, "only the first call should prompt");
   assert.equal(

@@ -377,16 +377,16 @@ async function streamChat(
       signal: controller.signal,
       requestApproval: (prompt) => {
         const allowed = sessionAllowlist.get(sessionId);
-        if (prompt.command && allowed?.has(prompt.command)) {
+        if (prompt.key && allowed?.has(prompt.key)) {
           return Promise.resolve("allow");
         }
         return waitForApproval(approvals, emit, prompt).then((decision) => {
           if (decision !== "allow-always") {
             return decision;
           }
-          if (prompt.command) {
+          if (prompt.key) {
             const set = sessionAllowlist.get(sessionId) ?? new Set<string>();
-            set.add(prompt.command);
+            set.add(prompt.key);
             sessionAllowlist.set(sessionId, set);
           }
           return "allow";

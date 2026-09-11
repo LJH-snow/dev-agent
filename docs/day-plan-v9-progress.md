@@ -4,12 +4,37 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（审批键归一化）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-11 20:0x-20:3x）
-- 工作区：阶段 1 的改动已提交并推送
+- 当前阶段：阶段 3（用量成本估算）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-11 20:0x-20:1x）
+- 工作区：阶段 2 的改动已提交并推送
 
 ## 日志
+
+### 运行 3 — 2026-09-11 20:0x-20:1x
+
+- 阶段/工作项：阶段 2（审批键归一化）完成
+- 做了什么：
+  - `packages/agent-core/src/approval.ts` 新增 `normalizeApprovalKey(request)`：
+    取命令名 + 第一个非 `-` 开头的 token 作为「总是允许」的键；
+    `sh -c "…"` 会先解包脚本本身，普通工具仍走 `commandText`
+  - `apps/cli/src/index.ts`：会话 allowlist 从 `commandText` 改为 `normalizeApprovalKey`，
+    所以 `npm test` 与 `npm test -- --watch`、`git status` 与 `git status --short`
+    只询问一次
+  - `apps/desktop`：`ApprovalPrompt.command` 更名为 `key`，
+    `chat-session.ts` 与 `server.ts` 的会话记忆同步切换
+  - 测试：agent-core 新增 2 个 `normalizeApprovalKey` 用例；
+    CLI / desktop 的 always-allow 用例第二次调用改成带额外 flag 的命令，
+    断言不会再次弹窗
+- 验证命令与结果：
+  - `pnpm build`：通过（保留完整输出核对）
+  - `pnpm typecheck`：通过
+  - `packages/agent-core`：53 passed
+  - `apps/cli`（`tests/approval.test.mjs`）：6 passed
+  - `apps/desktop`（`tests/approval-interactive.test.mjs`）：4 passed
+  - `pnpm test`：全绿（TypeScript 354 个测试，0 失败）
+- 提交：见阶段 2 的 feat 提交
+- 下一步：阶段 3 — 用量成本估算（价格表 + CLI `[usage]` 成本 + 桌面端显示）
 
 ### 运行 2 — 2026-09-11 20:0x-20:3x
 

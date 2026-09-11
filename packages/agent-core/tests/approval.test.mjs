@@ -9,6 +9,7 @@ import {
   createAgentContext,
   denyDangerousPolicy,
   InMemoryMemory,
+  normalizeApprovalKey,
 } from "../dist/index.js";
 
 function scriptedModel(toolCall) {
@@ -271,4 +272,36 @@ test("compileApprovalConfig handles missing config", () => {
   const compiled = compileApprovalConfig(undefined);
   assert.deepEqual(compiled.allowlist, []);
   assert.deepEqual(compiled.patterns, []);
+});
+
+test("normalizeApprovalKey groups a command with its subcommand", () => {
+  const key = (toolName, input) =>
+    normalizeApprovalKey({
+      toolName,
+      input,
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    });
+
+  assert.equal(
+    key("shell", { command: "/bin/sh", args: ["-c", "npm test"] }),
+    key("shell", { command: "/bin/sh", args: ["-c", "npm test -- --watch"] })
+  );
+  assert.equal(key("git", { args: ["status"] }), key("git", { args: ["status", "--short"] }));
+  assert.notEqual(
+    key("shell", { command: "/bin/sh", args: ["-c", "npm test"] }),
+    key("shell", { command: "/bin/sh", args: ["-c", "npm run build"] })
+  );
+  assert.equal(key("filesystem", { action: "write", path: "a.ts" }), undefined);
+});
+
+test("normalizeApprovalKey unwraps the shell script", () => {
+  const key = normalizeApprovalKey({
+    toolName: "shell",
+    input: { command: "/bin/sh", args: ["-c", "chmod 777 /tmp/target"] },
+    sessionId: "s",
+    workingDirectory: "/workspace",
+  });
+
+  assert.equal(key, "chmod 777");
 });

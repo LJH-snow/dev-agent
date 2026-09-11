@@ -9,7 +9,7 @@ import {
   AgentLoop,
   AgentToolRegistry,
   compileApprovalConfig,
-  commandText,
+  normalizeApprovalKey,
   createAgentContext,
   denyDangerousPolicy,
   FileMemory,
@@ -506,8 +506,8 @@ function buildApprovalPolicy(
   const sessionAllowed = new Set<string>();
   return {
     async decide(request) {
-      const command = commandText(request);
-      if (command && sessionAllowed.has(command)) {
+      const key = normalizeApprovalKey(request);
+      if (key && sessionAllowed.has(key)) {
         return { decision: "allow" };
       }
 
@@ -524,9 +524,9 @@ function buildApprovalPolicy(
         : await readLineFromStdin(question);
       const normalized = answer.trim().toLowerCase();
 
-      if (normalized.startsWith("a") && command) {
+      if (normalized.startsWith("a") && key) {
         // Remembered for this process only; never written to disk.
-        sessionAllowed.add(command);
+        sessionAllowed.add(key);
         return { decision: "allow" };
       }
 
