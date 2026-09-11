@@ -73,7 +73,7 @@ test("LocalExecutor surfaces nonexistent commands as errors", async () => {
   await assert.rejects(
     () => executor.run("definitely-not-a-real-command-xyz"),
     (error) => {
-      assert.match(error.message, /ENOENT|not found|spawn/);
+      assert.match((error as Error).message, /ENOENT|not found|spawn/);
       return true;
     }
   );

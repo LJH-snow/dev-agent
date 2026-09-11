@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { McpServerSession, McpStdioClient } from "../dist/index.js";
 
-const fakeServer = fileURLToPath(new URL("./fake-mcp-server.mjs", import.meta.url));
+const fakeServer = fileURLToPath(new URL("../tests/fake-mcp-server.mjs", import.meta.url));
 
 test("MCP client connects, lists tools, calls a tool, and closes", async () => {
   const client = new McpStdioClient();

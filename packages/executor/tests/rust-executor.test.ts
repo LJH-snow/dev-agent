@@ -9,7 +9,7 @@ import test from "node:test";
 import { RustExecutor } from "../dist/index.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const mockBinary = join(here, "mock-executor-binary.mjs");
+const mockBinary = join(here, "..", "tests", "mock-executor-binary.mjs");
 
 test("RustExecutor encodes a run request the mock binary can decode", async () => {
   const executor = new RustExecutor({ binaryPath: mockBinary });

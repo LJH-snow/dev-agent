@@ -13,7 +13,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const mockBinary = join(here, "mock-executor-binary.mjs");
+const mockBinary = join(here, "..", "tests", "mock-executor-binary.mjs");
 
 function encodeVarint(value) {
   const bytes = [];
@@ -26,7 +26,15 @@ function encodeVarint(value) {
   return bytes;
 }
 
-function encodeRunRequest({ command = "", args = [], cwd, env = {}, input, timeoutMs, maxOutputBytes }) {
+function encodeRunRequest({
+  command = "",
+  args = [],
+  cwd,
+  env = {} as Record<string, string>,
+  input,
+  timeoutMs,
+  maxOutputBytes,
+}) {
   const bytes = [];
   // command (field 1, string)
   const cmdBytes = Buffer.from(command, "utf8");
@@ -64,7 +72,12 @@ function encodeRunRequest({ command = "", args = [], cwd, env = {}, input, timeo
   return bytes;
 }
 
-function encodeEnvelope({ requestId, run, runSandboxed, healthCheck }) {
+function encodeEnvelope({
+  requestId,
+  run,
+  runSandboxed,
+  healthCheck,
+}: { requestId?: any; run?: any; runSandboxed?: any; healthCheck?: any }) {
   const bytes = [];
   // requestId (field 1, varint)
   if (requestId !== undefined) bytes.push(0x08, requestId);
@@ -87,7 +100,15 @@ function encodeEnvelope({ requestId, run, runSandboxed, healthCheck }) {
   return bytes;
 }
 
-function encodeSandboxProfile({ name = "", network = 0, writablePaths = [], readonlyPaths = [], environment = {}, timeoutMs, policyScript }) {
+function encodeSandboxProfile({
+  name = "",
+  network = 0,
+  writablePaths = [],
+  readonlyPaths = [],
+  environment = {} as Record<string, string>,
+  timeoutMs,
+  policyScript,
+}) {
   const bytes = [];
   if (name) {
     const b = Buffer.from(name, "utf8");
@@ -117,7 +138,7 @@ function encodeSandboxProfile({ name = "", network = 0, writablePaths = [], read
 }
 
 function decodeResponse(buf) {
-  const result = {};
+  const result: any = {};
   let offset = 0;
   while (offset < buf.length) {
     const tag = buf[offset++];
@@ -162,7 +183,7 @@ function decodeResponse(buf) {
 }
 
 function decodeRunResult(buf) {
-  const result = {};
+  const result: any = {};
   let offset = 0;
   while (offset < buf.length) {
     const tag = buf[offset++];
@@ -199,7 +220,7 @@ function decodeRunResult(buf) {
 }
 
 function decodeHealthCheck(buf) {
-  const result = {};
+  const result: any = {};
   let offset = 0;
   while (offset < buf.length) {
     const tag = buf[offset++];
@@ -224,7 +245,7 @@ function decodeHealthCheck(buf) {
 }
 
 function decodeError(buf) {
-  const result = {};
+  const result: any = {};
   let offset = 0;
   while (offset < buf.length) {
     const tag = buf[offset++];
@@ -248,7 +269,7 @@ function decodeError(buf) {
   return result;
 }
 
-function sendAndReceive(envelopeBytes, behavior) {
+function sendAndReceive(envelopeBytes, behavior = "default"): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn("node", [mockBinary], {
       env: { ...process.env, MOCK_EXECUTOR_BEHAVIOR: behavior ?? "default" },

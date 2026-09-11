@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const mockBinary = join(here, "mock-executor-binary.mjs");
+const mockBinary = join(here, "..", "tests", "mock-executor-binary.mjs");
 
 function decodeHealthCheckResponse(buf) {
   let offset = 0;
@@ -37,7 +37,7 @@ function decodeHealthCheckResponse(buf) {
     }
   }
 
-  const result = {};
+  const result: any = {};
   if (healthCheckData) {
     offset = 0;
     while (offset < healthCheckData.length) {
@@ -65,7 +65,7 @@ function decodeHealthCheckResponse(buf) {
   return result;
 }
 
-function sendHealthCheck() {
+function sendHealthCheck(): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn("node", [mockBinary], {
       env: process.env,

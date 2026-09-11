@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const mockBinary = join(here, "mock-executor-binary.mjs");
+const mockBinary = join(here, "..", "tests", "mock-executor-binary.mjs");
 
 function encodeVarint(value) {
   const bytes = [];
@@ -98,7 +98,7 @@ function encodeSandboxProfile(profile) {
 }
 
 function decodeResponse(buf) {
-  const result = {};
+  const result: any = {};
   let offset = 0;
   while (offset < buf.length) {
     const tag = buf[offset++];
@@ -134,7 +134,7 @@ function decodeResponse(buf) {
 }
 
 function decodeRunResult(buf) {
-  const result = {};
+  const result: any = {};
   let offset = 0;
   while (offset < buf.length) {
     const tag = buf[offset++];
@@ -171,7 +171,7 @@ function decodeRunResult(buf) {
 }
 
 function decodeHealthCheck(buf) {
-  const result = {};
+  const result: any = {};
   let offset = 0;
   while (offset < buf.length) {
     const tag = buf[offset++];
@@ -198,7 +198,7 @@ function decodeHealthCheck(buf) {
 }
 
 function decodeError(buf) {
-  const result = {};
+  const result: any = {};
   let offset = 0;
   while (offset < buf.length) {
     const tag = buf[offset++];
@@ -222,7 +222,7 @@ function decodeError(buf) {
   return result;
 }
 
-function sendAndReceive(envelopeBytes, behavior) {
+function sendAndReceive(envelopeBytes, behavior = "default"): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn("node", [mockBinary], {
       env: { ...process.env, MOCK_EXECUTOR_BEHAVIOR: behavior ?? "default" },

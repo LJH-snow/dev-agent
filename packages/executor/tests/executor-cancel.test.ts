@@ -6,7 +6,7 @@ import test from "node:test";
 import { LocalExecutor, RustExecutor } from "../dist/index.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
-const mockBinary = join(here, "mock-executor-binary.mjs");
+const mockBinary = join(here, "..", "tests", "mock-executor-binary.mjs");
 
 test("LocalExecutor aborts a running command", async () => {
   const executor = new LocalExecutor();

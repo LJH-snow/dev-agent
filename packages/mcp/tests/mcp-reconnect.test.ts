@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 
 import { McpServerSession, McpStdioClient } from "../dist/index.js";
 
-const flakyServer = fileURLToPath(new URL("./flaky-mcp-server.mjs", import.meta.url));
-const fakeServer = fileURLToPath(new URL("./fake-mcp-server.mjs", import.meta.url));
+const flakyServer = fileURLToPath(new URL("../tests/flaky-mcp-server.mjs", import.meta.url));
+const fakeServer = fileURLToPath(new URL("../tests/fake-mcp-server.mjs", import.meta.url));
 
 test("MCP session reconnects with backoff after server fails on first initialize", async () => {
   const stateDir = await mkdtemp(join(tmpdir(), "dev-agent-flaky-"));

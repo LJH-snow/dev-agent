@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { McpServerSession } from "../dist/index.js";
 
-const fakeServer = fileURLToPath(new URL("./fake-mcp-server.mjs", import.meta.url));
+const fakeServer = fileURLToPath(new URL("../tests/fake-mcp-server.mjs", import.meta.url));
 
 test("rapid tools/list_changed notifications are debounced", async () => {
   const session = new McpServerSession({
