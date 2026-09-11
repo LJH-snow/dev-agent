@@ -180,6 +180,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - `code-search` caches its scan per root and re-reads only files whose size or
   mtime changed; deleted files leave the index and `getCacheStats()` reports
   hits/misses/rescanned
+- `code-search` also reuses the index written by `--index` when it starts in a
+  new process: the persisted file/symbol/signature map loads first and only the
+  files whose mtime or size changed are re-read (`getCacheStats().loadedFromDisk`)
 - Model providers retry 429/5xx and network failures with exponential backoff,
   honour `Retry-After`, and never restart a stream that already emitted tokens
 - Desktop chat aborts on client disconnect (the SSE stream closes with
@@ -220,10 +223,18 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   takes `offset`/`limit` (2000 lines by default) so large files come back in
   slices
 - Approval can be remembered per session: the CLI accepts `a` and the desktop
-  shows "Always allow", so the same command line is not asked about twice
+  shows "Always allow", so the same command is not asked about twice. The memory
+  key is the command plus its first subcommand (`npm test`, `git status`), so
+  extra flags such as `npm test -- --watch` do not trigger a second prompt
 - `dev-agent --index <path>` scans a directory and writes a symbol index to
   `<path>/.dev-agent/index.json` (same ignore rules as `code-search`)
-- Test suite: 342 TypeScript tests + 46 Rust tests, all passing
+- `filesystem` gained a `patch` action that applies several `oldText`/`newText`
+  hunks in one write: every hunk must match exactly once and not overlap, and a
+  failure leaves the file untouched
+- Usage costs are estimated when `~/.dev-agent/config.json` has a `pricing`
+  section: the CLI appends `cost=$…` to its `[usage]` line, the desktop header
+  adds `$…`, and an unconfigured or unknown model shows no cost at all
+- Test suite: 359 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -268,3 +279,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 27. ~~Unique-snippet editing and line-range reads~~ (done)
 28. ~~`--index` symbol index command~~ (done)
 29. ~~Per-session approval memory ("always allow")~~ (done)
+30. ~~Reusing the persisted `--index` file in `code-search`~~ (done)
+31. ~~Atomic multi-hunk `filesystem patch`~~ (done)
+32. ~~Normalized always-allow keys across flags and arguments~~ (done)
+33. ~~Usage cost estimation from a configurable price table~~ (done)

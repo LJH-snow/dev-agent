@@ -32,8 +32,10 @@ Options:
 - `--approval <mode>` - tool approval policy: `allow` (default, everything runs),
   `deny-dangerous` (block the built-in dangerous command patterns and writes
   outside the working directory), or `ask` (same detection, but confirm with
-  `y/N/a` first: `y` runs once, `a` runs and remembers the command for the rest
-  of the session, anything else — including EOF or a read failure — denies it)
+  `y/N/a` first: `y` runs once, `a` runs and remembers the command + subcommand
+  key for the rest of the session (`npm test` also covers
+  `npm test -- --watch`), anything else — including EOF or a read failure —
+  denies it)
 - `--json` - machine-readable output for `--once`, `--tools`, `--metadata`,
   `--session-list`, and `--compact`; implies `--no-stream` so nothing else is
   written to stdout
@@ -93,7 +95,10 @@ Configuration is read from the environment:
 - `DEV_AGENT_MCP_SERVERS` - optional JSON array of MCP stdio server configs
 
 Runs print a `[usage] prompt=… completion=… total=…` line after the state line
-when the provider reported token counts.
+when the provider reported token counts. When the config file has a matching
+`pricing` entry, the line ends with `cost=$0.00000795`; unknown models and
+unpriced runs print no cost, and `--json` carries the same value as a `cost`
+field (`null` when unknown).
 
 ## Configuration file
 
@@ -107,6 +112,9 @@ invocation.
   "defaultModel": "gpt-4o-mini",
   "maxTurns": 12,
   "maxContextChars": 120000,
+  "pricing": {
+    "gpt-4o-mini": { "inputPerMillion": 0.15, "outputPerMillion": 0.6 }
+  },
   "mcpServers": [
     { "name": "files", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"] }
   ]
@@ -129,6 +137,12 @@ invocation.
   desktop app. `allow` entries are command substrings that always pass (for
   example `"npm test"`); `deny` entries are regular expressions added to the
   built-in dangerous table. Malformed patterns are ignored.
+- `pricing` - model-name prefix to USD per one million tokens
+  (`inputPerMillion` / `outputPerMillion`), used to estimate the cost shown in
+  `[usage]` and `--json`. The longest matching prefix wins, so a dated snapshot
+  such as `gpt-4o-mini-2024-07-18` can share the `gpt-4o-mini` entry. Entries
+  with missing or negative values are ignored, and an unknown model simply
+  shows no cost.
 - `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
 
 A malformed config file is ignored rather than fatal.

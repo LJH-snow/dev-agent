@@ -4,12 +4,42 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 4（文档、全量回归与提交）进行中
-- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
-- 最近一次运行：运行 4（2026-09-11 20:0x-20:1x）
-- 工作区：阶段 3 的改动待提交
+- 当前阶段：无，`docs/day-plan-v9.md` 的四个阶段已全部完成
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4
+- 最近一次运行：运行 5（2026-09-11 20:1x-20:3x）
+- 工作区：阶段 4 的文档改动提交后即 clean
 
 ## 日志
+
+### 运行 5 — 2026-09-11 20:1x-20:3x
+
+- 阶段/工作项：阶段 4（文档、全量回归与提交）完成
+- 做了什么：
+  - 根 `README.md`：Current Status 增加「持久化索引复用 / 多 hunk patch /
+    审批键归一化 / 用量成本估算」四条，测试数更新为 359 TS + 46 Rust，
+    Roadmap 追加 30-33（均标记 done）
+  - `packages/model/README.md`：新增 Cost estimation 一节（`PriceTable`、
+    `estimateCost` 语义、最长前缀匹配、未知模型返回 undefined）
+  - `packages/agent-core/README.md`：补充 `normalizeApprovalKey` 的键规则
+  - `apps/cli/README.md`：`--approval ask` 说明改为「命令 + 子命令」记忆键；
+    `[usage]` 说明与 `--json` 的 `cost` 字段；配置示例和字段表加入 `pricing`
+  - `apps/desktop/README.md`：说明 `pricing` 驱动头部成本显示、
+    Always allow 的归一化键
+  - `docs/architecture.md`：更新 model（成本估算）、tools（patch、索引读回）、
+    agent-core（审批键）、CLI（pricing）、desktop（usage cost）各节
+  - `docs/CHANGELOG.md`：新增「Day plan v9」条目，覆盖阶段 0-3 与测试增量
+    （342 -> 359）
+- 验证命令与结果（完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed（13 目录 / 34 文件）
+  - `pnpm build`：通过
+  - `pnpm typecheck`：通过
+  - `pnpm test`：359 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed / 0 failed
+  - `cargo fmt --check`：通过
+  - `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）/ 0 failed
+- 提交：见阶段 4 的 docs 提交
+- 下一步：v9 计划已收尾；如需继续，可基于本账本开新的 day-plan
 
 ### 运行 4 — 2026-09-11 20:0x-20:1x
 

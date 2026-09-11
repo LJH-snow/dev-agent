@@ -36,7 +36,10 @@ Configure the model provider the same way as the CLI, via environment variables:
 
 Both surfaces also read the `approval` section of `~/.dev-agent/config.json`:
 `allow` lists command substrings that always pass (`"npm test"`), `deny` adds
-regular expressions to the dangerous table.
+regular expressions to the dangerous table. The same file's `pricing` section
+(model-name prefix to `inputPerMillion` / `outputPerMillion`) lets the header
+show an estimated USD cost next to the token counter; without a matching entry
+only tokens are shown.
 
 ## How it works
 
@@ -99,9 +102,10 @@ The `Download` button saves the current session as a Markdown file.
 
 With `DEV_AGENT_APPROVAL=ask`, a flagged tool call renders an Allow/Deny prompt
 in the conversation and the run waits for the click. "Always allow" remembers
-that exact command line for the rest of the session, so it is not asked again.
-The decision is echoed as an `approval` frame, and a denial is written back to
-the model as the tool's result so it can pick another path.
+the command + subcommand key for the rest of the session, so `npm test` and
+`npm test -- --watch` only ask once. The decision is echoed as an `approval`
+frame, and a denial is written back to the model as the tool's result so it can
+pick another path.
 
 ## Tests
 

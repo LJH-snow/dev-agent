@@ -18,6 +18,29 @@ Gemini `usageMetadata`, Ollama `prompt_eval_count`/`eval_count`), including the
 usage that arrives in a stream's final event. Responses without usage leave the
 field undefined rather than reporting zeros.
 
+## Cost estimation
+
+`estimateCost(usage, model, prices)` turns a `ChatUsage` into USD when the caller
+supplies a price table:
+
+```ts
+estimateCost(
+  { promptTokens: 1000, completionTokens: 500, totalTokens: 1500 },
+  "gpt-4o-mini-2024-07-18",
+  { "gpt-4o-mini": { inputPerMillion: 0.15, outputPerMillion: 0.6 } }
+); // 0.00045
+```
+
+- `PriceTable` maps a model-name prefix to `inputPerMillion` /
+  `outputPerMillion` (USD per one million tokens). The longest matching prefix
+  wins, so `gpt-4o` and `gpt-4o-mini` can coexist and a dated snapshot picks the
+  more specific entry.
+- No match, an empty model name, or a malformed/negative price returns
+  `undefined`; this package never guesses a price or assumes the defaults of a
+  provider.
+- The CLI and desktop read the table from the `pricing` section of
+  `~/.dev-agent/config.json`.
+
 ## Retries
 
 Every provider retries the initial HTTP request when the server answers 429 or

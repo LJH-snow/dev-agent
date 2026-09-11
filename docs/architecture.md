@@ -34,7 +34,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   result so the model can adapt, and a policy that throws counts as a denial.
   Callers can install their own policy: the desktop passes a requester so `ask`
   can prompt the user over SSE (`approval-request` / `POST /api/approval`) and
-  deny when nothing answers within the timeout.
+  deny when nothing answers within the timeout. `normalizeApprovalKey()` turns a
+  request into the key an "always allow" decision is remembered under (command
+  name + first non-flag token, `sh -c` unwrapped), so extra flags share one key.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
   loop accumulates the totals on `AgentContext.usage` across runs.
 
@@ -50,6 +52,11 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   (OpenAI `usage`, Anthropic `input_tokens`/`output_tokens`, Gemini
   `usageMetadata`, Ollama `prompt_eval_count`/`eval_count`), including usage
   that arrives in a stream's final event.
+- **Cost estimation**: `estimateCost(usage, model, prices)` converts a
+  `ChatUsage` into USD using a caller-supplied `PriceTable` (model-name prefix →
+  `inputPerMillion` / `outputPerMillion`). The longest matching prefix wins;
+  unknown models, malformed prices, and an empty table return `undefined`
+  instead of guessing.
 
 ### `packages/tools`
 - `AgentToolRegistry` for registering and looking up tools.
@@ -58,9 +65,15 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - `filesystem` reads in slices (`offset`/`limit`, 2000 lines by default) and
   edits by replacing a snippet that must match exactly once, so a stale or
   ambiguous search string fails loudly instead of mis-editing a file.
+- `filesystem patch` applies several `oldText`/`newText` hunks to an in-memory
+  copy, requires each to match exactly once and to be non-overlapping, and
+  writes the file only after every hunk succeeds, so a failed patch leaves the
+  file untouched.
 - `CodeSearchTool` caches its scan per root (symbol index, per-file signatures,
   sources) and re-reads only files whose size or mtime changed; deleted files
-  leave the index. `getCacheStats()` exposes hits/misses/rescanned.
+  leave the index. A cold cache first loads the signature map written by
+  `--index` into `<root>/.dev-agent/index.json` (when present) and only rescans
+  what changed. `getCacheStats()` exposes hits/misses/rescanned/loadedFromDisk.
 
 ### `packages/mcp`
 - `McpStdioClient`: JSON-RPC 2.0 over stdio transport.
@@ -86,12 +99,17 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   `--session-delete`, and a shared `DEV_AGENT_SESSION_DIR`.
 - `--index <path>` walks a directory (skipping `node_modules`, `dist`, `.git`,
   `.next`, `.cache`, `.dev-agent`), scans TS/JS/Python/Rust with `scanFile`, and
-  writes `{ version, files, symbols }` to `<path>/.dev-agent/index.json` in the
-  same shape `JsonFileCodeIndex.load()` understands.
+  writes `{ version, files, symbols, signatures }` to
+  `<path>/.dev-agent/index.json` in the same shape `JsonFileCodeIndex.load()`
+  understands.
 - Approval rules can come from `~/.dev-agent/config.json`: `approval.allow`
   lists command substrings that always pass and `approval.deny` adds regular
   expressions to the dangerous table. `ask` decisions can be remembered for the
-  session only (`a` in the CLI, "Always allow" in the desktop).
+  session only (`a` in the CLI, "Always allow" in the desktop), keyed by the
+  normalized command + subcommand rather than the full argument list.
+- `pricing` in the same config file maps model-name prefixes to USD per million
+  input/output tokens; the CLI appends `cost=$…` to its `[usage]` line and adds
+  a `cost` field to `--json`, while an unmatched model prints no cost.
 
 ### `packages/code-intelligence`
 - Multi-language symbol scanning: TypeScript (AST), Python (regex), Rust (regex).
@@ -120,6 +138,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - **ChatSession**: Builds the `AgentLoop` with default tools and model provider; bridges `onToken`/`onToolCall`/`onToolResult`/`onTurn` callbacks to streaming events.
 - **HTTP server** (`server.ts`): Serves the static chat UI, `GET /health`, and `POST /api/chat` (Server-Sent Events). Configurable host/port via env.
 - **Chat UI** (`public/index.html`): Single-page dark/light interface; renders live tokens and tool activity from the SSE stream.
+- **Usage cost**: `usage` SSE frames carry an optional `cost` when the shared
+  config has a matching `pricing` entry; the header accumulates tokens and cost
+  per session and shows `$…` only when at least one frame was priced.
 - **Interrupts**: a client disconnect aborts the run (the stream closes with
   `done { "status": "aborted" }`), and a second concurrent chat is rejected with
   409 so two runs never share one conversation state.

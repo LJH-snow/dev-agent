@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-09-11 (Day plan v9: index reuse, atomic patches, cost estimates)
+
+Executed `docs/day-plan-v9.md`. The theme is making the agent's own bookkeeping
+cheaper and more predictable: it reuses the index it already wrote, patches
+files in one atomic edit, remembers approvals by intent instead of by exact
+argument list, and can price the tokens it spends.
+
+### Added: `code-search` reads back the persisted index
+- `--index` now records per-file signatures (mtime + size) next to the symbol
+  map in `<path>/.dev-agent/index.json`; the format stays `version: 1`, so
+  `JsonFileCodeIndex.load()` keeps working.
+- A cold `CodeSearchTool` cache loads that file first and only re-reads files
+  whose signature changed, removing files that disappeared. Corrupt or
+  version-mismatched files fall back to a full scan silently.
+- `getCacheStats()` gained `loadedFromDisk`.
+
+### Added: atomic multi-hunk `filesystem patch`
+- `filesystem patch` takes `hunks: [{ oldText, newText }]`, applies them in
+  order to an in-memory copy, requires every hunk to match exactly once and not
+  overlap an earlier one, and writes the file only after all of them succeed.
+  Errors name the failing hunk and the reason; the file stays untouched.
+- The approval policy treats `patch` like `write`/`edit`/`mkdir`: targets
+  outside the working directory are denied.
+
+### Changed: "always allow" is keyed by command + subcommand
+- `normalizeApprovalKey()` derives the key from the command name plus its first
+  non-flag token, unwrapping `sh -c "…"` first. `npm test` and
+  `npm test -- --watch`, or `git status` and `git status --short`, now share one
+  decision; unrelated commands still prompt separately.
+- The CLI and desktop session allowlists use the normalized key. The desktop
+  `ApprovalPrompt.command` field became `key`.
+
+### Added: usage cost estimation
+- `@dev-agent/model` exports `PriceTable` and
+  `estimateCost(usage, model, prices)`: the longest model-name prefix wins, and
+  unknown models or malformed/negative prices return `undefined` rather than
+  guessing.
+- `~/.dev-agent/config.json` gained a `pricing` section
+  (`{"gpt-4o-mini": {"inputPerMillion": 0.15, "outputPerMillion": 0.6}}`).
+  The CLI appends `cost=$…` to `[usage]` and adds a `cost` field to `--json`;
+  the desktop's `usage` SSE frame carries `cost` and the chat header accumulates
+  it next to the token counter. Unconfigured or unmatched models print no cost,
+  exactly as before.
+
+### Tests
+- TypeScript: 342 -> 359. Rust: 46 (unchanged).
+- New coverage: persisted-index read-back (load, incremental re-read, deletion,
+  corrupt fallback), multi-hunk patch (success, atomic failure, overlap,
+  validation), normalized approval keys on both surfaces, and cost estimation
+  (known model, unknown model, longest prefix, malformed entry) plus the CLI
+  `cost=$…` output.
+
 ## 2026-09-11 (Day plan v8: editing, indexing, approval memory)
 
 Executed `docs/day-plan-v8.md`. The headline is that the agent can finally
