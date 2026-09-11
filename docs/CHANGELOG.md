@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-09-11 (Day plan v8: editing, indexing, approval memory)
+
+Executed `docs/day-plan-v8.md`. The headline is that the agent can finally
+change code the way a coding agent should: by editing a snippet instead of
+rewriting whole files.
+
+### Added: unique-snippet editing and line-range reads
+- `filesystem edit` replaces `oldText` with `newText` only when the snippet
+  appears exactly once; a missing match, an ambiguous match, a missing
+  `oldText`, or a missing `newText` is an error and the file stays untouched.
+  An empty `newText` deletes the snippet.
+- `filesystem read` accepts `offset` (1-based) and `limit` (2000 lines by
+  default) and answers with `startLine`/`endLine`/`totalLines`/`truncated`, so
+  large files can be read in slices.
+- The approval policy treats `edit` like `write`: targets outside the working
+  directory are denied.
+
+### Added: `--index` symbol index command
+- Scans a directory with the same ignore rules as `code-search`
+  (`node_modules`, `dist`, `.git`, `.next`, `.cache`, `.dev-agent`) and writes
+  `{ version, files, symbols }` to `<path>/.dev-agent/index.json`, a shape
+  `JsonFileCodeIndex.load()` can read.
+- Reports files, symbols, and a language breakdown; `--json` gives the same as
+  an object. `.dev-agent/` is now git-ignored.
+
+### Added: per-session approval memory
+- CLI `ask` accepts `a` (or "always") to run a command and remember it for the
+  rest of the process; the desktop prompt gained an "Always allow" button that
+  posts `decision: "allow-always"`.
+- The memory is keyed by the exact command line and lives in memory only; it is
+  per session and never written to disk.
+
+### Fixed
+- The CLI's own `--index` run created `.dev-agent/index.json` files that were
+  not ignored by git; they now are.
+
+### Tests
+- TypeScript: 329 -> 342. Rust: 46 (unchanged).
+- New coverage: edit success/not-found/ambiguous/delete/validation, read
+  pagination and past-the-end offsets, approval denial for out-of-workspace
+  edits, the index command (scan, ignores, missing path), and approval memory
+  on both the CLI and the desktop.
+
 ## 2026-09-11 (Day plan v7: interactive approvals, doctor, session deletion)
 
 Executed `docs/day-plan-v7.md`, closing the approval boundary v6 left open and

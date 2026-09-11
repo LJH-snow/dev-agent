@@ -4,12 +4,49 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 4（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
-- 最近一次运行：运行 3（2026-09-11 17:15-17:45）
-- 工作区：阶段 3 的改动已提交并推送
+- 当前阶段：无（v8 全部完成）
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4
+- 最近一次运行：运行 4（2026-09-11 17:45-18:05）
+- 工作区：阶段 4 的改动已提交并推送
 
 ## 日志
+
+### 运行 4 — 2026-09-11 17:45-18:05
+
+- 阶段/工作项：阶段 4（文档、全量回归与提交）完成；v8 收口
+- 做了什么：
+  - 根 `README.md`：Current Status 增加编辑工具、`--index`、审批记忆三条，
+    测试数量更新为 342 TypeScript + 46 Rust；Roadmap 增加 27-29 项
+  - `docs/architecture.md`：说明 edit/read 语义、`--index` 的扫描与落盘规则、
+    配置化审批与"总是允许"的作用范围
+  - `docs/CHANGELOG.md`：新增 v8 条目
+- 验证命令与结果（完整回归矩阵）：
+  - `node scripts/check.mjs`：通过
+  - `pnpm build`、`pnpm typecheck`：通过
+  - `pnpm test`：342 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed
+  - `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：43（lib）+ 3（bin）passed
+- 提交：见阶段 4 的 docs 提交
+- 下一步：无（v8 阶段与收尾均完成）
+
+## v8 总结（2026-09-11 18:05）
+
+| 阶段 | 产出 |
+|------|------|
+| 0 | `filesystem edit`：唯一片段替换（未命中/歧义都报错且不改文件，空 newText 删除）；`read` 支持 offset/limit 与 truncated 标记 |
+| 1 | 审批策略把 `edit` 与 `write` 同等对待（工作目录外拒绝） |
+| 2 | `--index <path>`：扫描目录并把 `{ version, files, symbols }` 写到 `<root>/.dev-agent/index.json`，与 `JsonFileCodeIndex` 格式兼容 |
+| 3 | 审批记忆：CLI `a` / 桌面端 "Always allow"，仅本会话内存生效 |
+| 4 | 文档、全量回归、提交推送 |
+
+测试数量：TypeScript 329 → 342（+13），Rust 46（未变），真实二进制集成 10。
+
+### v8 已知边界
+
+- `edit` 只做单次唯一替换，不支持一次多处的批量 patch；文件很大时仍受工具输出上限约束。
+- `--index` 写出的索引还没有被 `code-search` 读回来用，跨进程复用仍待接线。
+- 审批记忆以"完全相同的命令行"为键，参数稍变就会重新询问。
 
 ### 运行 3 — 2026-09-11 17:15-17:45
 

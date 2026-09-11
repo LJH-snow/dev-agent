@@ -55,6 +55,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - `AgentToolRegistry` for registering and looking up tools.
 - Built-in tools: filesystem, shell, git, code-search.
 - Context-aware execution relative to `workingDirectory`.
+- `filesystem` reads in slices (`offset`/`limit`, 2000 lines by default) and
+  edits by replacing a snippet that must match exactly once, so a stale or
+  ambiguous search string fails loudly instead of mis-editing a file.
 - `CodeSearchTool` caches its scan per root (symbol index, per-file signatures,
   sources) and re-reads only files whose size or mtime changed; deleted files
   leave the index. `getCacheStats()` exposes hits/misses/rescanned.
@@ -81,6 +84,14 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   directory) and reports `{ ok, warn, fail }`, exiting 1 on any failure.
 - Sessions are managed end to end: `--session-list`, `--metadata`, `--compact`,
   `--session-delete`, and a shared `DEV_AGENT_SESSION_DIR`.
+- `--index <path>` walks a directory (skipping `node_modules`, `dist`, `.git`,
+  `.next`, `.cache`, `.dev-agent`), scans TS/JS/Python/Rust with `scanFile`, and
+  writes `{ version, files, symbols }` to `<path>/.dev-agent/index.json` in the
+  same shape `JsonFileCodeIndex.load()` understands.
+- Approval rules can come from `~/.dev-agent/config.json`: `approval.allow`
+  lists command substrings that always pass and `approval.deny` adds regular
+  expressions to the dangerous table. `ask` decisions can be remembered for the
+  session only (`a` in the CLI, "Always allow" in the desktop).
 
 ### `packages/code-intelligence`
 - Multi-language symbol scanning: TypeScript (AST), Python (regex), Rust (regex).

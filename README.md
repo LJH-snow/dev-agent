@@ -215,7 +215,15 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   exit when something fails
 - Sessions can be removed: `--session-delete <id>` in the CLI and
   `DELETE /api/sessions/<id>` plus a Delete button in the desktop picker
-- Test suite: 329 TypeScript tests + 46 Rust tests, all passing
+- Editing stopped being "rewrite the whole file": `filesystem` gained an `edit`
+  action that replaces a snippet only when it matches exactly once, and `read`
+  takes `offset`/`limit` (2000 lines by default) so large files come back in
+  slices
+- Approval can be remembered per session: the CLI accepts `a` and the desktop
+  shows "Always allow", so the same command line is not asked about twice
+- `dev-agent --index <path>` scans a directory and writes a symbol index to
+  `<path>/.dev-agent/index.json` (same ignore rules as `code-search`)
+- Test suite: 342 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -257,3 +265,6 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 24. ~~Interactive approval prompts in the desktop UI~~ (done)
 25. ~~`--doctor` environment self-check~~ (done)
 26. ~~Session deletion in the CLI and desktop~~ (done)
+27. ~~Unique-snippet editing and line-range reads~~ (done)
+28. ~~`--index` symbol index command~~ (done)
+29. ~~Per-session approval memory ("always allow")~~ (done)
