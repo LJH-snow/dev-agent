@@ -33,6 +33,9 @@ Options:
   `deny-dangerous` (block the built-in dangerous command patterns and writes
   outside the working directory), or `ask` (same detection, but confirm with
   `y/N` first; a non-`y` answer, EOF, or a read failure denies the call)
+- `--json` - machine-readable output for `--once`, `--tools`, `--metadata`,
+  `--session-list`, and `--compact`; implies `--no-stream` so nothing else is
+  written to stdout
 - `--version` / `-v` - print the CLI version
 
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on

@@ -5,12 +5,30 @@
 
 ## 当前状态
 
-- 当前阶段：Backlog 2（CLI `--json` 输出）
+- 当前阶段：Backlog 3（桌面端多会话）
 - 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3、阶段 4、阶段 5
 - 最近一次运行：运行 6（2026-09-11 13:35-13:50）
 - 工作区：阶段 5 的改动已提交并推送
 
 ## 日志
+
+### 运行 8 — 2026-09-11 14:05-14:20
+
+- 阶段/工作项：Backlog 2（CLI `--json` 机器可读输出）完成
+- 做了什么：
+  - 新增 `--json`：`--tools`（工具名/描述/参数 schema）、`--metadata`（元数据或
+    `null`）、`--session-list`（file/size/modifiedAt 数组，空目录输出 `[]`）、
+    `--compact`（`{ removed, keptTurns }`）、`--once`
+    （`{ sessionId, status, turns, content, usage }`）都输出 JSON
+  - `--json` 隐含关闭流式，并让 `[turn N]`、`[denied]` 等人类可读输出不再写 stdout，
+    保证 stdout 只有一份完整 JSON 文档
+- 验证命令与结果：
+  - `apps/cli`：新增 4 个用例（tools、metadata、session-list、once）全部通过
+  - `pnpm test`：全绿（TypeScript 301 个测试）
+- 踩坑记录：第一版 JSON 模式仍会被 `onTurn` 的 `[turn N]` 与审批的 `[denied]`
+  前缀污染，导致 `JSON.parse` 失败；已在两个回调里加 `jsonOutput` 判断。
+- 提交：见 Backlog 2 的 feat 提交
+- 下一步：Backlog 3 — 桌面端多会话（`GET /api/sessions` + 会话选择）
 
 ### 运行 7 — 2026-09-11 13:50-14:05
 

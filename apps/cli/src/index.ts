@@ -77,6 +77,7 @@ export async function main(argv: string[]): Promise<void> {
   }
   const resetMemory = args.includes("--reset-memory");
   const noStream = args.includes("--no-stream");
+  const jsonOutput = args.includes("--json");
   const normalizedSessionId = normalizeSessionId(sessionId ?? "default");
   const workingDirectory = resolveWorkingDirectory();
   const rustIndex = args.indexOf("--rust-executor");
@@ -139,6 +140,20 @@ export async function main(argv: string[]): Promise<void> {
     }, config);
 
     if (args.includes("--tools")) {
+      if (jsonOutput) {
+        console.log(
+          JSON.stringify(
+            tools.list().map((tool) => ({
+              name: tool.name,
+              description: tool.description,
+              parameters: tool.parameters,
+            })),
+            null,
+            2
+          )
+        );
+        return;
+      }
       for (const tool of tools.list()) {
         console.log(`${tool.name}: ${tool.description}`);
       }
@@ -148,6 +163,10 @@ export async function main(argv: string[]): Promise<void> {
     if (args.includes("--metadata")) {
       const memory = createMemory(normalizedSessionId);
       const meta = await memory.getMetadata();
+      if (jsonOutput) {
+        console.log(JSON.stringify(meta ?? null, null, 2));
+        return;
+      }
       if (meta) {
         console.log(`Session: ${meta.sessionId}`);
         console.log(`Created: ${meta.createdAt}`);
@@ -160,7 +179,7 @@ export async function main(argv: string[]): Promise<void> {
     }
 
     if (args.includes("--session-list")) {
-      await listSessions();
+      await listSessions(jsonOutput);
       return;
     }
 
@@ -174,6 +193,10 @@ export async function main(argv: string[]): Promise<void> {
       }
       const memory = createMemory(normalizedSessionId);
       const removed = await memory.compact(keepTurns);
+      if (jsonOutput) {
+        console.log(JSON.stringify({ removed, keptTurns: keepTurns }, null, 2));
+        return;
+      }
       console.log(`Compacted session memory: removed ${removed} entries, keeping ${keepTurns} recent turns.`);
       return;
     }
@@ -187,7 +210,8 @@ export async function main(argv: string[]): Promise<void> {
       workingDirectory,
       metadata: { cliVersion: version, provider: provider.id },
     });
-    const streaming = new StreamingRun({ enabled: !noStream });
+    // Token streaming would interleave with the JSON document.
+    const streaming = new StreamingRun({ enabled: !noStream && !jsonOutput });
     const loop = new AgentLoop({
       model: provider,
       tools,
@@ -198,24 +222,27 @@ export async function main(argv: string[]): Promise<void> {
       contextBudget: buildContextBudget(config),
       approval,
       onApproval: (request, outcome) => {
-        if (outcome.decision === "deny") {
+        // Nothing may interleave with the JSON document on stdout.
+        if (!jsonOutput && outcome.decision === "deny") {
           process.stdout.write(
             `${colorize(`[denied] ${request.toolName} ${outcome.reason ?? ""}`.trimEnd(), "yellow")}\n`
           );
         }
       },
       onTurn: (turn) => {
-        process.stdout.write(`[turn ${turn}]\n`);
+        if (!jsonOutput) {
+          process.stdout.write(`[turn ${turn}]\n`);
+        }
       },
       ...streaming.callbacks(),
     });
 
     if (oncePrompt) {
-      await runPrompt(loop, context, streaming, oncePrompt);
+      await runPrompt(loop, context, streaming, oncePrompt, jsonOutput);
       return;
     }
 
-    await interactive(loop, context, streaming, questionBox);
+    await interactive(loop, context, streaming, questionBox, jsonOutput);
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
   }
@@ -412,13 +439,13 @@ function sessionDir(): string {
     join(homedir(), ".dev-agent", "sessions");
 }
 
-async function listSessions(): Promise<void> {
+async function listSessions(jsonOutput = false): Promise<void> {
   let entries: string[];
   try {
     entries = await readdir(sessionDir());
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
-      console.log("No sessions found.");
+      console.log(jsonOutput ? "[]" : "No sessions found.");
       return;
     }
     throw error;
@@ -426,7 +453,7 @@ async function listSessions(): Promise<void> {
 
   const sessionFiles = entries.filter((name) => name.endsWith(".json"));
   if (sessionFiles.length === 0) {
-    console.log("No sessions found.");
+    console.log(jsonOutput ? "[]" : "No sessions found.");
     return;
   }
 
@@ -442,6 +469,20 @@ async function listSessions(): Promise<void> {
   }
 
   rows.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+  if (jsonOutput) {
+    console.log(
+      JSON.stringify(
+        rows.map((row) => ({
+          file: row.file,
+          size: row.size,
+          modifiedAt: row.modified.toISOString(),
+        })),
+        null,
+        2
+      )
+    );
+    return;
+  }
   console.log(`Sessions (${rows.length}) in ${sessionDir()}:`);
   for (const row of rows) {
     console.log(`  ${row.file.padEnd(32)} ${String(row.size).padStart(10)} bytes  ${row.modified.toISOString()}`);
@@ -633,7 +674,8 @@ async function interactive(
   loop: AgentLoop,
   context: AgentContext,
   streaming: StreamingRun,
-  questionBox: QuestionBox
+  questionBox: QuestionBox,
+  jsonOutput = false
 ): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
@@ -663,20 +705,40 @@ async function interactive(
     if (!prompt) {
       continue;
     }
-    await runPrompt(loop, context, streaming, prompt);
+    await runPrompt(loop, context, streaming, prompt, jsonOutput);
   }
 
   process.removeListener("SIGINT", onSigint);
   rl.close();
 }
 
-async function runPrompt(loop: AgentLoop, context: AgentContext, streaming: StreamingRun, prompt: string): Promise<void> {
+async function runPrompt(
+  loop: AgentLoop,
+  context: AgentContext,
+  streaming: StreamingRun,
+  prompt: string,
+  jsonOutput = false
+): Promise<void> {
   const result = await loop.run(context, prompt);
+  const entries = await result.memory.entries();
+  const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
+
+  if (jsonOutput) {
+    console.log(
+      JSON.stringify({
+        sessionId: result.sessionId,
+        status: result.state.status,
+        turns: result.state.turns,
+        content: lastAssistant?.content ?? "",
+        usage: result.usage ?? null,
+      })
+    );
+    return;
+  }
+
   if (streaming.isEnabled() && streaming.hasStreamed()) {
     process.stdout.write("\n");
   } else {
-    const entries = await result.memory.entries();
-    const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
     if (lastAssistant) {
       console.log(lastAssistant.content);
     }
