@@ -4,6 +4,8 @@ import type { ChatUsage } from "./types.js";
 export interface ModelPrice {
   readonly inputPerMillion: number;
   readonly outputPerMillion: number;
+  /** Optional discounted price for prompt tokens served from a cache. */
+  readonly cachedInputPerMillion?: number;
 }
 
 /**
@@ -45,10 +47,19 @@ export function estimateCost(
     return undefined;
   }
 
+  const cachedTokens = Math.min(
+    Math.max(usage.cachedPromptTokens ?? 0, 0),
+    usage.promptTokens
+  );
+  const cachedPrice = best.price.cachedInputPerMillion;
+  const discounted =
+    typeof cachedPrice === "number" && Number.isFinite(cachedPrice) && cachedPrice >= 0;
+  const inputCost = discounted
+    ? (usage.promptTokens - cachedTokens) * best.price.inputPerMillion +
+      cachedTokens * cachedPrice
+    : usage.promptTokens * best.price.inputPerMillion;
   const cost =
-    (usage.promptTokens * best.price.inputPerMillion +
-      usage.completionTokens * best.price.outputPerMillion) /
-    1_000_000;
+    (inputCost + usage.completionTokens * best.price.outputPerMillion) / 1_000_000;
   return Number.isFinite(cost) ? cost : undefined;
 }
 

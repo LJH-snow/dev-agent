@@ -18,6 +18,12 @@ Gemini `usageMetadata`, Ollama `prompt_eval_count`/`eval_count`), including the
 usage that arrives in a stream's final event. Responses without usage leave the
 field undefined rather than reporting zeros.
 
+When a provider bills cache hits separately, `usage.cachedPromptTokens` carries
+the cached part of `promptTokens` (OpenAI
+`prompt_tokens_details.cached_tokens`, Anthropic `cache_read_input_tokens`).
+Anthropic's `cache_creation_input_tokens` also count as prompt tokens; the field
+is omitted when a response has no cached tokens.
+
 ## Cost estimation
 
 `estimateCost(usage, model, prices)` turns a `ChatUsage` into USD when the caller
@@ -32,9 +38,11 @@ estimateCost(
 ```
 
 - `PriceTable` maps a model-name prefix to `inputPerMillion` /
-  `outputPerMillion` (USD per one million tokens). The longest matching prefix
-  wins, so `gpt-4o` and `gpt-4o-mini` can coexist and a dated snapshot picks the
-  more specific entry.
+  `outputPerMillion` (USD per one million tokens). The optional
+  `cachedInputPerMillion` prices the cached part of the prompt instead of the
+  regular input price; without it cached tokens are charged at the full input
+  price. The longest matching prefix wins, so `gpt-4o` and `gpt-4o-mini` can
+  coexist and a dated snapshot picks the more specific entry.
 - No match, an empty model name, or a malformed/negative price returns
   `undefined`; this package never guesses a price or assumes the defaults of a
   provider.

@@ -42,6 +42,31 @@ test("OpenAI chat reports usage", async () => {
   });
 });
 
+test("OpenAI chat reports cached prompt tokens", async () => {
+  const provider = createOpenAIProvider({
+    model: "gpt-4o-mini",
+    fetch: async () =>
+      jsonResponse({
+        choices: [{ message: { content: "hi" } }],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 2,
+          total_tokens: 12,
+          prompt_tokens_details: { cached_tokens: 6 },
+        },
+      }),
+  });
+
+  const completion = await provider.chat([{ role: "user", content: "hi" }]);
+
+  assert.deepEqual(completion.usage, {
+    promptTokens: 10,
+    completionTokens: 2,
+    totalTokens: 12,
+    cachedPromptTokens: 6,
+  });
+});
+
 test("Anthropic chat reports usage", async () => {
   const provider = createAnthropicProvider({
     model: "claude-sonnet-4",
@@ -58,6 +83,61 @@ test("Anthropic chat reports usage", async () => {
     promptTokens: 11,
     completionTokens: 4,
     totalTokens: 15,
+  });
+});
+
+test("Anthropic chat counts cache reads and writes as prompt tokens", async () => {
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4",
+    fetch: async () =>
+      jsonResponse({
+        content: [{ type: "text", text: "hi" }],
+        usage: {
+          input_tokens: 5,
+          output_tokens: 2,
+          cache_creation_input_tokens: 3,
+          cache_read_input_tokens: 4,
+        },
+      }),
+  });
+
+  const completion = await provider.chat([{ role: "user", content: "hi" }]);
+
+  assert.deepEqual(completion.usage, {
+    promptTokens: 12,
+    completionTokens: 2,
+    totalTokens: 14,
+    cachedPromptTokens: 4,
+  });
+});
+
+test("Anthropic streamChat does not double count cache tokens", async () => {
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4",
+    fetch: async () =>
+      sseResponse([
+        {
+          type: "message_start",
+          message: {
+            usage: {
+              input_tokens: 5,
+              cache_creation_input_tokens: 3,
+              cache_read_input_tokens: 4,
+            },
+          },
+        },
+        { type: "content_block_delta", delta: { type: "text_delta", text: "hi" } },
+        { type: "message_delta", usage: { output_tokens: 2 } },
+      ]),
+  });
+
+  const completion = await provider.streamChat([{ role: "user", content: "hi" }]);
+
+  assert.deepEqual(completion.usage, {
+    promptTokens: 12,
+    completionTokens: 2,
+    totalTokens: 14,
+    cachedPromptTokens: 4,
   });
 });
 

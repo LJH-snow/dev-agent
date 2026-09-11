@@ -146,10 +146,12 @@ invocation.
   built-in dangerous table. Malformed patterns are ignored.
 - `pricing` - model-name prefix to USD per one million tokens
   (`inputPerMillion` / `outputPerMillion`), used to estimate the cost shown in
-  `[usage]` and `--json`. The longest matching prefix wins, so a dated snapshot
-  such as `gpt-4o-mini-2024-07-18` can share the `gpt-4o-mini` entry. Entries
-  with missing or negative values are ignored, and an unknown model simply
-  shows no cost.
+  `[usage]` and `--json`. An optional `cachedInputPerMillion` prices cache-hit
+  prompt tokens (OpenAI/Anthropic report them separately) at a discount;
+  without it they are charged at the normal input price. The longest matching
+  prefix wins, so a dated snapshot such as `gpt-4o-mini-2024-07-18` can share
+  the `gpt-4o-mini` entry. Entries with missing or negative values are ignored,
+  and an unknown model simply shows no cost.
 - `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
 
 A malformed config file is ignored rather than fatal.

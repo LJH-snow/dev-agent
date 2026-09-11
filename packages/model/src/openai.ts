@@ -27,6 +27,9 @@ interface OpenAIWireUsage {
   readonly prompt_tokens?: number;
   readonly completion_tokens?: number;
   readonly total_tokens?: number;
+  readonly prompt_tokens_details?: {
+    readonly cached_tokens?: number;
+  };
 }
 
 interface OpenAIResponse {
@@ -218,10 +221,14 @@ function parseOpenAIUsage(usage: OpenAIWireUsage | undefined): ChatUsage | undef
   }
   const promptTokens = usage.prompt_tokens ?? 0;
   const completionTokens = usage.completion_tokens ?? 0;
+  const cachedPromptTokens = usage.prompt_tokens_details?.cached_tokens;
   return {
     promptTokens,
     completionTokens,
     totalTokens: usage.total_tokens ?? promptTokens + completionTokens,
+    ...(typeof cachedPromptTokens === "number" && cachedPromptTokens > 0
+      ? { cachedPromptTokens }
+      : {}),
   };
 }
 

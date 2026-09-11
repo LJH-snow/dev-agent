@@ -37,3 +37,46 @@ test("estimateCost ignores malformed price entries", () => {
 
   assert.equal(estimateCost(usage, "gpt-4o-mini", prices), undefined);
 });
+
+test("estimateCost charges cached tokens at the cache price", () => {
+  const cost = estimateCost(
+    { promptTokens: 1000, completionTokens: 500, totalTokens: 1500, cachedPromptTokens: 400 },
+    "gpt-4o-mini",
+    {
+      "gpt-4o-mini": {
+        inputPerMillion: 1,
+        outputPerMillion: 2,
+        cachedInputPerMillion: 0.25,
+      },
+    }
+  );
+
+  // 600 * 1 + 400 * 0.25 + 500 * 2 = 1700 per million
+  assert.equal(cost, 0.0017);
+});
+
+test("estimateCost falls back to the input price without a cache price", () => {
+  const cost = estimateCost(
+    { promptTokens: 1000, completionTokens: 500, totalTokens: 1500, cachedPromptTokens: 400 },
+    "gpt-4o-mini",
+    { "gpt-4o-mini": { inputPerMillion: 1, outputPerMillion: 2 } }
+  );
+
+  assert.equal(cost, 0.002);
+});
+
+test("estimateCost clamps cached tokens to the prompt total", () => {
+  const cost = estimateCost(
+    { promptTokens: 100, completionTokens: 0, totalTokens: 100, cachedPromptTokens: 500 },
+    "gpt-4o-mini",
+    {
+      "gpt-4o-mini": {
+        inputPerMillion: 1,
+        outputPerMillion: 2,
+        cachedInputPerMillion: 0,
+      },
+    }
+  );
+
+  assert.equal(cost, 0);
+});

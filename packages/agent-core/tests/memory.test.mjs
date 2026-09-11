@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { createMemoryEntry, FileMemory, InMemoryMemory } from "../dist/index.js";
+import { addUsage, createMemoryEntry, FileMemory, InMemoryMemory } from "../dist/index.js";
 
 function makeTempDir() {
   return mkdtempSync(join(tmpdir(), "dev-agent-memory-"));
@@ -71,6 +71,28 @@ test("in-memory usage accumulates into metadata", async () => {
     promptTokens: 8,
     completionTokens: 3,
     totalTokens: 11,
+  });
+});
+
+test("addUsage keeps cached prompt tokens in the running total", () => {
+  const first = addUsage(undefined, {
+    promptTokens: 10,
+    completionTokens: 2,
+    totalTokens: 12,
+    cachedPromptTokens: 6,
+  });
+  const second = addUsage(first, {
+    promptTokens: 5,
+    completionTokens: 1,
+    totalTokens: 6,
+    cachedPromptTokens: 4,
+  });
+
+  assert.deepEqual(second, {
+    promptTokens: 15,
+    completionTokens: 3,
+    totalTokens: 18,
+    cachedPromptTokens: 10,
   });
 });
 

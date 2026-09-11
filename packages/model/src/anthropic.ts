@@ -29,6 +29,8 @@ interface AnthropicResponse {
 interface AnthropicWireUsage {
   readonly input_tokens?: number;
   readonly output_tokens?: number;
+  readonly cache_creation_input_tokens?: number;
+  readonly cache_read_input_tokens?: number;
 }
 
 export class AnthropicProvider implements ModelProvider {
@@ -236,12 +238,26 @@ function applyAnthropicUsage(
   if (!wire) {
     return current;
   }
-  const promptTokens = wire.input_tokens ?? current?.promptTokens ?? 0;
+  // Anthropic reports cache reads and cache writes separately from
+  // `input_tokens`; both are prompt tokens, and cache reads are the discounted
+  // part. Only the event carrying `input_tokens` contributes them, so a later
+  // output-only event cannot double count.
+  const hasInput = typeof wire.input_tokens === "number";
+  const promptTokens = hasInput
+    ? wire.input_tokens! +
+      (wire.cache_creation_input_tokens ?? 0) +
+      (wire.cache_read_input_tokens ?? 0)
+    : current?.promptTokens ?? 0;
+  const cachedPromptTokens =
+    (hasInput ? wire.cache_read_input_tokens : undefined) ??
+    current?.cachedPromptTokens ??
+    0;
   const completionTokens = wire.output_tokens ?? current?.completionTokens ?? 0;
   return {
     promptTokens,
     completionTokens,
     totalTokens: promptTokens + completionTokens,
+    ...(cachedPromptTokens > 0 ? { cachedPromptTokens } : {}),
   };
 }
 
