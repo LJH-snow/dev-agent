@@ -236,6 +236,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   shows "Always allow", so the same command is not asked about twice. The memory
   key is the command plus its first subcommand (`npm test`, `git status`), so
   extra flags such as `npm test -- --watch` do not trigger a second prompt
+- The dangerous-command table covers the long and short spellings of the same
+  shapes: `rm --recursive --force` alongside `rm -rf`, and `git push -f` /
+  `git push origin +main` alongside `--force`, without flagging
+  `rm --force file` or `git push --follow-tags`
 - `dev-agent --index <path>` scans a directory and writes a symbol index to
   `<path>/.dev-agent/index.json`; TypeScript/JavaScript/Python/Rust up to depth
   8, with the same ignore rules as `code-search`. A second run reuses the files
@@ -244,11 +248,15 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   `pub(crate)`, `async`, `unsafe`, `const`, `default`, `extern "C"`), traits,
   and `impl`/trait methods (which carry their container), so real Rust files
   produce symbols instead of silently scanning to nothing
+- The Python scanner understands `async def` at module level and inside classes
+  (decorated methods included), so async services no longer index to nothing
 - `code-search` refreshes that same index file after its incremental scan finds
   changed files, so the next process starts from a current cache; an index that
   exists but is corrupt is replaced with a freshly scanned one. The scan scope
   matches `--index`, so Python/Rust symbols are never pruned from a reused
   index; `references`/`definition` remain TypeScript/JavaScript
+- A narrow `code-search` call (`maxDepth`) only replaces the entries inside that
+  depth: deeper entries stay in the index instead of being pruned as "deleted"
 - `filesystem` gained a `patch` action that applies several `oldText`/`newText`
   hunks in one write: every hunk must match exactly once and not overlap, and a
   failure leaves the file untouched
@@ -261,7 +269,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 389 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 394 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -320,3 +328,6 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 41. ~~Rust scanner coverage for visibility, modifiers, traits, and impl methods~~ (done)
 42. ~~Cache-write token accounting and pricing~~ (done)
 43. ~~Config-file validation in `--doctor`~~ (done)
+44. ~~Dangerous-pattern coverage for long options and short force flags~~ (done)
+45. ~~`async def` support in the Python scanner~~ (done)
+46. ~~Depth-safe `code-search` index write-back~~ (done)

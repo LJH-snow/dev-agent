@@ -37,6 +37,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   deny when nothing answers within the timeout. `normalizeApprovalKey()` turns a
   request into the key an "always allow" decision is remembered under (command
   name + first non-flag token, `sh -c` unwrapped), so extra flags share one key.
+  The built-in table matches both spellings of a dangerous shape: `rm -rf` and
+  `rm --recursive --force`, `git push --force` / `-f` / `+refspec`, while
+  `rm --force file` (no recursion) and `git push --follow-tags` stay allowed.
 - **Usage**: every model response that reports tokens fires `onUsage`, and the
   loop accumulates the totals on `AgentContext.usage` across runs. Each report
   is also handed to `AgentMemory.recordUsage()`, which `InMemoryMemory` keeps in
@@ -92,6 +95,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   directories), so a reused index round-trips without losing Python/Rust
   entries. Symbol search covers all four languages; `references` and
   `definition` hand only TS/JS sources to the TypeScript language service.
+- A narrow `maxDepth` scan restricts the cache to that depth and merges the
+  write-back with the on-disk index, so deeper entries are neither searched nor
+  deleted by a shallower call.
 
 ### `packages/mcp`
 - `McpStdioClient`: JSON-RPC 2.0 over stdio transport.
@@ -143,6 +149,8 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   modifiers (`async`, `unsafe`, `const`, `default`, `extern "C"`), `trait` as
   `interface`, and functions inside `impl`/`trait` blocks as `method` symbols
   carrying their container name.
+- The Python scanner handles `def` and `async def`, decorators, classes, and
+  methods (including async methods with their class as `containerName`).
 - `InMemoryCodeIndex` with ranked search (exact, prefix, token, path scoring).
 - `JsonFileCodeIndex` for persistent indexing.
 - `TypeScriptReferenceIndex` for go-to-definition and find-references.

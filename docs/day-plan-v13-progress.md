@@ -4,12 +4,36 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（文档、全量回归与提交）未开始
-- 已完成阶段：阶段 0、阶段 1、阶段 2
-- 最近一次运行：运行 3（2026-09-11 23:0x-23:2x）
-- 工作区：阶段 2 的改动待提交
+- 当前阶段：无，`docs/day-plan-v13.md` 的四个阶段已全部完成
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
+- 最近一次运行：运行 4（2026-09-11 23:2x-23:4x）
+- 工作区：阶段 3 的文档改动提交后即 clean
 
 ## 日志
+
+### 运行 4 — 2026-09-11 23:2x-23:4x
+
+- 阶段/工作项：阶段 3（文档、全量回归与提交）完成
+- 做了什么：
+  - 根 `README.md`：Current Status 增加危险命令表长短选项覆盖、Python
+    `async def`、窄 maxDepth 写回合并三条，测试数更新为 394 TS + 46 Rust；
+    Roadmap 追加 44-46
+  - `docs/architecture.md`：approval 的模式覆盖、code-intelligence 的 Python
+    async 支持、tools 的深度安全写回
+  - `docs/CHANGELOG.md`：新增「Day plan v13」条目（389 -> 394），三条修复
+    都带实测复现证据
+- 验证命令与结果（完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed（13 目录 / 34 文件）
+  - `pnpm build`：通过
+  - `pnpm typecheck`：通过
+  - `pnpm test`：394 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed / 0 failed
+  - `cargo fmt --check`：通过
+  - `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）/ 0 failed
+- 提交：见阶段 3 的 docs 提交
+- 下一步：v13 计划已收尾；继续用实测复现的方式找下一个真实缺口（优先看
+  执行器/沙箱、MCP 往返、上下文预算与桌面端 SSE 边界）
 
 ### 运行 3 — 2026-09-11 23:0x-23:2x
 

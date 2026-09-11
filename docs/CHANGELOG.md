@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-11 (Day plan v13: pattern coverage, async Python, depth-safe index)
+
+Executed `docs/day-plan-v13.md`. All three fixes came from probing the running
+code rather than reading it: the approval table missed long-option `rm` and
+short force pushes, the Python scanner ignored `async def`, and a narrow
+`code-search` call deleted deeper entries from the shared index.
+
+### Fixed: the dangerous-command table matches both spellings
+- `rm --recursive --force` was allowed while `rm -rf` was denied. The
+  "recursive delete" pattern now accepts long and short recursion flags, uses a
+  token boundary so `rm file-r.txt` is not a false positive, and still allows
+  `rm --force file` because it is not recursive.
+- `git push -f` and `git push origin +main` were allowed while
+  `git push --force` was denied. The "force push" pattern now covers `-f`,
+  `--force`, `--force-with-lease`, `--force-if-includes`, and `+refspec`;
+  `git push --follow-tags` and branch names containing `-f` stay allowed.
+
+### Fixed: the Python scanner sees `async def`
+- Top-level `async def` becomes a `function`, class-level and decorated
+  `async def` become `method` symbols with their class as `containerName`.
+  `await some_call(...)` is not mistaken for a declaration.
+
+### Fixed: a narrow `code-search` no longer prunes deeper index entries
+- Reproduction: an index holding `shallow.ts` and `deep/nested/deep.ts` lost the
+  deep file after a `maxDepth: 1` search, which rewrote the shared index.
+- A loaded index is now restricted to the requested depth for that scan, and the
+  write-back merges with the on-disk index: entries outside the scanned depth
+  survive untouched, while a deep file that really is gone is still removed by a
+  scan that covers its depth.
+
+### Tests
+- TypeScript: 389 -> 394. Rust: 46 (unchanged).
+- New coverage: long-option `rm`, `-f`/`+refspec` pushes and their look-alike
+  false positives, async Python functions and methods, and both directions of
+  the depth-safe index write-back.
+
 ## 2026-09-11 (Day plan v12: multi-language search, cache writes, config doctor)
 
 Executed `docs/day-plan-v12.md`. These gaps only showed up once the pieces were
