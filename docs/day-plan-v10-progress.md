@@ -4,12 +4,30 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 2（桌面端会话重命名 UI）未开始
-- 已完成阶段：阶段 0、阶段 1
-- 最近一次运行：运行 2（2026-09-11 20:2x-20:4x）
-- 工作区：阶段 1 的改动待提交
+- 当前阶段：阶段 3（文档、全量回归与提交）未开始
+- 已完成阶段：阶段 0、阶段 1、阶段 2
+- 最近一次运行：运行 3（2026-09-11 20:4x-20:5x）
+- 工作区：阶段 2 的改动待提交；`bf20461` 起的推送被 GitHub 403 阻塞
+  （账号邮箱未验证，见错误与卡点）
 
 ## 日志
+
+### 运行 3 — 2026-09-11 20:4x-20:5x
+
+- 阶段/工作项：阶段 2（桌面端会话重命名 UI）完成
+- 做了什么：
+  - 会话选择器旁新增 `Rename` 按钮，`prompt()` 输入新 id 后 POST
+    `/api/sessions/<id>/rename`；空输入/取消不发请求
+  - 成功后用响应里的规范化 `to` 更新当前会话、重载列表与历史并提示
+    `session renamed`；409 显示 `rename conflict`，其他失败显示 `rename failed`
+  - 测试：静态资源用例增加断言（页面含 `rename-session` 控件与 `/rename` 调用），
+    `multi-session` 的 3 个 rename API 用例保持全绿
+  - 文档：`apps/desktop/README.md` 补 Rename 说明
+- 验证命令与结果：
+  - `apps/desktop`（`tests/server-edge-cases.test.mjs`）：11 passed
+  - `apps/desktop`（`tests/multi-session.test.mjs`）：10 passed
+- 提交：见阶段 2 的 feat 提交（本地；推送被 GitHub 邮箱验证问题阻塞）
+- 下一步：阶段 3 — 文档、全量回归矩阵与推送收尾（推送需先解除 403）
 
 ### 运行 2 — 2026-09-11 20:2x-20:4x
 
@@ -70,4 +88,4 @@
 
 | 时间 | 阶段 | 问题 | 处理 |
 |------|------|------|------|
-| -    | -    | 暂无 | - |
+| 2026-09-11 20:4x | 阶段 1 推送 | GitHub 返回 403：`You must verify your email address`（HTTPS 与 SSH 均不可用，SSH 无公钥） | 提交保留在本地，继续做剩余阶段并周期性重试；需要账号邮箱在 github.com/settings/emails 验证后才能推送 |

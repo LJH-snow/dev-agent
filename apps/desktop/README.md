@@ -100,6 +100,9 @@ estimated cost when the `pricing` config matches the current model) from the
 The `Delete` button next to the picker removes the current session after a
 confirmation and switches back to the default one.
 
+The `Rename` button prompts for a new session id and moves the stored file; an id
+that already exists is reported as a conflict instead of overwriting anything.
+
 The `Download` button saves the current session as a Markdown file.
 
 ## Approvals

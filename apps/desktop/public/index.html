@@ -113,6 +113,7 @@
     <div class="header-status">
       <select id="session" title="Session"></select>
       <button type="button" id="new-session" title="New session">+</button>
+      <button type="button" id="rename-session" title="Rename session">Rename</button>
       <button type="button" id="delete-session" title="Delete session">Delete</button>
       <button type="button" id="export-session" title="Download transcript">Download</button>
       <span class="status" id="usage"></span>
@@ -133,6 +134,7 @@
     const usage = document.getElementById("usage");
     const sessionSelect = document.getElementById("session");
     const newSessionButton = document.getElementById("new-session");
+    const renameSessionButton = document.getElementById("rename-session");
     const deleteSessionButton = document.getElementById("delete-session");
     const exportSessionButton = document.getElementById("export-session");
 
@@ -329,6 +331,46 @@
       await loadSessions();
       await loadHistory(currentSessionId);
       setStatus("session deleted");
+    });
+
+    renameSessionButton.addEventListener("click", async () => {
+      if (currentSessionId === null) return;
+      const answer = window.prompt(
+        "Rename session " + currentSessionId + " to:",
+        currentSessionId
+      );
+      if (answer === null) return;
+      const target = answer.trim();
+      if (!target || target === currentSessionId) return;
+
+      let renamed = target;
+      try {
+        const res = await fetch(
+          "/api/sessions/" + encodeURIComponent(currentSessionId) + "/rename",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId: target }),
+          }
+        );
+        if (!res.ok) {
+          setStatus(res.status === 409 ? "rename conflict" : "rename failed");
+          return;
+        }
+        const body = await res.json().catch(() => ({}));
+        if (typeof body.to === "string" && body.to) {
+          renamed = body.to;
+        }
+      } catch {
+        setStatus("rename failed");
+        return;
+      }
+
+      currentSessionId = renamed;
+      await loadSessions();
+      ensureSessionOption(renamed);
+      await loadHistory(renamed);
+      setStatus("session renamed");
     });
 
     exportSessionButton.addEventListener("click", () => {
