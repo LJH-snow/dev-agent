@@ -130,7 +130,7 @@ test("disconnecting the client cancels the running tool command", async () => {
   });
 
   const session = new ChatSession({ workingDirectory: dir });
-  const server = await startServer({ session, host: "127.0.0.1" });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
     const controller = new AbortController();
@@ -185,7 +185,7 @@ test("the desktop session sends a trimmed history when a budget is configured", 
   });
 
   const session = new ChatSession({ workingDirectory: dir });
-  const server = await startServer({ session, host: "127.0.0.1" });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
     const response = await fetch(`${base}/api/chat`, {
@@ -232,7 +232,7 @@ test("the desktop stream reports the token usage of each turn", async () => {
   });
 
   const session = new ChatSession({ workingDirectory: dir });
-  const server = await startServer({ session, host: "127.0.0.1" });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
     const response = await fetch(`${base}/api/chat`, {
@@ -272,7 +272,7 @@ test("deny-dangerous blocks a dangerous tool call and reports it over SSE", asyn
   });
 
   const session = new ChatSession({ workingDirectory: dir });
-  const server = await startServer({ session, host: "127.0.0.1" });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
     const response = await fetch(`${base}/api/chat`, {
@@ -320,7 +320,7 @@ test("the default approval mode still runs that command", async () => {
   });
 
   const session = new ChatSession({ workingDirectory: dir });
-  const server = await startServer({ session, host: "127.0.0.1" });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
     const base = `http://127.0.0.1:${server.address().port}`;
     const response = await fetch(`${base}/api/chat`, {

@@ -1,4 +1,5 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -6,7 +7,13 @@ import { dirname, join, extname } from "node:path";
 
 import { FileMemory } from "@dev-agent/agent-core";
 
-import { ChatSession, normalizeSessionId, type StreamEvent } from "./chat-session.js";
+import {
+  ChatSession,
+  normalizeSessionId,
+  type ApprovalPrompt,
+  type ApprovalRequester,
+  type StreamEvent,
+} from "./chat-session.js";
 
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
@@ -14,7 +21,10 @@ export interface DesktopChatSession {
   run(
     message: string,
     emit: (event: StreamEvent) => void,
-    options?: { readonly signal?: AbortSignal }
+    options?: {
+      readonly signal?: AbortSignal;
+      readonly requestApproval?: ApprovalRequester;
+    }
   ): Promise<void>;
 }
 
@@ -57,6 +67,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     options.createSession ?? ((sessionId: string) => new ChatSession({ sessionId }));
   const sessions = new Map<string, DesktopChatSession>([[defaultSessionId, defaultSession]]);
   const inFlight = new Set<string>();
+  const approvals = new Map<string, (decision: "allow" | "deny") => void>();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
 
@@ -153,10 +164,43 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
         inFlight.add(id);
         try {
-          await streamChat(res, session, message);
+          await streamChat(res, session, message, approvals);
         } finally {
           inFlight.delete(id);
         }
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/approval") {
+        const body = await readBody(req);
+        let parsed: { id?: unknown; decision?: unknown };
+        try {
+          parsed = JSON.parse(body) as { id?: unknown; decision?: unknown };
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          return;
+        }
+
+        const id = typeof parsed.id === "string" ? parsed.id : "";
+        const decision =
+          parsed.decision === "allow" || parsed.decision === "deny" ? parsed.decision : undefined;
+        if (!id || !decision) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "id and decision are required" }));
+          return;
+        }
+
+        const resolve = approvals.get(id);
+        if (!resolve) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown approval request" }));
+          return;
+        }
+
+        resolve(decision);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, decision }));
         return;
       }
 
@@ -192,7 +236,8 @@ async function serveFile(res: ServerResponse, filePath: string, ext: string): Pr
 async function streamChat(
   res: ServerResponse,
   session: DesktopChatSession,
-  message: string
+  message: string,
+  approvals: Map<string, (decision: "allow" | "deny") => void>
 ): Promise<void> {
   const controller = new AbortController();
   const onClose = (): void => {
@@ -220,7 +265,10 @@ async function streamChat(
   };
 
   try {
-    await session.run(message, emit, { signal: controller.signal });
+    await session.run(message, emit, {
+      signal: controller.signal,
+      requestApproval: (prompt) => waitForApproval(approvals, emit, prompt),
+    });
   } catch (error) {
     emit({
       type: "error",
@@ -233,6 +281,37 @@ async function streamChat(
   if (!res.writableEnded) {
     res.end();
   }
+}
+
+function approvalTimeoutMs(): number {
+  const parsed = Number.parseInt(process.env.DEV_AGENT_APPROVAL_TIMEOUT_MS ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 120_000;
+}
+
+/** Asks the client for a decision, denying when nothing comes back in time. */
+function waitForApproval(
+  approvals: Map<string, (decision: "allow" | "deny") => void>,
+  emit: (event: StreamEvent) => void,
+  prompt: ApprovalPrompt
+): Promise<"allow" | "deny"> {
+  const id = randomUUID();
+  emit({
+    type: "approval-request",
+    data: { id, tool: prompt.tool, reason: prompt.reason, input: prompt.input },
+  });
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      approvals.delete(id);
+      resolve("deny");
+    }, approvalTimeoutMs());
+
+    approvals.set(id, (decision) => {
+      clearTimeout(timer);
+      approvals.delete(id);
+      resolve(decision);
+    });
+  });
 }
 
 function readBody(req: IncomingMessage): Promise<string> {

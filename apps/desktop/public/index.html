@@ -69,6 +69,8 @@
     .msg.tool { align-self: flex-start; background: var(--tool-bg); color: var(--tool-fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px 12px; border-radius: 10px; }
     .msg.error { align-self: center; background: var(--error-bg); color: var(--error-fg); font-size: 13px; padding: 8px 12px; border-radius: 10px; }
     .msg.denied { align-self: center; background: var(--error-bg); color: var(--error-fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 6px 10px; border-radius: 8px; }
+    .msg.approval { align-self: flex-start; background: var(--tool-bg); color: var(--tool-fg); font-size: 13px; padding: 10px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; max-width: 760px; width: 100%; }
+    .msg.approval .actions { display: flex; gap: 8px; }
     .composer {
       border-top: 1px solid var(--border);
       padding: 12px 16px;
@@ -210,6 +212,43 @@
       return currentAssistant;
     }
 
+    function appendApprovalRequest(request) {
+      const div = document.createElement("div");
+      div.className = "msg approval";
+      const label = document.createElement("div");
+      label.textContent = "Approve " + request.tool + (request.reason ? ": " + request.reason : "");
+      const actions = document.createElement("div");
+      actions.className = "actions";
+      const allow = document.createElement("button");
+      allow.type = "button";
+      allow.textContent = "Allow";
+      const deny = document.createElement("button");
+      deny.type = "button";
+      deny.textContent = "Deny";
+
+      const decide = async (decision) => {
+        allow.disabled = true;
+        deny.disabled = true;
+        label.textContent = label.textContent + " — " + decision;
+        try {
+          await fetch("/api/approval", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ id: request.id, decision }),
+          });
+        } catch {
+          label.textContent = label.textContent + " (failed to send)";
+        }
+      };
+
+      allow.addEventListener("click", () => decide("allow"));
+      deny.addEventListener("click", () => decide("deny"));
+      actions.append(allow, deny);
+      div.append(label, actions);
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
     sessionSelect.addEventListener("change", async () => {
       currentSessionId = sessionSelect.value;
       totalTokens = 0;
@@ -323,6 +362,9 @@
               "[denied] " + parsed.tool + (parsed.reason ? ": " + parsed.reason : "")
             );
           }
+          break;
+        case "approval-request":
+          appendApprovalRequest(parsed);
           break;
         case "error":
           appendMessage("error", parsed.message || "unknown error");

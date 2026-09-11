@@ -28,9 +28,11 @@ Configure the model provider the same way as the CLI, via environment variables:
   with a model-written `[summary]` digest instead of the omission notice
 - `DEV_AGENT_SUMMARY_MAX_CHARS` — cap for that digest (default 2000 characters)
 - `DEV_AGENT_APPROVAL` — `deny-dangerous` blocks the built-in dangerous command
-  patterns and filesystem writes outside the working directory. The web UI has
-  no approval prompt yet, so `ask` also behaves as `deny-dangerous`; use the CLI
-  when a human should confirm each dangerous call.
+  patterns and filesystem writes outside the working directory; `ask` shows the
+  flagged call in the chat and waits for an Allow/Deny click. Without a client
+  to answer, `ask` stays conservative and denies.
+- `DEV_AGENT_APPROVAL_TIMEOUT_MS` — how long an `ask` prompt may stay unanswered
+  before it is denied (default 120000).
 
 ## How it works
 
@@ -57,6 +59,9 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `POST /api/chat` takes an optional `sessionId` (unknown ids are created on
   first use). The `409` guard is per session: different sessions run
   concurrently while one session stays serialised.
+- `POST /api/approval` — body `{ "id": "...", "decision": "allow" | "deny" }`
+  answers an `approval-request` frame; unknown or already answered ids return
+  `404`.
 
 ## Interrupts
 
@@ -73,6 +78,13 @@ The header has a session picker plus a `+` button for a new one. Switching
 sessions reloads that transcript and sends later messages to it. With
 `DEV_AGENT_MEMORY_FILE` set, every session shares that single file; leave it
 unset to get one file per session.
+
+## Approvals
+
+With `DEV_AGENT_APPROVAL=ask`, a flagged tool call renders an Allow/Deny prompt
+in the conversation and the run waits for the click. The decision is echoed as
+an `approval` frame, and a denial is written back to the model as the tool's
+result so it can pick another path.
 
 ## Tests
 

@@ -28,12 +28,21 @@ export interface StreamEvent {
     | "turn"
     | "usage"
     | "approval"
+    | "approval-request"
     | "done"
     | "error";
   readonly data: Record<string, unknown>;
 }
 
 export type DesktopApprovalMode = "allow" | "deny-dangerous" | "ask";
+
+export interface ApprovalPrompt {
+  readonly tool: string;
+  readonly reason?: string;
+  readonly input: unknown;
+}
+
+export type ApprovalRequester = (prompt: ApprovalPrompt) => Promise<"allow" | "deny">;
 
 export interface ChatSessionOptions {
   readonly sessionId?: string;
@@ -59,7 +68,7 @@ export class ChatSession {
   private readonly maxContextChars?: number;
   private readonly summarizeContext: boolean;
   private readonly summaryMaxChars?: number;
-  private readonly approval?: ApprovalPolicy;
+  private readonly approvalMode: DesktopApprovalMode;
   private context: AgentContext;
   private readonly sessionId: string;
 
@@ -85,7 +94,7 @@ export class ChatSession {
       options.summarizeContext ?? parseBoolean(process.env.DEV_AGENT_SUMMARIZE_CONTEXT);
     this.summaryMaxChars =
       options.summaryMaxChars ?? parsePositiveInt(process.env.DEV_AGENT_SUMMARY_MAX_CHARS);
-    this.approval = resolveApprovalPolicy(options.approvalMode);
+    this.approvalMode = resolveApprovalMode(options.approvalMode);
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -96,9 +105,13 @@ export class ChatSession {
   async run(
     message: string,
     emit: (event: StreamEvent) => void,
-    options: { readonly signal?: AbortSignal } = {}
+    options: {
+      readonly signal?: AbortSignal;
+      readonly requestApproval?: ApprovalRequester;
+    } = {}
   ): Promise<void> {
     let turns = this.context.state.turns;
+    const approval = buildApprovalPolicy(this.approvalMode, options.requestApproval);
     const loop = new AgentLoop({
       model: this.model,
       tools: this.tools,
@@ -128,7 +141,7 @@ export class ChatSession {
             totalTokens: usage.totalTokens,
           },
         }),
-      approval: this.approval,
+      approval,
       onApproval: (request, outcome) =>
         emit({
           type: "approval",
@@ -196,16 +209,50 @@ function parseBoolean(value: string | undefined): boolean {
   return ["1", "true", "yes"].includes(value.trim().toLowerCase());
 }
 
-/**
- * The web UI has no approval prompt yet, so "ask" maps to the conservative
- * deny-only policy instead of silently running the command.
- */
-function resolveApprovalPolicy(mode: DesktopApprovalMode | undefined): ApprovalPolicy | undefined {
+function resolveApprovalMode(mode: DesktopApprovalMode | undefined): DesktopApprovalMode {
   const resolved = (mode ?? process.env.DEV_AGENT_APPROVAL ?? "allow").trim().toLowerCase();
-  if (resolved === "deny-dangerous" || resolved === "ask") {
-    return denyDangerousPolicy();
+  if (resolved === "allow" || resolved === "deny-dangerous" || resolved === "ask") {
+    return resolved;
   }
-  return undefined;
+  return "allow";
+}
+
+/**
+ * Builds the policy for one run. `ask` needs a way to reach the user; without
+ * a requester it stays conservative and behaves like `deny-dangerous`.
+ */
+function buildApprovalPolicy(
+  mode: DesktopApprovalMode,
+  requestApproval: ApprovalRequester | undefined
+): ApprovalPolicy | undefined {
+  if (mode === "allow") {
+    return undefined;
+  }
+
+  const dangerous = denyDangerousPolicy();
+  if (mode === "deny-dangerous" || !requestApproval) {
+    return dangerous;
+  }
+
+  return {
+    async decide(request) {
+      const outcome = await dangerous.decide(request);
+      const decision = typeof outcome === "string" ? outcome : outcome.decision;
+      if (decision === "allow") {
+        return { decision: "allow" };
+      }
+
+      const reason = typeof outcome === "string" ? undefined : outcome.reason;
+      const answer = await requestApproval({
+        tool: request.toolName,
+        reason,
+        input: request.input,
+      });
+      return answer === "allow"
+        ? { decision: "allow" }
+        : { decision: "deny", reason: `${reason ?? "dangerous call"} (declined)` };
+    },
+  };
 }
 
 function createProvider(): ModelProvider {
