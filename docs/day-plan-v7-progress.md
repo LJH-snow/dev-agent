@@ -97,6 +97,25 @@
 模型 API 验证 key 是否有效，只检查是否配置；`--session-delete` 操作的是会话目录，
 当 `DEV_AGENT_MEMORY_FILE` 设置时该文件不受影响。
 
+## Backlog 收口（2026-09-11 17:20）
+
+| 项 | 产出 |
+|----|------|
+| 1 | 会话重命名：CLI `--session-rename <old> <new>`（拒绝覆盖）与桌面端 `POST /api/sessions/<id>/rename`（409/404） |
+| 2 | 会话导出：桌面端 `GET /api/sessions/<id>/export` 输出 Markdown 转录 + UI `Download` 按钮 |
+| 3 | 审批规则可配置：`~/.dev-agent/config.json` 的 `approval.allow`（子串白名单）与 `approval.deny`（自定义正则），CLI 与桌面端共用 |
+
+最终测试数量：TypeScript 329（304 → 329，+25），Rust 46（43 lib + 3 bin），
+真实二进制集成 10。`node scripts/check.mjs`、`pnpm build/typecheck/test`、
+`cargo fmt/clippy/test` 全部通过。
+
+### v7 已知边界
+
+- 审批决定不会被记住：同一条命令在同一会话里会再次询问，没有"本会话总是允许"选项。
+- doctor 只检查 provider key 是否配置，不会真正调用模型验证其有效性。
+- 会话重命名/删除/导出作用于会话目录；设置了 `DEV_AGENT_MEMORY_FILE` 时该文件不在
+  这些命令的管理范围内。
+
 ### 运行 3 — 2026-09-11 15:25-15:50
 
 - 阶段/工作项：阶段 2（会话删除）全部完成

@@ -215,7 +215,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   exit when something fails
 - Sessions can be removed: `--session-delete <id>` in the CLI and
   `DELETE /api/sessions/<id>` plus a Delete button in the desktop picker
-- Test suite: 315 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 329 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
