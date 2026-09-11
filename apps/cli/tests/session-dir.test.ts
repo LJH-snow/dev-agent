@@ -13,7 +13,7 @@ const cliPath = join(__dirname, "..", "dist", "index.js");
 // must not read or mutate the developer's own sessions.
 const probeSession = "sessiondirprobe";
 
-function runCli(args, env = {}) {
+function runCli(args, env = {}): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
       env: { ...process.env, DEV_AGENT_MODEL_PROVIDER: "ollama", ...env },

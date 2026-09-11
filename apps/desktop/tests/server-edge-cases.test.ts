@@ -9,14 +9,14 @@ function start(server) {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       server.removeListener("error", reject);
-      const address = server.address();
+      const address = server.address() as any;
       resolve(`http://${address.address}:${address.port}`);
     });
   });
 }
 
 async function close(server) {
-  await new Promise((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
 async function withServer(options, run) {
@@ -40,7 +40,7 @@ function fakeSession(events = []) {
 }
 
 /** Sends a path verbatim; fetch() would normalize away ".." segments first. */
-function rawGet(base, path) {
+function rawGet(base, path): Promise<any> {
   const { hostname, port } = new URL(base);
   return new Promise((resolve, reject) => {
     const req = request({ hostname, port, path, method: "GET" }, (res) => {

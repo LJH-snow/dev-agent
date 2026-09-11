@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
 
-function runCli(args, env = process.env) {
+function runCli(args, env = process.env): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
       env,
@@ -94,8 +94,8 @@ test("--once --json prints one machine-readable result object", async () => {
       );
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-json-"));
 
   try {
@@ -118,7 +118,7 @@ test("--once --json prints one machine-readable result object", async () => {
       totalTokens: 8,
     });
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
 });

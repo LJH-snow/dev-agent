@@ -7,7 +7,7 @@ import { dirname, join } from "node:path";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
 
-function runCli(args, env = {}) {
+function runCli(args, env = {}): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
       env: { ...process.env, DEV_AGENT_MODEL_PROVIDER: "ollama", ...env },

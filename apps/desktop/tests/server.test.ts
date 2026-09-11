@@ -8,14 +8,14 @@ function start(server) {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       server.removeListener("error", reject);
-      const address = server.address();
+      const address = server.address() as any;
       resolve(`http://${address.address}:${address.port}`);
     });
   });
 }
 
 async function close(server) {
-  await new Promise((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
 function fakeSession() {
@@ -36,7 +36,7 @@ test("GET /health returns ok", async () => {
   try {
     const res = await fetch(`${base}/health`);
     assert.equal(res.status, 200);
-    const body = await res.json();
+    const body: any = await res.json();
     assert.equal(body.status, "ok");
   } finally {
     await close(server);

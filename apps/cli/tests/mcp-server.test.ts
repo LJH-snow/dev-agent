@@ -26,7 +26,7 @@ function spawnServer(env, extraArgs = []) {
 
 async function closeServer(child) {
   child.stdin.end();
-  await new Promise((resolve) => child.on("close", resolve));
+  await new Promise<void>((resolve) => child.on("close", () => resolve()));
 }
 
 /** Minimal MCP host: writes newline-delimited JSON-RPC and matches responses by id. */
@@ -57,7 +57,7 @@ function startHost(child) {
   });
 
   return (message) =>
-    new Promise((resolve) => {
+    new Promise<any>((resolve) => {
       pending.set(message.id, resolve);
       child.stdin.write(`${JSON.stringify(message)}\n`);
     });
@@ -137,7 +137,7 @@ test("CLI --mcp-server serves its built-in tools to a host over stdio", async ()
     assert.match(prompt.result.messages[0].content.text, /the executor/);
   } finally {
     child.stdin.end();
-    await new Promise((resolve) => child.on("close", resolve));
+    await new Promise<void>((resolve) => child.on("close", () => resolve()));
     assert.equal(stderr, "");
     await rm(dir, { recursive: true, force: true });
   }

@@ -24,12 +24,12 @@ async function startCapturingProvider() {
       res.end(JSON.stringify({ choices: [{ message: { content: "done" } }] }));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
 
@@ -48,7 +48,7 @@ async function seedSession(dir, entryCount) {
   return memoryFile;
 }
 
-function runCli(args, env) {
+function runCli(args, env = process.env): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
       env,
@@ -150,8 +150,8 @@ test("CLI summarizes the trimmed history when summarization is enabled", async (
       );
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
 
   try {
     const memoryFile = await seedSession(dir, 12);
@@ -183,7 +183,7 @@ test("CLI summarizes the trimmed history when summarization is enabled", async (
       "the plain omission notice should not be used when summarization succeeds"
     );
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
 });

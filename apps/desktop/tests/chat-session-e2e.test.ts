@@ -27,7 +27,7 @@ function applyEnv(values) {
     delete process.env[key];
   }
   for (const [key, value] of Object.entries(values)) {
-    process.env[key] = value;
+    process.env[key] = value as string;
   }
   return () => {
     for (const key of ENV_KEYS) {
@@ -60,18 +60,18 @@ async function startStubProvider(chunksFor) {
       res.end(sse(chunksFor(parsed, requests.length)));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
 
 async function listen(server) {
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  return `http://127.0.0.1:${server.address().port}`;
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  return `http://127.0.0.1:${(server.address() as any).port}`;
 }
 
 async function exists(path) {
@@ -133,7 +133,7 @@ test("disconnecting the client cancels the running tool command", async () => {
   const session = new ChatSession({ workingDirectory: dir });
   const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
     const controller = new AbortController();
     const response = await fetch(`${base}/api/chat`, {
       method: "POST",
@@ -153,7 +153,7 @@ test("disconnecting the client cancels the running tool command", async () => {
     await new Promise((resolve) => setTimeout(resolve, 1500));
     assert.equal(await exists(finishedMarker), false, "the command should have been cancelled");
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });
@@ -188,7 +188,7 @@ test("the desktop session sends a trimmed history when a budget is configured", 
   const session = new ChatSession({ workingDirectory: dir });
   const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
     const response = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -212,7 +212,7 @@ test("the desktop session sends a trimmed history when a budget is configured", 
       "the newest entry should have been kept"
     );
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });
@@ -244,7 +244,7 @@ test("the desktop stream reports the token usage of each turn", async () => {
   const session = new ChatSession({ workingDirectory: dir });
   const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
     const response = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -256,7 +256,7 @@ test("the desktop stream reports the token usage of each turn", async () => {
     assert.match(text, /"totalTokens":6/);
     assert.match(text, /"cost":0\.0000018/);
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });
@@ -285,7 +285,7 @@ test("deny-dangerous blocks a dangerous tool call and reports it over SSE", asyn
   const session = new ChatSession({ workingDirectory: dir });
   const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
     const response = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -305,7 +305,7 @@ test("deny-dangerous blocks a dangerous tool call and reports it over SSE", asyn
       "the model should see the denial"
     );
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });
@@ -333,7 +333,7 @@ test("the default approval mode still runs that command", async () => {
   const session = new ChatSession({ workingDirectory: dir });
   const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
     const response = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -344,7 +344,7 @@ test("the default approval mode still runs that command", async () => {
     assert.ok(!text.includes('"decision":"deny"'), "nothing should have been denied");
     assert.equal((await stat(target)).mode & 0o777, 0o777, "the command should have run");
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });
@@ -380,7 +380,7 @@ test("the config file allowlist is honoured by the desktop session", async () =>
   const session = new ChatSession({ workingDirectory: dir });
   const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
     const response = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -394,7 +394,7 @@ test("the config file allowlist is honoured by the desktop session", async () =>
       "the allowlisted command should have run"
     );
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });

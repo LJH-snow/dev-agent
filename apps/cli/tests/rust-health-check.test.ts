@@ -8,7 +8,7 @@ const mockBinaryPath = fileURLToPath(
   new URL("../../../packages/executor/tests/mock-executor-binary.mjs", import.meta.url)
 );
 
-function runCheckRust() {
+function runCheckRust(): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, "--check-rust", mockBinaryPath], {
       stdio: ["ignore", "pipe", "pipe"],

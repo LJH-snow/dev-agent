@@ -21,7 +21,7 @@ const CHECK_NAMES = [
   "sessions",
 ];
 
-function runCli(args, env = process.env) {
+function runCli(args, env = process.env): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
       env,

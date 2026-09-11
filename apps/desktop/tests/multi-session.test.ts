@@ -11,14 +11,14 @@ function start(server) {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       server.removeListener("error", reject);
-      const address = server.address();
+      const address = server.address() as any;
       resolve(`http://${address.address}:${address.port}`);
     });
   });
 }
 
 async function close(server) {
-  await new Promise((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
 async function waitFor(predicate, timeoutMs = 2000) {
@@ -90,7 +90,7 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
 
     const res = await fetch(`${base}/api/sessions`);
     assert.equal(res.status, 200);
-    const payload = await res.json();
+    const payload: any = await res.json();
     assert.equal(payload.activeSessionId, "default");
     const ids = payload.sessions.map((session) => session.sessionId);
     assert.ok(ids.includes("alpha"), `expected alpha in ${ids.join(", ")}`);
@@ -105,7 +105,7 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
 
     const history = await fetch(`${base}/api/sessions/alpha/messages`);
     assert.equal(history.status, 200);
-    const body = await history.json();
+    const body: any = await history.json();
     assert.equal(body.sessionId, "alpha");
     assert.deepEqual(
       body.messages.map((message) => message.content),

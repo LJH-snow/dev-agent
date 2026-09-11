@@ -8,14 +8,14 @@ function start(server) {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
       server.removeListener("error", reject);
-      const address = server.address();
+      const address = server.address() as any;
       resolve(`http://${address.address}:${address.port}`);
     });
   });
 }
 
 async function close(server) {
-  await new Promise((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
 async function waitFor(predicate, timeoutMs = 2000) {
@@ -41,7 +41,7 @@ function chatRequest(base, extra = {}) {
 test("a client disconnect aborts the running session", async () => {
   let aborted = false;
   const session = {
-    async run(_message, emit, options = {}) {
+    async run(_message, emit, options: { signal?: AbortSignal } = {}) {
       emit({ type: "token", data: { token: "partial" } });
       await new Promise((resolve) => {
         options.signal.addEventListener("abort", resolve, { once: true });
@@ -89,7 +89,7 @@ test("a concurrent chat request is rejected with 409", async () => {
 
     const second = await chatRequest(base);
     assert.equal(second.status, 409);
-    const body = await second.json();
+    const body: any = await second.json();
     assert.match(body.error, /already running/);
 
     release();
@@ -102,7 +102,7 @@ test("a concurrent chat request is rejected with 409", async () => {
 test("a completed request does not abort its session signal", async () => {
   let observed;
   const session = {
-    async run(_message, emit, options = {}) {
+    async run(_message, emit, options: { signal?: AbortSignal } = {}) {
       await new Promise((resolve) => setTimeout(resolve, 20));
       observed = options.signal;
       emit({ type: "done", data: { status: "done", turns: 1 } });

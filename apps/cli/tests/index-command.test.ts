@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
 
-function runCli(args, env = process.env) {
+function runCli(args, env = process.env): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
       env,
@@ -55,7 +55,7 @@ test("--index writes a symbol index and skips ignored directories", async () => 
     const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
     assert.equal(index.version, 1);
     assert.equal(Object.keys(index.signatures).length, 2, "every file gets a signature");
-    for (const signature of Object.values(index.signatures)) {
+    for (const signature of Object.values(index.signatures) as any[]) {
       assert.equal(typeof signature.mtimeMs, "number");
       assert.equal(typeof signature.size, "number");
     }

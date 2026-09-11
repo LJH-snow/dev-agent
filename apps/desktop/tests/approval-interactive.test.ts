@@ -24,7 +24,7 @@ function applyEnv(values) {
     delete process.env[key];
   }
   for (const [key, value] of Object.entries(values)) {
-    process.env[key] = value;
+    process.env[key] = value as string;
   }
   return () => {
     for (const key of ENV_KEYS) {
@@ -77,12 +77,12 @@ async function startStubProvider(chunksFor) {
       );
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
 
@@ -142,7 +142,12 @@ async function modeOf(path) {
   return (await stat(path)).mode & 0o777;
 }
 
-async function runAsk({ decision, timeoutMs, toolTurns = 1, toolCommand }) {
+async function runAsk({
+  decision,
+  timeoutMs,
+  toolTurns = 1,
+  toolCommand,
+}: { decision?: any; timeoutMs?: any; toolTurns?: number; toolCommand?: any } = {}) {
   const { dir, target } = await setup();
   const provider = await startStubProvider((_parsed, count) =>
     count <= toolTurns
@@ -161,7 +166,7 @@ async function runAsk({ decision, timeoutMs, toolTurns = 1, toolCommand }) {
   const session = new ChatSession({ workingDirectory: dir });
   const server = await startServer({ session, host: "127.0.0.1", port: 0 });
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
     const response = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -184,7 +189,7 @@ async function runAsk({ decision, timeoutMs, toolTurns = 1, toolCommand }) {
 
     return { events, target, provider, requests, mode: await modeOf(target) };
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });
@@ -260,7 +265,7 @@ test("a client disconnect clears a pending approval", async () => {
   let approvalId;
 
   try {
-    const base = `http://127.0.0.1:${server.address().port}`;
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
     const response = await fetch(`${base}/api/chat`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -292,7 +297,7 @@ test("a client disconnect clears a pending approval", async () => {
     assert.equal(res.status, 404, "the disconnected approval must be dropped");
     assert.notEqual(await modeOf(target), 0o777, "the call must not run after a disconnect");
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });

@@ -48,16 +48,16 @@ async function startStubProvider(toolInput) {
       );
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
 
-function runCli(args, env, input) {
+function runCli(args, env, input = undefined): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
       env,
@@ -273,8 +273,8 @@ test("--approval ask remembers 'always allow' for the rest of the session", asyn
       );
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
 
   try {
     const result = await runCli(
@@ -296,7 +296,7 @@ test("--approval ask remembers 'always allow' for the rest of the session", asyn
     assert.equal(requests.length, 3, "two tool turns plus the final answer");
     assert.equal(await modeOf(target), 0o777);
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
 });

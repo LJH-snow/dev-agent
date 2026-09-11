@@ -15,7 +15,9 @@
   "bin": {
     "dev-agent-desktop": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "dependencies": {
     "@dev-agent/agent-core": "workspace:*",
     "@dev-agent/executor": "workspace:*",
@@ -27,8 +29,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "start": "node dist/index.js",
-    "test": "tsc -p tsconfig.json && node --test tests/*.test.mjs",
-    "clean": "rm -rf dist"
+    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test tests-dist/*.test.js",
+    "clean": "rm -rf dist tests-dist"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

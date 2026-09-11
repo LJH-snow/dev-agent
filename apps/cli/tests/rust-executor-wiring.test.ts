@@ -50,15 +50,15 @@ async function startStubProvider() {
       res.end(sse(calls === 1 ? [toolCallChunk] : [finalChunk]));
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
-    close: () => new Promise((resolve) => server.close(() => resolve())),
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
   };
 }
 
-function runCli(args, env) {
+function runCli(args, env = process.env): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
       env,

@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 const cliRoot = fileURLToPath(new URL("..", import.meta.url));
 const cliEntry = join(cliRoot, "dist", "index.js");
 
-function runCli(args, env = {}) {
+function runCli(args, env = {}): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [cliEntry, ...args], {
       cwd: cliRoot,

@@ -23,12 +23,12 @@ test("CLI prints the token usage the provider reported", async () => {
       );
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-usage-"));
 
   try {
-    const result = await new Promise((resolve) => {
+    const result: any = await new Promise((resolve) => {
       const child = spawn("node", [cliPath, "--once", "hello", "--no-stream"], {
         env: {
           ...process.env,
@@ -53,7 +53,7 @@ test("CLI prints the token usage the provider reported", async () => {
     assert.equal(result.code, 0, result.stderr);
     assert.match(result.stdout, /\[usage\] prompt=21 completion=8 total=29/);
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
 });
@@ -71,8 +71,8 @@ test("CLI appends the estimated cost when the config has prices", async () => {
       );
     });
   });
-  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
-  const { port } = server.address();
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-cost-"));
   const home = join(dir, "home");
   await mkdir(join(home, ".dev-agent"), { recursive: true });
@@ -85,7 +85,7 @@ test("CLI appends the estimated cost when the config has prices", async () => {
   );
 
   try {
-    const result = await new Promise((resolve) => {
+    const result: any = await new Promise((resolve) => {
       const child = spawn("node", [cliPath, "--once", "hello", "--no-stream"], {
         env: {
           ...process.env,
@@ -114,7 +114,7 @@ test("CLI appends the estimated cost when the config has prices", async () => {
       /\[usage\] prompt=21 completion=8 total=29 cost=\$0\.00000795/
     );
   } finally {
-    await new Promise((resolve) => server.close(() => resolve()));
+    await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
   }
 });

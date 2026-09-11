@@ -90,7 +90,7 @@ test("resolveMaxTurns ignores invalid config values", () => {
   assert.equal(resolveMaxTurns({ maxTurns: 0 }, 8), 8);
   assert.equal(resolveMaxTurns({ maxTurns: -1 }, 8), 8);
   assert.equal(resolveMaxTurns({ maxTurns: 2.5 }, 8), 8);
-  assert.equal(resolveMaxTurns({ maxTurns: "4" }, 8), 8);
+  assert.equal(resolveMaxTurns({ maxTurns: "4" } as any, 8), 8);
   assert.equal(resolveMaxTurns({}, 8), 8);
   assert.equal(resolveMaxTurns(undefined, 8), 8);
 });
@@ -160,7 +160,7 @@ test("resolveApprovalMode prefers env, then config, then allow", () => {
   assert.equal(resolveApprovalMode({ approvalMode: "ask" }, {}), "ask");
   assert.equal(resolveApprovalMode({}, {}), "allow");
   assert.equal(resolveApprovalMode({}, { DEV_AGENT_APPROVAL: "nonsense" }), "allow");
-  assert.equal(resolveApprovalMode({ approvalMode: "nonsense" }, {}), "allow");
+  assert.equal(resolveApprovalMode({ approvalMode: "nonsense" } as any, {}), "allow");
 });
 
 test("parseApprovalMode normalises known modes and rejects the rest", () => {
