@@ -90,6 +90,36 @@ test("search tool finds text with ripgrep", async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+test("search tool treats a flag-like query as a literal pattern", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-search-"));
+  await writeFile(join(dir, "a.txt"), "this file mentions --files in its text\n");
+  const tool = new SearchTool(new LocalExecutor());
+
+  try {
+    const result = await tool.execute({ query: "--files", path: dir });
+
+    assert.equal(result.exitCode, 0, "the literal pattern should match");
+    assert.match(result.stdout, /mentions --files in its text/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("search tool does not let a flag-like query swallow the path", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-search-"));
+  await writeFile(join(dir, "b.txt"), "pattern-file.txt appears here\n");
+  const tool = new SearchTool(new LocalExecutor());
+
+  try {
+    const result = await tool.execute({ query: "-f", path: dir });
+
+    assert.equal(result.exitCode, 0);
+    assert.match(result.stdout, /pattern-file\.txt appears here/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("default tools register under expected names", () => {
   const registry = new ToolRegistry();
   for (const tool of createDefaultTools(new LocalExecutor())) {

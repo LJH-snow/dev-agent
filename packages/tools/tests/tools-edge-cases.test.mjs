@@ -221,7 +221,7 @@ test("search tool defaults the path to the working directory", async () => {
   assert.deepEqual(executor.calls, [
     {
       command: "rg",
-      args: ["--line-number", "--color", "never", "needle", "."],
+      args: ["--line-number", "--color", "never", "--", "needle", "."],
       options: { cwd: "/repo" },
     },
   ]);
@@ -238,6 +238,7 @@ test("search tool adds -l when filesOnly is set", async () => {
     "--color",
     "never",
     "-l",
+    "--",
     "needle",
     "src",
   ]);

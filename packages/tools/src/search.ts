@@ -29,7 +29,9 @@ export class SearchTool implements Tool {
     if (params.filesOnly) {
       args.push("-l");
     }
-    args.push(params.query, params.path);
+    // `--` keeps a query (or path) that starts with `-` a positional argument
+    // instead of a ripgrep option like `--files` or `--pre`.
+    args.push("--", params.query, params.path);
     return this.executor.run("rg", args, {
       cwd: context?.workingDirectory,
       ...(context?.signal ? { signal: context.signal } : {}),
