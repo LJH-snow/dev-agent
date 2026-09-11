@@ -30,11 +30,11 @@
   - `cargo clippy --all-targets -- -D warnings`：通过
   - `cargo test`：46 passed（43 lib + 3 bin）/ 0 failed
 - 提交：见阶段 2 的 docs 提交
-- 下一步：v16 计划已收尾。用户中途追问「GitHub 语言占比为什么 JS 很多」——
-  实测根因是 73 个 `.mjs` 测试（Linguist 归类为 JavaScript，共 380,492 字节）
-  大于 48 个 `.ts` 源码（297,085 字节）；被跟踪的 `.js` 为 0，磁盘上的 `.js`
-  全在 gitignore 的 `dist/` 里。等待用户选择「迁移测试到 TS」还是
-  「用 .gitattributes 把 tests 排除出语言统计」后再动手
+- 下一步：v16 计划已收尾。用户追问「GitHub 语言占比为什么 JS 很多」：实测根因是
+  73 个 `.mjs` 测试（Linguist 归类为 JavaScript，380,492 字节）大于 48 个 `.ts`
+  源码（297,085 字节）；被跟踪的 `.js` 为 0，磁盘上的 `.js` 全在 gitignore 的
+  `dist/` 里。**用户决定不处理该问题**：不改测试语言、不加 `.gitattributes`、
+  不把语言统计相关改动提交到仓库；测试继续按现有约定写 `.mjs`
 
 ### 运行 2 — 2026-09-12 02:5x-03:1x
 
