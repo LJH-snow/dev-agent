@@ -16,6 +16,8 @@ import {
   type AgentContext,
   type AgentMemory,
   type ApprovalPolicy,
+  type ApprovalRequest,
+  type CompiledApprovalConfig,
   type SessionMetadata,
 } from "@dev-agent/agent-core";
 import { createExecutor } from "@dev-agent/executor";
@@ -144,10 +146,13 @@ export async function main(argv: string[]): Promise<void> {
   if (args.includes("--mcp-server")) {
     // Expose the built-in tools over MCP instead of running the agent. No model
     // provider is needed, and stdout carries only JSON-RPC frames.
+    const config = loadConfig();
     await runMcpServer({
       sessionId: normalizedSessionId,
       workingDirectory,
       rustBinaryPath,
+      approvalMode: approvalFlagMode ?? resolveApprovalMode(config),
+      approvalConfig: compileApprovalConfig(config.approval),
     });
     return;
   }
@@ -387,23 +392,62 @@ function createMemory(sessionId = "default"): FileMemory {
   return new FileMemory({ filePath });
 }
 
+/** Throws when a policy denies a call, so MCP answers with `isError: true`. */
+async function assertMcpCallAllowed(
+  policy: ApprovalPolicy,
+  request: ApprovalRequest
+): Promise<void> {
+  let outcome;
+  try {
+    outcome = await policy.decide(request);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`[denied by approval policy] ${message}`);
+  }
+
+  const decision = typeof outcome === "string" ? outcome : outcome.decision;
+  if (decision === "deny") {
+    const reason = typeof outcome === "string" ? undefined : outcome.reason;
+    throw new Error(`[denied by approval policy] ${reason ?? "the call was denied"}`);
+  }
+}
+
 async function runMcpServer(options: {
   readonly sessionId: string;
   readonly workingDirectory: string;
   readonly rustBinaryPath?: string;
+  readonly approvalMode: ApprovalMode;
+  readonly approvalConfig: CompiledApprovalConfig;
 }): Promise<void> {
   const tools = createDefaultTools(createExecutor({ rustBinaryPath: options.rustBinaryPath }));
   const memory = createMemory(options.sessionId);
+  // MCP has no interactive channel, so `ask` behaves like `deny-dangerous`:
+  // a flagged call is refused with a reason the host model can act on.
+  const policy =
+    options.approvalMode === "allow"
+      ? undefined
+      : denyDangerousPolicy({
+          patterns: [...options.approvalConfig.patterns],
+          allowlist: [...options.approvalConfig.allowlist],
+        });
   const server = createMcpServer({
     tools: tools.map((tool) => ({
       name: tool.name,
       description: tool.description,
       parameters: tool.parameters,
-      execute: (input: unknown, context) =>
-        tool.execute(input, {
-          sessionId: context?.sessionId ?? options.sessionId,
-          workingDirectory: context?.workingDirectory ?? options.workingDirectory,
-        }),
+      execute: async (input: unknown, context) => {
+        const sessionId = context?.sessionId ?? options.sessionId;
+        const workingDirectory = context?.workingDirectory ?? options.workingDirectory;
+        if (policy) {
+          await assertMcpCallAllowed(policy, {
+            toolName: tool.name,
+            input,
+            sessionId,
+            workingDirectory,
+          });
+        }
+        return tool.execute(input, { sessionId, workingDirectory });
+      },
     })),
     resources: [
       {

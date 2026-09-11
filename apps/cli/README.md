@@ -30,7 +30,11 @@ Options:
 - `--mcp-server` - run as an MCP server over stdio instead of starting the agent,
   exposing the built-in tools, the `dev-agent://session` and
   `dev-agent://workspace` resources, and the `review-changes` /
-  `explain-codebase` prompts to a host agent (no model provider needed)
+  `explain-codebase` prompts to a host agent (no model provider needed).
+  `--approval` (and the config file's `approval` section) also applies here:
+  with `deny-dangerous` a flagged call comes back as `isError` with the reason
+  instead of running, and `ask` behaves the same because MCP has no prompt
+  channel.
 - `--approval <mode>` - tool approval policy: `allow` (default, everything runs),
   `deny-dangerous` (block the built-in dangerous command patterns and writes
   outside the working directory), or `ask` (same detection, but confirm with
