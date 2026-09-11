@@ -54,6 +54,11 @@ test("--index writes a symbol index and skips ignored directories", async () => 
 
     const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
     assert.equal(index.version, 1);
+    assert.equal(Object.keys(index.signatures).length, 2, "every file gets a signature");
+    for (const signature of Object.values(index.signatures)) {
+      assert.equal(typeof signature.mtimeMs, "number");
+      assert.equal(typeof signature.size, "number");
+    }
     const names = index.symbols.map((symbol) => symbol.name);
     assert.ok(names.includes("runAgent"));
     assert.ok(names.includes("run_tool"));

@@ -4,6 +4,7 @@ import { extname, join, resolve } from "node:path";
 import {
   InMemoryCodeIndex,
   TypeScriptReferenceIndex,
+  type CodeSymbol,
   type SymbolKind,
 } from "@dev-agent/code-intelligence";
 
@@ -53,6 +54,8 @@ export interface CodeSearchCacheStats {
   readonly hits: number;
   readonly misses: number;
   readonly rescanned: number;
+  /** Times a scan started from `<root>/.dev-agent/index.json`. */
+  readonly loadedFromDisk: number;
 }
 
 export class CodeSearchTool implements Tool {
@@ -79,7 +82,7 @@ export class CodeSearchTool implements Tool {
   };
 
   private readonly cache = new Map<string, CachedScan>();
-  private readonly cacheStats = { hits: 0, misses: 0, rescanned: 0 };
+  private readonly cacheStats = { hits: 0, misses: 0, rescanned: 0, loadedFromDisk: 0 };
 
   /**
    * Returns how often a scan was served from cache, built from scratch, or
@@ -146,7 +149,16 @@ export class CodeSearchTool implements Tool {
   private async loadScan(root: string, maxDepth: number): Promise<CachedScan> {
     const cacheKey = `${root}\u0000${maxDepth}`;
     const signatures = await collectSignatures(root, 0, maxDepth);
-    const cached = this.cache.get(cacheKey);
+    let cached = this.cache.get(cacheKey);
+
+    if (!cached) {
+      const persisted = await readPersistedScan(root);
+      if (persisted) {
+        this.cacheStats.loadedFromDisk += 1;
+        cached = persisted;
+        this.cache.set(cacheKey, persisted);
+      }
+    }
 
     if (!cached) {
       const index = new InMemoryCodeIndex();
@@ -167,7 +179,10 @@ export class CodeSearchTool implements Tool {
 
     this.cacheStats.hits += 1;
 
-    for (const filePath of [...cached.signatures.keys()]) {
+    // Anything the cache knows about but the disk no longer has is dropped;
+    // that includes files that only appear in the persisted index.
+    const knownFiles = new Set([...cached.signatures.keys(), ...cached.sources.keys()]);
+    for (const filePath of knownFiles) {
       if (!signatures.has(filePath)) {
         cached.index.removeFile(filePath);
         cached.signatures.delete(filePath);
@@ -275,6 +290,73 @@ async function readSource(filePath: string): Promise<string | undefined> {
     // Skip unreadable files instead of failing the whole project scan.
     return undefined;
   }
+}
+
+/**
+ * Loads the index written by `dev-agent --index`. Anything unexpected makes the
+ * caller fall back to a full scan instead of failing the search.
+ */
+async function readPersistedScan(root: string): Promise<CachedScan | undefined> {
+  try {
+    const raw = await readFile(join(root, ".dev-agent", "index.json"), "utf8");
+    const parsed = JSON.parse(raw) as {
+      version?: unknown;
+      files?: unknown;
+      symbols?: unknown;
+      signatures?: unknown;
+    };
+
+    if (parsed.version !== 1 || !isRecord(parsed.files) || !Array.isArray(parsed.symbols)) {
+      return undefined;
+    }
+
+    const index = new InMemoryCodeIndex();
+    for (const symbol of parsed.symbols) {
+      if (isCodeSymbol(symbol)) {
+        index.addSymbol(symbol);
+      }
+    }
+
+    const sources = new Map<string, string>();
+    for (const [filePath, source] of Object.entries(parsed.files)) {
+      if (typeof source === "string") {
+        sources.set(filePath, source);
+      }
+    }
+
+    const signatures = new Map<string, FileSignature>();
+    if (isRecord(parsed.signatures)) {
+      for (const [filePath, value] of Object.entries(parsed.signatures)) {
+        if (
+          isRecord(value) &&
+          typeof value.mtimeMs === "number" &&
+          typeof value.size === "number"
+        ) {
+          signatures.set(filePath, { mtimeMs: value.mtimeMs, size: value.size });
+        }
+      }
+    }
+
+    return { index, sources, signatures };
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isCodeSymbol(value: unknown): value is CodeSymbol {
+  if (!isRecord(value)) {
+    return false;
+  }
+  return (
+    typeof value.name === "string" &&
+    typeof value.kind === "string" &&
+    typeof value.filePath === "string" &&
+    typeof value.line === "number"
+  );
 }
 
 function asRecord(input: unknown): Record<string, unknown> {

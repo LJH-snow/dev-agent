@@ -40,6 +40,13 @@ interface IndexFile {
   readonly version: 1;
   readonly files: Record<string, string>;
   readonly symbols: CodeSymbol[];
+  /** Lets a later scan tell which files changed without re-reading them. */
+  readonly signatures: Record<string, FileSignature>;
+}
+
+interface FileSignature {
+  readonly mtimeMs: number;
+  readonly size: number;
 }
 
 /**
@@ -59,8 +66,9 @@ export async function indexDirectory(
   }
 
   const files = new Map<string, string>();
+  const signatures = new Map<string, FileSignature>();
   const languages: Record<string, number> = {};
-  await collectFiles(root, 0, maxDepth, files, languages);
+  await collectFiles(root, 0, maxDepth, files, signatures, languages);
 
   const symbols: CodeSymbol[] = [];
   for (const [filePath, source] of files) {
@@ -73,6 +81,7 @@ export async function indexDirectory(
     version: 1,
     files: Object.fromEntries(files),
     symbols,
+    signatures: Object.fromEntries(signatures),
   };
   await writeFile(indexPath, `${JSON.stringify(payload)}\n`, "utf8");
 
@@ -90,6 +99,7 @@ async function collectFiles(
   depth: number,
   maxDepth: number,
   files: Map<string, string>,
+  signatures: Map<string, FileSignature>,
   languages: Record<string, number>
 ): Promise<void> {
   if (depth > maxDepth) {
@@ -100,7 +110,14 @@ async function collectFiles(
   for (const entry of entries) {
     if (entry.isDirectory()) {
       if (!SKIPPED_DIRECTORIES.has(entry.name)) {
-        await collectFiles(join(dir, entry.name), depth + 1, maxDepth, files, languages);
+        await collectFiles(
+          join(dir, entry.name),
+          depth + 1,
+          maxDepth,
+          files,
+          signatures,
+          languages
+        );
       }
       continue;
     }
@@ -115,7 +132,9 @@ async function collectFiles(
 
     const filePath = join(dir, entry.name);
     try {
+      const info = await stat(filePath);
       files.set(filePath, await readFile(filePath, "utf8"));
+      signatures.set(filePath, { mtimeMs: info.mtimeMs, size: info.size });
       languages[language] = (languages[language] ?? 0) + 1;
     } catch {
       // Skip unreadable files instead of failing the whole scan.

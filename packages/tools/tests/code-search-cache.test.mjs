@@ -23,7 +23,12 @@ test("a repeated symbol search reuses the cached index", async () => {
     const second = await tool.execute({ mode: "search", query: "alphaSymbol", path: dir });
     assert.equal(second.count, 1);
 
-    assert.deepEqual(tool.getCacheStats(), { hits: 1, misses: 1, rescanned: 0 });
+    assert.deepEqual(tool.getCacheStats(), {
+      hits: 1,
+      misses: 1,
+      rescanned: 0,
+      loadedFromDisk: 0,
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

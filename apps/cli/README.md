@@ -46,7 +46,9 @@ Options:
   an existing one and reports `{ from, to, renamed }` with `--json`
 - `--index <path>` - scan a directory and write a symbol index to
   `<path>/.dev-agent/index.json` (skips `node_modules`, `dist`, `.git`, …);
-  `--json` reports `{ path, indexPath, files, symbols, languages }`
+  `--json` reports `{ path, indexPath, files, symbols, languages }`. The file
+  also records per-file signatures so `code-search` can reuse it and only
+  re-read what changed.
 - `--version` / `-v` - print the CLI version
 
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on

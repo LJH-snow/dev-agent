@@ -30,4 +30,8 @@ also accepts `kind` and `limit` inputs to keep agent queries focused.
 `CodeSearchTool` caches its scan per root directory in the tool instance. A
 repeated search re-reads only the files whose size or mtime changed, drops
 deleted files from the index, and exposes `getCacheStats()` (`hits`, `misses`,
-`rescanned`) for diagnostics.
+`rescanned`, `loadedFromDisk`) for diagnostics. When the in-process cache is
+empty it first tries `<root>/.dev-agent/index.json` — the file written by
+`dev-agent --index` — and re-reads only the files whose stored signature no
+longer matches. A missing, stale-shaped, or corrupt index just falls back to a
+full scan.
