@@ -4,10 +4,10 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（文档 + 全量回归）进行中
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-12 15:2x-16:1x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：已完成（阶段 0 + 阶段 1）
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-12 16:1x-16:4x）
+- 工作区：全部已提交并推送
 
 ## 日志
 
@@ -42,6 +42,24 @@
     随后 agent-core 67 passed、全量 **446 passed / 0 failed**
 - 提交：见阶段 0 的 fix 提交
 - 下一步：阶段 1 — 文档、完整回归矩阵、提交推送
+
+### 运行 2 — 2026-09-12 16:1x-16:4x
+
+- 阶段/工作项：阶段 1（文档 + 全量回归）完成
+- 做了什么：
+  - `packages/agent-core/README.md`：说明边界检查会解析符号链接、
+    目标可能不存在时如何逐级解析、以及工作目录不存在时的回退规则
+  - 根 README：Current Status 增加该行为；Roadmap 增加第 56 项
+  - `docs/CHANGELOG.md`：新增 v26 条目（含修复前后对照与首轮回归误伤说明）
+- 验证命令与结果：
+  - `node scripts/check.mjs`：Structure check passed
+  - `pnpm build` / `pnpm typecheck`：通过
+  - `pnpm test`：**446 passed / 0 failed**
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed
+  - `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）
+- 提交：见 v26 的 fix / docs 提交
+- 下一步：v26 计划已收尾
 
 ## 错误与卡点
 

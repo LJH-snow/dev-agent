@@ -40,6 +40,14 @@ Implemented in phase 1:
   `FileMemory` persists entries as JSON and recreates the directory as needed
 - `AgentToolRegistry` - lookup, schema exposure, and execution of tools by name
 
+The "outside the working directory" check resolves symlinks before deciding: a
+path that looks like it is inside the workspace but links to a file outside it is
+denied, while a symlink that stays inside is allowed. Because the target of a
+`write` or `mkdir` often does not exist yet, the deepest existing ancestor is
+resolved and the missing tail appended. If the workspace itself does not exist,
+the check falls back to the string comparison (nothing inside it can be a
+symlink yet).
+
 The loop appends user input, asks the model with available tool schemas, executes
 any requested tools, and repeats until the model returns a final answer or
 `maxTurns` is reached. It passes the runtime context to tools and includes the

@@ -217,6 +217,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   working directory, and a denial is written back to the model so it can pick
   another path. The CLI exposes it as `--approval allow|deny-dangerous|ask`,
   the desktop via `DEV_AGENT_APPROVAL` and an `approval` SSE frame
+- The workspace boundary check resolves symlinks, so a link inside the working
+  directory cannot be used to read or overwrite a file outside it; links that
+  stay inside are still allowed
 - A tool that throws is reported back to the model as that tool's result
   (`{"error": "…"}`) instead of ending the run, so it can fix its arguments or
   pick another tool; an unknown tool name goes through the same path, and
@@ -390,6 +393,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 53. ~~Unique MCP tool prefixes per server~~ (done)
 54. ~~Per-request MCP timeouts~~ (done)
 55. ~~Client-side backstop for a wedged Rust runtime~~ (done)
+56. ~~Symlink-aware workspace write boundary~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

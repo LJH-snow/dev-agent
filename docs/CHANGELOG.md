@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-12 (Day plan v26: symlink-aware write boundary)
+
+Executed `docs/day-plan-v26.md`. The approval policy's "write outside the working
+directory" check compared paths as strings, so a symlink inside the workspace
+defeated it entirely -- the policy exists to prevent exactly that write.
+
+### Fixed: the boundary check resolves symlinks
+- With a workspace symlink `link.txt` -> `/outside/secret.txt`, a
+  `filesystem write` was **allowed** and overwrote the outside file.
+  A directory symlink behaved the same way: `write` and `mkdir` through it
+  created entries outside the workspace.
+- `outsideWorkingDirectoryWrite()` now requires both the string comparison and a
+  real-path comparison to pass. The workspace is resolved with `realpath`, and
+  the target is resolved through its deepest existing ancestor with the missing
+  tail appended, so creating a new file (`write`) or directory (`mkdir`) is
+  covered too.
+- A denial names both the requested path and the resolved real path.
+- A symlink that stays inside the workspace is still allowed, and an ordinary
+  in-workspace write is unchanged.
+- When the workspace itself does not exist the check falls back to the string
+  comparison -- nothing inside it can be a symlink yet, and refusing would
+  block legitimate writes (the first full-suite run caught three such
+  fixtures).
+
+### Tests
+- TypeScript: 441 -> 446 (outside file link, outside dir link for write and
+  mkdir, missing-parent case, inside link, ordinary writes). Rust: 46;
+  real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v25: no permanently wedged sandbox)
 
 Executed `docs/day-plan-v25.md`. `RustExecutor` had no client-side timeout, so a
