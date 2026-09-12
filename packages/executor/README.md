@@ -66,6 +66,12 @@ path.
 The runtime also caps in-flight work itself: `DEV_AGENT_MAX_CONCURRENT`
 (default 5) rejects further requests with `CONCURRENCY_LIMIT`, on top of the
 TypeScript-side `maxConcurrentExecutions`.
+Both executors validate `cwd` before starting anything. A missing directory is
+reported as `working directory does not exist: <path>` and a file used as `cwd`
+as `working directory is not a directory: <path>`; without that check Node's own
+failure is `spawn <command> ENOENT`, which blames the command even though it
+exists. The check runs per call, so a directory removed mid-session is reported
+on the next invocation.
 The protobuf stream is consumed as raw `Buffer` frames; text encoding is only
 applied to the Rust process's stderr, never to stdio protocol payloads.
 

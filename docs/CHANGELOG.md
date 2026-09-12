@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-12 (Day plan v29: bad cwd is not a bad command)
+
+Executed `docs/day-plan-v29.md`. With an invalid working directory every tool
+blamed its own command, sending the model after the wrong problem.
+
+### Fixed: `cwd` is validated before anything is spawned
+- Measured with a nonexistent `workingDirectory`: `shell` answered
+  `spawn echo ENOENT`, `git` answered `spawn git ENOENT`, and `search` answered
+  `spawn rg ENOENT` — but all three binaries are installed. Node reports the
+  command name (`error.path` included) when the cwd is what is missing, so the
+  caller cannot tell which one to fix. A model reading that would go hunting for
+  PATH problems or swap the command instead of fixing the path.
+- `assertWorkingDirectory()` now runs before `LocalExecutor` spawns and before
+  `RustExecutor` sends its request, so both paths answer
+  `working directory does not exist: <path>`, or
+  `working directory is not a directory: <path>` when a file is passed.
+- The check runs per call rather than being cached, so a directory deleted
+  mid-session is reported on the next invocation.
+- Unchanged: a valid cwd with a genuinely missing command still reports the
+  command.
+
+### Tests
+- TypeScript: 453 -> 457. Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v28: bounded SSE buffering)
 
 Executed `docs/day-plan-v28.md`. The desktop server wrote every SSE frame to the

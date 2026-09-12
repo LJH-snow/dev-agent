@@ -322,6 +322,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - Tool timeouts cancel the work instead of only reporting it: `runTool()` aborts
   the signal the tool received, so a command that exceeds `timeoutMs` is killed
   and cannot leave side effects behind after the model was told it timed out
+- A bad working directory is named as such (`working directory does not exist`)
+  instead of surfacing as `spawn echo ENOENT`, so a missing project path is not
+  mistaken for a missing command
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
   (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
@@ -402,6 +405,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 56. ~~Symlink-aware workspace write boundary~~ (done)
 57. ~~Tool timeouts cancel the running command~~ (done)
 58. ~~Bounded desktop SSE buffering~~ (done)
+59. ~~Working-directory validation before spawning~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)
