@@ -59,6 +59,13 @@ The implementation deliberately uses only Node built-ins and no MCP SDK
 dependency. The CLI injects `DEV_AGENT_SESSION_ID` and
 `DEV_AGENT_WORKING_DIRECTORY` into MCP server environments when it connects.
 
+Every request has a timeout (`McpClientConfig.timeoutMs`, default 30s). A server
+that never answers fails the call with
+`MCP request "<method>" timed out after <n>ms` and drops the pending entry,
+instead of hanging the caller forever; `connect()` tears the half-open child
+down before surfacing that failure, so a silent server cannot keep the process
+alive.
+
 The CLI registers a `<prefix>:resource` tool (read by URI) and a
 `<prefix>:prompt` tool (get by name) for every connected server, and lists the
 available resources and prompts in the agent system prompt so the model can

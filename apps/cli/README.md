@@ -118,6 +118,11 @@ Configuration is read from the environment:
   command through the Rust sandbox. `--rust-executor <path>` wins over it.
 - `DEV_AGENT_MCP_SERVERS` - optional JSON array of MCP stdio server configs
 
+Each entry may also set `timeoutMs` (per-request MCP timeout, default 30000);
+`DEV_AGENT_MCP_TIMEOUT_MS` overrides it for every server. A server that never
+answers now fails fast — `dev-agent --tools` exits 1 with
+`MCP request "initialize" timed out after <n>ms` instead of hanging.
+
 Each configured MCP server contributes tools named `<prefix>:*`. The prefix is
 the server's `name`; a single unnamed server keeps the historical `mcp`, several
 unnamed servers become `mcp-1`, `mcp-2`, ... in config order, and a repeated

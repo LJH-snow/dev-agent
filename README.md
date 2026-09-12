@@ -306,6 +306,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - MCP tool prefixes are unique per server: a single unnamed server stays on
   `mcp`, several unnamed ones become `mcp-1`, `mcp-2`, ..., and repeated names
   get a numeric suffix, so two servers can no longer erase each other's tools
+- MCP requests time out instead of hanging forever (default 30s, configurable
+  with `timeoutMs` or `DEV_AGENT_MCP_TIMEOUT_MS`); a silent server now fails the
+  CLI at startup instead of freezing it with no output
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
   (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
@@ -381,6 +384,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 51. ~~Explicit stop control for a running desktop chat~~ (done)
 52. ~~All MCP resource content blocks reach the model~~ (done)
 53. ~~Unique MCP tool prefixes per server~~ (done)
+54. ~~Per-request MCP timeouts~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-12 (Day plan v24: MCP requests time out)
+
+Executed `docs/day-plan-v24.md`. MCP requests had no timeout, so one server that
+accepted the connection and then stayed silent froze the whole CLI.
+
+### Fixed: a silent MCP server fails fast
+- `connect()` awaited `initialize` with no timeout: measured 3s and still
+  pending. `dev-agent --tools` with such a server stayed alive after 6s with
+  empty stdout and stderr — no output, no error, no exit.
+- `McpStdioClient.request()` now enforces `McpClientConfig.timeoutMs` (default
+  30s, overridable with `DEV_AGENT_MCP_TIMEOUT_MS` or a per-server `timeoutMs`).
+  On timeout it removes the pending entry and rejects with
+  `McpRequestError(-32000, 'MCP request "<method>" timed out after <n>ms')`, so
+  the failing step is named.
+- `connect()` closes the child before rethrowing: otherwise the half-open
+  connection kept the spawned process alive, so the error printed but the
+  process never exited.
+- Unchanged: a server whose command does not exist still exits 1 with the spawn
+  error, and slow-but-in-time responses still succeed.
+
+### Fixed (tests)
+- The v20 interactive test signalled `SIGINT` after a fixed sleep, which raced
+  the CLI's handler installation under load (process died by signal, `code:
+  null`, instead of 130). It now waits for the banner, which is printed in the
+  same synchronous block that installs the handler.
+
+### Tests
+- TypeScript: 432 -> 437 (mcp: request timeout, pending cleanup, connect
+  timeout, slow-but-in-time; cli: silent server fails fast). Rust: 46;
+  real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v23: unique MCP prefixes)
 
 Executed `docs/day-plan-v23.md`. MCP tool names are `<prefix>:<name>` registered
