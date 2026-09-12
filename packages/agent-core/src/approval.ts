@@ -1,4 +1,5 @@
-import { resolve, sep } from "node:path";
+import { existsSync, realpathSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 
 /**
  * Approval policies decide whether a tool call may run.
@@ -240,11 +241,70 @@ function outsideWorkingDirectoryWrite(request: ApprovalRequest): string | undefi
 
   const root = resolve(request.workingDirectory);
   const target = resolve(request.workingDirectory, path);
-  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
-  if (target === root || target.startsWith(prefix)) {
+  const insideByPath = isWithin(root, target);
+  const resolved = resolveForBoundaryCheck(root, target);
+  if (insideByPath && resolved.inside) {
     return undefined;
   }
-  return `filesystem ${String(input.action)} outside the working directory: ${target}`;
+
+  // Report the real location when we could compute one: a symlink escape shows
+  // the requested path looking innocent and the resolved path outside.
+  const detail = resolved.path && !resolved.inside ? ` (resolves to ${resolved.path})` : "";
+  return `filesystem ${String(input.action)} outside the working directory: ${target}${detail}`;
+}
+
+/** True when `target` is `root` itself or sits underneath it. */
+function isWithin(root: string, target: string): boolean {
+  const prefix = root.endsWith(sep) ? root : `${root}${sep}`;
+  return target === root || target.startsWith(prefix);
+}
+
+interface ResolvedBoundary {
+  /** Real path when it could be computed, otherwise undefined. */
+  readonly path?: string;
+  /** False when the real path escapes `root` (or could not be resolved). */
+  readonly inside: boolean;
+}
+
+/**
+ * Resolves symlinks before deciding whether a write stays inside the working
+ * directory. Comparing the requested path as a string let a symlink inside the
+ * workspace point at a file outside it: the write followed the link, so the
+ * policy allowed an out-of-workspace overwrite.
+ *
+ * The target itself may not exist yet (`write` of a new file, `mkdir`), so the
+ * deepest existing ancestor is resolved and the missing tail is appended.
+ */
+function resolveForBoundaryCheck(root: string, target: string): ResolvedBoundary {
+  let realRoot: string;
+  try {
+    realRoot = realpathSync(root);
+  } catch {
+    // The workspace does not exist yet (fresh checkout, tests with a virtual
+    // path). Nothing inside it can be a symlink, so the string comparison the
+    // caller already did is the whole story -- and refusing here would block
+    // legitimate in-workspace writes.
+    return { inside: true };
+  }
+
+  let existing = target;
+  const missing: string[] = [];
+  while (!existsSync(existing)) {
+    const parent = dirname(existing);
+    if (parent === existing) {
+      return { inside: false };
+    }
+    missing.unshift(existing.slice(parent.length + 1));
+    existing = parent;
+  }
+
+  try {
+    const realExisting = realpathSync(existing);
+    const realTarget = missing.length > 0 ? join(realExisting, ...missing) : realExisting;
+    return { path: realTarget, inside: isWithin(realRoot, realTarget) };
+  } catch {
+    return { inside: false };
+  }
 }
 
 function toStringArray(value: unknown): string[] {
