@@ -190,14 +190,18 @@ async function readFileRange(
   limit: number
 ): Promise<Record<string, unknown>> {
   const source = await readFile(path, "utf8");
-  const lines = source.split("\n");
+  const lines = splitLines(source);
   const totalLines = lines.length;
   if (offset > totalLines) {
+    // Report an empty range pinned to the file instead of echoing the request:
+    // `offset: 99` on a three-line file used to answer startLine 99 / endLine
+    // 98, which reads as a broken range rather than "you are past the end".
+    const emptyAt = totalLines + 1;
     return {
       path,
       content: "",
-      startLine: offset,
-      endLine: offset - 1,
+      startLine: emptyAt,
+      endLine: emptyAt - 1,
       totalLines,
       truncated: false,
     };
@@ -213,6 +217,19 @@ async function readFileRange(
     totalLines,
     truncated: endLine < totalLines,
   };
+}
+
+/**
+ * Splits a file into lines the way an editor counts them: a trailing newline
+ * terminates the last line instead of starting an empty one. `readFileRange`
+ * reports `totalLines` to the model, and `"a\nb\n".split("\n")` used to answer
+ * 3 lines for a two-line file, so the model paged one line past the end.
+ */
+function splitLines(source: string): string[] {
+  if (source === "") {
+    return [];
+  }
+  return (source.endsWith("\n") ? source.slice(0, -1) : source).split("\n");
 }
 
 /**

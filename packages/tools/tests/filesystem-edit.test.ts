@@ -98,3 +98,67 @@ test("read handles an offset past the end of the file", async () => {
     assert.equal(slice.truncated, false);
   });
 });
+
+test("read counts a trailing newline as a terminator, not an empty line", async () => {
+  await withFile("one\ntwo\nthree\n", async (path) => {
+    const tool: any = new FilesystemTool();
+    const all = await tool.execute({ action: "read", path });
+
+    assert.equal(all.totalLines, 3, "a trailing newline must not add a line");
+    assert.equal(all.content, "one\ntwo\nthree");
+    assert.equal(all.endLine, 3);
+
+    const last = await tool.execute({ action: "read", path, offset: 3 });
+    assert.equal(last.content, "three");
+
+    const past = await tool.execute({ action: "read", path, offset: 4 });
+    assert.equal(past.content, "");
+    assert.equal(past.truncated, false);
+  });
+});
+
+test("read counts a file without a trailing newline the same way", async () => {
+  await withFile("one\ntwo\nthree", async (path) => {
+    const tool: any = new FilesystemTool();
+    const all = await tool.execute({ action: "read", path });
+
+    assert.equal(all.totalLines, 3);
+    assert.equal(all.content, "one\ntwo\nthree");
+  });
+});
+
+test("read treats a file holding only a newline as one line", async () => {
+  await withFile("\n", async (path) => {
+    const tool: any = new FilesystemTool();
+    const all = await tool.execute({ action: "read", path });
+
+    assert.equal(all.totalLines, 1);
+    assert.equal(all.content, "");
+    assert.equal(all.startLine, 1);
+  });
+});
+
+test("read reports zero lines for an empty file", async () => {
+  await withFile("", async (path) => {
+    const tool: any = new FilesystemTool();
+    const all = await tool.execute({ action: "read", path });
+
+    assert.equal(all.totalLines, 0);
+    assert.equal(all.content, "");
+    assert.equal(all.truncated, false);
+  });
+});
+
+test("read clamps a past-the-end range to the file instead of inverting it", async () => {
+  await withFile("one\ntwo\nthree\n", async (path) => {
+    const tool: any = new FilesystemTool();
+    const slice = await tool.execute({ action: "read", path, offset: 99 });
+
+    assert.equal(slice.totalLines, 3);
+    assert.equal(slice.startLine, 4, "the range starts just past the last line");
+    assert.equal(slice.endLine, 3);
+    assert.ok(slice.endLine < slice.startLine, "an empty range, not a broken one");
+    assert.equal(slice.content, "");
+    assert.equal(slice.truncated, false);
+  });
+});
