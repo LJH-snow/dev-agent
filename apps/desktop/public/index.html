@@ -104,6 +104,8 @@
     button:disabled { opacity: 0.5; cursor: default; }
     select { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 6px; border-radius: 6px; max-width: 170px; }
     #new-session { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+    #stop { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+    #stop:disabled { opacity: 0.5; cursor: default; }
     .empty { color: var(--muted); font-size: 14px; align-self: center; margin-top: 40px; }
   </style>
 </head>
@@ -116,6 +118,7 @@
       <button type="button" id="rename-session" title="Rename session">Rename</button>
       <button type="button" id="delete-session" title="Delete session">Delete</button>
       <button type="button" id="export-session" title="Download transcript">Download</button>
+      <button type="button" id="stop" title="Stop the running request" disabled>Stop</button>
       <span class="status" id="usage"></span>
       <span class="status" id="status">idle</span>
     </div>
@@ -137,6 +140,7 @@
     const renameSessionButton = document.getElementById("rename-session");
     const deleteSessionButton = document.getElementById("delete-session");
     const exportSessionButton = document.getElementById("export-session");
+    const stopButton = document.getElementById("stop");
 
     let currentAssistant = null;
     let totalTokens = 0;
@@ -379,6 +383,21 @@
         "/api/sessions/" + encodeURIComponent(currentSessionId) + "/export";
     });
 
+    stopButton.addEventListener("click", async () => {
+      if (currentSessionId === null) return;
+      stopButton.disabled = true;
+      try {
+        await fetch("/api/chat/cancel", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId: currentSessionId }),
+        });
+        setStatus("stopping");
+      } catch {
+        setStatus("stop failed");
+      }
+    });
+
     input.addEventListener("input", () => {
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 160) + "px";
@@ -400,6 +419,7 @@
       input.value = "";
       input.style.height = "auto";
       send.disabled = true;
+      stopButton.disabled = false;
       setStatus("streaming");
       currentAssistant = null;
 
@@ -434,6 +454,7 @@
         setStatus("error");
       } finally {
         send.disabled = false;
+        stopButton.disabled = true;
         currentAssistant = null;
         setStatus("idle");
       }

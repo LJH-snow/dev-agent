@@ -76,6 +76,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     options.createSession ?? ((sessionId: string) => new ChatSession({ sessionId }));
   const sessions = new Map<string, DesktopChatSession>([[defaultSessionId, defaultSession]]);
   const inFlight = new Set<string>();
+  // One controller per running session, so a cancel request can abort it the
+  // same way a dropped connection does.
+  const runControllers = new Map<string, AbortController>();
   const approvals = new Map<string, (decision: ApprovalDecision) => void>();
   const sessionAllowlist = new Map<string, Set<string>>();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
@@ -280,11 +283,42 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
 
         inFlight.add(id);
+        const controller = new AbortController();
+        runControllers.set(id, controller);
         try {
-          await streamChat(res, session, message, approvals, sessionAllowlist, id);
+          await streamChat(res, session, message, approvals, sessionAllowlist, id, controller);
         } finally {
           inFlight.delete(id);
+          if (runControllers.get(id) === controller) {
+            runControllers.delete(id);
+          }
         }
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/chat/cancel") {
+        const body = await readBody(req);
+        let parsed: { sessionId?: unknown };
+        try {
+          parsed = JSON.parse(body) as { sessionId?: unknown };
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          return;
+        }
+
+        const sessionId = normalizeSessionId(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : defaultSessionId
+        );
+        const controller = runControllers.get(sessionId);
+        if (controller) {
+          controller.abort();
+          runControllers.delete(sessionId);
+        }
+        res.writeHead(200, { "content-type": "application/json" });
+        // Cancelling an idle session is a no-op, not an error, so the UI can
+        // call this idempotently.
+        res.end(JSON.stringify({ sessionId, cancelled: controller !== undefined }));
         return;
       }
 
@@ -360,9 +394,9 @@ async function streamChat(
   message: string,
   approvals: Map<string, (decision: ApprovalDecision) => void>,
   sessionAllowlist: Map<string, Set<string>>,
-  sessionId: string
+  sessionId: string,
+  controller: AbortController
 ): Promise<void> {
-  const controller = new AbortController();
   const onClose = (): void => {
     // `close` also fires after a normal end; only a real disconnect aborts.
     if (!res.writableEnded) {
