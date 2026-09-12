@@ -1074,13 +1074,19 @@ async function registerMcpTools(
   const servers = loadMcpServers(config);
   const resourceLines: McpResourceLine[] = [];
   const promptLines: McpPromptLine[] = [];
+  const prefixes = assignMcpPrefixes(servers.map((entry) => entry.name));
 
   for (const config of servers.entries()) {
     const index = config[0];
     const serverConfig = config[1];
+    // Tool names are keyed by `<prefix>:<name>` in a Map, so two servers
+    // sharing a prefix silently erase each other's tools. Give each one a
+    // deterministic unique prefix before anything is registered.
+    const prefix = prefixes[index] ?? "mcp";
     const session = new McpServerSession({
       config: {
         ...serverConfig,
+        name: prefix,
         rootDirectory: runtime.workingDirectory,
         env: {
           DEV_AGENT_SESSION_ID: runtime.sessionId,
@@ -1093,7 +1099,6 @@ async function registerMcpTools(
     const snapshot = await session.connect();
     sessions.push(session);
 
-    const prefix = session.prefix;
     registerServerTools(tools, session, prefix, snapshot, resourceLines, promptLines);
     session.onChange((updated) => {
       unregisterServerTools(tools, prefix);
@@ -1230,6 +1235,43 @@ function normalizeMcpServers(entries: readonly unknown[]): McpClientConfig[] {
         : undefined,
     };
   });
+}
+
+/**
+ * Deterministic, unique tool prefixes for the configured MCP servers.
+ *
+ * `tools.register()` is a `Map.set`, so two servers sharing a prefix silently
+ * erase each other's tools. A single unnamed server keeps the historical `mcp`
+ * prefix; several unnamed ones become `mcp-1`, `mcp-2`, ... in config order,
+ * and an explicitly repeated name gets a numeric suffix on the later entries.
+ */
+export function assignMcpPrefixes(
+  names: readonly (string | undefined)[]
+): readonly string[] {
+  const unnamed = names.filter((name) => name === undefined || name === "").length;
+  const used = new Set<string>();
+  const prefixes: string[] = [];
+
+  names.forEach((name, index) => {
+    const trimmed = name?.trim();
+    let base: string;
+    if (trimmed) {
+      base = trimmed;
+    } else {
+      base = unnamed > 1 ? `mcp-${index + 1}` : "mcp";
+    }
+
+    let candidate = base;
+    let suffix = 2;
+    while (used.has(candidate)) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    used.add(candidate);
+    prefixes.push(candidate);
+  });
+
+  return prefixes;
 }
 
 function createProvider(config: CliConfig = {}): ModelProvider {
