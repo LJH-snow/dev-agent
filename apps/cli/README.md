@@ -118,6 +118,12 @@ Configuration is read from the environment:
   command through the Rust sandbox. `--rust-executor <path>` wins over it.
 - `DEV_AGENT_MCP_SERVERS` - optional JSON array of MCP stdio server configs
 
+Each configured MCP server contributes tools named `<prefix>:*`. The prefix is
+the server's `name`; a single unnamed server keeps the historical `mcp`, several
+unnamed servers become `mcp-1`, `mcp-2`, ... in config order, and a repeated
+`name` gets a numeric suffix (`files`, `files-2`). Prefixes are always unique so
+two servers can never overwrite each other's tools.
+
 Runs print a `[usage] prompt=… completion=… total=…` line after the state line
 when the provider reported token counts. When the config file has a matching
 `pricing` entry, the line ends with `cost=$0.00000795`; unknown models and

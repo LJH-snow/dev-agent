@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-12 (Day plan v23: unique MCP prefixes)
+
+Executed `docs/day-plan-v23.md`. MCP tool names are `<prefix>:<name>` registered
+into a Map, and the prefix was `config.name ?? "mcp"` -- so two servers sharing a
+prefix silently erased each other's tools.
+
+### Fixed: every MCP server gets its own prefix
+- Configuring the same fixture server twice (five MCP tools each) registered
+  five tools instead of ten, with no warning; two servers both named `files`
+  collided the same way.
+- New `assignMcpPrefixes()` runs before anything is registered: a single unnamed
+  server keeps `mcp` (no behaviour change), several unnamed servers become
+  `mcp-1`, `mcp-2`, ... in config order, and a repeated explicit name gets a
+  numeric suffix (`files`, `files-2`, `files-3`).
+- `McpServerSession.prefix` keeps its own semantics; the disambiguation lives in
+  the CLI wiring so the library's other callers are unaffected.
+
+### Tests
+- TypeScript: 429 -> 432 (two-unnamed, duplicate-name, single-unnamed
+  regression). Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v22: no MCP resource truncation)
 
 Executed `docs/day-plan-v22.md`. `resources/read` may answer with several
