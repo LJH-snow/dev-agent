@@ -18,8 +18,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test tests-dist/executor.test.js tests-dist/health-check.test.js tests-dist/mock-binary.test.js tests-dist/protobuf-roundtrip.test.js tests-dist/rust-executor.test.js tests-dist/executor-quotas.test.js tests-dist/executor-cancel.test.js",
-    "test:integration": "tsc -p tsconfig.test.json && node --test tests-dist/real-rust-integration.test.js",
+    "test": "tsc -p tsconfig.test.json && node --test tests-dist/*.test.js",
+    "test:integration": "tsc -p tsconfig.test.json && node --test tests-dist/real-rust-integration.integration.js",
     "test:all": "pnpm test && pnpm test:integration",
     "clean": "rm -rf dist tests-dist"
   },

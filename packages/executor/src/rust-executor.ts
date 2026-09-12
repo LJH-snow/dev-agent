@@ -94,6 +94,11 @@ export interface RustExecutorOptions {
   readonly protoPath?: string;
   /** Requests allowed to run at once; further calls are rejected. Defaults to 5. */
   readonly maxConcurrentExecutions?: number;
+  /**
+   * Client-side backstop for a runtime that accepts a request and then never
+   * answers. `0` disables it (truly unbounded). Defaults to 60000.
+   */
+  readonly requestTimeoutMs?: number;
 }
 
 const NETWORK_POLICY_MAP: Readonly<Record<SandboxNetworkPolicy, number>> = {
@@ -103,11 +108,15 @@ const NETWORK_POLICY_MAP: Readonly<Record<SandboxNetworkPolicy, number>> = {
 };
 
 const DEFAULT_MAX_CONCURRENT = 5;
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+/** Extra time on top of a caller's `timeoutMs`, so the runtime's own timeout wins. */
+const RUNTIME_TIMEOUT_GRACE_MS = 5_000;
 
 export class RustExecutor implements SandboxExecutor {
   private readonly binaryPath: string;
   private readonly protoPath?: string;
   private readonly maxConcurrentExecutions: number;
+  private readonly requestTimeoutMs: number;
   private child?: ChildProcessWithoutNullStreams;
   private readonly pending = new Map<number, PendingRequest>();
   private nextRequestId = 1;
@@ -125,6 +134,7 @@ export class RustExecutor implements SandboxExecutor {
     this.binaryPath = options.binaryPath;
     this.protoPath = options.protoPath;
     this.maxConcurrentExecutions = options.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT;
+    this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
   async run(
@@ -189,8 +199,14 @@ export class RustExecutor implements SandboxExecutor {
         // the promise settles through the normal response path.
         this.writeCancel(requestId);
       };
+      const backstopMs = this.backstopFor(options.timeoutMs);
+      let timer: NodeJS.Timeout | undefined;
       const cleanup = (): void => {
         signal?.removeEventListener("abort", onAbort);
+        if (timer) {
+          clearTimeout(timer);
+          timer = undefined;
+        }
       };
 
       this.pending.set(requestId, {
@@ -211,6 +227,24 @@ export class RustExecutor implements SandboxExecutor {
         } else {
           signal.addEventListener("abort", onAbort, { once: true });
         }
+      }
+
+      if (backstopMs > 0) {
+        timer = setTimeout(() => {
+          // Drop the pending entry first so the concurrency slot is released
+          // even if tearing the process down fails.
+          this.pending.delete(requestId);
+          cleanup();
+          reject(
+            new Error(
+              `Rust executor did not answer "${command}" within ${backstopMs}ms; restarting the runtime`
+            )
+          );
+          // The runtime handles one envelope at a time, so a request that never
+          // came back is blocking the serial queue: anything else waiting is
+          // stuck behind it. Replace the process so the executor recovers.
+          void this.dispose().catch(() => undefined);
+        }, backstopMs);
       }
 
       this.writeEnvelope(envelope);
@@ -235,6 +269,21 @@ export class RustExecutor implements SandboxExecutor {
         resolve();
       }, 500);
     });
+  }
+
+  /**
+   * How long to wait for the runtime before declaring it wedged.
+   *
+   * A caller-provided `timeoutMs` is the runtime's own deadline, so the client
+   * waits a little longer and lets the runtime answer with a normal TIMEOUT
+   * result. Without one, `requestTimeoutMs` (or nothing at all, when it is 0)
+   * is the backstop.
+   */
+  private backstopFor(callerTimeoutMs: number | undefined): number {
+    if (callerTimeoutMs !== undefined && callerTimeoutMs > 0) {
+      return callerTimeoutMs + RUNTIME_TIMEOUT_GRACE_MS;
+    }
+    return this.requestTimeoutMs;
   }
 
   private ensureStarted(): Promise<void> {
