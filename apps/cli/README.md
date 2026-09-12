@@ -70,6 +70,13 @@ message on stderr instead of being ignored. This matters because a typo used to
 fall through to interactive mode (`--nope`), send the next flag as the prompt
 (`--once --json`), or consume it as a session id (`--session --once`).
 
+Running without `--once` starts an interactive session. Each prompt continues
+from the previous run, so `[state=… turns=…]` counts the whole session and
+`[usage]` accumulates instead of reporting one prompt at a time. `Ctrl-C`
+cancels the request that is in flight (through the same abort path the
+desktop uses) and exits with status `130`; it also exits immediately when
+the CLI is idle at the prompt. `exit` or `quit` leaves with status `0`.
+
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on
 stdout is a protocol message, so logs (if any) go to stderr:
 

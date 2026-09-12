@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-12 (Day plan v20: the interactive session loop)
+
+Executed `docs/day-plan-v20.md`. The interactive CLI (no `--once`) was three
+separate bugs wearing one trench coat, and the README claimed the opposite.
+
+### Fixed: interactive mode is a session loop
+- `interactive()` never kept the context returned by `runPrompt()`, so every
+  prompt restarted at `turns=1` and `[usage]` reported only that prompt
+  (`15/15/15` where the totals should have been `15/30/45`). Both now
+  accumulate across the session.
+- `Ctrl-C` during a run only printed `(interrupted)` and left the model request
+  in flight. It now aborts through the same `AbortSignal` path the loop and
+  executors already support, and the process exits with status `130` -- 19ms
+  against a provider that hangs instead of waiting for it.
+- `Ctrl-C` while idle at the `>` prompt also only printed a line and never
+  exited. Closing the readline interface does not settle a pending
+  `question()`, so the loop now races the prompt against an explicit interrupt
+  promise.
+- Unchanged: an interrupt is not a failure (the session keeps its prior state),
+  and `exit` / `quit` still leaves with status `0`.
+
+### Tests
+- TypeScript: 418 -> 421. Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v19: editor-style line counts)
 
 Executed `docs/day-plan-v19.md`. `filesystem read` reported the wrong file
