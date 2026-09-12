@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-09-12 (Day plan v21: stop a running desktop chat)
+
+Executed `docs/day-plan-v21.md`. The server could already abort a run -- a
+dropped connection did it -- but the UI gave the user no way to trigger it:
+after sending, the input locked until the model or a tool finished.
+
+### Added: explicit cancel
+- `POST /api/chat/cancel` with `{ sessionId }` aborts the session's in-flight
+  run through the existing `AbortController`. It answers
+  `{ sessionId, cancelled: true }`; the aborted stream still closes with
+  `done { "status": "aborted" }`. Cancelling an idle session answers
+  `cancelled: false` instead of erroring, so the button is idempotent.
+- The server now keeps one `AbortController` per running session (next to the
+  existing `inFlight` set); `streamChat()` uses the caller's controller, so
+  disconnect and cancel share one path.
+- The header gained a `Stop` button, enabled only while a run is in flight.
+- The `done` frame's status is no longer overwritten by the send handler's
+  `finally`: a cancelled run reads `aborted`, not `idle`.
+
+### Verified
+- Browser check against a provider that hangs: during the run the status read
+  `streaming` with `Stop` enabled; after clicking it the status read `aborted`,
+  `Stop` disabled, no late assistant text appeared, and the session file held
+  only the user entry (re-checked 8s later).
+
+### Tests
+- TypeScript: 421 -> 425. Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v20: the interactive session loop)
 
 Executed `docs/day-plan-v20.md`. The interactive CLI (no `--once`) was three

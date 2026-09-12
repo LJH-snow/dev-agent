@@ -297,6 +297,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - The interactive CLI is a real session loop: `turns` and `[usage]` accumulate
   across prompts instead of restarting at 1 every time, and `Ctrl-C` aborts the
   request in flight (or exits when idle) with status 130
+- The desktop chat can be stopped without reloading: a header `Stop` button calls
+  `POST /api/chat/cancel`, the run unwinds through the same abort path the
+  disconnect handler uses, and the status stays `aborted`
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
   (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
@@ -369,6 +372,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 48. ~~Strict CLI argument validation~~ (done)
 49. ~~Editor-style line counts and clamped read ranges~~ (done)
 50. ~~Interactive CLI session loop (accumulated state, working Ctrl-C)~~ (done)
+51. ~~Explicit stop control for a running desktop chat~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

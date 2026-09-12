@@ -73,6 +73,11 @@ only tokens are shown.
 - `POST /api/chat` takes an optional `sessionId` (unknown ids are created on
   first use). The `409` guard is per session: different sessions run
   concurrently while one session stays serialised.
+- `POST /api/chat/cancel` — body `{ "sessionId": "..." }`. Aborts the run that
+  is in flight in that session and answers `{ sessionId, cancelled: true }`;
+  the aborted stream still closes with `done { "status": "aborted" }`.
+  Cancelling an idle session is a no-op (`cancelled: false`) rather than an
+  error, so the caller can repeat it safely.
 - `POST /api/approval` — body `{ "id": "...", "decision": "allow" | "deny" }`
   answers an `approval-request` frame; unknown or already answered ids return
   `404`.
@@ -82,6 +87,11 @@ only tokens are shown.
 Disconnecting the client aborts the running agent: the abort signal is forwarded
 to the model request and checked before each turn and each tool call. The
 stream closes with a `done` frame carrying `{ "status": "aborted" }`.
+
+The header's `Stop` button does the same thing without dropping the connection:
+it calls `POST /api/chat/cancel`, the run unwinds through the same abort path,
+and the status reads `aborted` instead of snapping back to `idle`. The button is
+enabled only while a run is in flight.
 
 A tool call that is already executing is cancelled too: the signal reaches the
 executor, which kills the command (see `packages/executor`).

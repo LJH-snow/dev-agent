@@ -143,6 +143,9 @@
     const stopButton = document.getElementById("stop");
 
     let currentAssistant = null;
+    // Set by the `done` frame so the finally block can keep an honest status
+    // ("aborted" after Stop) instead of always snapping back to "idle".
+    let finalStatus = null;
     let totalTokens = 0;
     let totalCost = 0;
     let hasCost = false;
@@ -422,6 +425,7 @@
       stopButton.disabled = false;
       setStatus("streaming");
       currentAssistant = null;
+      finalStatus = null;
 
       try {
         const res = await fetch("/api/chat", {
@@ -456,7 +460,7 @@
         send.disabled = false;
         stopButton.disabled = true;
         currentAssistant = null;
-        setStatus("idle");
+        setStatus(finalStatus ?? "idle");
       }
     });
 
@@ -508,7 +512,8 @@
           appendMessage("error", parsed.message || "unknown error");
           break;
         case "done":
-          setStatus("done · " + parsed.turns + " turn(s)");
+          finalStatus = parsed.status === "aborted" ? "aborted" : "idle";
+          setStatus(parsed.status === "aborted" ? "aborted" : "done · " + parsed.turns + " turn(s)");
           loadSessions();
           break;
       }
