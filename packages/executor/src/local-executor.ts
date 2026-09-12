@@ -1,7 +1,12 @@
 import { spawn } from "node:child_process";
 
 import { ExecutorCancelledError } from "./errors.js";
-import type { Executor, ExecutorResult, ExecutorRunOptions } from "./index.js";
+import {
+  assertWorkingDirectory,
+  type Executor,
+  type ExecutorResult,
+  type ExecutorRunOptions,
+} from "./index.js";
 
 export interface LocalExecutorOptions {
   readonly historyLimit?: number;
@@ -58,6 +63,7 @@ export class LocalExecutor implements Executor {
     options: ExecutorRunOptions,
     maxOutputBytes: number
   ): Promise<ExecutorResult> {
+    assertWorkingDirectory(options.cwd);
     return new Promise((resolve, reject) => {
       const child = spawn(command, [...args], {
         cwd: options.cwd,

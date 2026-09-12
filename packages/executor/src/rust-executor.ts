@@ -7,6 +7,7 @@ type ProtobufModule = typeof protobuf;
 
 import { DEFAULT_MAX_OUTPUT_BYTES } from "./local-executor.js";
 import { ExecutorCancelledError } from "./errors.js";
+import { assertWorkingDirectory } from "./index.js";
 
 // protobufjs is CommonJS; Node's ESM loader exposes its API on `default`.
 const protobufImpl: ProtobufModule = (
@@ -150,6 +151,9 @@ export class RustExecutor implements SandboxExecutor {
     args: readonly string[] = [],
     options: ExecutorRunOptions & { readonly profile?: SandboxProfile } = {}
   ): Promise<ExecutorResult> {
+    // Same diagnosis as LocalExecutor: a bad cwd must not surface as a missing
+    // command once the request reaches the runtime.
+    assertWorkingDirectory(options.cwd);
     await this.ensureStarted();
 
     if (this.pending.size >= this.maxConcurrentExecutions) {
