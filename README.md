@@ -245,6 +245,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   action that replaces a snippet only when it matches exactly once, and `read`
   takes `offset`/`limit` (2000 lines by default) so large files come back in
   slices
+- `filesystem read` counts lines like an editor: a trailing newline terminates
+  the last line rather than adding an empty one, and an `offset` past the end
+  reports an empty range just past the last line instead of an inverted one
 - Approval can be remembered per session: the CLI accepts `a` and the desktop
   shows "Always allow", so the same command is not asked about twice. The memory
   key is the command plus up to two leading arguments (`npm test`, `git status`,
@@ -361,6 +364,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 46. ~~Depth-safe `code-search` index write-back~~ (done)
 47. ~~TypeScript-first test suite (compiled `tests/` -> `tests-dist/`)~~ (done)
 48. ~~Strict CLI argument validation~~ (done)
+49. ~~Editor-style line counts and clamped read ranges~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

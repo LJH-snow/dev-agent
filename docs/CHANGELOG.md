@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-12 (Day plan v19: editor-style line counts)
+
+Executed `docs/day-plan-v19.md`. `filesystem read` reported the wrong file
+length for the most common file shape, and the model pages with that number.
+
+### Fixed: `read` line semantics
+- A trailing newline used to add a phantom line: `"one\ntwo\nthree\n"` answered
+  `totalLines: 4`, so a model paging through a file was always one line ahead of
+  the end. Line splitting now treats a trailing newline as a terminator
+  (`"a\n"` -> 1 line, `"\n"` -> 1 line, `""` -> 0 lines, `"a\n\n"` -> 2 lines),
+  and `lines.join("\n")` still reproduces the source.
+- An `offset` past the end answered an inverted range (`startLine: 99`,
+  `endLine: 98` on a three-line file). It now pins the empty range to the file:
+  `startLine: totalLines + 1`, `endLine: totalLines`.
+- Unchanged: `offset`/`limit` must still be positive integers, and `truncated`
+  keeps its meaning.
+
+### Tests
+- TypeScript: 413 -> 418. Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v18: strict CLI arguments)
 
 Executed `docs/day-plan-v18.md`. A mistyped flag used to do the wrong thing

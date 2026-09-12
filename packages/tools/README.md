@@ -32,6 +32,13 @@ Built-in tools accept an optional context object with `sessionId` and
 and filesystem and code-search paths are resolved relative to it. `code-search`
 also accepts `kind` and `limit` inputs to keep agent queries focused.
 
+`filesystem read` counts lines the way an editor does: a trailing newline
+terminates the last line instead of starting an empty one, so `"a\nb\n"` is two
+lines and an empty file is zero. `totalLines` is what the caller pages with, and
+an `offset` past the end answers an empty range pinned just past the last line
+(`startLine: totalLines + 1`, `endLine: totalLines`) rather than echoing the
+requested offset.
+
 `CodeSearchTool` caches its scan per root directory in the tool instance. A
 repeated search re-reads only the files whose size or mtime changed, drops
 deleted files from the index, and exposes `getCacheStats()` (`hits`, `misses`,
