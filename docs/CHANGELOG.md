@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-12 (Day plan v25: no permanently wedged sandbox)
+
+Executed `docs/day-plan-v25.md`. `RustExecutor` had no client-side timeout, so a
+runtime that accepted a request and then never answered took the sandbox down
+permanently.
+
+### Fixed: a wedged runtime is abandoned and replaced
+- `run(..., { timeoutMs: 400 })` against a wedged-but-alive runtime was still
+  pending after 3s: `timeoutMs` is forwarded to the runtime, which is exactly
+  what is stuck, so nothing enforced it on the client.
+- Worse, each hung request kept its `pending` entry forever. With
+  `maxConcurrentExecutions: 2`, two hung requests made every later call answer
+  `Concurrent execution limit reached (2)` — the process lost sandbox
+  capability until restart.
+- New `RustExecutorOptions.requestTimeoutMs` (default 60000, `0` disables) is
+  the client backstop. When the caller passes `timeoutMs`, the backstop is
+  `timeoutMs + 5s` so the runtime's own timeout normally answers first.
+- On backstop the pending entry is dropped (freeing the slot), the call rejects
+  with `Rust executor did not answer "<command>" within <n>ms; restarting the
+  runtime`, and the runtime process is replaced — necessary because the stdio
+  binary handles one envelope at a time, so anything queued behind a stuck
+  request could never run.
+- Unchanged: a runtime that crashes still rejects everything via the exit
+  handler, and `requestTimeoutMs: 0` keeps the previous unbounded behaviour.
+
+### Fixed (test infrastructure)
+- The executor's `test` script listed its unit test files explicitly (to keep
+  the integration test out), so a newly added test file was not run by
+  `pnpm test` — the unchanged total was the only signal. The integration test
+  is now `real-rust-integration.integration.ts` (compiled to
+  `*.integration.js`, outside the `*.test.js` glob) and the unit suite is back
+  to `node --test tests-dist/*.test.js`, so new tests cannot be missed again.
+
+### Tests
+- TypeScript: 437 -> 441. Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v24: MCP requests time out)
 
 Executed `docs/day-plan-v24.md`. MCP requests had no timeout, so one server that

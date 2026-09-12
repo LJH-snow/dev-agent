@@ -52,6 +52,13 @@ Cancellation crosses it as well: `ExecutorRunOptions.signal` makes
 `CancelRequest` and rejects with `ExecutorCancelledError` once the runtime
 answers `CANCELLED`. `RustExecutor` also enforces the same default concurrency
 limit as `LocalExecutor` (5, configurable via `maxConcurrentExecutions`).
+A runtime that accepts a request and then never answers is not waited on
+forever: `requestTimeoutMs` (default 60000, `0` to disable) is the client-side
+backstop. When the caller also passes `timeoutMs`, the backstop is
+`timeoutMs + 5s`, so the runtime's own timeout normally answers first. On
+backstop the pending entry is dropped — freeing its concurrency slot — and the
+runtime process is replaced, because a request stuck at the head of the
+strictly serial stdio queue would otherwise block everything behind it.
 Both executors terminate gracefully: the command gets SIGTERM first (sent to
 its process group on Unix, so wrappers and grandchildren are included) and
 SIGKILL only if it is still alive after two seconds. Timeouts follow the same

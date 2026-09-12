@@ -309,6 +309,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - MCP requests time out instead of hanging forever (default 30s, configurable
   with `timeoutMs` or `DEV_AGENT_MCP_TIMEOUT_MS`); a silent server now fails the
   CLI at startup instead of freezing it with no output
+- `RustExecutor` no longer waits forever on a wedged runtime: `requestTimeoutMs`
+  (default 60s, `0` disables) drops the pending request, frees its concurrency
+  slot, and replaces the runtime process, so the sandbox cannot be permanently
+  exhausted by a hung request
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
   (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
@@ -385,6 +389,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 52. ~~All MCP resource content blocks reach the model~~ (done)
 53. ~~Unique MCP tool prefixes per server~~ (done)
 54. ~~Per-request MCP timeouts~~ (done)
+55. ~~Client-side backstop for a wedged Rust runtime~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)
