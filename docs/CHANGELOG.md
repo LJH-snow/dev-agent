@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-12 (Day plan v28: bounded SSE buffering)
+
+Executed `docs/day-plan-v28.md`. The desktop server wrote every SSE frame to the
+socket without any limit, so a client that stopped reading made the server buffer
+without bound.
+
+### Fixed: one stream cannot buffer without limit
+- Measured with a stub session emitting 200k token frames and a client that
+  connected and immediately stopped reading: 4 seconds later the server's heap
+  was **192 MB** with no cap, warning, or recovery. An ordinary HTTP client can
+  trigger this, no special access required.
+- `emit()` now counts the bytes it writes and, past
+  `DEV_AGENT_SSE_MAX_BYTES` (default 32 MiB), sends an `error` frame naming the
+  limit, ends the stream, and aborts the run so the producing model/tool stops
+  instead of working with nowhere to deliver output.
+- The counter is per stream and released when the stream ends; streams within the
+  cap behave exactly as before.
+- Re-measured with the same flood: heap **17 MB** (was 192 MB), the stream
+  reported `stream exceeded 100000 bytes`, and the session received the abort.
+
+### Tests
+- TypeScript: 450 -> 453 (flood is cut off and aborted, normal stream unchanged,
+  cap is configurable). Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v27: tool timeouts actually stop the work)
 
 Executed `docs/day-plan-v27.md`. A tool timeout reported failure to the model but

@@ -303,6 +303,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - The desktop chat can be stopped without reloading: a header `Stop` button calls
   `POST /api/chat/cancel`, the run unwinds through the same abort path the
   disconnect handler uses, and the status stays `aborted`
+- Desktop SSE streams are capped (`DEV_AGENT_SSE_MAX_BYTES`, default 32 MiB): a
+  client that stops reading gets an `error` frame and the run is aborted,
+  instead of the server buffering events without bound
 - MCP resources that answer with several content blocks are no longer truncated:
   the client exposes `readResourceContents()` (all blocks, in order) and the CLI
   resource tool hands every block to the model
@@ -398,6 +401,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 55. ~~Client-side backstop for a wedged Rust runtime~~ (done)
 56. ~~Symlink-aware workspace write boundary~~ (done)
 57. ~~Tool timeouts cancel the running command~~ (done)
+58. ~~Bounded desktop SSE buffering~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

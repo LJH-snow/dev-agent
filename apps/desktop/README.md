@@ -33,6 +33,10 @@ Configure the model provider the same way as the CLI, via environment variables:
   to answer, `ask` stays conservative and denies.
 - `DEV_AGENT_APPROVAL_TIMEOUT_MS` — how long an `ask` prompt may stay unanswered
   before it is denied (default 120000).
+- `DEV_AGENT_SSE_MAX_BYTES` — how many bytes one SSE stream may buffer before the
+  server stops it (default 32 MiB). A client that stops reading cannot make the
+  desktop server buffer without bound; the stream gets an `error` event and the
+  run is aborted.
 
 Both surfaces also read the `approval` section of `~/.dev-agent/config.json`:
 `allow` lists command substrings that always pass (`"npm test"`), `deny` adds

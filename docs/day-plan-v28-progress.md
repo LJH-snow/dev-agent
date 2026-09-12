@@ -4,10 +4,10 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 1（文档 + 全量回归）进行中
-- 已完成阶段：阶段 0
-- 最近一次运行：运行 1（2026-09-12 18:0x-18:4x）
-- 工作区：阶段 0 的改动待提交
+- 当前阶段：已完成（阶段 0 + 阶段 1）
+- 已完成阶段：阶段 0、阶段 1
+- 最近一次运行：运行 2（2026-09-12 18:4x-19:1x）
+- 工作区：全部已提交并推送
 
 ## 日志
 
@@ -33,6 +33,24 @@
   - `pnpm test`：**453 passed / 0 failed**
 - 提交：见阶段 0 的 fix 提交
 - 下一步：阶段 1 — 文档、完整回归矩阵、提交推送
+
+### 运行 2 — 2026-09-12 18:4x-19:1x
+
+- 阶段/工作项：阶段 1（文档 + 全量回归）完成
+- 做了什么：
+  - `apps/desktop/README.md`：新增 `DEV_AGENT_SSE_MAX_BYTES` 说明（默认 32 MiB、
+    超限会收到 `error` 帧并中止该次运行）
+  - 根 README：Current Status 增加该行为；Roadmap 增加第 58 项
+  - `docs/CHANGELOG.md`：新增 v28 条目（含 192 MB 实测与修复后 17 MB 的对照）
+- 验证命令与结果：
+  - `node scripts/check.mjs`：Structure check passed
+  - `pnpm build` / `pnpm typecheck`：通过
+  - `pnpm test`：**453 passed / 0 failed**
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed
+  - `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）
+- 提交：见 v28 的 fix / docs 提交
+- 下一步：v28 计划已收尾
 
 ## 错误与卡点
 
