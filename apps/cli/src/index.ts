@@ -867,29 +867,75 @@ async function interactive(
 
   console.log("dev-agent CLI. Type 'exit' or 'quit' to stop.");
   let interrupted = false;
+  let abort: AbortController | undefined;
+  // Closing the readline interface does not settle a pending `question()` --
+  // the event loop simply drains and the process exits with code 0. Race the
+  // question against this instead, so the loop always unwinds.
+  let wakeOnInterrupt: (() => void) | undefined;
+  const interrupt = new Promise<void>((resolve) => {
+    wakeOnInterrupt = resolve;
+  });
   const onSigint = () => {
     interrupted = true;
     process.stdout.write("\n(interrupted)\n");
+    // Cancel whatever is in flight. Without this Ctrl-C only printed a line
+    // and the running request kept going.
+    abort?.abort();
+    rl.close();
+    // 130 is the conventional exit code for "terminated by SIGINT".
+    process.exitCode = 130;
+    wakeOnInterrupt?.();
   };
   process.on("SIGINT", onSigint);
 
-  for (;;) {
-    const line = await rl.question("> ");
-    if (interrupted) {
-      break;
-    }
-    const prompt = line.trim();
-    if (prompt === "exit" || prompt === "quit") {
-      break;
-    }
-    if (!prompt) {
-      continue;
-    }
-    await runPrompt(loop, context, streaming, prompt, jsonOutput, cost);
-  }
+  // Each prompt continues from the previous run's context, so `turns` and
+  // `usage` accumulate across the session instead of restarting every time.
+  let current = context;
+  try {
+    for (;;) {
+      const line = await Promise.race([
+        rl.question("> ").catch(() => ""),
+        interrupt.then(() => ""),
+      ]);
+      if (interrupted) {
+        break;
+      }
+      const prompt = line.trim();
+      if (prompt === "exit" || prompt === "quit") {
+        break;
+      }
+      if (!prompt) {
+        continue;
+      }
 
-  process.removeListener("SIGINT", onSigint);
-  rl.close();
+      const controller = new AbortController();
+      abort = controller;
+      try {
+        current = await runPrompt(
+          loop,
+          current,
+          streaming,
+          prompt,
+          jsonOutput,
+          cost,
+          controller.signal
+        );
+      } catch (error) {
+        // An interrupt is not a failure; the session keeps its prior state.
+        if (!interrupted) {
+          throw error;
+        }
+      } finally {
+        abort = undefined;
+      }
+      if (interrupted) {
+        break;
+      }
+    }
+  } finally {
+    process.removeListener("SIGINT", onSigint);
+    rl.close();
+  }
 }
 
 interface UsageCostOptions {
@@ -903,9 +949,10 @@ async function runPrompt(
   streaming: StreamingRun,
   prompt: string,
   jsonOutput = false,
-  costOptions?: UsageCostOptions
-): Promise<void> {
-  const result = await loop.run(context, prompt);
+  costOptions?: UsageCostOptions,
+  signal?: AbortSignal
+): Promise<AgentContext> {
+  const result = await loop.run(context, prompt, signal ? { signal } : undefined);
   const entries = await result.memory.entries();
   const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
   const cost =
@@ -924,7 +971,7 @@ async function runPrompt(
         cost: cost ?? null,
       })
     );
-    return;
+    return result;
   }
 
   if (streaming.isEnabled() && streaming.hasStreamed()) {
@@ -941,6 +988,7 @@ async function runPrompt(
       `[usage] prompt=${result.usage.promptTokens} completion=${result.usage.completionTokens} total=${result.usage.totalTokens}${suffix}`
     );
   }
+  return result;
 }
 
 /** Trims trailing zeros so small estimates stay readable. */

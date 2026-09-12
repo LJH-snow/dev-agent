@@ -4,14 +4,41 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 0（修正交互循环）未开始
-- 已完成阶段：无
-- 最近一次运行：尚未开始
-- 工作区：已提交 v19，工作区 clean
+- 当前阶段：阶段 1（文档 + 全量回归）进行中
+- 已完成阶段：阶段 0
+- 最近一次运行：运行 1（2026-09-12 08:1x-08:5x）
+- 工作区：阶段 0 的改动待提交
 
 ## 日志
 
-（尚无）
+### 运行 1 — 2026-09-12 08:1x-08:5x
+
+- 阶段/工作项：阶段 0（修正交互循环）完成
+- 做了什么：
+  - `apps/cli/src/index.ts`：
+    - `runPrompt()` 现在返回 `AgentContext`，并接受可选 `AbortSignal`，
+      透传给 `loop.run(context, prompt, { signal })`
+    - `interactive()` 维护可变的 current context，跨 prompt 接住返回值，
+      使 `turns` 与 `usage` 累加
+    - SIGINT 处理器真正中断：`abort()` 取消在飞请求、`rl.close()` 解锁
+      pending question，并立即置 `process.exitCode = 130`
+    - 关键坑：`rl.close()` 并不会让 pending 的 `rl.question()` settle——事件循环
+      直接排空、进程以 0 退出。改为用一个显式的 interrupt promise 与
+      question 竞速，循环才一定 unwind
+    - abort 抛出的错误在 `interrupted` 为真时被吞掉，中断不算失败
+  - 新增 `apps/cli/tests/interactive.test.ts`（3 个用例）
+- 验证命令与结果：
+  - 修复前后实测对照：
+    - 交互三连 prompt：`turns` 1/1/1 -> **1/2/3**；`[usage]` 15/15/15 ->
+      **15/30/45**
+    - 运行中 SIGINT（桩 provider 挂 20s）：修复前进程仍存活（1.2s 后仍未退出）
+      -> 现在 **19ms 内以 130 退出**
+    - 空闲 SIGINT：修复前进程仍存活且退不出去 -> 现在 **8ms 内以 130 退出**
+    - `exit` 命令仍以 0 退出（行为不变）
+  - `apps/cli`：87 passed（84 + 新增 3）
+  - `pnpm --filter @dev-agent/cli build` / `tsc -p tsconfig.test.json`：通过
+- 提交：见阶段 0 的 fix 提交
+- 下一步：阶段 1 — 文档、完整回归矩阵、提交推送
 
 ## 错误与卡点
 
