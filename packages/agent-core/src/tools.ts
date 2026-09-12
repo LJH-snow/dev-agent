@@ -64,14 +64,52 @@ export async function runTool(
   const timeoutMs = defaults?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const maxOutputChars = defaults?.maxOutputChars ?? DEFAULT_MAX_OUTPUT_CHARS;
 
+  // A timeout must stop the work, not just tell the model it stopped. Racing a
+  // promise left the tool running, so a "timed out" shell command still wrote
+  // its side effects afterwards. Abort the tool instead: executors kill the
+  // child (LocalExecutor) or send a cancel envelope (RustExecutor).
+  const controller = new AbortController();
+  const outer = context?.signal;
+  const onOuterAbort = (): void => controller.abort(outer?.reason);
+  if (outer) {
+    if (outer.aborted) {
+      controller.abort(outer.reason);
+    } else {
+      outer.addEventListener("abort", onOuterAbort, { once: true });
+    }
+  }
+  const toolContext: ToolExecutionContext | undefined = context
+    ? { ...context, signal: controller.signal }
+    : undefined;
+
+  // Aborting the tool can make it settle (resolve or reject) at the same moment
+  // the timeout fires, and which one wins a Promise.race is a coin flip. Track
+  // the timeout explicitly so the reported outcome is deterministic.
+  let timedOut = false;
+  const timeoutError = (): string =>
+    JSON.stringify({ error: `Tool "${call.name}" timed out after ${timeoutMs}ms` });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
   let result: unknown;
   try {
-    result = await withTimeout(tool.execute(call.input, context), timeoutMs, call.name);
+    result = await withTimeout(tool.execute(call.input, toolContext), timeoutMs, call.name);
   } catch (error) {
-    if (error instanceof ToolTimeoutError) {
-      return JSON.stringify({ error: `Tool "${call.name}" timed out after ${timeoutMs}ms` });
+    if (timedOut || error instanceof ToolTimeoutError) {
+      controller.abort();
+      return timeoutError();
     }
     throw error;
+  } finally {
+    clearTimeout(timer);
+    outer?.removeEventListener("abort", onOuterAbort);
+  }
+
+  // The tool may have "completed" because our abort stopped it; the caller must
+  // still see the timeout, not a success it did not really earn.
+  if (timedOut) {
+    return timeoutError();
   }
 
   return truncateOutput(JSON.stringify(result), maxOutputChars, call.name);

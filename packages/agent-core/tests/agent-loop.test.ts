@@ -315,14 +315,34 @@ test("agent loop stops before running a tool when the signal aborts mid-turn", a
 
 test("agent loop passes the run signal into tool execution contexts", async () => {
   let capturedContext;
+  let observedAbortDuringCall = false;
+  let releaseTool: (() => void) | undefined;
+  let toolAborted: (() => void) | undefined;
+  const abortSeen = new Promise<void>((resolve) => {
+    toolAborted = resolve;
+  });
   let modelCalls = 0;
 
   const tools = new AgentToolRegistry();
   tools.register({
     name: "capture",
     description: "Captures its execution context.",
-    async execute(_input, context) {
+    async execute(_input, context): Promise<{ ok: boolean }> {
       capturedContext = context;
+      // Stay inside the call so the signal can be observed while it still
+      // tracks the run's controller.
+      await new Promise<void>((resolve) => {
+        releaseTool = resolve;
+        context?.signal?.addEventListener(
+          "abort",
+          () => {
+            observedAbortDuringCall = context.signal?.aborted === true;
+            toolAborted?.();
+            resolve();
+          },
+          { once: true }
+        );
+      });
       return { ok: true };
     },
   });
@@ -344,11 +364,27 @@ test("agent loop passes the run signal into tool execution contexts", async () =
   const loop = new AgentLoop({ model, tools, maxTurns: 3 });
   const controller = new AbortController();
 
-  const result = await loop.run(context, "capture", { signal: controller.signal });
+  const pending = loop.run(context, "capture", { signal: controller.signal });
+  // Wait until the tool is inside execute(), then abort the run.
+  while (releaseTool === undefined) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  controller.abort();
+  await Promise.race([abortSeen, new Promise((resolve) => setTimeout(resolve, 500))]);
+  const result = await pending.catch(() => undefined);
 
-  assert.equal(result.state.status, "done");
   assert.equal(capturedContext.sessionId, "agent-signal");
-  assert.equal(capturedContext.signal, controller.signal);
+  // The tool gets a signal that *tracks* the run's, not necessarily the same
+  // object: `runTool` derives one so a per-call timeout can abort the tool
+  // without aborting the whole run. What matters is that the run's abort
+  // reaches the tool.
+  assert.ok(capturedContext.signal, "the tool must receive an abort signal");
+  assert.equal(
+    observedAbortDuringCall,
+    true,
+    "aborting the run must abort the signal the tool holds while it runs"
+  );
+  assert.ok(result === undefined || result.state.status === "done");
 });
 
 test("agent loop accumulates usage across runs and reports each turn", async () => {
