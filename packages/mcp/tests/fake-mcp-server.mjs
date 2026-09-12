@@ -72,13 +72,36 @@ rl.on("line", (line) => {
   }
 
   if (request.method === "resources/read") {
+    const uri = request.params?.uri;
+    // A URI containing "empty" answers with no blocks at all.
+    if (typeof uri === "string" && uri.includes("empty")) {
+      send({ jsonrpc: "2.0", id: request.id, result: { contents: [] } });
+      return;
+    }
+    // A URI containing "multi" answers with several blocks, the way a directory
+    // read or a text+blob resource does, so callers can be tested against a
+    // server that returns more than the first content.
+    if (typeof uri === "string" && uri.includes("multi")) {
+      send({
+        jsonrpc: "2.0",
+        id: request.id,
+        result: {
+          contents: [
+            { uri, mimeType: "text/plain", text: "FIRST-PART" },
+            { uri: `${uri}#2`, mimeType: "text/plain", text: "SECOND-PART" },
+            { uri: `${uri}#3`, mimeType: "text/plain", text: "THIRD-PART" },
+          ],
+        },
+      });
+      return;
+    }
     send({
       jsonrpc: "2.0",
       id: request.id,
       result: {
         contents: [
           {
-            uri: request.params?.uri,
+            uri,
             mimeType: "text/markdown",
             text: "# Hello from resources",
           },

@@ -49,6 +49,12 @@ The `McpClient` interface exposes resources and prompts with structured
 objects, so the agent loop can treat them as first-class capabilities instead
 of only translating MCP tools into local tools.
 
+`resources/read` may answer with several content blocks (a directory read, or
+text plus a blob), so the client exposes both shapes:
+`readResourceContents(uri)` returns every block in order, while `readResource(uri)`
+stays as the single-block convenience wrapper and returns the first one. Callers
+that would otherwise lose data should use the plural method.
+
 The implementation deliberately uses only Node built-ins and no MCP SDK
 dependency. The CLI injects `DEV_AGENT_SESSION_ID` and
 `DEV_AGENT_WORKING_DIRECTORY` into MCP server environments when it connects.

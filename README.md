@@ -300,6 +300,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - The desktop chat can be stopped without reloading: a header `Stop` button calls
   `POST /api/chat/cancel`, the run unwinds through the same abort path the
   disconnect handler uses, and the status stays `aborted`
+- MCP resources that answer with several content blocks are no longer truncated:
+  the client exposes `readResourceContents()` (all blocks, in order) and the CLI
+  resource tool hands every block to the model
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
   (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
@@ -373,6 +376,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 49. ~~Editor-style line counts and clamped read ranges~~ (done)
 50. ~~Interactive CLI session loop (accumulated state, working Ctrl-C)~~ (done)
 51. ~~Explicit stop control for a running desktop chat~~ (done)
+52. ~~All MCP resource content blocks reach the model~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

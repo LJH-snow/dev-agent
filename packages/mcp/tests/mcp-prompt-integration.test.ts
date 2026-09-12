@@ -33,6 +33,7 @@ function createMockClient() {
     },
     async callTool() { return { content: [] }; },
     async readResource() { return { uri: "", text: "" }; },
+    async readResourceContents() { return [{ uri: "", text: "" }]; },
     async getPrompt(name, args) {
       return {
         messages: [

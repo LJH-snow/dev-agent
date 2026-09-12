@@ -145,17 +145,30 @@ export class McpStdioClient implements McpClient {
     return (result?.resources ?? []).map((info) => createMcpResource(this, info));
   }
 
-  async readResource(uri: string): Promise<McpResourceContents> {
+  /**
+   * All content blocks the server returned, in order. `resources/read` may
+   * answer with several (a directory read, or text plus a blob), and callers
+   * that only looked at the first block used to lose the rest silently.
+   */
+  async readResourceContents(uri: string): Promise<readonly McpResourceContents[]> {
     if (!uri.trim()) {
-      throw new Error("MCP readResource uri must be a non-empty string");
+      throw new Error("MCP readResourceContents uri must be a non-empty string");
     }
 
     const result = (await this.request("resources/read", { uri })) as
       | { readonly contents?: readonly McpResourceContents[] }
       | undefined;
-    const contents = result?.contents ?? [];
-    const first = contents[0];
-    return first ?? { uri };
+    return result?.contents ?? [];
+  }
+
+  /**
+   * Convenience wrapper for the common single-block case. Use
+   * `readResourceContents()` when the resource may answer with several blocks;
+   * this method intentionally returns only the first one.
+   */
+  async readResource(uri: string): Promise<McpResourceContents> {
+    const contents = await this.readResourceContents(uri);
+    return contents[0] ?? { uri };
   }
 
   async listPrompts(): Promise<McpPrompt[]> {

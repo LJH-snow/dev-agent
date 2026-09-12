@@ -1142,7 +1142,10 @@ function registerServerTools(
     },
     async execute(input: unknown) {
       const uri = readString(input, "uri");
-      return client.readResource(uri);
+      // Return every content block: a resource may answer with several, and
+      // handing the model only the first would silently drop the rest.
+      const contents = await client.readResourceContents(uri);
+      return contents.length > 0 ? contents : [{ uri }];
     },
   });
 

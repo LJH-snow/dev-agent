@@ -139,6 +139,8 @@ export interface McpClient {
   callTool(name: string, input: unknown): Promise<McpToolResult>;
   listResources(): Promise<McpResource[]>;
   readResource(uri: string): Promise<McpResourceContents>;
+  /** Every content block the server returned, in order. */
+  readResourceContents(uri: string): Promise<readonly McpResourceContents[]>;
   listPrompts(): Promise<McpPrompt[]>;
   getPrompt(
     name: string,

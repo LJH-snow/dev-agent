@@ -14,6 +14,7 @@ function createMockClient(overrides = {}) {
     async listPrompts() { return []; },
     async callTool() { return { content: [] }; },
     async readResource() { return { uri: "", text: "" }; },
+    async readResourceContents() { return [{ uri: "", text: "" }]; },
     async getPrompt() { return { messages: [] }; },
     async ping() {},
     async close() { this.connected = false; },

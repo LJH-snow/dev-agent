@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-12 (Day plan v22: no MCP resource truncation)
+
+Executed `docs/day-plan-v22.md`. `resources/read` may answer with several
+content blocks -- a directory read, or text plus a blob -- and the client
+silently kept only the first one.
+
+### Fixed: every resource content block reaches the caller
+- `McpStdioClient` returned `contents[0] ?? { uri }`, so a resource answering
+  with three blocks lost two of them with no error. Measured against a stub
+  server returning FIRST/SECOND/THIRD: `readResource()` produced `FIRST-PART`
+  and nothing else.
+- Added `readResourceContents(uri)` to the `McpClient` interface and the stdio
+  client: it returns every block in order. `readResource(uri)` stays as the
+  documented single-block convenience wrapper for compatibility.
+- The CLI's `<prefix>:resource` tool now returns all blocks, so the model sees
+  the whole resource instead of the first slice.
+
+### Tests
+- TypeScript: 425 -> 429 (mcp: single/multi/empty answers; cli: an end-to-end
+  turn where the model receives FIRST, SECOND, and THIRD). Rust: 46;
+  real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v21: stop a running desktop chat)
 
 Executed `docs/day-plan-v21.md`. The server could already abort a run -- a
