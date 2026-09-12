@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-12 (Day plan v27: tool timeouts actually stop the work)
+
+Executed `docs/day-plan-v27.md`. A tool timeout reported failure to the model but
+left the tool running, so its side effects still landed afterwards.
+
+### Fixed: a timeout now cancels the tool
+- `runTool()` raced the tool promise against a timer; on timeout it returned
+  `Tool "…" timed out` and dropped the promise, but never aborted the tool.
+  Measured with `sh -c "sleep 3; echo ran > marker"` and a 300ms tool timeout:
+  the call returned at 304ms and **the marker file appeared 3s later**. So the
+  model was told the command failed while it actually completed — a correctness
+  problem for any write, deploy, or network call.
+- `runTool()` now creates an `AbortController` per call and passes its signal to
+  the tool, forwarding the run's own abort signal as well. On timeout it aborts
+  first, so `LocalExecutor` kills the child and `RustExecutor` sends a cancel
+  envelope. The command is now killed (marker absent, no leftover process).
+- The outcome is deterministic: aborting can make the tool settle in the same
+  tick, and which side wins a `Promise.race` is a coin flip, so an explicit
+  `timedOut` flag decides the reported result regardless.
+- Unchanged: the timeout still returns `{"error":"Tool … timed out after …ms"}`
+  rather than throwing, and outer-abort propagation still reaches tools.
+
+### Tests
+- TypeScript: 446 -> 450. Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v26: symlink-aware write boundary)
 
 Executed `docs/day-plan-v26.md`. The approval policy's "write outside the working

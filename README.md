@@ -316,6 +316,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   (default 60s, `0` disables) drops the pending request, frees its concurrency
   slot, and replaces the runtime process, so the sandbox cannot be permanently
   exhausted by a hung request
+- Tool timeouts cancel the work instead of only reporting it: `runTool()` aborts
+  the signal the tool received, so a command that exceeds `timeoutMs` is killed
+  and cannot leave side effects behind after the model was told it timed out
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
   (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
@@ -394,6 +397,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 54. ~~Per-request MCP timeouts~~ (done)
 55. ~~Client-side backstop for a wedged Rust runtime~~ (done)
 56. ~~Symlink-aware workspace write boundary~~ (done)
+57. ~~Tool timeouts cancel the running command~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

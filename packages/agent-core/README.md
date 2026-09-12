@@ -52,3 +52,9 @@ The loop appends user input, asks the model with available tool schemas, execute
 any requested tools, and repeats until the model returns a final answer or
 `maxTurns` is reached. It passes the runtime context to tools and includes the
 session id and working directory in the system prompt.
+
+Tool calls are bounded by `toolDefaults.timeoutMs` (default 30s). A timeout does
+more than report: `runTool()` aborts the signal it handed the tool, so
+`LocalExecutor` kills the child and `RustExecutor` sends a cancel envelope —
+otherwise a "timed out" command kept running and its side effects still landed
+after the model had been told it failed.
