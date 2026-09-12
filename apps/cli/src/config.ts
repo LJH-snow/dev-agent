@@ -23,6 +23,7 @@ export interface CliConfig {
     readonly command: string;
     readonly args?: readonly string[];
     readonly env?: Record<string, string>;
+    readonly timeoutMs?: number;
   }>;
 }
 

@@ -36,6 +36,11 @@ interface PendingRequest {
   reject(reason: unknown): void;
 }
 
+/** How long any single MCP request may stay unanswered. */
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+/** JSON-RPC-ish code used for client-side timeouts (not sent by the server). */
+const REQUEST_TIMEOUT_CODE = -32000;
+
 type NotificationHandler = (notification: McpNotification) => void;
 
 export class McpStdioClient implements McpClient {
@@ -75,11 +80,20 @@ export class McpStdioClient implements McpClient {
       }
     });
 
-    const result = (await this.request("initialize", {
-      protocolVersion: "2024-11-05",
-      capabilities: this.clientCapabilities(config),
-      clientInfo: { name: "dev-agent", version: "0.1.0" },
-    })) as McpInitializeResult | undefined;
+    let result: McpInitializeResult | undefined;
+    try {
+      result = (await this.request("initialize", {
+        protocolVersion: "2024-11-05",
+        capabilities: this.clientCapabilities(config),
+        clientInfo: { name: "dev-agent", version: "0.1.0" },
+      })) as McpInitializeResult | undefined;
+    } catch (error) {
+      // A half-open connection would keep the spawned child (and therefore the
+      // whole process) alive after the caller has already given up. Tear it
+      // down before surfacing the failure.
+      await this.close().catch(() => undefined);
+      throw error;
+    }
 
     this.initializeResult = result ?? {
       protocolVersion: "2024-11-05",
@@ -238,9 +252,33 @@ export class McpStdioClient implements McpClient {
     const id = this.nextId;
     this.nextId += 1;
     return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
+      // A server that never answers used to leave this promise pending
+      // forever, which hung `connect()` (and therefore the whole CLI at
+      // startup) with no output at all.
+      const timeoutMs = this.config?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+      const timer = setTimeout(() => {
+        this.pending.delete(id);
+        reject(
+          new McpRequestError(
+            REQUEST_TIMEOUT_CODE,
+            `MCP request "${method}" timed out after ${timeoutMs}ms`
+          )
+        );
+      }, timeoutMs);
+      const settle = {
+        resolve: (value: unknown) => {
+          clearTimeout(timer);
+          resolve(value);
+        },
+        reject: (reason: unknown) => {
+          clearTimeout(timer);
+          reject(reason);
+        },
+      };
+      this.pending.set(id, settle);
       if (!this.child) {
         this.pending.delete(id);
+        clearTimeout(timer);
         reject(new Error("MCP client is not connected"));
         return;
       }

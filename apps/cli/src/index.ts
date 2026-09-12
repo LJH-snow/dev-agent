@@ -1233,8 +1233,28 @@ function normalizeMcpServers(entries: readonly unknown[]): McpClientConfig[] {
       env: typeof config.env === "object" && config.env !== null
         ? (config.env as Record<string, string>)
         : undefined,
+      timeoutMs: resolveMcpTimeoutMs(config.timeoutMs),
     };
   });
+}
+
+/**
+ * Per-request MCP timeout: `DEV_AGENT_MCP_TIMEOUT_MS` wins over the config
+ * entry, which wins over the client default. A server that never answers must
+ * fail fast instead of hanging the CLI at startup.
+ */
+function resolveMcpTimeoutMs(fromConfig: unknown): number | undefined {
+  const raw = process.env.DEV_AGENT_MCP_TIMEOUT_MS?.trim();
+  if (raw) {
+    const parsed = Number.parseInt(raw, 10);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  if (typeof fromConfig === "number" && Number.isInteger(fromConfig) && fromConfig > 0) {
+    return fromConfig;
+  }
+  return undefined;
 }
 
 /**

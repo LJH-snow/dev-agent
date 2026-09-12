@@ -4,6 +4,8 @@ export interface McpClientConfig {
   readonly args?: readonly string[];
   readonly env?: Record<string, string>;
   readonly rootDirectory?: string;
+  /** Per-request timeout in milliseconds. Defaults to 30000. */
+  readonly timeoutMs?: number;
 }
 
 export interface McpClientCapabilities {

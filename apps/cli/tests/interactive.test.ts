@@ -71,6 +71,19 @@ function launch({ provider, memoryFile, openAiBaseUrl }: InteractiveOptions): Ch
   });
 }
 
+/**
+ * Resolves once the CLI has printed its banner. The banner and the `SIGINT`
+ * handler are installed in the same synchronous block, so seeing the banner
+ * proves the handler is in place — a fixed sleep is a race under load, and
+ * signalling earlier kills the process with a signal instead of exit code 130.
+ */
+async function waitForReady(child: ChildProcess, output: () => string): Promise<void> {
+  await waitFor(() => output().includes("Type 'exit' or 'quit' to stop."), 5000);
+  if (child.exitCode !== null || child.signalCode !== null) {
+    throw new Error("the CLI exited before it was ready");
+  }
+}
+
 /** Waits for exit, killing the child if it does not stop in time. */
 async function waitForExit(
   child: ChildProcess,
@@ -123,6 +136,7 @@ test("interactive prompts accumulate turns and usage", async () => {
     });
 
     try {
+      await waitForReady(child, () => stdout);
       for (const prompt of ["first", "second", "third"]) {
         child.stdin?.write(`${prompt}\n`);
         // Wait for the run to print its state line before queueing the next.
@@ -154,8 +168,12 @@ test("Ctrl-C aborts a run that is in flight", async () => {
       openAiBaseUrl: provider.baseUrl,
       memoryFile: join(dir, "session.json"),
     });
+    let stdout = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
     try {
-      await new Promise((resolve) => setTimeout(resolve, 400));
+      await waitForReady(child, () => stdout);
       child.stdin?.write("hello\n");
       await new Promise((resolve) => setTimeout(resolve, 600));
 
@@ -177,8 +195,12 @@ test("Ctrl-C aborts a run that is in flight", async () => {
 test("Ctrl-C exits the CLI while it is idle at the prompt", async () => {
   await withTempDir(async (dir) => {
     const child = launch({ provider: "ollama", memoryFile: join(dir, "session.json") });
+    let stdout = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
     try {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      await waitForReady(child, () => stdout);
       child.kill("SIGINT");
       const result = await waitForExit(child, 3000);
 
