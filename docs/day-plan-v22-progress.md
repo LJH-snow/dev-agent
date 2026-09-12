@@ -36,6 +36,13 @@
   - `packages/mcp`：36 passed（33 + 新增 3）；`apps/cli`：88 passed（87 + 新增 1）
   - `pnpm build` / `pnpm typecheck`：通过
   - `pnpm test`：**429 passed / 0 failed**
+- 收尾回归（完整矩阵）：
+  - `node scripts/check.mjs`：Structure check passed
+  - `pnpm build` / `pnpm typecheck`：通过
+  - `pnpm test`：429 passed / 0 failed
+  - `pnpm --filter @dev-agent/executor test:integration`：10 passed
+  - `cargo fmt --check` / `cargo clippy --all-targets -- -D warnings`：通过
+  - `cargo test`：46 passed（43 lib + 3 bin）
 - 提交：见 v22 的 fix / docs 提交
 - 下一步：v22 计划已收尾；另在验证途中发现新问题（见下），将开 v23
 
