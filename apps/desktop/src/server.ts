@@ -413,12 +413,32 @@ async function streamChat(
   });
   res.write(`retry: 3000\n\n`);
 
+  // A client that stops reading (or reads slowly) must not let the server
+  // buffer an unbounded amount: emitting 200k token events into a paused socket
+  // pushed the heap to ~192 MB. Cap what one stream may write, then stop the run
+  // instead of growing further.
+  const maxStreamBytes = sseMaxBytes();
+  let streamBytes = 0;
+  let capped = false;
   const emit = (event: StreamEvent) => {
-    if (res.writableEnded || res.destroyed) {
+    if (capped || res.writableEnded || res.destroyed) {
       return;
     }
-    res.write(`event: ${event.type}\n`);
-    res.write(`data: ${JSON.stringify(event.data)}\n\n`);
+    const frame = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+    streamBytes += Buffer.byteLength(frame, "utf8");
+    if (streamBytes > maxStreamBytes) {
+      capped = true;
+      const notice = `event: error\ndata: ${JSON.stringify({
+        message: `stream exceeded ${maxStreamBytes} bytes and was closed`,
+      })}\n\n`;
+      res.write(notice);
+      res.end();
+      // Stop the work that is producing the output; otherwise it keeps running
+      // (and holding memory) with nowhere to deliver the result.
+      controller.abort();
+      return;
+    }
+    res.write(frame);
   };
 
   try {
@@ -459,6 +479,12 @@ async function streamChat(
 function approvalTimeoutMs(): number {
   const parsed = Number.parseInt(process.env.DEV_AGENT_APPROVAL_TIMEOUT_MS ?? "", 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 120_000;
+}
+
+/** Bytes one SSE stream may buffer before the server stops the run. */
+function sseMaxBytes(): number {
+  const parsed = Number.parseInt(process.env.DEV_AGENT_SSE_MAX_BYTES ?? "", 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : 32 * 1024 * 1024;
 }
 
 /** Asks the client for a decision, denying when nothing comes back in time. */
