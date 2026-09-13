@@ -236,11 +236,11 @@ git commit -m "feat(mcp): cancel and report progress for tool calls"
 - Consumes: MCP `McpToolExecutionContext.onProgress` shape `{ progress, total? }`.
 - Produces: `AgentLoopOptions.onToolProgress({ name, progress, total? }, context)` and `ToolExecutionContext.onProgress`.
 
-- [ ] **Step 1:** Add the optional callback to `ToolExecutionContext` and preserve it when `runTool()` creates its child context.
-- [ ] **Step 2:** Add `onToolProgress` to `AgentLoopOptions` and the class field.
-- [ ] **Step 3:** When constructing the context for one `call`, bind `onProgress` to invoke `onToolProgress` with that call's name and the received progress values.
-- [ ] **Step 4:** Add a fake tool that emits three progress values, then a model stub that calls it once; assert the sequence is `call -> progress 1 -> progress 2 -> progress 3 -> result` and the final model turn remains unchanged.
-- [ ] **Step 5:** Run the focused AgentLoop tests.
+- [x] **Step 1:** Add the optional callback to `ToolExecutionContext` and preserve it when `runTool()` creates its child context.
+- [x] **Step 2:** Add `onToolProgress` to `AgentLoopOptions` and the class field.
+- [x] **Step 3:** When constructing the context for one `call`, bind `onProgress` to invoke `onToolProgress` with that call's name and the received progress values.
+- [x] **Step 4:** Add a fake tool that emits three progress values, then a model stub that calls it once; assert the sequence is `call -> progress 1 -> progress 2 -> progress 3 -> result` and the final model turn remains unchanged.
+- [x] **Step 5:** Run the focused AgentLoop tests.
 
 ```bash
 pnpm --filter @dev-agent/agent-core test
@@ -255,10 +255,10 @@ Expected: all existing agent-core tests plus the progress-order test pass; timeo
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/src/index.ts`
 - Create: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/mcp-cancel-progress.test.ts`
 
-- [ ] **Step 1:** Change the MCP adapter's `execute(input)` to accept `context` and call `tool.execute(input, { signal: context?.signal, onProgress: context?.onProgress })`.
-- [ ] **Step 2:** Add `onToolProgress` to the CLI AgentLoop construction. Human-readable mode writes exactly one line per received update in the form `[tool-progress] <name> <progress>/<total>`; omit it when `jsonOutput` is true.
-- [ ] **Step 3:** Make the CLI test use the cancelable fixture and a deterministic provider stub. Assert that Ctrl-C/abort reaches the fixture, the CLI exits with its existing aborted status, and JSON output remains parseable.
-- [ ] **Step 4:** Run the CLI-focused tests.
+- [x] **Step 1:** Change the MCP adapter's `execute(input)` to accept `context` and call `tool.execute(input, { signal: context?.signal, onProgress: context?.onProgress })`.
+- [x] **Step 2:** Add `onToolProgress` to the CLI AgentLoop construction. Human-readable mode writes exactly one line per received update in the form `[tool-progress] <name> <progress>/<total>`; omit it when `jsonOutput` is true.
+- [x] **Step 3:** Make the CLI test use the cancelable fixture and a deterministic provider stub. Assert that Ctrl-C/abort reaches the fixture, the CLI exits with its existing aborted status, and JSON output remains parseable.
+- [x] **Step 4:** Run the CLI-focused tests.
 
 ```bash
 pnpm --filter @dev-agent/cli test
@@ -266,7 +266,7 @@ pnpm --filter @dev-agent/cli test
 
 Expected: existing MCP prefix/resource/timeout/JSON tests pass, plus cancellation and progress output coverage.
 
-- [ ] **Step 5: Commit the AgentLoop/CLI change.**
+- [x] **Step 5: Commit the AgentLoop/CLI change.**
 
 ```bash
 git add packages/agent-core/src/tools.ts packages/agent-core/src/loop.ts packages/agent-core/tests/agent-loop-streaming.test.ts apps/cli/src/index.ts apps/cli/tests/mcp-cancel-progress.test.ts

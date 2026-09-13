@@ -22,6 +22,10 @@ export interface AgentLoopOptions {
   readonly onTurn?: (turn: number, context: AgentContext) => void;
   readonly onToken?: (token: string, context: AgentContext) => void;
   readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
+  readonly onToolProgress?: (
+    progress: { name: string; progress: number; total?: number },
+    context: AgentContext
+  ) => void;
   readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
   /** Fired for every model response that reported token usage. */
   readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
@@ -81,6 +85,10 @@ export class AgentLoop {
   private readonly onTurn?: (turn: number, context: AgentContext) => void;
   private readonly onToken?: (token: string, context: AgentContext) => void;
   private readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
+  private readonly onToolProgress?: (
+    progress: { name: string; progress: number; total?: number },
+    context: AgentContext
+  ) => void;
   private readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
   private readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
   private readonly approval?: ApprovalPolicy;
@@ -105,6 +113,7 @@ export class AgentLoop {
     this.onTurn = options.onTurn;
     this.onToken = options.onToken;
     this.onToolCall = options.onToolCall;
+    this.onToolProgress = options.onToolProgress;
     this.onToolResult = options.onToolResult;
     this.onUsage = options.onUsage;
     this.approval = options.approval;
@@ -187,6 +196,13 @@ export class AgentLoop {
             sessionId: context.sessionId,
             workingDirectory: context.workingDirectory,
             signal: options.signal,
+            onProgress: this.onToolProgress
+              ? (progress) =>
+                  this.onToolProgress?.(
+                    { name: call.name, ...progress },
+                    context
+                  )
+              : undefined,
           };
           const result = await this.runToolSafely(call, toolContext, options.signal);
           this.onToolResult?.({ name: call.name, output: result }, context);

@@ -147,3 +147,58 @@ test("agent loop emits onToolCall then onToolResult for each tool invocation", a
 
   assert.deepEqual(events, ["call:add", "result:add", "call:multiply", "result:multiply"]);
 });
+
+test("agent loop forwards tool progress with the tool name", async () => {
+  const events: string[] = [];
+
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "progressive",
+    description: "Reports progress while working.",
+    async execute(_input, context) {
+      context?.onProgress?.({ progress: 1, total: 3 });
+      context?.onProgress?.({ progress: 2, total: 3 });
+      context?.onProgress?.({ progress: 3, total: 3 });
+      return { ok: true };
+    },
+  });
+
+  let callCount = 0;
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      callCount += 1;
+      if (callCount === 1) {
+        return {
+          content: "",
+          toolCalls: [{ id: "progress-call", name: "progressive", input: {} }],
+        };
+      }
+      return { content: "done", toolCalls: [] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-progress", memory);
+  const loop = new AgentLoop({
+    model,
+    tools,
+    maxTurns: 3,
+    onToolCall: () => events.push("call"),
+    onToolProgress: (progress) =>
+      events.push(`${progress.name}:${progress.progress}/${progress.total}`),
+    onToolResult: () => events.push("result"),
+  });
+
+  const result = await loop.run(context, "progress test");
+
+  assert.equal(result.state.status, "done");
+  assert.deepEqual(events, [
+    "call",
+    "progressive:1/3",
+    "progressive:2/3",
+    "progressive:3/3",
+    "result",
+  ]);
+});

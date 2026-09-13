@@ -475,6 +475,14 @@ export async function main(argv: string[]): Promise<void> {
           process.stdout.write(`[turn ${turn}]\n`);
         }
       },
+      onToolProgress: (progress) => {
+        if (!jsonOutput) {
+          const total = progress.total === undefined ? "" : `/${progress.total}`;
+          process.stdout.write(
+            `[tool-progress] ${progress.name} ${progress.progress}${total}\n`
+          );
+        }
+      },
       ...streaming.callbacks(),
     });
 
@@ -1136,8 +1144,11 @@ function registerServerTools(
       name: `${prefix}:${tool.name}`,
       description: tool.description,
       parameters: tool.parameters,
-      async execute(input: unknown) {
-        return tool.execute(input);
+      async execute(input: unknown, context) {
+        return tool.execute(input, {
+          signal: context?.signal,
+          onProgress: context?.onProgress,
+        });
       },
     });
   }

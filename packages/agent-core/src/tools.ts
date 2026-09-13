@@ -8,11 +8,18 @@ export interface ToolDefaults {
 const DEFAULT_MAX_OUTPUT_CHARS = 50000;
 const DEFAULT_TIMEOUT_MS = 30000;
 
+export interface ToolProgress {
+  readonly progress: number;
+  readonly total?: number;
+}
+
 export interface ToolExecutionContext {
   readonly sessionId: string;
   readonly workingDirectory: string;
   /** Aborted when the surrounding run is interrupted. */
   readonly signal?: AbortSignal;
+  /** Reports incremental progress from a long-running tool. */
+  readonly onProgress?: (progress: ToolProgress) => void;
 }
 
 export interface AgentTool {

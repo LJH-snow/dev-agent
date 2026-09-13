@@ -87,6 +87,16 @@ rl.on("line", (line) => {
     return;
   }
 
+  if (request.method === "resources/list") {
+    send({ jsonrpc: "2.0", id: request.id, result: { resources: [] } });
+    return;
+  }
+
+  if (request.method === "prompts/list") {
+    send({ jsonrpc: "2.0", id: request.id, result: { prompts: [] } });
+    return;
+  }
+
   if (request.method === "tools/call") {
     if (request.params?.name === "progressive") {
       scheduleProgress(request.id, request.params?._meta?.progressToken ?? request.id);
