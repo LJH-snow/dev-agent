@@ -72,6 +72,7 @@ v36 已完成，解决了 v35 明确留下的限制：change-set 状态此前只
 - 当前全量结果：TypeScript **580/580**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**。
 - v36 Task 0–3 新增测试和实现已完成；提交依次为 `2324ed4`、`1766743`、`3dc2d1c`、`af7f3d4`。
 - v36 Task 4 的结构检查、build、typecheck、Rust fmt/clippy 和 `git diff --check` 均通过；完整结果已记录在 `docs/CHANGELOG.md`。
+- v36 rollout 提交为 `308b685`，已推送到 `origin/main`。
 
 ## 后续路线
 
