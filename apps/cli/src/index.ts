@@ -18,6 +18,7 @@ import {
   type AgentMemory,
   type ApprovalPolicy,
   type ApprovalRequest,
+  type ChangeSetReview,
   type CompiledApprovalConfig,
   type SessionMetadata,
 } from "@dev-agent/agent-core";
@@ -460,6 +461,7 @@ export async function main(argv: string[]): Promise<void> {
     });
     // Token streaming would interleave with the JSON document.
     const streaming = new StreamingRun({ enabled: !noStream && !jsonOutput });
+    const reviews: ReviewRecord[] = [];
     const loop = new AgentLoop({
       model: provider,
       tools,
@@ -470,6 +472,15 @@ export async function main(argv: string[]): Promise<void> {
       contextBudget: buildContextBudget(config),
       approval,
       onApproval: (request, outcome) => {
+        if (request.review) {
+          reviews.push({
+            changeSetId: request.review.changeSetId,
+            decision: outcome.decision,
+            files: [...request.review.files],
+            additions: request.review.additions,
+            deletions: request.review.deletions,
+          });
+        }
         // Nothing may interleave with the JSON document on stdout.
         if (!jsonOutput && outcome.decision === "deny") {
           process.stdout.write(
@@ -497,14 +508,14 @@ export async function main(argv: string[]): Promise<void> {
       await runPrompt(loop, context, streaming, oncePrompt, jsonOutput, {
         model: provider.model,
         pricing: config.pricing,
-      });
+      }, reviews);
       return;
     }
 
     await interactive(loop, context, streaming, questionBox, jsonOutput, {
       model: provider.model,
       pricing: config.pricing,
-    });
+    }, reviews);
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
   }
@@ -712,6 +723,14 @@ function buildContextBudget(
 /** Filled in by the interactive loop so approval prompts share its reader. */
 interface QuestionBox {
   ask?: (prompt: string) => Promise<string>;
+}
+
+interface ReviewRecord {
+  readonly changeSetId: string;
+  readonly decision: "allow" | "deny";
+  readonly files: ChangeSetReview["files"];
+  readonly additions: number;
+  readonly deletions: number;
 }
 
 function buildApprovalPolicy(
@@ -1001,7 +1020,8 @@ async function interactive(
   streaming: StreamingRun,
   questionBox: QuestionBox,
   jsonOutput = false,
-  cost?: UsageCostOptions
+  cost?: UsageCostOptions,
+  reviews: readonly ReviewRecord[] = []
 ): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
@@ -1064,6 +1084,7 @@ async function interactive(
           prompt,
           jsonOutput,
           cost,
+          reviews,
           controller.signal
         );
       } catch (error) {
@@ -1096,6 +1117,7 @@ async function runPrompt(
   prompt: string,
   jsonOutput = false,
   costOptions?: UsageCostOptions,
+  reviews: readonly ReviewRecord[] = [],
   signal?: AbortSignal
 ): Promise<AgentContext> {
   const result = await loop.run(context, prompt, signal ? { signal } : undefined);
@@ -1115,6 +1137,7 @@ async function runPrompt(
         content: lastAssistant?.content ?? "",
         usage: result.usage ?? null,
         cost: cost ?? null,
+        reviews: [...reviews],
       })
     );
     return result;

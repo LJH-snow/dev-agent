@@ -232,8 +232,8 @@ git commit -m "feat: add review-writes approval mode"
 - `--json` 的最终对象增加 `reviews: Array<{ changeSetId, decision, files, additions, deletions }>`；没有 review 时输出空数组或省略字段，但不得混入纯文本。
 - 拒绝/超时 review 的结果写回 model 的 tool result，文件不变；批准后 model 收到 apply 的真实结果。
 
-- [ ] **Step 1: 写 CLI E2E 失败测试。** 用现有 stub provider 让模型调用 `filesystem write/edit/patch`；输入 `n` 断言 stderr 含 diff 且文件 hash 不变，输入 `y` 断言 apply 结果和前后 hash；`--json` 断言 stdout 是单个 JSON 值并包含 review 状态。
-- [ ] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 1: 写 CLI E2E 失败测试。** 用现有 stub provider 让模型调用 `filesystem write/edit/patch`；输入 `n` 断言 stderr 含 diff 且文件 hash 不变，输入 `y` 断言 apply 结果和前后 hash；`--json` 断言 stdout 是单个 JSON 值并包含 review 状态。
+- [x] **Step 2: 运行 focused test 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/cli test -- --test-name-pattern="review-writes"
@@ -241,8 +241,8 @@ pnpm --filter @dev-agent/cli test -- --test-name-pattern="review-writes"
 
 Expected: FAIL，因为 CLI 尚未渲染 review 或收集 reviews。
 
-- [ ] **Step 3: 实现渲染和结果收集。** 将 diff 输出限制为 change set 中的实际文件内容，不从原始 input 猜 diff；对拒绝/超时写出明确状态，对批准显示 apply 结果。`--json` 收集 `onApproval` 的 review DTO，最终只在 JSON 对象中输出结构化 review 数组。
-- [ ] **Step 4: 运行 CLI 全套测试。**
+- [x] **Step 3: 实现渲染和结果收集。** 将 diff 输出限制为 change set 中的实际文件内容，不从原始 input 猜 diff；对拒绝/超时写出明确状态，对批准显示 apply 结果。`--json` 收集 `onApproval` 的 review DTO，最终只在 JSON 对象中输出结构化 review 数组。
+- [x] **Step 4: 运行 CLI 全套测试。**
 
 ```bash
 pnpm --filter @dev-agent/cli test
@@ -250,7 +250,7 @@ pnpm --filter @dev-agent/cli test
 
 Expected: 新增 review-writes 测试和原有 97 个测试全部通过。
 
-- [ ] **Step 5: Commit。**
+- [x] **Step 5: Commit。**
 
 ```bash
 git add apps/cli/src/index.ts apps/cli/src/config.ts apps/cli/tests/review-writes.test.ts

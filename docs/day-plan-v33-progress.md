@@ -4,8 +4,8 @@
 
 ## 当前状态
 
-- 当前阶段：Task 5，CLI diff 展示和结构化 review 输出
-- 已完成阶段：Task 0、Task 1、Task 2、Task 3、Task 4；v32 已完成并推送到 `origin/main`
+- 当前阶段：Task 6，Desktop 审批 UI、回滚 endpoint 和 SSE 事件
+- 已完成阶段：Task 0、Task 1、Task 2、Task 3、Task 4、Task 5；v32 已完成并推送到 `origin/main`
 - 工作区基线：`bd05586 docs: record v32 release verification`
 - 最近一次 v32 验证：TypeScript 477/477、Rust 46/46、真实运行时集成 10/10 通过
 
@@ -36,7 +36,8 @@
 | Task 1 | 已完成 | 首次 focused test 按预期因公共导出不存在而失败；随后 tools 全套 80/80 通过 | `bccb6a4 feat(tools): add change-set diff and hash model` |
 | Task 2 | 已完成 | preview/apply/rollback 红测与目录依赖边界红测后，tools 全套 90/90 通过 | `83e15db feat(filesystem): preview atomically apply and rollback changes` |
 | Task 3 | 已完成 | 首次测试因 ApprovalPolicy 不含 prepare、ApprovalRequest 不含 review 而编译失败；随后 agent-core 全套 76/76 通过 | `8a325ec feat(agent): prepare reviewed tool changes before approval` |
-| Task 4 | 已完成 | mode/policy 初次编译红测；MCP review-writes 初次因复用 deny-dangerous 而返回 workspace 越界理由；修正后 agent-core 79/79、CLI 99/99、Desktop 55/55 通过 | `feat: add review-writes approval mode`（待提交） |
+| Task 4 | 已完成 | mode/policy 初次编译红测；MCP review-writes 初次因复用 deny-dangerous 而返回 workspace 越界理由；修正后 agent-core 79/79、CLI 99/99、Desktop 55/55 通过 | `aa646ab feat: add review-writes approval mode` |
+| Task 5 | 已完成 | CLI E2E 首次因 JSON 缺少 `reviews` 失败；随后 CLI build 与全套 **101/101** 通过，JSON 只输出一个对象且记录 allow review | `feat(cli): show and record reviewed diffs`（待提交） |
 
 ### Task 1：建立 change-set 数据模型、哈希和统一 diff（已完成）
 
@@ -70,7 +71,15 @@
 - GREEN：agent-core 全套 **79/79**、CLI 全套 **99/99**、Desktop 全套 **55/55** 通过；CLI 与 Desktop build、agent-core typecheck 通过。
 - 覆盖：`review-writes` CLI/config/env 解析；write/edit/patch/mkdir/apply/rollback 分类；preview/read/list/stat、普通 shell/git 保持可用；交互 CLI 与 Desktop 只在批准后执行 apply；无交互 MCP 对 mutation 明确拒绝且不写盘；危险命令仍沿用原有规则。
 - 实现：`reviewWritesPolicy` 复用 dangerous command/allowlist 判断；filesystem mutation 通过同一 `FilesystemTool` 生成 review 与 apply input；CLI 使用 unified diff prompt，Desktop `ApprovalPrompt` 携带 review；MCP 无 requester 时返回 interactive review denial。
-- 提交：待账本同步后提交 `feat: add review-writes approval mode`。
+- 提交：`aa646ab feat: add review-writes approval mode`。
+
+### Task 5：CLI diff 展示和结构化 review 输出（已完成）
+
+- RED：新增 CLI stub-provider E2E 后，首次因 JSON 结果没有 `reviews` 字段失败；修复前也验证了 `n` 输入不会写盘、stderr 中的 diff 来自真实 change set。
+- GREEN：`pnpm --filter @dev-agent/cli build` 与 `pnpm --filter @dev-agent/cli test` 通过，CLI **101/101**。
+- 覆盖：人类模式显示 change-set id、文件路径、增删统计和 unified diff；拒绝保持原文件字节不变；批准后执行 apply；`--json` stdout 保持单个 JSON 对象并追加结构化 `reviews` 数组。
+- 实现：CLI 在 `AgentLoop.onApproval` 收集 review DTO、decision、文件增删统计和真实 diff；`runPrompt` 将累计 review 写入 JSON，交互模式跨 prompt 保持同一 session 的 review 记录。
+- 提交：待账本同步后提交 `feat(cli): show and record reviewed diffs`。
 
 ## 错误与卡点
 
