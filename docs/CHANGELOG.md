@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-09-13 (Day plan v35: validation evidence, reruns, and policies)
+
+Executed `docs/day-plan-v35.md`. v35 turns one-shot change-set validation into
+session evidence that can be queried and exported, adds an explicit guarded
+rerun path, and limits validation selection to fixed safe policies.
+
+### Added: persisted validation evidence
+
+- `ValidationRecord` adds `recordedAt`; `InMemoryMemory` and `FileMemory` retain
+  validation DTOs across writes, compaction, clear, and process boundaries while
+  continuing to read old `version: 1` session files without a `validations` field.
+- AgentLoop records validation after emitting it as a best-effort side effect;
+  evidence is not inserted into ordinary model message context and a persistence
+  error never turns a successful apply into a failed apply.
+- Desktop history/export and CLI `--json` expose the same structured evidence,
+  including check status, bounded output, reason, duration, and change-set id.
+
+### Added: guarded explicit reruns
+
+- CLI interactive mode supports `:validate <changeSetId>`; Desktop exposes
+  `POST /api/changesets/validate` and a rerun action on validation cards.
+- Each rerun gets a fresh validation attempt id but remains linked to the
+  original change set. The change-set guard checks the postimage before and
+  after validation and serializes rerun with rollback/Undo.
+- Unknown, prepared, rolled-back, busy, or conflicting change sets are rejected
+  explicitly. Validation failure, timeout, cancel, and blocked states never
+  auto-rollback or overwrite user bytes.
+
+### Added: restricted validation policies
+
+- `fast` runs the quickest relevant checks, `default` preserves the changed-path
+  baseline, and `strict` adds fixed bounded workspace typecheck/test checks for
+  package or workspace changes.
+- Policy selection accepts only `fast`, `default`, or `strict`. Timeout overrides
+  are positive integers under code-defined caps; validation config rejects
+  executable, shell, args, cwd, diff, and custom check fields.
+
+### Tests
+
+- Full TypeScript workspace tests: **565 passed** (agent-core 92, tools 115,
+  CLI 109, Desktop 68, plus the other workspace packages).
+- Real Rust-binary integration tests: **10 passed**.
+- Rust unit/doc tests: **46 passed** (43 library, 3 binary, 0 doctests).
+- Structure check, build, typecheck, Rust fmt/clippy, and `git diff --check`
+  passed.
+
 ## 2026-09-13 (Day plan v34: change-set validation)
 
 Executed `docs/day-plan-v34.md`. After v33 made filesystem changes reviewable

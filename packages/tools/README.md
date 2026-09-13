@@ -85,8 +85,17 @@ planner can derive a small, deterministic set of checks from the changed paths:
   return `blocked` before any command is run.
 
 `deriveValidationPlan(review, context)` emits structured commands with an
-executable, argument array, working directory, and timeout. It never copies a
-model-provided shell string or diff text into a command.
+executable, argument array, working directory, and timeout. Its `policy` is
+limited to `fast`, `default`, or `strict`: fast keeps only the quickest relevant
+checks, default is the changed-path baseline, and strict adds fixed bounded
+workspace checks for package or workspace changes. It never copies a
+model-provided shell string or diff text into a command. `parseValidationPolicy`
+and `normalizeValidationPolicySettings` reject unknown policies and validation
+config fields such as `executable`, `shell`, `args`, `cwd`, `diff`, or custom
+check definitions. Per-check timeout overrides must be positive integers below
+the code-defined cap (fast: 60s typecheck / 120s tests / 60s Rust; default:
+120s / 180s / 300s; diff checks are capped at 30s). Strict workspace checks use
+fixed 300s typecheck and 600s test caps.
 `createValidationRunner(executor)` runs the plan sequentially through the same
 executor used by the tools, keeps output bounded (64 KiB by default), forwards
 the outer abort signal, and marks checks after the first failure as `skipped`.

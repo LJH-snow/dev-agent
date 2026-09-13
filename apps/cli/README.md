@@ -167,6 +167,15 @@ active model/tool/validation path through the shared abort signal. MCP server
 mode has no validation runner and continues to deny `review-writes` mutations
 when no interactive reviewer is available.
 
+In interactive mode, `:validate <changeSetId>` explicitly reruns the trusted
+checks for an applied change set. The command accepts only the change-set id;
+the planner recreates the structured commands and assigns a fresh validation
+attempt id. A rerun is serialized with Undo, checks the postimage before and
+after execution, and never overwrites or rolls back user bytes. The change-set
+store is process-local, so the command is available for change sets prepared by
+the current CLI process; persisted validation records remain available in later
+`--json` output.
+
 Configuration is read from the environment:
 
 - `DEV_AGENT_MODEL_PROVIDER` - `ollama` (default), `openai`, `anthropic`, or `gemini`
@@ -194,6 +203,8 @@ Configuration is read from the environment:
   turns it off.
 - `DEV_AGENT_SUMMARY_MAX_CHARS` - cap for the digest; over-long summaries keep
   their newest part. Defaults to 2000 characters.
+- `DEV_AGENT_VALIDATION_POLICY` - validation policy (`fast`, `default`, or
+  `strict`); overrides the matching config-file setting.
 - `DEV_AGENT_APPROVAL` - approval mode (`allow`, `deny-dangerous`, `ask`,
   `review-writes`); `--approval` wins over it, and it wins over `approvalMode`
   in the config file.
@@ -231,6 +242,7 @@ invocation.
   "defaultModel": "gpt-4o-mini",
   "maxTurns": 12,
   "maxContextChars": 120000,
+  "validation": { "policy": "default" },
   "pricing": {
     "gpt-4o-mini": { "inputPerMillion": 0.15, "outputPerMillion": 0.6 }
   },
@@ -251,6 +263,11 @@ invocation.
   announced; used when `DEV_AGENT_SUMMARIZE_CONTEXT` is unset.
 - `summaryMaxChars` - digest length cap; used when
   `DEV_AGENT_SUMMARY_MAX_CHARS` is unset.
+- `validation.policy` (or `validationPolicy`) - one of the predefined validation
+  policies: `fast`, `default`, or `strict`. The environment variable
+  `DEV_AGENT_VALIDATION_POLICY` overrides it. The policy selects a fixed check
+  set; executable, shell, args, cwd, diff, and custom check definitions are not
+  accepted.
 - `approvalMode` - approval policy (`allow`, `deny-dangerous`, `ask`, or
   `review-writes`); used when `DEV_AGENT_APPROVAL` is unset.
 - `approval.allow` / `approval.deny` - extra approval rules shared with the
@@ -268,7 +285,7 @@ invocation.
   and an unknown model simply shows no cost.
 - `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
 
-A malformed config file is ignored rather than fatal.
+Malformed JSON or an unreadable config file is ignored; an invalid validation policy or validation command field is rejected rather than silently disabled.
 
 When MCP servers are configured, dev-agent injects `DEV_AGENT_SESSION_ID` and
 `DEV_AGENT_WORKING_DIRECTORY` into each server process so MCP tools can share

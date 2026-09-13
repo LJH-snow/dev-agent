@@ -236,6 +236,14 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - CLI human output and `--json.validations` expose the same check ids, structured
   commands, durations, bounded output, and failure reasons; Desktop emits a
   `validation` SSE frame and renders a card without hiding the guarded Undo
+- Validation evidence is persisted per session, returned by Desktop history/export,
+  and can be explicitly rerun with `:validate <changeSetId>` in the interactive
+  CLI or `POST /api/changesets/validate` in Desktop; each rerun gets a fresh
+  attempt id and never auto-rolls back the applied bytes
+- Validation planning has three code-defined policies: `fast`, `default`, and
+  `strict`. `DEV_AGENT_VALIDATION_POLICY` or `validation.policy` selects only
+  the policy name; commands, arguments, working directories, and timeout caps
+  remain fixed and allowlisted in the planner
 - The workspace boundary check resolves symlinks, so a link inside the working
   directory cannot be used to read or overwrite a file outside it; links that
   stay inside are still allowed

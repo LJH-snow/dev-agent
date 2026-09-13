@@ -6,7 +6,7 @@
 
 ## 当前结论
 
-v35 的前三项基础能力已经完成：
+v35 的目标已经全部完成：
 
 1. approved apply 产生的 validation result 会作为结构化 evidence 写入 session memory，并可在后续查询、CLI JSON 和 Desktop 导出/历史中读取。
 2. applied change set 可以通过显式入口重跑 trusted validation。重跑不会接收模型提供的命令，不会自动修复或回滚文件，并会为每一次重跑生成独立 attempt id。
@@ -47,13 +47,15 @@ v35 的前三项基础能力已经完成：
 - timeout 只允许正整数，并受每类 check 的代码内上限约束；workspace strict timeout 也是固定值。
 - CLI/Desktop 配置只允许选择 policy 名称；validation 配置中的 executable、shell、args、cwd、diff/check 定义等注入字段会被拒绝。
 - 验证：agent-core **92/92**、tools **115/115**、Desktop **68/68**、CLI **109/109**，typecheck 和 `git diff --check` 通过。
-- 已完成提交：本轮 Task 3 实现待完成全量回归后再推送发布记录。
-
-## 当前未完成
+- 已完成提交：`da635b0`。
 
 ### Task 4：全量回归、文档和发布
 
-Task 3 完成后再运行结构检查、全量 build/typecheck/test、executor integration、Rust fmt/clippy/test、diff check，并完成 README、CHANGELOG 和发布记录。
+- README、CLI、Desktop、tools 文档已补充 validation evidence、显式 rerun、三种 policy、timeout 上限和配置拒绝规则。
+- CHANGELOG 已记录 v35 的实现范围和验证结果；day plan 与本进度文件已收口。
+- 完整验证通过：结构检查、build、typecheck、TypeScript **565/565**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**、fmt/clippy/test、`git diff --check`。
+- 人工 review 确认旧 session migration、evidence 与模型上下文隔离、rerun/Undo guard、session isolation、no-auto-rollback、MCP 无交互拒绝和 Rust 进程清理边界保持不变。
+- 本轮发布提交完成后推送到 `origin/main`。
 
 ## 后续路线（在 v35 后）
 

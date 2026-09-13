@@ -48,7 +48,10 @@ Both surfaces also read the `approval` section of `~/.dev-agent/config.json`:
 regular expressions to the dangerous table. The same file's `pricing` section
 (model-name prefix to `inputPerMillion` / `outputPerMillion`) lets the header
 show an estimated USD cost next to the token counter; without a matching entry
-only tokens are shown.
+only tokens are shown. The same config file may set
+`"validation": { "policy": "default" }` (or the flat `validationPolicy` key);
+`DEV_AGENT_VALIDATION_POLICY` overrides it. Only `fast`, `default`, and `strict`
+are accepted, and validation command fields are deliberately not configurable.
 
 ## How it works
 
@@ -69,7 +72,9 @@ only tokens are shown.
 - `GET /health` — `{ "status": "ok" }`.
 - `GET /api/sessions` — the default session id plus every session file in
   `DEV_AGENT_SESSION_DIR` (`~/.dev-agent/sessions` by default), newest first.
-- `GET /api/sessions/<id>/messages` — the stored transcript of one session.
+- `GET /api/sessions/<id>/messages` — the stored transcript of one session,
+  returned as `{ messages, validations }`; validation evidence stays separate
+  from the model message list.
 - `DELETE /api/sessions/<id>` — delete a session's memory file and drop it from
   the in-memory registry; unknown ids return `404`.
 - `POST /api/sessions/<id>/rename` — body `{ "sessionId": "new-id" }`; moves the
@@ -106,6 +111,12 @@ only tokens are shown.
   A successful response is the change-set result. Unknown or expired ids return
   `404`; an in-flight session, postimage conflict, or already rolled-back set
   returns `409`; an unavailable rollback implementation returns `501`.
+- `POST /api/changesets/validate` — body `{ "sessionId": "...",
+  "changeSetId": "..." }`; explicitly reruns trusted validation for the
+  applied change set without changing files. A successful response is the full
+  validation DTO plus `sessionId`; unknown ids return `404`, a prepared,
+  rolled-back, conflicting, or busy set returns `409`, and an unavailable
+  rerunner returns `501`.
 
 ## Interrupts
 
@@ -134,12 +145,22 @@ and tests; documentation/configuration changes in a Git checkout run
 reported as `skipped`, and unsafe review paths are `blocked` before a command
 runs. No model-provided shell string becomes a validation command.
 
+The planner has three fixed policies: `fast` keeps the quickest relevant
+checks (source typecheck, test-only package tests, or Rust fmt), `default`
+keeps the changed-path checks above, and `strict` adds bounded workspace
+`pnpm typecheck` and `pnpm test` checks when package or workspace configuration
+changes are involved. Set `validation.policy` in `~/.dev-agent/config.json`,
+`DEV_AGENT_VALIDATION_POLICY`, or the embedding `ChatSessionOptions`; only the
+policy name is accepted, never custom commands, args, cwd, diffs, or check ids.
+
 The browser renders `passed`, `failed`, `skipped`, and `blocked` results as a
 validation card with the change-set id, check id, command summary, duration, and
 reason. A failed validation explicitly means the apply succeeded but the check
 failed; the already-applied bytes remain available to the guarded **Undo**
-action. If Stop is pressed while a check is active, the current validation is
-reported as `blocked` before the stream closes with `done { "status":
+action. Each card also offers **Rerun validation** for an applied change set.
+Rerun results are appended as separate evidence with a fresh attempt id and are
+serialized with Undo. If Stop is pressed while a check is active, the current
+validation is reported as `blocked` before the stream closes with `done { "status":
 "aborted" }`.
 
 ## Sessions
@@ -159,7 +180,9 @@ confirmation and switches back to the default one.
 The `Rename` button prompts for a new session id and moves the stored file; an id
 that already exists is reported as a conflict instead of overwriting anything.
 
-The `Download` button saves the current session as a Markdown file.
+The `Download` button saves the current session as a Markdown file,
+including a structured validation-evidence section. The history endpoint and
+export preserve validation attempts without adding them to model context.
 
 ## Approvals
 

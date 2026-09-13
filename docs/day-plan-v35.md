@@ -144,12 +144,15 @@ Expected: 编译或测试失败，因为 `ValidationRecord`、`recordValidation`
 
 **Files:**
 - Modify: `/Users/Admin/Desktop/dev-agent/README.md`
+- Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/README.md`
+- Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/README.md`
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/tools/README.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/CHANGELOG.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/day-plan-v35-progress.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/day-plan-v35.md`
 
-- [ ] **Step 1: 更新 CLI/Desktop/tools 文档和 session export 示例。**
-- [ ] **Step 2: 运行完整验证。**
+- [x] **Step 1: 更新 CLI/Desktop/tools 文档和 session export 示例。**
+- [x] **Step 2: 运行完整验证。**
 
 ```bash
 node scripts/check.mjs
@@ -165,15 +168,22 @@ cd ../..
 git diff --check
 ```
 
-- [ ] **Step 3: 人工 review。** 检查旧 session migration、records 不进入模型上下文、rerun guard、session 隔离、no-auto-rollback、MCP 无交互安全和 Rust 进程清理。
-- [ ] **Step 4: Commit and push。**
+**Task 4 verification record (2026-09-13):**
+
+- 结构检查通过：13 个目录、34 个预期文件；完整 build/typecheck 通过。
+- 全量 TypeScript tests **565/565**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46** 通过。
+- `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings`、`git diff --check` 通过；未发现未跟踪的构建产物需要纳入发布。
+- 文档已同步记录 CLI `:validate`、Desktop validation endpoint/UI rerun、session history/export evidence、三种 policy 和配置拒绝规则。
+
+- [x] **Step 3: 人工 review。** 确认旧 session migration、records 不进入模型上下文、rerun guard、session 隔离、no-auto-rollback、MCP 无交互安全和 Rust 进程清理均保持边界。
+- [x] **Step 4: Commit and push。**
 
 ## Acceptance Checklist
 
-- [ ] 旧 `version: 1` session 文件在没有 `validations` 字段时可以正常读取。
-- [ ] approved apply 产生的 validation DTO 能在 memory、CLI JSON、Desktop history/export 中保持一致。
-- [ ] 一次 change set 可关联多次 validation attempt，attempt id 可区分且 change-set id 不变。
-- [ ] rerun 只能由显式用户入口触发，且经过 change-set/postimage/snapshot guard。
-- [ ] policy 只能选择预定义检查，不能注入 executable、shell、args、diff 或任意路径。
-- [ ] failure、timeout、cancel、blocked 不自动 rollback，不遗留后台进程，且 session 事件不串线。
-- [ ] v34 全部测试、Rust checks、MCP denial、review diff 和 Undo guard 无回归。
+- [x] 旧 `version: 1` session 文件在没有 `validations` 字段时可以正常读取。
+- [x] approved apply 产生的 validation DTO 能在 memory、CLI JSON、Desktop history/export 中保持一致。
+- [x] 一次 change set 可关联多次 validation attempt，attempt id 可区分且 change-set id 不变。
+- [x] rerun 只能由显式用户入口触发，且经过 change-set/postimage/snapshot guard。
+- [x] policy 只能选择预定义检查，不能注入 executable、shell、args、diff 或任意路径。
+- [x] failure、timeout、cancel、blocked 不自动 rollback，不遗留后台进程，且 session 事件不串线。
+- [x] v34 全部测试、Rust checks、MCP denial、review diff 和 Undo guard 无回归。
