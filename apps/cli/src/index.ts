@@ -291,7 +291,16 @@ export async function main(argv: string[]): Promise<void> {
     }
 
     let renamed = false;
-    if (from !== to) {
+    if (from === to) {
+      // Renaming a session to its own name is a no-op, not a missing session:
+      // the old code fell through to "not found" even though the file was
+      // there, which reads as data loss.
+      if (!existsSync(source)) {
+        console.error(`Session ${from} not found.`);
+        process.exitCode = 1;
+        return;
+      }
+    } else {
       try {
         await rename(source, target);
         renamed = true;
@@ -306,7 +315,11 @@ export async function main(argv: string[]): Promise<void> {
       console.log(JSON.stringify({ from, to, renamed }, null, 2));
     } else {
       console.log(
-        renamed ? `Renamed session ${from} to ${to}.` : `Session ${from} not found.`
+        renamed
+          ? `Renamed session ${from} to ${to}.`
+          : from === to
+            ? `Session ${from} already has that name.`
+            : `Session ${from} not found.`
       );
     }
     return;

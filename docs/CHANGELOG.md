@@ -1,5 +1,29 @@
 # Changelog
 
+## 2026-09-12 (Day plan v30: same-name rename is not a missing session)
+
+Executed `docs/day-plan-v30.md`. Renaming a session to the name it already had
+was reported as a missing session.
+
+### Fixed: "no change" and "does not exist" are told apart
+- CLI: `--session-rename a a` answered `Session a not found.` even though
+  `a.json` was on disk, because the rename only ran when the names differed and
+  the unchanged `renamed` flag fell into the not-found branch. It now answers
+  `Session a already has that name.` when the session exists, and keeps
+  reporting `not found` (exit 1) when it genuinely does not. `--json` still
+  emits `{ from, to, renamed: false }`.
+- Desktop: `POST /api/sessions/<id>/rename` answered
+  `200 { renamed: false }` for both an existing no-op and an unknown session.
+  It now answers `200 { renamed: false }` for the former and `404 unknown
+  session` for the latter.
+- Unchanged: overwriting an existing target is still `409`, a real move is still
+  `200 { renamed: true }`, and a missing source with a different target is still
+  `404`.
+
+### Tests
+- TypeScript: 457 -> 461 (cli: same-name exists / same-name missing; desktop:
+  same-name exists / same-name missing). Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v29: bad cwd is not a bad command)
 
 Executed `docs/day-plan-v29.md`. With an invalid working directory every tool

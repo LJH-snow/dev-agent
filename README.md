@@ -325,6 +325,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - A bad working directory is named as such (`working directory does not exist`)
   instead of surfacing as `spawn echo ENOENT`, so a missing project path is not
   mistaken for a missing command
+- Renaming a session to its own name reports "already has that name" (CLI) or
+  answers `200 { renamed: false }` (desktop) when it exists, and a genuine 404 /
+  "not found" when it does not — the two cases used to be indistinguishable
 - Cache-hit tokens are accounted for: OpenAI
   (`prompt_tokens_details.cached_tokens`) and Anthropic
   (`cache_read_input_tokens`) report `cachedPromptTokens`, Anthropic cache
@@ -406,6 +409,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 57. ~~Tool timeouts cancel the running command~~ (done)
 58. ~~Bounded desktop SSE buffering~~ (done)
 59. ~~Working-directory validation before spawning~~ (done)
+60. ~~Same-name session rename is no longer reported as missing~~ (done)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

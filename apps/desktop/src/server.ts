@@ -193,8 +193,17 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        if (from !== to) {
-          const source = memoryPathFor(from);
+        const source = memoryPathFor(from);
+        if (from === to) {
+          // Renaming to the same name is idempotent when the session exists,
+          // and still a 404 when it does not -- previously this answered
+          // `renamed: false` for both, so a caller could not tell them apart.
+          if (!existsSync(source)) {
+            res.writeHead(404, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "unknown session" }));
+            return;
+          }
+        } else {
           if (!existsSync(source)) {
             res.writeHead(404, { "content-type": "application/json" });
             res.end(JSON.stringify({ error: "unknown session" }));

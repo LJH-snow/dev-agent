@@ -67,7 +67,8 @@ only tokens are shown.
   the in-memory registry; unknown ids return `404`.
 - `POST /api/sessions/<id>/rename` — body `{ "sessionId": "new-id" }`; moves the
   memory file, answers `409` when the target exists and `404` when the source is
-  missing.
+  missing. Renaming to the current id is idempotent (`200` with
+  `renamed: false`) when the session exists, and `404` when it does not.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`

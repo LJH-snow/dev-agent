@@ -105,3 +105,36 @@ test("--session-rename reports a missing session without failing", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("--session-rename to the same name does not claim the session is missing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-rename-same-"));
+  try {
+    await seed(dir, "keep");
+    const result = await runCli(["--session-rename", "keep", "keep"], {
+      ...process.env,
+      DEV_AGENT_SESSION_DIR: dir,
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /already has that name/);
+    assert.doesNotMatch(result.stdout, /not found/);
+    assert.equal(await exists(join(dir, "keep.json")), true, "the session stays put");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--session-rename to the same name still reports a genuinely missing session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-rename-same-missing-"));
+  try {
+    const result = await runCli(["--session-rename", "ghost", "ghost"], {
+      ...process.env,
+      DEV_AGENT_SESSION_DIR: dir,
+    });
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Session ghost not found/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

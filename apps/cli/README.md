@@ -53,7 +53,9 @@ Options:
 - `--session-delete <id>` - delete a stored session file; a missing session is
   reported (`deleted: false` with `--json`) without failing
 - `--session-rename <old> <new>` - rename a stored session; refuses to overwrite
-  an existing one and reports `{ from, to, renamed }` with `--json`
+  an existing one and reports `{ from, to, renamed }` with `--json`. Renaming a
+  session to its own name is a no-op when the session exists ("already has that
+  name") and still reports "not found" when it does not
 - `--index <path>` - scan a directory and write a symbol index to
   `<path>/.dev-agent/index.json`; scans TypeScript/JavaScript/Python/Rust up to
   depth 8 and skips `node_modules`, `dist`, `.git`, `.next`, `.cache`,

@@ -370,3 +370,59 @@ test("GET /api/sessions/<id>/export returns 404 for an unknown session", async (
     }
   });
 });
+
+test("renaming a session to its own name is idempotent when it exists", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-rename-same-"));
+  const previousDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = dir;
+
+  const server = createDesktopServer({ session: fakeSession("default") });
+  const base = await start(server);
+  try {
+    await writeFile(join(dir, "keep.json"), JSON.stringify({ version: 1, entries: [] }), "utf8");
+
+    const res = await fetch(`${base}/api/sessions/keep/rename`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "keep" }),
+    });
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { from: "keep", to: "keep", renamed: false });
+    assert.equal(await exists(join(dir, "keep.json")), true, "the session stays put");
+  } finally {
+    await close(server);
+    if (previousDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDir;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("renaming an unknown session to its own name still returns 404", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-rename-missing-"));
+  const previousDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = dir;
+
+  const server = createDesktopServer({ session: fakeSession("default") });
+  const base = await start(server);
+  try {
+    const res = await fetch(`${base}/api/sessions/ghost/rename`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "ghost" }),
+    });
+
+    assert.equal(res.status, 404);
+  } finally {
+    await close(server);
+    if (previousDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDir;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
