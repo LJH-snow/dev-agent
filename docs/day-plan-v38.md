@@ -41,10 +41,10 @@
 
 **Produces:** 可审计的安全决策记录，不直接实现跨进程 Undo。
 
-- [ ] **Step 1: 写设计评审记录。** 明确 before-image 的完整性、容量、加密/敏感信息、用户确认、恢复失败和版本兼容问题。
-- [ ] **Step 2: 定义 projection allowlist。** 为 validation、change-set、retention summary 定义字段表，明确每个字段的来源、是否稳定、是否可能携带执行输入或文件内容。
-- [ ] **Step 3: 确认拒绝项和测试断言。** 内部 DTO 的 command、args、cwd、output、error、reason、absolute working directory、diff、patch、before-image 均不能出现在导出 JSON。
-- [ ] **Step 4: 提交设计记录。**
+- [x] **Step 1: 写设计评审记录。** `docs/evidence-audit-design-v38.md` 明确 before-image 的完整性、容量、敏感信息、用户确认、恢复失败和版本兼容问题。
+- [x] **Step 2: 定义 projection allowlist。** 已为 validation、change-set、retention summary 定义固定字段表、来源、稳定性和执行输入/文件内容排除规则。
+- [x] **Step 3: 确认拒绝项和测试断言。** command、args、cwd、output、error、reason、absolute working directory、diff、patch、before-image 均列为禁止进入导出 JSON 的字段。
+- [x] **Step 4: 提交设计记录。** `636947c`。
 
 ## Task 1：Agent-core metadata-only audit projection
 

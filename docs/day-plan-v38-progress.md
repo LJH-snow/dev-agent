@@ -19,15 +19,16 @@ v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 已建�
 ### v38 计划与安全边界
 
 - [x] 新建 `docs/day-plan-v38.md`，明确审计投影、before-image 设计评审、长期回归矩阵和验收标准。
-- [ ] 新建 `docs/evidence-audit-design-v38.md` 并完成 Task 0 评审。
+- [x] 新建 `docs/evidence-audit-design-v38.md` 并完成 Task 0 评审，提交 `636947c`。
 
 ## 进行中
 
 ### Task 0：before-image 与导出边界设计评审
 
-- [ ] 列出 before-image 完整性、容量、敏感信息、用户确认、恢复失败和版本兼容决策。
-- [ ] 定义 validation/change-set/retention summary 的导出 allowlist 和明确拒绝项。
-- [ ] 为 projection、CLI、Desktop 和长期回归矩阵写 RED 测试契约。
+- [x] 列出 before-image 完整性、容量、敏感信息、用户确认、恢复失败和版本兼容决策；v38 明确不实现跨进程 Undo。
+- [x] 定义 validation/change-set/retention summary 的导出 allowlist 和明确拒绝项，禁止内部 DTO 直接 dump。
+- [x] 为 projection、CLI、Desktop 和长期回归矩阵写 RED 测试契约。
+- [x] 设计记录：`docs/evidence-audit-design-v38.md`，提交 `636947c`。
 
 ## 后续任务
 
