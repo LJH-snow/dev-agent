@@ -225,6 +225,9 @@ importers:
 
   packages/tools:
     dependencies:
+      '@dev-agent/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
       '@dev-agent/code-intelligence':
         specifier: workspace:*
         version: link:../code-intelligence

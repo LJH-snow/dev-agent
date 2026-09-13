@@ -47,6 +47,8 @@ git commit -m "docs: add v34 validation plan"
 - Create: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/validation.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/index.ts`
 - Create: `/Users/Admin/Desktop/dev-agent/packages/tools/src/validation-plan.ts`
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/tools/package.json`
+- Modify: `/Users/Admin/Desktop/dev-agent/pnpm-lock.yaml`
 - Modify: `/Users/Admin/Desktop/dev-agent/packages/tools/src/index.ts`
 - Tests: `/Users/Admin/Desktop/dev-agent/packages/agent-core/tests/validation.test.ts`
 - Tests: `/Users/Admin/Desktop/dev-agent/packages/tools/tests/validation-plan.test.ts`
@@ -56,8 +58,8 @@ git commit -m "docs: add v34 validation plan"
 - `ValidationRunner`：`run(plan, options?): Promise<ValidationResult>`，接受 `AbortSignal`，不暴露任意 shell 拼接接口。
 - `deriveValidationPlan(review, context)`：按仓库相对路径、包边界和文件类型派生稳定排序的 check ids/commands；同一 review 在同一仓库快照上必须得到相同 plan。
 
-- [ ] **Step 1: 写失败测试。** 覆盖 agent-core contract 导出、无变化/文档-only、单 package TS、跨 package TS、Rust runtime、测试文件、未知扩展、重复路径和稳定排序；断言不把模型文本作为命令执行。
-- [ ] **Step 2: 运行 focused tests 确认失败。**
+- [x] **Step 1: 写失败测试。** 覆盖 agent-core contract 导出、无变化/文档-only、单 package TS、跨 package TS、Rust runtime、测试文件、未知扩展、重复路径和稳定排序；断言不把模型文本作为命令执行。
+- [x] **Step 2: 运行 focused tests 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/agent-core test -- --test-name-pattern="validation"
@@ -66,9 +68,9 @@ pnpm --filter @dev-agent/tools test -- --test-name-pattern="validation plan"
 
 Expected: FAIL，因为 validation DTO、planner 和公共导出不存在。
 
-- [ ] **Step 3: 实现 contract 和 planner。** 只生成受信任的结构化 check 定义；先支持 TypeScript package、Rust runtime、test-only、docs/config fallback，未知路径返回可解释的 skipped/blocked，不生成任意命令。
-- [ ] **Step 4: 运行 agent-core/tools focused + full tests。**
-- [ ] **Step 5: Commit。**
+- [x] **Step 3: 实现 contract 和 planner。** 只生成受信任的结构化 check 定义；先支持 TypeScript package、Rust runtime、test-only、docs/config fallback，未知路径返回可解释的 skipped/blocked，不生成任意命令。
+- [x] **Step 4: 运行 agent-core/tools focused + full tests。**
+- [x] **Step 5: Commit。**
 
 ### Task 2: 实现受约束 runner、超时和取消
 

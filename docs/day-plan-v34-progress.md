@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 当前阶段：Task 1，定义 validation contract 和确定性最小集合 planner
+- 当前阶段：Task 2，实施受约束 runner、超时和取消
 - v33 release：`4ee7ab7 docs: record v33 review workflow`，已推送到 `origin/main`
 - 工作区基线：v33 release 后代码相对 `origin/main` 无修改；Task 0 计划与账本已提交
 - v33 最近一次验证：TypeScript 512/512、Rust unit/doc 46/46、真实运行时集成 10/10 通过
@@ -21,7 +21,7 @@
 | Task | 状态 | 实际结果 | 提交 |
 |------|------|----------|------|
 | Task 0 | 已完成 | structure check 通过；build/typecheck 通过；TypeScript **512/512**、Rust unit/doc **46/46**、real-binary integration **10/10** 通过 | `036c0b7 docs: add v34 validation plan` |
-| Task 1 | 未开始 | - | - |
+| Task 1 | 已完成 | RED 因 validation 导出/planner 不存在而失败；agent-core **80/80**、tools **98/98** 通过；planner 仅输出结构化 allowlisted commands | `82adf30 feat(validation): add change-set validation plans` |
 | Task 2 | 未开始 | - | - |
 | Task 3 | 未开始 | - | - |
 | Task 4 | 未开始 | - | - |
@@ -34,6 +34,14 @@
 - 基线：`4ee7ab7 (HEAD -> main, origin/main) docs: record v33 review workflow`；代码工作区干净，只有待提交的 v34 计划与账本。
 - 验证：`node scripts/check.mjs` 通过（13 个目录、34 个预期文件）；`pnpm build`、`pnpm typecheck` 通过；TypeScript **512/512**；真实 Rust-binary integration **10/10**；Rust fmt、clippy 和 unit/doc **46/46**。
 - 提交：`036c0b7 docs: add v34 validation plan`。
+
+### Task 1：定义 validation contract 和确定性最小集合 planner（已完成）
+
+- RED：首次 focused test 编译失败，`@dev-agent/agent-core` 没有 `ValidationCheck`/`ValidationPlan`/`ValidationResult`/`ValidationRunner`/`ValidationStatus` 导出，tools 也没有 `deriveValidationPlan`；修正测试 helper 后仍保持这些缺失导出的预期失败。
+- GREEN：`pnpm --filter @dev-agent/agent-core typecheck`、build 与全套测试通过，agent-core **80/80**；tools build 与全套测试通过，tools **98/98**。
+- 覆盖：单/跨 package TypeScript、test-only、Rust fmt/clippy/test、docs/config `git diff --check`、无变化/未知路径 skipped、重复/越界路径 blocked、稳定排序和 diff 文本不可进入命令；实际 change-set 的绝对路径会先归一化到 working directory。
+- 实现：agent-core 新增 validation DTO、结构化 command、runner contract 和 deterministic id；tools 新增路径归一化 planner，固定 `pnpm`/`cargo`/`git` 可执行文件与参数，并补上 workspace dependency/lockfile。
+- 提交：`82adf30 feat(validation): add change-set validation plans`。
 
 ## 错误与卡点
 
