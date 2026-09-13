@@ -64,8 +64,9 @@ export interface ContextBudget {
 export interface RunOptions {
   /**
    * Stops the loop at the next checkpoint: before each turn, before each tool
-   * call, and by forwarding the signal to the model request. A running tool
-   * call is not killed; the loop stops before the following one.
+   * call, and by forwarding the signal to the model request and tool context.
+   * Running tools that honor the signal (including executors and MCP clients)
+   * can stop their work before the interruption propagates to the caller.
    */
   readonly signal?: AbortSignal;
 }

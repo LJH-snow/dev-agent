@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-09-13 (Day plan v32: cancellable and observable MCP tools)
+
+Executed `docs/day-plan-v32.md`. MCP calls could time out, but there was no
+end-to-end way for an AgentLoop, CLI, or desktop client to stop an external MCP
+tool or observe its progress.
+
+### Added: MCP cancellation and progress propagation
+- `McpClient.callTool()` and `McpTool.execute()` accept an optional `AbortSignal`
+  and progress callback. An in-flight abort sends
+  `notifications/cancelled` with the request id and rejects with
+  `McpRequestError` code `-32001`; timeout cancellation uses code `-32000`.
+- Pending requests clean up their timer, abort listener, progress route, and map
+  entry on every terminal path. Already-aborted calls do not write a request or
+  cancellation notification, and late responses are ignored.
+- AgentLoop forwards tool progress without changing the existing tool result
+  contract. Human-readable CLI output prints `[tool-progress]`, while `--json`
+  remains a single parseable JSON value.
+- Desktop SSE emits `tool-progress` frames in `tool` → progress → `tool-result`
+  order. Configured desktop MCP stdio clients receive the same abort signal and
+  are closed with their session; cancellation still ends with
+  `done { "status": "aborted" }` and no late result.
+
+### Tests
+
+- Focused MCP (49), AgentLoop (72), CLI (97), and desktop (52) suites pass.
+- Repository-wide TypeScript tests: **477 passed**.
+- Rust format and lint checks pass; Rust unit/doc tests: **46 passed**.
+- Real Rust-binary integration tests: **10 passed**.
+- The first recursive TypeScript run exposed a timing-sensitive test that used a
+  50ms timeout during child-process initialization; the test now gives
+  initialization a 1000ms budget and delays only the tool result, then passes in
+  both focused and recursive runs.
+
 ## 2026-09-13 (Day plan v31: preserve MCP tool failure details)
 
 Executed `docs/day-plan-v31.md`. MCP tool failures carried a useful explanation

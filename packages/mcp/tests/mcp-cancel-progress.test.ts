@@ -35,11 +35,16 @@ async function delay(milliseconds: number): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
-function connectOptions(marker: string, timeoutMs = 1000) {
+function connectOptions(marker: string, timeoutMs = 1000, responseDelayMs?: number) {
   return {
     command: process.execPath,
     args: [cancelableServer],
-    env: { MCP_CANCEL_MARKER: marker },
+    env: {
+      MCP_CANCEL_MARKER: marker,
+      ...(responseDelayMs === undefined
+        ? {}
+        : { MCP_RESPONSE_DELAY_MS: String(responseDelayMs) }),
+    },
     timeoutMs,
   };
 }
@@ -112,13 +117,16 @@ test("an MCP timeout sends cancellation while preserving the timeout error", asy
   const marker = await createMarker();
   const client = new McpStdioClient();
   try {
-    await client.connect(connectOptions(marker.path, 50));
+    // Keep initialization on a generous timeout: recursive workspace tests can
+    // legitimately spend more than 50ms starting a child process. Delay only
+    // the tool result so the timeout assertion remains deterministic.
+    await client.connect(connectOptions(marker.path, 1000, 2000));
     await assert.rejects(
       () => client.callTool("progressive", {}),
       (error: unknown) => {
         assert.ok(error instanceof McpRequestError);
         assert.equal(error.code, -32000);
-        assert.equal(error.message, 'MCP request "tools/call" timed out after 50ms');
+        assert.equal(error.message, 'MCP request "tools/call" timed out after 1000ms');
         return true;
       }
     );

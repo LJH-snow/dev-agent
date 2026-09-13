@@ -79,6 +79,11 @@ cancels the request that is in flight (through the same abort path the
 desktop uses) and exits with status `130`; it also exits immediately when
 the CLI is idle at the prompt. `exit` or `quit` leaves with status `0`.
 
+When an MCP tool reports progress, human-readable runs print one line per
+update, for example `[tool-progress] files:download 4/10` (or just the current
+number when the server omits `total`). Machine-readable `--json` runs never
+mix these lines into stdout; they continue to emit one parseable JSON value.
+
 MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on
 stdout is a protocol message, so logs (if any) go to stderr:
 

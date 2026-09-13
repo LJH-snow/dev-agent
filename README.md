@@ -140,8 +140,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   history via `historyLimit`. `RustExecutor` implements `SandboxExecutor` over the
   protobuf stdio boundary
 - Stdio MCP client with reconnect backoff, notification debounce, structured error
-  codes (`McpRequestError`), server-provided tool failure details, and graceful
-  close in `@dev-agent/mcp`
+  codes (`McpRequestError`), server-provided tool failure details, graceful
+  close, cancellable tool calls, and progress callbacks in `@dev-agent/mcp`
 - MCP resources, prompts, capability negotiation, and roots handling
 - MCP server mode: `createMcpServer` plus `--mcp-server` exposes the built-in
   tools to a host agent over stdio (`initialize`, `tools/list`, `tools/call`)
@@ -159,7 +159,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   bind mounts, network policy (`--unshare-net`), environment injection, resource
   limits, and cwd enforcement. Pure argument-builder unit tests run on macOS; live
   `bwrap` tests run on Linux when `bwrap` is available
-- Agent Loop streaming with token-level callbacks (`onToken`, `onToolCall`, `onToolResult`)
+- Agent Loop streaming with token-level callbacks (`onToken`, `onToolCall`,
+  `onToolProgress`, `onToolResult`)
 - Tool output truncation and timeout protection
 - MCP resource subscription (`watchResource`)
 - Multi-language code intelligence (TypeScript AST, Python/Rust regex scanners)
@@ -316,6 +317,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - MCP requests time out instead of hanging forever (default 30s, configurable
   with `timeoutMs` or `DEV_AGENT_MCP_TIMEOUT_MS`); a silent server now fails the
   CLI at startup instead of freezing it with no output
+- MCP tool cancellation and progress propagate end to end: an `AbortSignal`
+  sends `notifications/cancelled` and rejects with `McpRequestError` `-32001`,
+  timeout cancellation uses `-32000`, and progress reaches the AgentLoop, CLI
+  `[tool-progress]` output, and desktop `tool-progress` SSE frames
 - `RustExecutor` no longer waits forever on a wedged runtime: `requestTimeoutMs`
   (default 60s, `0` disables) drops the pending request, frees its concurrency
   slot, and replaces the runtime process, so the sandbox cannot be permanently
@@ -335,7 +340,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 465 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 477 TypeScript tests + 46 Rust unit/doc tests + 10 real-binary
+  integration tests, all passing
 
 ### Rust runtime progress
 
@@ -411,6 +417,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 58. ~~Bounded desktop SSE buffering~~ (done)
 59. ~~Working-directory validation before spawning~~ (done)
 60. ~~Same-name session rename is no longer reported as missing~~ (done)
+61. ~~End-to-end MCP tool cancellation and progress propagation~~ (done)
+62. MCP-aware diff review, approval, rollback, and automated verification (next)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

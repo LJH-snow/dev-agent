@@ -301,7 +301,7 @@ pnpm --filter @dev-agent/desktop test
 
 Expected: existing SSE, cancellation, multi-session, approval and backpressure tests pass; new progress/cancel assertions pass.
 
-- [ ] **Step 6: Commit the desktop change.**
+- [x] **Step 6: Commit the desktop change.**
 
 ```bash
 git add apps/desktop/src/chat-session.ts apps/desktop/src/server.ts apps/desktop/public/index.html apps/desktop/tests/chat-cancel.test.ts apps/desktop/tests/chat-session-e2e.test.ts
@@ -321,15 +321,15 @@ git commit -m "feat(desktop): stream MCP tool progress"
 - Modify: `/Users/Admin/Desktop/dev-agent/README.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/CHANGELOG.md`
 
-- [ ] **Step 1:** 在 MCP README 写出可复制的调用示例，明确 `AbortSignal`、`notifications/cancelled`、progress callback、timeout 和 pending cleanup。
-- [ ] **Step 2:** 在 CLI README 记录普通模式的 `[tool-progress]` 输出，并说明 `--json` 不混入进度行。
-- [ ] **Step 3:** 在 Desktop README 记录 `tool-progress` SSE payload、事件顺序和取消后的 `done` 行为。
-- [ ] **Step 4:** 更新根 README 的 Current Status、Roadmap 和测试数量；清理本次触及范围内的过时取消说明，不顺手重排历史 Roadmap 编号。
-- [ ] **Step 5:** 增加 v32 changelog 和 progress ledger，记录实现的错误码、取消通知、progress SSE 和测试结果。
+- [x] **Step 1:** 在 MCP README 写出可复制的调用示例，明确 `AbortSignal`、`notifications/cancelled`、progress callback、timeout 和 pending cleanup。
+- [x] **Step 2:** 在 CLI README 记录普通模式的 `[tool-progress]` 输出，并说明 `--json` 不混入进度行。
+- [x] **Step 3:** 在 Desktop README 记录 `tool-progress` SSE payload、事件顺序和取消后的 `done` 行为。
+- [x] **Step 4:** 更新根 README 的 Current Status、Roadmap 和测试数量；清理本次触及范围内的过时取消说明，不顺手重排历史 Roadmap 编号。
+- [x] **Step 5:** 增加 v32 changelog 和 progress ledger，记录实现的错误码、取消通知、progress SSE 和测试结果。
 
 #### Task 3.2：完整验证
 
-- [ ] **Step 1:** 运行结构检查、构建和 TypeScript 类型检查。
+- [x] **Step 1:** 运行结构检查、构建和 TypeScript 类型检查。
 
 ```bash
 node scripts/check.mjs
@@ -337,14 +337,14 @@ pnpm build
 pnpm typecheck
 ```
 
-- [ ] **Step 2:** 运行全部 TypeScript 测试和 Rust 真实二进制集成测试。
+- [x] **Step 2:** 运行全部 TypeScript 测试和 Rust 真实二进制集成测试。
 
 ```bash
 pnpm test
 pnpm --filter @dev-agent/executor test:integration
 ```
 
-- [ ] **Step 3:** 运行 Rust 格式、lint 和单元测试。
+- [x] **Step 3:** 运行 Rust 格式、lint 和单元测试。
 
 ```bash
 cd runtime/rust
@@ -353,9 +353,9 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-- [ ] **Step 4:** 验证 `git diff --check`，确认没有 `dist/`、`tests-dist/` 或临时 fixture 输出被加入 Git。
-- [ ] **Step 5:** 记录完整测试数量；以全量命令实际输出为准，不手写旧基线数字。
-- [ ] **Step 6:** 完成最后一次人工 review：确认没有 signal listener、timer、pending map 或 progress route 泄漏。
+- [x] **Step 4:** 验证 `git diff --check`，确认没有 `dist/`、`tests-dist/` 或临时 fixture 输出被加入 Git。
+- [x] **Step 5:** 记录完整测试数量；以全量命令实际输出为准，不手写旧基线数字。
+- [x] **Step 6:** 完成最后一次人工 review：确认没有 signal listener、timer、pending map 或 progress route 泄漏。
 - [ ] **Step 7: Commit and push the completed v32 plan implementation.**
 
 ```bash

@@ -21,7 +21,7 @@ error result keeps the generic `reported an error` message.
 
 ## Client
 
-Implemented in phase 1:
+Implemented:
 
 - `McpStdioClient` - JSON-RPC MCP client over stdio
 - `initialize` handshake with capability negotiation: client declares the
@@ -68,6 +68,50 @@ that never answers fails the call with
 instead of hanging the caller forever; `connect()` tears the half-open child
 down before surfacing that failure, so a silent server cannot keep the process
 alive.
+
+### Cancellation and progress
+
+`McpStdioClient.callTool()` accepts an optional `AbortSignal` and progress
+callback. The same options are forwarded by the `McpTool.execute()` adapter, so
+an agent or UI can cancel an MCP call without reaching into the JSON-RPC layer:
+
+```ts
+import { McpRequestError } from "@dev-agent/mcp";
+
+const controller = new AbortController();
+const resultPromise = client.callTool("download", { url }, {
+  signal: controller.signal,
+  onProgress: ({ progress, total }) => {
+    console.log(total === undefined ? progress : `${progress}/${total}`);
+  },
+});
+
+// Call this from Ctrl-C, a Stop button, or an HTTP disconnect handler.
+controller.abort();
+
+try {
+  await resultPromise;
+} catch (error) {
+  if (error instanceof McpRequestError && error.code === -32001) {
+    console.log("MCP call cancelled");
+  }
+  throw error;
+}
+```
+
+For an in-flight call, aborting sends the MCP
+`notifications/cancelled` notification with the JSON-RPC request id and reason
+`request aborted`, then rejects locally with `McpRequestError` code `-32001`.
+The default 30-second timeout uses the same wire notification with reason
+`request timed out`, but rejects with code `-32000` and the timeout message.
+Progress notifications are matched to the request's progress token and invoke
+`onProgress({ progress, total? })`; exceptions thrown by that callback do not
+break the MCP transport or global notification handlers.
+
+When a call settles, the client removes its pending request, timer, abort
+listener, and progress route. A late response is ignored. An already-aborted
+signal is rejected before any `tools/call` or cancellation notification is
+written to the server.
 
 The CLI registers a `<prefix>:resource` tool (read by URI) and a
 `<prefix>:prompt` tool (get by name) for every connected server, and lists the

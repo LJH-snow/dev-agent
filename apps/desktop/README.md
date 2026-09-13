@@ -37,6 +37,10 @@ Configure the model provider the same way as the CLI, via environment variables:
   server stops it (default 32 MiB). A client that stops reading cannot make the
   desktop server buffer without bound; the stream gets an `error` event and the
   run is aborted.
+- `DEV_AGENT_MCP_SERVERS` — optional JSON array of MCP stdio server configs;
+  when unset, the `mcpServers` array in `~/.dev-agent/config.json` is used.
+  Each entry can set `name`, `command`, `args`, `env`, and `timeoutMs` (default
+  30 seconds).
 
 Both surfaces also read the `approval` section of `~/.dev-agent/config.json`:
 `allow` lists command substrings that always pass (`"npm test"`), `deny` adds
@@ -51,7 +55,8 @@ only tokens are shown.
 - `src/server.ts` — HTTP server. Serves the static chat UI, exposes `GET /health`,
   and streams chat responses from `POST /api/chat` as Server-Sent Events.
 - `src/chat-session.ts` — builds the `AgentLoop` with the default tools and model
-  provider, and bridges its `onToken` / `onToolCall` / `onToolResult` / `onTurn`
+  provider, optionally connects configured MCP stdio servers, and bridges its
+  `onToken` / `onToolCall` / `onToolProgress` / `onToolResult` / `onTurn`
   callbacks to SSE events.
 - `public/index.html` — single-page chat UI (vanilla JS, no build step) that
   renders streaming tokens live and shows tool call/result activity.
@@ -72,9 +77,11 @@ only tokens are shown.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
-  frames: `token`, `tool`, `tool-result`, `turn`, `usage`, `approval`, `done`,
-  `error`. An `approval` frame carries `{ tool, decision, reason }`; a denial is
-  also written back to the model as that tool's result.
+  frames: `token`, `tool`, `tool-progress`, `tool-result`, `turn`, `usage`,
+  `approval`, `done`, `error`. A `tool-progress` frame carries
+  `{ name, progress, total? }`; for one tool call it appears after `tool` and
+  before `tool-result`. An `approval` frame carries `{ tool, decision, reason }`;
+  a denial is also written back to the model as that tool's result.
 - `POST /api/chat` takes an optional `sessionId` (unknown ids are created on
   first use). The `409` guard is per session: different sessions run
   concurrently while one session stays serialised.
@@ -99,7 +106,10 @@ and the status reads `aborted` instead of snapping back to `idle`. The button is
 enabled only while a run is in flight.
 
 A tool call that is already executing is cancelled too: the signal reaches the
-executor, which kills the command (see `packages/executor`).
+executor, which kills the command (see `packages/executor`), or reaches a
+configured MCP client, which sends `notifications/cancelled` to that server.
+The aborted stream still emits its terminal `done { "status": "aborted" }` frame
+and does not emit a late MCP `tool-result`.
 
 ## Sessions
 
