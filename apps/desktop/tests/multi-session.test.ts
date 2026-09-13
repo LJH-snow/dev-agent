@@ -76,6 +76,29 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
       { id: "e1", role: "user", content: "hello", createdAt: new Date().toISOString() },
       { id: "e2", role: "assistant", content: "hi", createdAt: new Date().toISOString() },
     ];
+    const validation = {
+      validationId: "validation:alpha-change",
+      changeSetId: "alpha-change",
+      status: "passed",
+      checks: [
+        {
+          id: "workspace:diff-check",
+          label: "Check workspace diff",
+          command: {
+            executable: "git",
+            args: ["diff", "--check", "--", "target.md"],
+            cwd: "/workspace",
+            timeoutMs: 30_000,
+          },
+          status: "passed",
+          durationMs: 7,
+          exitCode: 0,
+        },
+      ],
+      durationMs: 7,
+      summary: "validation passed: 1 passed",
+      recordedAt: "2026-01-01T00:02:00.000Z",
+    };
     await writeFile(
       join(dir, "alpha.json"),
       JSON.stringify({ version: 1, metadata: {
@@ -84,7 +107,7 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
           lastActiveAt: "2026-01-01T00:01:00.000Z",
           entryCount: entries.length,
           usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17 },
-        }, entries }),
+        }, entries, validations: [validation] }),
       "utf8"
     );
 
@@ -111,6 +134,14 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
       body.messages.map((message) => message.content),
       ["hello", "hi"]
     );
+    assert.deepEqual(body.validations, [validation]);
+
+    const exported = await fetch(`${base}/api/sessions/alpha/export`);
+    assert.equal(exported.status, 200);
+    const transcript = await exported.text();
+    assert.match(transcript, /Validation evidence/);
+    assert.match(transcript, /validation:alpha-change/);
+    assert.match(transcript, /workspace:diff-check/);
   } finally {
     await close(server);
     if (previousDir === undefined) {

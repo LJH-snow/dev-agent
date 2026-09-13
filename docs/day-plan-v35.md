@@ -68,17 +68,25 @@ Expected: 编译或测试失败，因为 `ValidationRecord`、`recordValidation`
 
 **Files:**
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/server.ts`
+- Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/public/index.html`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/src/index.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/README.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/README.md`
-- Test: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/server.test.ts`
-- Test: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/json-output.test.ts`
+- Test: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/multi-session.test.ts`
+- Test: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/validation.test.ts`
+- Test: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/validation.test.ts`
 
-- [ ] **Step 1: 写失败测试。** 让 Desktop session history/export 和 CLI `--json` 在存在 validation records 时返回结构化数组；旧 session 没有 records 时仍返回空数组或保持兼容的缺省值，且 records 不出现在发给模型的普通 ChatMessage 列表中。
-- [ ] **Step 2: 运行 focused test 确认失败。**
-- [ ] **Step 3: 实现只读查询和导出。** 复用 `AgentMemory.validations()`，不重新解析 tool 文本；导出保留 `validationId`、`changeSetId`、`recordedAt`、check 状态、bounded output 和 reason。
-- [ ] **Step 4: 运行 Desktop/CLI focused tests 和 typecheck。**
-- [ ] **Step 5: Commit。**
+- [x] **Step 1: 写失败测试。** 让 Desktop session history/export 和 CLI `--json` 在存在 validation records 时返回结构化数组；旧 session 没有 records 时仍返回空数组或保持兼容的缺省值，且 records 不出现在发给模型的普通 ChatMessage 列表中。
+- [x] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 3: 实现只读查询和导出。** 复用 `AgentMemory.validations()`，不重新解析 tool 文本；导出保留 `validationId`、`changeSetId`、`recordedAt`、check 状态、bounded output 和 reason。
+- [x] **Step 4: 运行 Desktop/CLI focused tests 和 typecheck。**
+- [x] **Step 5: Commit。**
+
+**Task 1 verification record (2026-09-14):**
+
+- RED：Desktop history response initially had no `validations`, export omitted the evidence section, CLI second-run JSON returned an empty array, and the browser history loader ignored persisted validations.
+- GREEN：agent-core build/tests **90/90**、Desktop build/tests **65/65**、CLI build/tests **106/106** all pass；Desktop inline script `node --check` remains passing.
+- 行为：Desktop `/api/sessions/<id>/messages` returns `messages` plus structured `validations`; Markdown export includes a JSON evidence section；CLI `--json` reads persisted validation records；session switching renders saved validation cards without entering model context。
 
 ## Task 2：提供受 guard 保护的显式 validation rerun
 

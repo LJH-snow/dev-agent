@@ -6,7 +6,12 @@ import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
 
-import { FileMemory, type MemoryEntry, type SessionMetadata } from "@dev-agent/agent-core";
+import {
+  FileMemory,
+  type MemoryEntry,
+  type SessionMetadata,
+  type ValidationRecord,
+} from "@dev-agent/agent-core";
 import type { ChatUsage } from "@dev-agent/model";
 
 import {
@@ -140,8 +145,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       ) {
         const rawId = url.pathname.slice("/api/sessions/".length, -"/messages".length);
         const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const history = await readHistory(sessionId);
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ sessionId, messages: await readHistory(sessionId) }));
+        res.end(JSON.stringify({ sessionId, ...history }));
         return;
       }
 
@@ -243,12 +249,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
 
         const entries = await memory.entries();
+        const validations = await memory.validations();
         const metadata = await memory.getMetadata();
         res.writeHead(200, {
           "content-type": "text/markdown; charset=utf-8",
           "content-disposition": `attachment; filename="${sessionId}.md"`,
         });
-        res.end(renderTranscript(sessionId, entries, metadata));
+        res.end(renderTranscript(sessionId, entries, metadata, validations));
         return;
       }
 
@@ -633,7 +640,8 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 function renderTranscript(
   sessionId: string,
   entries: readonly MemoryEntry[],
-  metadata: SessionMetadata | undefined
+  metadata: SessionMetadata | undefined,
+  validations: readonly ValidationRecord[] = []
 ): string {
   const lines: string[] = [`# Session ${sessionId}`, ""];
   if (metadata) {
@@ -652,6 +660,17 @@ function renderTranscript(
       continue;
     }
     lines.push(`## ${entry.role}`, "", entry.content, "");
+  }
+
+  if (validations.length > 0) {
+    lines.push(
+      "## Validation evidence",
+      "",
+      "```json",
+      JSON.stringify(validations, null, 2),
+      "```",
+      ""
+    );
   }
 
   return lines.join("\n");
@@ -701,18 +720,25 @@ export async function listSessions(
   );
 }
 
-async function readHistory(sessionId: string): Promise<DesktopHistoryMessage[]> {
+async function readHistory(sessionId: string): Promise<{
+  messages: DesktopHistoryMessage[];
+  validations: ValidationRecord[];
+}> {
   const memory = new FileMemory({ filePath: memoryPathFor(sessionId) });
   try {
     const entries = await memory.entries();
-    return entries.map((entry) => ({
-      role: entry.role,
-      content: entry.content,
-      toolName: entry.toolName,
-      toolCallId: entry.toolCallId,
-    }));
+    const validations = await memory.validations();
+    return {
+      messages: entries.map((entry) => ({
+        role: entry.role,
+        content: entry.content,
+        toolName: entry.toolName,
+        toolCallId: entry.toolCallId,
+      })),
+      validations: [...validations],
+    };
   } catch {
-    return [];
+    return { messages: [], validations: [] };
   }
 }
 

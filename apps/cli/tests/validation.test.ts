@@ -139,6 +139,37 @@ test("CLI reports a passed validation after an approved apply", async () => {
   }
 });
 
+test("CLI JSON includes validation evidence persisted by an earlier run", async () => {
+  const workspace = await createGitWorkspace();
+  const provider = await startStubProvider(workspace.target, "changed\n");
+  try {
+    const env = environment(workspace.dir, provider.baseUrl);
+    const first = await runCli(
+      ["--once", "change and verify", "--no-stream", "--json", "--approval", "review-writes"],
+      env,
+      "y\n"
+    );
+    assert.equal(first.code, 0, first.stderr);
+    const firstPayload = JSON.parse(first.stdout);
+    const expectedChangeSetId = firstPayload.reviews[0].changeSetId;
+
+    const second = await runCli(
+      ["--once", "show the saved validation", "--no-stream", "--json"],
+      env,
+      ""
+    );
+    assert.equal(second.code, 0, second.stderr);
+    const payload = JSON.parse(second.stdout);
+    assert.equal(payload.validations.length, 1);
+    assert.equal(payload.validations[0].changeSetId, expectedChangeSetId);
+    assert.equal(payload.validations[0].status, "passed");
+    assert.equal(typeof payload.validations[0].recordedAt, "string");
+  } finally {
+    await provider.close();
+    await rm(workspace.dir, { recursive: true, force: true });
+  }
+});
+
 test("CLI human output includes validation status, check id, and command summary", async () => {
   const workspace = await createGitWorkspace();
   const provider = await startStubProvider(workspace.target, "changed\n");

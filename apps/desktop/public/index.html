@@ -241,7 +241,8 @@
         const res = await fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/messages");
         const data = await res.json();
         const history = data.messages ?? [];
-        if (history.length === 0) {
+        const validations = data.validations ?? [];
+        if (history.length === 0 && validations.length === 0) {
           const empty = document.createElement("div");
           empty.className = "empty";
           empty.textContent = "Ask dev-agent anything. Tools run in your working directory.";
@@ -253,6 +254,7 @@
           else if (entry.role === "assistant" && entry.content) appendMessage("assistant", entry.content);
           else if (entry.role === "tool") appendMessage("tool", entry.content);
         }
+        for (const validation of validations) appendValidation(validation);
       } catch {
         // Leave the transcript empty rather than blocking the UI.
       }

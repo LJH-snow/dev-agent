@@ -286,6 +286,7 @@ test("Desktop UI includes a validation card without removing the Undo action", a
     const html = await response.text();
     assert.match(html, /className = "msg validation"/);
     assert.match(html, /appendValidation/);
+    assert.match(html, /data\.validations/);
     assert.match(html, /case "validation":/);
     assert.match(html, /data-undo/);
     assert.match(html, /Undo/);

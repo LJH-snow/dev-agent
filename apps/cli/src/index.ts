@@ -1170,6 +1170,8 @@ async function runPrompt(
 ): Promise<AgentContext> {
   const result = await loop.run(context, prompt, signal ? { signal } : undefined);
   const entries = await result.memory.entries();
+  const persistedValidations = await result.memory.validations?.();
+  const outputValidations = persistedValidations ?? validations;
   const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
   const cost =
     result.usage && costOptions
@@ -1186,7 +1188,7 @@ async function runPrompt(
         usage: result.usage ?? null,
         cost: cost ?? null,
         reviews: [...reviews],
-        validations: [...validations],
+        validations: [...outputValidations],
       })
     );
     return result;
