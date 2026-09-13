@@ -65,6 +65,16 @@ export interface EvidencePruneResult {
   readonly remainingChangeSets: number;
 }
 
+/** Non-executable counts and limits shown to operators and clients. */
+export interface EvidenceSummary {
+  readonly validations: number;
+  readonly changeSets: number;
+  readonly protectedChangeSets: number;
+  readonly rolledBackChangeSets: number;
+  readonly retention: Required<EvidenceRetentionOptions>;
+  readonly protectedChangeSetsReason: "applied change-set guards are retained for validation";
+}
+
 export const DEFAULT_EVIDENCE_RETENTION = {
   maxValidations: 100,
   maxChangeSets: 100,
@@ -95,6 +105,8 @@ export interface AgentMemory {
   markChangeSetRolledBack?(changeSetId: string): Promise<boolean>;
   /** Prunes metadata-only evidence without touching the working directory. */
   pruneEvidence?(options?: EvidencePruneOptions): Promise<EvidencePruneResult>;
+  /** Returns non-executable evidence counts and the effective retention limits. */
+  evidenceSummary?(): Promise<EvidenceSummary>;
 }
 
 export interface ContextSummary {
@@ -189,6 +201,14 @@ export class InMemoryMemory implements AgentMemory {
 
   async changeSets(): Promise<readonly AppliedChangeSetRecord[]> {
     return [...this.changeSetRecords];
+  }
+
+  async evidenceSummary(): Promise<EvidenceSummary> {
+    return summarizeEvidence(
+      this.validationRecords,
+      this.changeSetRecords,
+      this.evidenceRetention
+    );
   }
 
   async markChangeSetRolledBack(changeSetId: string): Promise<boolean> {
@@ -391,6 +411,27 @@ export class FileMemory implements AgentMemory {
       } catch (error) {
         if (isNodeError(error) && error.code === "ENOENT") {
           return [];
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error(`Invalid memory file: ${this.filePath}`);
+      }
+    });
+  }
+
+  evidenceSummary(): Promise<EvidenceSummary> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return summarizeEvidence(
+          file.validations ?? [],
+          file.changeSets ?? [],
+          this.evidenceRetention
+        );
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return summarizeEvidence([], [], this.evidenceRetention);
         }
         if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
           throw error;
@@ -609,6 +650,21 @@ function trimChangeSetRecordsInPlace(
     removed += 1;
   }
   return removed;
+}
+
+function summarizeEvidence(
+  validations: readonly ValidationRecord[],
+  changeSets: readonly AppliedChangeSetRecord[],
+  retention: Required<EvidenceRetentionOptions>
+): EvidenceSummary {
+  return {
+    validations: validations.length,
+    changeSets: changeSets.length,
+    protectedChangeSets: changeSets.filter((record) => record.state === "applied").length,
+    rolledBackChangeSets: changeSets.filter((record) => record.state === "rolled-back").length,
+    retention: { ...retention },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation",
+  };
 }
 
 function emptyEvidencePruneResult(): EvidencePruneResult {

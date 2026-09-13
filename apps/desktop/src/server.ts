@@ -7,10 +7,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
 
 import {
+  DEFAULT_EVIDENCE_RETENTION,
   FileMemory,
   type AppliedChangeSetRecord,
   type EvidencePruneOptions,
   type EvidencePruneResult,
+  type EvidenceSummary,
   type MemoryEntry,
   type SessionMetadata,
   type ValidationRecord,
@@ -44,6 +46,8 @@ export interface DesktopChatSession {
   rollbackChangeSet?(changeSetId: string): Promise<unknown>;
   /** Removes bounded, metadata-only evidence without touching the workspace. */
   pruneEvidence?(options?: EvidencePruneOptions): Promise<EvidencePruneResult>;
+  /** Returns non-executable evidence counts and the effective retention limits. */
+  evidenceSummary?(): Promise<EvidenceSummary>;
   /** Reruns trusted validation for an applied change set without changing files. */
   rerunValidation?(
     changeSetId: string,
@@ -66,6 +70,7 @@ export interface DesktopSessionSummary {
   readonly createdAt?: string;
   readonly lastActiveAt?: string;
   readonly usage?: ChatUsage;
+  readonly evidenceSummary?: EvidenceSummary;
   /** Present when the running session could price `usage`. */
   readonly cost?: number;
 }
@@ -296,13 +301,21 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const validations = await memory.validations();
         const changeSets = await memory.changeSets();
         const metadata = await memory.getMetadata();
+        const evidenceSummary = await memory.evidenceSummary();
         const evidence = filterEvidence(validations, changeSets, filterResult.filters);
         res.writeHead(200, {
           "content-type": "text/markdown; charset=utf-8",
           "content-disposition": `attachment; filename="${sessionId}.md"`,
         });
         res.end(
-          renderTranscript(sessionId, entries, metadata, evidence.validations, evidence.changeSets)
+          renderTranscript(
+            sessionId,
+            entries,
+            metadata,
+            evidence.validations,
+            evidence.changeSets,
+            evidenceSummary
+          )
         );
         return;
       }
@@ -455,12 +468,27 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
       if (req.method === "POST" && url.pathname === "/api/changesets/cleanup") {
         const body = await readBody(req);
-        let parsed: Record<string, unknown>;
+        let parsedValue: unknown;
         try {
-          parsed = JSON.parse(body) as Record<string, unknown>;
+          parsedValue = JSON.parse(body);
         } catch {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          return;
+        }
+        if (
+          typeof parsedValue !== "object" ||
+          parsedValue === null ||
+          Array.isArray(parsedValue)
+        ) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "request body must be a JSON object" }));
+          return;
+        }
+        const parsed = parsedValue as Record<string, unknown>;
+        if (parsed.sessionId !== undefined && typeof parsed.sessionId !== "string") {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId must be a string" }));
           return;
         }
 
@@ -494,14 +522,24 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
+        inFlight.add(sessionId);
         try {
           const result = await session.pruneEvidence(parsedOptions.options);
+          const evidenceSummary = await session.evidenceSummary?.();
           res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify({ sessionId, ...result }));
+          res.end(
+            JSON.stringify({
+              sessionId,
+              ...result,
+              ...(evidenceSummary === undefined ? {} : { evidenceSummary }),
+            })
+          );
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           res.writeHead(500, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: message }));
+        } finally {
+          inFlight.delete(sessionId);
         }
         return;
       }
@@ -811,13 +849,25 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
+function emptyEvidenceSummary(): EvidenceSummary {
+  return {
+    validations: 0,
+    changeSets: 0,
+    protectedChangeSets: 0,
+    rolledBackChangeSets: 0,
+    retention: { ...DEFAULT_EVIDENCE_RETENTION },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation",
+  };
+}
+
 /** Renders a session as a Markdown transcript for download. */
 function renderTranscript(
   sessionId: string,
   entries: readonly MemoryEntry[],
   metadata: SessionMetadata | undefined,
   validations: readonly ValidationRecord[] = [],
-  changeSets: readonly AppliedChangeSetRecord[] = []
+  changeSets: readonly AppliedChangeSetRecord[] = [],
+  evidenceSummary: EvidenceSummary = emptyEvidenceSummary()
 ): string {
   const lines: string[] = [`# Session ${sessionId}`, ""];
   if (metadata) {
@@ -860,6 +910,15 @@ function renderTranscript(
     );
   }
 
+  lines.push(
+    "## Evidence retention",
+    "",
+    "```json",
+    JSON.stringify(evidenceSummary, null, 2),
+    "```",
+    ""
+  );
+
   return lines.join("\n");
 }
 
@@ -893,12 +952,17 @@ export async function listSessions(
       createdAt: metadata?.createdAt,
       lastActiveAt: metadata?.lastActiveAt,
       usage: metadata?.usage,
+      evidenceSummary: await memory.evidenceSummary().catch(() => undefined),
     });
   }
 
   for (const sessionId of knownSessionIds) {
     if (!summaries.has(sessionId)) {
-      summaries.set(sessionId, { sessionId, entryCount: 0 });
+      summaries.set(sessionId, {
+        sessionId,
+        entryCount: 0,
+        evidenceSummary: emptyEvidenceSummary(),
+      });
     }
   }
 
@@ -914,12 +978,14 @@ async function readHistory(
   messages: DesktopHistoryMessage[];
   validations: ValidationRecord[];
   changeSets: AppliedChangeSetRecord[];
+  evidenceSummary: EvidenceSummary;
 }> {
   const memory = new FileMemory({ filePath: memoryPathFor(sessionId) });
   try {
     const entries = await memory.entries();
     const validations = await memory.validations();
     const changeSets = await memory.changeSets();
+    const evidenceSummary = await memory.evidenceSummary();
     const evidence = filterEvidence(validations, changeSets, filters);
     return {
       messages: entries.map((entry) => ({
@@ -930,9 +996,15 @@ async function readHistory(
       })),
       validations: [...evidence.validations],
       changeSets: [...evidence.changeSets],
+      evidenceSummary,
     };
   } catch {
-    return { messages: [], validations: [], changeSets: [] };
+    return {
+      messages: [],
+      validations: [],
+      changeSets: [],
+      evidenceSummary: emptyEvidenceSummary(),
+    };
   }
 }
 

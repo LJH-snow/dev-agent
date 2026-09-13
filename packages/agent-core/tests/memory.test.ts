@@ -501,6 +501,26 @@ test("file memory serializes concurrent evidence writes without losing entries",
   }
 });
 
+test("memory exposes a retention summary with protected applied guards", async () => {
+  const memory = new InMemoryMemory({
+    evidenceRetention: { maxValidations: 2, maxChangeSets: 3 },
+  });
+  await memory.recordValidation(makeValidationResult("passed"));
+  await memory.recordChangeSet(makeChangeSetRecord({ changeSetId: "active-summary" }));
+  await memory.recordChangeSet(
+    makeChangeSetRecord({ changeSetId: "rolled-summary", state: "rolled-back" })
+  );
+
+  assert.deepEqual(await memory.evidenceSummary(), {
+    validations: 1,
+    changeSets: 2,
+    protectedChangeSets: 1,
+    rolledBackChangeSets: 1,
+    retention: { maxValidations: 2, maxChangeSets: 3 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation",
+  });
+});
+
 test("memory rejects non-positive or non-integer evidence retention limits", () => {
   assert.throws(
     () => new InMemoryMemory({ evidenceRetention: { maxValidations: 0 } }),

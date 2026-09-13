@@ -23,6 +23,9 @@ import {
   type ApprovalPolicy,
   type ApprovalRequest,
   type ChangeSetReview,
+  type EvidencePruneOptions,
+  type EvidencePruneResult,
+  type EvidenceSummary,
   type CompiledApprovalConfig,
   type ValidationAdapter,
   type ValidationResult,
@@ -93,6 +96,10 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--tools": "none",
   "--metadata": "none",
   "--session-list": "none",
+  "--cleanup-evidence": "none",
+  "--remove-rolled-back": "none",
+  "--max-validations": "one",
+  "--max-change-sets": "one",
   "--doctor": "none",
   "--mcp-server": "none",
   "--reset-memory": "none",
@@ -187,6 +194,13 @@ export async function main(argv: string[]): Promise<void> {
   const resetMemory = args.includes("--reset-memory");
   const noStream = args.includes("--no-stream");
   const jsonOutput = args.includes("--json");
+  const cleanupEvidence = args.includes("--cleanup-evidence");
+  const cleanupOptionsResult = parseCliEvidenceCleanupOptions(args, cleanupEvidence);
+  if ("error" in cleanupOptionsResult) {
+    console.error(cleanupOptionsResult.error);
+    process.exitCode = 1;
+    return;
+  }
   const sessionDeleteIndex = args.indexOf("--session-delete");
   const sessionDeleteId = sessionDeleteIndex >= 0 ? args[sessionDeleteIndex + 1] : undefined;
   if (sessionDeleteIndex >= 0 && sessionDeleteId === undefined) {
@@ -359,6 +373,29 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  if (cleanupEvidence) {
+    const memory = createMemory(normalizedSessionId);
+    try {
+      const result = await memory.pruneEvidence(cleanupOptionsResult.options);
+      const evidenceSummary = await memory.evidenceSummary();
+      printEvidenceCleanupResult(
+        normalizedSessionId,
+        result,
+        evidenceSummary,
+        jsonOutput
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (jsonOutput) {
+        console.log(JSON.stringify({ error: message, sessionId: normalizedSessionId }, null, 2));
+      } else {
+        console.error(`Evidence cleanup failed: ${message}`);
+      }
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   const mcpSessions: McpServerSession[] = [];
   try {
     const config = loadConfig();
@@ -422,8 +459,17 @@ export async function main(argv: string[]): Promise<void> {
         process.exitCode = 1;
         return;
       }
+      const evidenceSummary = await memory.evidenceSummary();
       if (jsonOutput) {
-        console.log(JSON.stringify(meta ?? null, null, 2));
+        console.log(
+          JSON.stringify(
+            meta === null || meta === undefined
+              ? meta ?? null
+              : { ...meta, evidenceSummary },
+            null,
+            2
+          )
+        );
         return;
       }
       if (meta) {
@@ -436,6 +482,7 @@ export async function main(argv: string[]): Promise<void> {
             `Usage: prompt=${meta.usage.promptTokens} completion=${meta.usage.completionTokens} total=${meta.usage.totalTokens}`
           );
         }
+        printEvidenceSummary(evidenceSummary);
       } else {
         console.log("No session metadata found.");
       }
@@ -964,6 +1011,7 @@ async function listSessions(jsonOutput = false): Promise<void> {
     size: number;
     modified: Date;
     usage?: ChatUsage;
+    evidenceSummary?: EvidenceSummary;
   }> = [];
   for (const file of sessionFiles) {
     const filePath = join(sessionDir(), file);
@@ -971,7 +1019,14 @@ async function listSessions(jsonOutput = false): Promise<void> {
       const info = await stat(filePath);
       const memory = new FileMemory({ filePath });
       const metadata = await memory.getMetadata();
-      rows.push({ file, size: info.size, modified: info.mtime, usage: metadata?.usage });
+      const evidenceSummary = await memory.evidenceSummary();
+      rows.push({
+        file,
+        size: info.size,
+        modified: info.mtime,
+        usage: metadata?.usage,
+        evidenceSummary,
+      });
     } catch {
       rows.push({ file, size: 0, modified: new Date(0) });
     }
@@ -986,6 +1041,7 @@ async function listSessions(jsonOutput = false): Promise<void> {
           size: row.size,
           modifiedAt: row.modified.toISOString(),
           usage: row.usage ?? null,
+          evidenceSummary: row.evidenceSummary ?? null,
         })),
         null,
         2
@@ -996,8 +1052,11 @@ async function listSessions(jsonOutput = false): Promise<void> {
   console.log(`Sessions (${rows.length}) in ${sessionDir()}:`);
   for (const row of rows) {
     const tokens = row.usage ? `  ${row.usage.totalTokens} tokens` : "";
+    const evidence = row.evidenceSummary
+      ? `  evidence=${row.evidenceSummary.validations}/${row.evidenceSummary.changeSets} protected=${row.evidenceSummary.protectedChangeSets}`
+      : "";
     console.log(
-      `  ${row.file.padEnd(32)} ${String(row.size).padStart(10)} bytes${tokens}  ${row.modified.toISOString()}`
+      `  ${row.file.padEnd(32)} ${String(row.size).padStart(10)} bytes${tokens}${evidence}  ${row.modified.toISOString()}`
     );
   }
 }
@@ -1064,7 +1123,9 @@ async function interactive(
   // on the same stdin.
   questionBox.ask = (prompt) => rl.question(prompt);
 
-  console.log("dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':validate <changeSetId>' to rerun trusted checks.");
+  console.log(
+    "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':validate <changeSetId>' to rerun trusted checks or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
+  );
   let interrupted = false;
   let abort: AbortController | undefined;
   // Closing the readline interface does not settle a pending `question()` --
@@ -1107,6 +1168,38 @@ async function interactive(
         continue;
       }
 
+      if (prompt === ":cleanup" || prompt.startsWith(":cleanup ")) {
+        const cleanupArgs = prompt.slice(":cleanup".length).trim();
+        const parsedCleanup = parseCliEvidenceCleanupOptions(
+          ["--cleanup-evidence", ...(cleanupArgs ? cleanupArgs.split(/\s+/) : [])],
+          true
+        );
+        if ("error" in parsedCleanup) {
+          console.error(parsedCleanup.error);
+          continue;
+        }
+        if (!context.memory.pruneEvidence) {
+          console.error("Evidence cleanup is unavailable for this memory.");
+          continue;
+        }
+        try {
+          const result = await context.memory.pruneEvidence(parsedCleanup.options);
+          const evidenceSummary = await context.memory.evidenceSummary?.();
+          printEvidenceCleanupResult(
+            context.sessionId,
+            result,
+            evidenceSummary,
+            jsonOutput
+          );
+        } catch (error) {
+          if (!interrupted) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`Evidence cleanup failed: ${message}`);
+          }
+        }
+        continue;
+      }
+
       if (prompt === ":validate" || prompt.startsWith(":validate ")) {
         const changeSetId = prompt.slice(":validate".length).trim();
         if (!changeSetId) {
@@ -1124,7 +1217,18 @@ async function interactive(
           validations.push(validation);
           if (jsonOutput) {
             const changeSets = (await context.memory.changeSets?.()) ?? [];
-            console.log(JSON.stringify({ validation, changeSets: [...changeSets] }, null, 2));
+            const evidenceSummary = await context.memory.evidenceSummary?.();
+            console.log(
+              JSON.stringify(
+                {
+                  validation,
+                  changeSets: [...changeSets],
+                  ...(evidenceSummary === undefined ? {} : { evidenceSummary }),
+                },
+                null,
+                2
+              )
+            );
           } else {
             printValidationResult(validation);
           }
@@ -1282,6 +1386,90 @@ function formatValidationCommand(executable: string, args: readonly string[]): s
     .join(" ");
 }
 
+function parseCliEvidenceCleanupOptions(
+  args: readonly string[],
+  cleanupEvidence: boolean
+): { readonly options: EvidencePruneOptions } | { readonly error: string } {
+  const maxValidationsIndex = args.indexOf("--max-validations");
+  const maxChangeSetsIndex = args.indexOf("--max-change-sets");
+  const hasCleanupOption =
+    maxValidationsIndex >= 0 ||
+    maxChangeSetsIndex >= 0 ||
+    args.includes("--remove-rolled-back");
+  if (hasCleanupOption && !cleanupEvidence) {
+    return { error: "evidence cleanup options require --cleanup-evidence" };
+  }
+
+  const parseLimit = (index: number, name: string): number | string | undefined => {
+    if (index < 0) return undefined;
+    const raw = args[index + 1];
+    const value = Number(raw);
+    if (
+      raw === undefined ||
+      raw.startsWith("-") ||
+      !Number.isSafeInteger(value) ||
+      value <= 0 ||
+      value > 10_000
+    ) {
+      return `${name} must be a positive integer no greater than 10000`;
+    }
+    return value;
+  };
+
+  const maxValidations = parseLimit(maxValidationsIndex, "--max-validations");
+  if (typeof maxValidations === "string") return { error: maxValidations };
+  const maxChangeSets = parseLimit(maxChangeSetsIndex, "--max-change-sets");
+  if (typeof maxChangeSets === "string") return { error: maxChangeSets };
+  return {
+    options: {
+      ...(maxValidations === undefined ? {} : { maxValidations }),
+      ...(maxChangeSets === undefined ? {} : { maxChangeSets }),
+      ...(args.includes("--remove-rolled-back") ? { removeRolledBack: true } : {}),
+    },
+  };
+}
+
+function printEvidenceSummary(summary: EvidenceSummary): void {
+  console.log(
+    `Evidence: validations=${summary.validations} changeSets=${summary.changeSets} protected applied guards=${summary.protectedChangeSets} rolled-back=${summary.rolledBackChangeSets}`
+  );
+  console.log(
+    `Retention: validations<=${summary.retention.maxValidations} changeSets<=${summary.retention.maxChangeSets}`
+  );
+  console.log(`Protected reason: ${summary.protectedChangeSetsReason}.`);
+}
+
+function printEvidenceCleanupResult(
+  sessionId: string,
+  result: EvidencePruneResult,
+  summary: EvidenceSummary | undefined,
+  jsonOutput: boolean
+): void {
+  if (jsonOutput) {
+    console.log(
+      JSON.stringify(
+        {
+          sessionId,
+          ...result,
+          ...(summary === undefined ? {} : { evidenceSummary: summary }),
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+  console.log(`Evidence cleanup for session ${sessionId}:`);
+  console.log(`  Removed validations: ${result.validationsRemoved}`);
+  console.log(`  Removed change sets: ${result.changeSetsRemoved}`);
+  console.log(`  Protected applied guards: ${result.protectedChangeSets}`);
+  console.log(`  Remaining validations: ${result.remainingValidations}`);
+  console.log(`  Remaining change sets: ${result.remainingChangeSets}`);
+  if (summary !== undefined) {
+    printEvidenceSummary(summary);
+  }
+}
+
 async function runPrompt(
   loop: AgentLoop,
   context: AgentContext,
@@ -1297,6 +1485,7 @@ async function runPrompt(
   const entries = await result.memory.entries();
   const persistedValidations = await result.memory.validations?.();
   const persistedChangeSets = await result.memory.changeSets?.();
+  const evidenceSummary = await result.memory.evidenceSummary?.();
   const outputValidations = persistedValidations ?? validations;
   const outputChangeSets = persistedChangeSets ?? [];
   const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
@@ -1317,6 +1506,7 @@ async function runPrompt(
         reviews: [...reviews],
         validations: [...outputValidations],
         changeSets: [...outputChangeSets],
+        ...(evidenceSummary === undefined ? {} : { evidenceSummary }),
       })
     );
     return result;

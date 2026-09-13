@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   createAgentContext,
   createValidationId,
+  FileMemory,
   InMemoryMemory,
   type ValidationAdapter,
   type ValidationPlan,
@@ -171,6 +172,56 @@ function runCliInteractiveValidation(
   });
 }
 
+function runCliInteractiveCleanup(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child: ChildProcess = spawn("node", [cliPath, ...args], {
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        child.kill("SIGKILL");
+        settled = true;
+        reject(new Error("the interactive cleanup CLI did not finish in time"));
+      }
+    }, 10000);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      clearTimeout(timer);
+      settled = true;
+      resolve({ code, stdout, stderr });
+    });
+    void (async () => {
+      try {
+        await waitFor(() => stdout.includes("Type 'exit' or 'quit' to stop."), 5000);
+        child.stdin.write(":cleanup --remove-rolled-back\n");
+        await waitFor(() => stdout.includes("Evidence cleanup"), 5000);
+        child.stdin.write("exit\n");
+      } catch (error) {
+        if (settled) return;
+        child.kill("SIGKILL");
+        settled = true;
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    })();
+  });
+}
+
 function parseFirstJsonObject(output: string): any {
   const start = output.indexOf("{");
   assert.ok(start >= 0, `expected JSON object in output: ${output}`);
@@ -223,6 +274,92 @@ function environment(dir: string, providerBaseUrl: string): NodeJS.ProcessEnv {
   };
 }
 
+async function seedEvidenceMemory(filePath: string, workingDirectory: string): Promise<void> {
+  const memory = new FileMemory({ filePath });
+  const record = {
+    changeSetId: "cleanup-active",
+    sessionId: "default",
+    workingDirectory,
+    files: [
+      {
+        path: "target.md",
+        kind: "file" as const,
+        afterHash: "a".repeat(64),
+        additions: 1,
+        deletions: 0,
+        beforeExists: true,
+        afterExists: true,
+      },
+    ],
+    additions: 1,
+    deletions: 0,
+    createdAt: "2026-09-13T00:00:00.000Z",
+    recordedAt: "2026-09-13T00:00:01.000Z",
+    state: "applied" as const,
+  };
+  await memory.recordChangeSet(record);
+  await memory.recordChangeSet({ ...record, changeSetId: "cleanup-rolled" });
+  await memory.markChangeSetRolledBack("cleanup-rolled");
+}
+
+test("CLI cleanup reports protected evidence and removes only rolled-back records", async () => {
+  const workspace = await createGitWorkspace();
+  const memoryFile = join(workspace.dir, "session.json");
+  try {
+    await seedEvidenceMemory(memoryFile, workspace.dir);
+    const result = await runCli(
+      ["--cleanup-evidence", "--remove-rolled-back", "--json"],
+      {
+        ...process.env,
+        DEV_AGENT_MODEL_PROVIDER: "ollama",
+        DEV_AGENT_MEMORY_FILE: memoryFile,
+      },
+      ""
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.changeSetsRemoved, 1);
+    assert.equal(payload.protectedChangeSets, 1);
+    assert.deepEqual(payload.evidenceSummary, {
+      validations: 0,
+      changeSets: 1,
+      protectedChangeSets: 1,
+      rolledBackChangeSets: 0,
+      retention: { maxValidations: 100, maxChangeSets: 100 },
+      protectedChangeSetsReason: "applied change-set guards are retained for validation",
+    });
+    assert.equal(await readFile(workspace.target, "utf8"), "keep\n");
+    const reopened = new FileMemory({ filePath: memoryFile });
+    assert.deepEqual(
+      (await reopened.changeSets()).map((record) => record.changeSetId),
+      ["cleanup-active"]
+    );
+  } finally {
+    await rm(workspace.dir, { recursive: true, force: true });
+  }
+});
+
+test("interactive CLI exposes explicit evidence cleanup", async () => {
+  const workspace = await createGitWorkspace();
+  const memoryFile = join(workspace.dir, "session.json");
+  try {
+    await seedEvidenceMemory(memoryFile, workspace.dir);
+    const result = await runCliInteractiveCleanup([], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "ollama",
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /Evidence cleanup/);
+    assert.match(result.stdout, /Protected applied guards: 1/);
+    assert.equal(await readFile(workspace.target, "utf8"), "keep\n");
+  } finally {
+    await rm(workspace.dir, { recursive: true, force: true });
+  }
+});
+
 test("CLI reports a passed validation after an approved apply", async () => {
   const workspace = await createGitWorkspace();
   const provider = await startStubProvider(workspace.target, "changed\n");
@@ -241,6 +378,9 @@ test("CLI reports a passed validation after an approved apply", async () => {
     assert.equal(payload.validations[0].changeSetId, payload.reviews[0].changeSetId);
     assert.equal(payload.validations[0].status, "passed");
     assert.equal(payload.validations[0].checks[0].id, "workspace:diff-check");
+    assert.equal(payload.evidenceSummary.validations, 1);
+    assert.equal(payload.evidenceSummary.changeSets, 1);
+    assert.equal(payload.evidenceSummary.protectedChangeSets, 1);
     assert.match(result.stdout.trim(), /^\{.*\}$/s);
   } finally {
     await provider.close();

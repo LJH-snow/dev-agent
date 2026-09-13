@@ -204,12 +204,23 @@ test("POST /api/changesets/cleanup delegates metadata-only evidence cleanup", as
     remainingValidations: 3,
     remainingChangeSets: 1,
   };
+  const evidenceSummary = {
+    validations: 3,
+    changeSets: 1,
+    protectedChangeSets: 1,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+  };
   const session = {
     id: "default",
     async run() {},
     async pruneEvidence(options) {
       received = options;
       return result;
+    },
+    async evidenceSummary() {
+      return evidenceSummary;
     },
   };
   const server = createDesktopServer({ session });
@@ -225,12 +236,72 @@ test("POST /api/changesets/cleanup delegates metadata-only evidence cleanup", as
       }),
     });
     assert.equal(response.status, 200);
-    assert.deepEqual(await response.json(), { sessionId: "default", ...result });
+    assert.deepEqual(await response.json(), {
+      sessionId: "default",
+      ...result,
+      evidenceSummary,
+    });
     assert.deepEqual(received, {
       maxValidations: 3,
       maxChangeSets: 2,
       removeRolledBack: true,
     });
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("POST /api/changesets/cleanup rejects invalid bodies and limits", async () => {
+  const server = createDesktopServer({
+    session: {
+      id: "default",
+      async run() {},
+      async pruneEvidence() {
+        throw new Error("must not run");
+      },
+    },
+  });
+  const base = await start(server);
+  try {
+    const nullBody = await fetch(`${base}/api/changesets/cleanup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "null",
+    });
+    assert.equal(nullBody.status, 400);
+
+    const invalidLimit = await fetch(`${base}/api/changesets/cleanup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ maxValidations: 0 }),
+    });
+    assert.equal(invalidLimit.status, 400);
+    assert.match(((await invalidLimit.json()) as any).error, /maxValidations/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("POST /api/changesets/cleanup distinguishes unknown and unsupported sessions", async () => {
+  const server = createDesktopServer({
+    session: { id: "default", async run() {} },
+  });
+  const base = await start(server);
+  try {
+    const unknown = await fetch(`${base}/api/changesets/cleanup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "missing" }),
+    });
+    assert.equal(unknown.status, 404);
+
+    const unsupported = await fetch(`${base}/api/changesets/cleanup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(unsupported.status, 501);
+    assert.match(((await unsupported.json()) as any).error, /unavailable/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }

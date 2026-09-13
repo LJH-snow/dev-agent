@@ -17,6 +17,7 @@ import {
   type ApprovalPolicy,
   type EvidencePruneOptions,
   type EvidencePruneResult,
+  type EvidenceSummary,
   runValidationAttempt,
   type ValidationAdapter,
   type ValidationResult,
@@ -282,6 +283,14 @@ export class ChatSession {
       throw new Error("evidence cleanup is unavailable");
     }
     return this.memory.pruneEvidence(options);
+  }
+
+  /** Returns non-executable evidence counts and the effective retention limits. */
+  async evidenceSummary(): Promise<EvidenceSummary> {
+    if (!this.memory.evidenceSummary) {
+      throw new Error("evidence summary is unavailable");
+    }
+    return this.memory.evidenceSummary();
   }
 
   /** Reruns trusted checks for an applied change set without changing files. */

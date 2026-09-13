@@ -161,11 +161,20 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
       totalTokens: 17,
     });
     assert.equal(alpha.cost, 0.017);
+    assert.deepEqual(alpha.evidenceSummary, {
+      validations: 2,
+      changeSets: 2,
+      protectedChangeSets: 2,
+      rolledBackChangeSets: 0,
+      retention: { maxValidations: 100, maxChangeSets: 100 },
+      protectedChangeSetsReason: "applied change-set guards are retained for validation",
+    });
 
     const history = await fetch(`${base}/api/sessions/alpha/messages`);
     assert.equal(history.status, 200);
     const body: any = await history.json();
     assert.equal(body.sessionId, "alpha");
+    assert.deepEqual(body.evidenceSummary, alpha.evidenceSummary);
     assert.deepEqual(
       body.messages.map((message) => message.content),
       ["hello", "hi"]
@@ -206,6 +215,8 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
     const filteredTranscript = await filteredExport.text();
     assert.match(filteredTranscript, /beta-change/);
     assert.doesNotMatch(filteredTranscript, /alpha-change/);
+    assert.match(transcript, /Evidence retention/);
+    assert.match(transcript, /protectedChangeSetsReason/);
   } finally {
     await close(server);
     if (previousDir === undefined) {
