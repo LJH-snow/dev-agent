@@ -96,6 +96,8 @@ v34 已完成。下一步建议不立即扩大默认检查集合，而是把一�
 
 ### v35 候选：验证证据持久化与显式重跑
 
+**详细执行文档：** `docs/day-plan-v35.md`。
+
 **目标：** 让用户在 session 历史中看到某个 change set 的 apply、validation 和 Undo 关系，并能在明确授权后重新运行同一组安全检查。
 
 1. **验证记录持久化。** 将 `ValidationResult` 以向后兼容的 session memory 事件保存，记录 validation id、change-set id、快照信息、check 状态、耗时、bounded output 和取消/超时原因。
