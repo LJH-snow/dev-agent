@@ -95,8 +95,8 @@ git commit -m "feat(tools): add change-set diff and hash model"
 - `preview` 输入使用 `{ action: "preview", changes: Array<{ path, action: "write"|"edit"|"patch"|"mkdir", content?, oldText?, newText?, hunks? }> }`；单个 `write/edit/patch/mkdir` 也能由 `prepareChangeSet` 包装成一个 change。
 - `apply` / `rollback` 输入使用 `{ action: "apply"|"rollback", changeSetId: string }`；返回 `{ ok, changeSetId, files, additions, deletions }`。
 
-- [ ] **Step 1: 写 preview 失败测试。** 断言 `preview` 对 write/edit/patch/mkdir 返回实际 diff 和 before/after hash，磁盘内容和 mode 完全不变；缺失/重复 hunk、目录替换文件和未知 change-set 输入均给出明确错误。
-- [ ] **Step 2: 运行 preview focused test 确认失败。**
+- [x] **Step 1: 写 preview 失败测试。** 断言 `preview` 对 write/edit/patch/mkdir 返回实际 diff 和 before/after hash，磁盘内容和 mode 完全不变；缺失/重复 hunk、目录替换文件和未知 change-set 输入均给出明确错误。
+- [x] **Step 2: 运行 preview focused test 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/tools test -- --test-name-pattern="preview"
@@ -104,8 +104,8 @@ pnpm --filter @dev-agent/tools test -- --test-name-pattern="preview"
 
 Expected: FAIL，因为 filesystem 尚不认识 `preview` action。
 
-- [ ] **Step 3: 写 apply/rollback 失败测试。** 覆盖：单文件批准后 apply、修改文件后 apply 被 hash conflict 拒绝、两个文件中第二个 preimage 冲突时第一个也不变、批准后 rollback 恢复原始字节、新建文件 rollback 删除文件、目录 rollback 删除本次创建的空目录、postimage 冲突阻止 rollback。
-- [ ] **Step 4: 运行 apply/rollback focused test 确认失败。**
+- [x] **Step 3: 写 apply/rollback 失败测试。** 覆盖：单文件批准后 apply、修改文件后 apply 被 hash conflict 拒绝、两个文件中第二个 preimage 冲突时第一个也不变、批准后 rollback 恢复原始字节、新建文件 rollback 删除文件、目录 rollback 删除本次创建的空目录、postimage 冲突阻止 rollback。
+- [x] **Step 4: 运行 apply/rollback focused test 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/tools test -- --test-name-pattern="apply|rollback|atomic"
@@ -113,11 +113,11 @@ pnpm --filter @dev-agent/tools test -- --test-name-pattern="apply|rollback|atomi
 
 Expected: FAIL，因为 apply/rollback action 尚不存在。
 
-- [ ] **Step 5: 实现 preview。** 复用现有 `editFile`/`patchFile` 的唯一匹配和顺序规则，但把“读取 source → 计算 updated”抽成纯计算层；preview 读取所有目标的 bytes，记录 `beforeHash`，生成 after bytes、统一 diff 和 change-set id，结果写入进程内有上限的 change-set store（最多保留 64 个，淘汰最旧且未引用的记录）。preview 完成前不调用任何写 API。
-- [ ] **Step 6: 实现原子 apply。** apply 先一次性读取并校验所有 preimage hash、文件类型、change-set id 和未过期记录，再在目标文件同目录创建临时文件、写入 after bytes、关闭并 rename；目录操作在所有文件预检后执行。记录已应用 change set 的 preimage/postimage，发生 rename 或 mkdir 失败时按已完成路径逆序恢复并清理临时文件。
-- [ ] **Step 7: 实现 guarded rollback。** rollback 先校验所有当前 postimage hash，再用同样的临时文件+rename 恢复旧 bytes，删除原本不存在的文件，按逆序移除本次创建的空目录；任何冲突只返回错误，不触碰其他文件。
-- [ ] **Step 8: 暴露工具 schema 和公共类型。** 在 `parameters` 中增加 `preview/apply/rollback`, `changes`, `changeSetId` 描述；在 `packages/tools/src/index.ts` 导出 change-set 类型，旧 action schema 不改变。
-- [ ] **Step 9: 运行 tools 全套测试。**
+- [x] **Step 5: 实现 preview。** 复用现有 `editFile`/`patchFile` 的唯一匹配和顺序规则，但把“读取 source → 计算 updated”抽成纯计算层；preview 读取所有目标的 bytes，记录 `beforeHash`，生成 after bytes、统一 diff 和 change-set id，结果写入进程内有上限的 change-set store（最多保留 64 个，淘汰最旧且未引用的记录）。preview 完成前不调用任何写 API。
+- [x] **Step 6: 实现原子 apply。** apply 先一次性读取并校验所有 preimage hash、文件类型、change-set id 和未过期记录，再在目标文件同目录创建临时文件、写入 after bytes、关闭并 rename；目录操作在所有文件预检后执行。记录已应用 change set 的 preimage/postimage，发生 rename 或 mkdir 失败时按已完成路径逆序恢复并清理临时文件。
+- [x] **Step 7: 实现 guarded rollback。** rollback 先校验所有当前 postimage hash，再用同样的临时文件+rename 恢复旧 bytes，删除原本不存在的文件，按逆序移除本次创建的空目录；任何冲突只返回错误，不触碰其他文件。
+- [x] **Step 8: 暴露工具 schema 和公共类型。** 在 `parameters` 中增加 `preview/apply/rollback`, `changes`, `changeSetId` 描述；在 `packages/tools/src/index.ts` 导出 change-set 类型，旧 action schema 不改变。
+- [x] **Step 9: 运行 tools 全套测试。**
 
 ```bash
 pnpm --filter @dev-agent/tools test
@@ -125,7 +125,7 @@ pnpm --filter @dev-agent/tools test
 
 Expected: 新增 preview/apply/rollback 测试和原有 75 个基线测试全部通过。
 
-- [ ] **Step 10: Commit。**
+- [x] **Step 10: Commit。**
 
 ```bash
 git add packages/tools/src/filesystem.ts packages/tools/src/index.ts packages/tools/tests/filesystem-preview.test.ts packages/tools/tests/filesystem-changeset.test.ts
