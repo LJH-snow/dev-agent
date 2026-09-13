@@ -14,6 +14,25 @@ const DEFAULT_TYPECHECK_TIMEOUT_MS = 120_000;
 const DEFAULT_TEST_TIMEOUT_MS = 180_000;
 const DEFAULT_RUST_TIMEOUT_MS = 300_000;
 const DEFAULT_DIFF_CHECK_TIMEOUT_MS = 30_000;
+const FAST_TYPECHECK_TIMEOUT_MS = 60_000;
+const FAST_TEST_TIMEOUT_MS = 120_000;
+const FAST_RUST_TIMEOUT_MS = 60_000;
+const STRICT_WORKSPACE_TYPECHECK_TIMEOUT_MS = 300_000;
+const STRICT_WORKSPACE_TEST_TIMEOUT_MS = 600_000;
+
+export const VALIDATION_POLICIES = ["fast", "default", "strict"] as const;
+export type ValidationPolicy = (typeof VALIDATION_POLICIES)[number];
+
+export interface ValidationPolicyConfig {
+  readonly policy: ValidationPolicy;
+}
+
+/** The only validation-related settings accepted from a host config file. */
+export interface ValidationPolicySettings {
+  readonly validation?: ValidationPolicyConfig;
+  /** Backward-compatible flat spelling for hosts that prefer scalar settings. */
+  readonly validationPolicy?: ValidationPolicy;
+}
 
 export interface ValidationPlanTimeouts {
   readonly typecheckMs?: number;
@@ -27,8 +46,77 @@ export interface ValidationPlanContext {
   /** Set false when the workspace is not a Git checkout. */
   readonly isGitRepository?: boolean;
   readonly timeouts?: ValidationPlanTimeouts;
+  readonly policy?: ValidationPolicy;
   /** Optional fresh identity for an explicit validation rerun. */
   readonly validationId?: ValidationPrepareOptions["validationId"];
+}
+
+/** Parses a policy name and rejects any value outside the code-defined set. */
+export function parseValidationPolicy(value: unknown): ValidationPolicy {
+  if (typeof value !== "string") {
+    throw new Error("validation policy must be one of: fast, default, strict");
+  }
+  const normalized = value.trim().toLowerCase();
+  if ((VALIDATION_POLICIES as readonly string[]).includes(normalized)) {
+    return normalized as ValidationPolicy;
+  }
+  throw new Error(`unknown validation policy '${value}'. Use fast, default, or strict`);
+}
+
+/**
+ * Normalizes the validation portion of a host config. The nested object is
+ * intentionally allowlisted: no executable, shell, args, cwd, diff, or check
+ * definition can enter the planner through configuration.
+ */
+export function normalizeValidationPolicySettings(input: unknown): ValidationPolicySettings {
+  if (!isRecord(input)) {
+    return {};
+  }
+
+  let validation: ValidationPolicyConfig | undefined;
+  if (Object.prototype.hasOwnProperty.call(input, "validation")) {
+    const raw = input.validation;
+    if (!isRecord(raw)) {
+      throw new Error("validation config must be an object containing only policy");
+    }
+    const unsupported = Object.keys(raw).filter((key) => key !== "policy");
+    if (unsupported.length > 0) {
+      throw new Error(
+        `validation config only supports policy; unsupported fields: ${unsupported.join(", ")}`
+      );
+    }
+    if (!Object.prototype.hasOwnProperty.call(raw, "policy")) {
+      throw new Error("validation config requires a policy name");
+    }
+    validation = { policy: parseValidationPolicy(raw.policy) };
+  }
+
+  let validationPolicy: ValidationPolicy | undefined;
+  if (Object.prototype.hasOwnProperty.call(input, "validationPolicy")) {
+    validationPolicy = parseValidationPolicy(input.validationPolicy);
+  }
+
+  if (validation && validationPolicy && validation.policy !== validationPolicy) {
+    throw new Error("validation and validationPolicy must select the same policy");
+  }
+
+  return {
+    ...(validation === undefined ? {} : { validation }),
+    ...(validationPolicy === undefined ? {} : { validationPolicy }),
+  };
+}
+
+/** Resolves environment, flat config, nested config, then the safe default. */
+export function resolveValidationPolicy(
+  settings: ValidationPolicySettings | undefined = {},
+  env: Readonly<Record<string, string | undefined>> = process.env
+): ValidationPolicy {
+  const fromEnv = env.DEV_AGENT_VALIDATION_POLICY;
+  if (fromEnv !== undefined) {
+    return parseValidationPolicy(fromEnv);
+  }
+  const normalized = normalizeValidationPolicySettings(settings);
+  return normalized.validationPolicy ?? normalized.validation?.policy ?? "default";
 }
 
 interface PackageScope {
@@ -56,6 +144,8 @@ export function deriveValidationPlan(
   context: ValidationPlanContext
 ): ValidationPlan {
   const root = resolve(context.workingDirectory);
+  const policy = parseValidationPolicy(context.policy ?? "default");
+  const timeouts = resolveTimeouts(policy, context.timeouts);
   const normalized = normalizeReviewFiles(review, root);
   const validationId = context.validationId ?? createValidationId(review.changeSetId);
 
@@ -101,29 +191,16 @@ export function deriveValidationPlan(
   }
 
   const checks: ValidationCheck[] = [];
-  const timeouts = context.timeouts;
   const packageNames = [...packages.keys()].sort(compareLexically);
   for (const packageName of packageNames) {
     const scope = packages.get(packageName)!;
     if (scope.hasSource) {
-      checks.push(
-        packageCheck(
-          packageName,
-          "typecheck",
-          root,
-          timeout(timeouts?.typecheckMs, DEFAULT_TYPECHECK_TIMEOUT_MS)
-        )
-      );
+      checks.push(packageCheck(packageName, "typecheck", root, timeouts.typecheckMs));
     }
-    if (scope.hasTests || scope.hasSource) {
-      checks.push(
-        packageCheck(
-          packageName,
-          "test",
-          root,
-          timeout(timeouts?.testMs, DEFAULT_TEST_TIMEOUT_MS)
-        )
-      );
+    // Fast mode still validates a test-only change, but does not run a full
+    // package test suite after a source change.
+    if ((scope.hasTests || scope.hasSource) && (!scope.hasSource || policy !== "fast")) {
+      checks.push(packageCheck(packageName, "test", root, timeouts.testMs));
     }
   }
 
@@ -134,19 +211,43 @@ export function deriveValidationPlan(
         executable: "cargo",
         args: ["fmt", "--check"],
         cwd: rustCwd,
-        timeoutMs: timeout(timeouts?.rustMs, DEFAULT_RUST_TIMEOUT_MS),
+        timeoutMs: timeouts.rustMs,
+      })
+    );
+    if (policy !== "fast") {
+      checks.push(
+        check("rust:clippy", "Lint the Rust runtime", {
+          executable: "cargo",
+          args: ["clippy", "--all-targets", "--", "-D", "warnings"],
+          cwd: rustCwd,
+          timeoutMs: timeouts.rustMs,
+        }),
+        check("rust:test", "Test the Rust runtime", {
+          executable: "cargo",
+          args: ["test"],
+          cwd: rustCwd,
+          timeoutMs: timeouts.rustMs,
+        })
+      );
+    }
+  }
+
+  if (policy === "strict" && changedFiles.some((file) =>
+    packages.has(packageScopeFor(file.path)?.name ?? "") ||
+    hasRustPathOrWorkspaceConfig(file.path)
+  )) {
+    checks.push(
+      check("workspace:typecheck", "Typecheck the entire workspace", {
+        executable: "pnpm",
+        args: ["typecheck"],
+        cwd: root,
+        timeoutMs: STRICT_WORKSPACE_TYPECHECK_TIMEOUT_MS,
       }),
-      check("rust:clippy", "Lint the Rust runtime", {
-        executable: "cargo",
-        args: ["clippy", "--all-targets", "--", "-D", "warnings"],
-        cwd: rustCwd,
-        timeoutMs: timeout(timeouts?.rustMs, DEFAULT_RUST_TIMEOUT_MS),
-      }),
-      check("rust:test", "Test the Rust runtime", {
-        executable: "cargo",
+      check("workspace:test", "Test the entire workspace", {
+        executable: "pnpm",
         args: ["test"],
-        cwd: rustCwd,
-        timeoutMs: timeout(timeouts?.rustMs, DEFAULT_RUST_TIMEOUT_MS),
+        cwd: root,
+        timeoutMs: STRICT_WORKSPACE_TEST_TIMEOUT_MS,
       })
     );
   }
@@ -158,7 +259,7 @@ export function deriveValidationPlan(
         executable: "git",
         args: ["diff", "--check", "--", ...diffPaths],
         cwd: root,
-        timeoutMs: timeout(timeouts?.diffCheckMs, DEFAULT_DIFF_CHECK_TIMEOUT_MS),
+        timeoutMs: timeouts.diffCheckMs,
       })
     );
   }
@@ -265,8 +366,72 @@ function check(id: string, label: string, command: ValidationCommand): Validatio
   return { id, label, command };
 }
 
-function timeout(value: number | undefined, fallback: number): number {
-  return Number.isInteger(value) && value! > 0 ? value! : fallback;
+interface ResolvedValidationTimeouts {
+  readonly typecheckMs: number;
+  readonly testMs: number;
+  readonly rustMs: number;
+  readonly diffCheckMs: number;
+}
+
+function resolveTimeouts(
+  policy: ValidationPolicy,
+  requested: ValidationPlanTimeouts | undefined
+): ResolvedValidationTimeouts {
+  const defaults = policy === "fast"
+    ? {
+        typecheckMs: FAST_TYPECHECK_TIMEOUT_MS,
+        testMs: FAST_TEST_TIMEOUT_MS,
+        rustMs: FAST_RUST_TIMEOUT_MS,
+        diffCheckMs: DEFAULT_DIFF_CHECK_TIMEOUT_MS,
+      }
+    : {
+        typecheckMs: DEFAULT_TYPECHECK_TIMEOUT_MS,
+        testMs: DEFAULT_TEST_TIMEOUT_MS,
+        rustMs: DEFAULT_RUST_TIMEOUT_MS,
+        diffCheckMs: DEFAULT_DIFF_CHECK_TIMEOUT_MS,
+      };
+  return {
+    typecheckMs: boundedTimeout("typecheckMs", requested?.typecheckMs, defaults.typecheckMs, defaults.typecheckMs),
+    testMs: boundedTimeout("testMs", requested?.testMs, defaults.testMs, defaults.testMs),
+    rustMs: boundedTimeout("rustMs", requested?.rustMs, defaults.rustMs, defaults.rustMs),
+    diffCheckMs: boundedTimeout(
+      "diffCheckMs",
+      requested?.diffCheckMs,
+      defaults.diffCheckMs,
+      defaults.diffCheckMs
+    ),
+  };
+}
+
+function boundedTimeout(
+  name: keyof ValidationPlanTimeouts,
+  value: number | undefined,
+  fallback: number,
+  maximum: number
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`invalid validation timeout ${name}: value must be a positive integer`);
+  }
+  if (value > maximum) {
+    throw new Error(`validation timeout ${name} exceeds maximum ${maximum}ms`);
+  }
+  return value;
+}
+
+function hasRustPathOrWorkspaceConfig(path: string): boolean {
+  return isRustRuntimePath(path) ||
+    path === "package.json" ||
+    path === "pnpm-lock.yaml" ||
+    path === "pnpm-workspace.yaml" ||
+    /^tsconfig(?:\.[^/]+)?\.json$/i.test(path) ||
+    path.startsWith("configs/");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function planWithoutChecks(

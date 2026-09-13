@@ -36,7 +36,12 @@ import {
   createDefaultTools,
   createValidationRunner,
   deriveValidationPlan,
+  normalizeValidationPolicySettings,
+  parseValidationPolicy,
+  resolveValidationPolicy,
   FilesystemTool,
+  type ValidationPolicy,
+  type ValidationPolicySettings,
 } from "@dev-agent/tools";
 import { McpStdioClient, type McpClientConfig } from "@dev-agent/mcp";
 
@@ -78,6 +83,7 @@ export interface ChatSessionOptions {
   readonly maxContextChars?: number;
   readonly summarizeContext?: boolean;
   readonly summaryMaxChars?: number;
+  readonly validationPolicy?: ValidationPolicy;
   readonly approvalMode?: DesktopApprovalMode;
   readonly rustBinaryPath?: string;
   /** Overrides where the session history is stored. */
@@ -109,6 +115,10 @@ export class ChatSession {
   private readonly sessionId: string;
 
   constructor(options: ChatSessionOptions = {}) {
+    const config = loadConfigFile();
+    const validationPolicy = options.validationPolicy === undefined
+      ? resolveValidationPolicy(config)
+      : parseValidationPolicy(options.validationPolicy);
     this.model = createProvider();
     const rustBinaryPath = options.rustBinaryPath ?? process.env.DEV_AGENT_RUST_BINARY;
     this.executor = createExecutor({ rustBinaryPath });
@@ -118,6 +128,7 @@ export class ChatSession {
         deriveValidationPlan(review, {
           workingDirectory: context.workingDirectory,
           isGitRepository: existsSync(join(context.workingDirectory, ".git")),
+          policy: validationPolicy,
           validationId: options?.validationId,
         }),
       run: (plan, runOptions) => validationRunner.run(plan, runOptions),
@@ -146,7 +157,6 @@ export class ChatSession {
       options.summarizeContext ?? parseBoolean(process.env.DEV_AGENT_SUMMARIZE_CONTEXT);
     this.summaryMaxChars =
       options.summaryMaxChars ?? parsePositiveInt(process.env.DEV_AGENT_SUMMARY_MAX_CHARS);
-    const config = loadConfigFile();
     this.approvalMode = resolveApprovalMode(options.approvalMode, config.approvalMode);
     this.compiledApproval = compileApprovalConfig(config.approval);
     this.pricing = config.pricing;
@@ -526,7 +536,7 @@ function reviewAction(request: ApprovalRequest): string {
   return "write";
 }
 
-interface DesktopConfigFile {
+interface DesktopConfigFile extends ValidationPolicySettings {
   readonly approvalMode?: DesktopApprovalMode;
   readonly approval?: { readonly allow?: readonly string[]; readonly deny?: readonly string[] };
   readonly pricing?: PriceTable;
@@ -597,17 +607,29 @@ function assignMcpPrefixes(names: readonly (string | undefined)[]): readonly str
 
 /** Reads the shared sections of ~/.dev-agent/config.json. */
 function loadConfigFile(): DesktopConfigFile {
+  let raw: string;
   try {
-    const raw = readFileSync(join(homedir(), ".dev-agent", "config.json"), "utf8");
-    const parsed = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null) {
-      return parsed as DesktopConfigFile;
-    }
-    return {};
+    raw = readFileSync(join(homedir(), ".dev-agent", "config.json"), "utf8");
   } catch {
-    // A missing or malformed config just means no extra rules.
     return {};
   }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // A malformed config just means no extra rules, matching the old behavior.
+    return {};
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {};
+  }
+  // Validation policy fields are normalized and allowlisted. Errors here are
+  // intentional: a command/argument injection must not be silently ignored.
+  return {
+    ...(parsed as Record<string, unknown>),
+    ...normalizeValidationPolicySettings(parsed),
+  } as DesktopConfigFile;
 }
 
 function createProvider(): ModelProvider {

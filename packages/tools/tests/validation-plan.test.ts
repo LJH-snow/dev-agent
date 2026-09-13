@@ -172,3 +172,75 @@ test("an explicit validation id is preserved for a trusted rerun", () => {
   assert.equal(plan.validationId, "validation:cs-rerun:attempt-1");
   assert.equal(plan.changeSetId, "cs-rerun");
 });
+
+
+test("fast policy keeps only the quickest relevant checks", () => {
+  const plan = deriveValidationPlan(
+    review("cs-fast", [
+      { path: "packages/tools/src/filesystem.ts", before: "a", after: "b" },
+      { path: "runtime/rust/src/lib.rs", before: "a", after: "b" },
+      { path: "docs/guide.md", before: "a", after: "b" },
+    ]),
+    { ...context, policy: "fast" }
+  );
+
+  assert.equal(plan.status, "ready");
+  assert.deepEqual(plan.checks.map((check) => check.id), [
+    "package:@dev-agent/tools:typecheck",
+    "rust:fmt",
+    "workspace:diff-check",
+  ]);
+  assert.equal(plan.checks.some((check) => check.id.endsWith(":test")), false);
+  assert.equal(plan.checks.some((check) => check.id === "rust:clippy"), false);
+  assert.equal(plan.checks.some((check) => check.id === "rust:test"), false);
+});
+
+test("strict policy adds bounded workspace checks to relevant changes", () => {
+  const plan = deriveValidationPlan(
+    review("cs-strict", [
+      { path: "packages/tools/src/filesystem.ts", before: "a", after: "b" },
+      { path: "package.json", before: "a", after: "b" },
+    ]),
+    { ...context, policy: "strict" }
+  );
+
+  assert.equal(plan.status, "ready");
+  assert.deepEqual(plan.checks.map((check) => check.id), [
+    "package:@dev-agent/tools:typecheck",
+    "package:@dev-agent/tools:test",
+    "workspace:typecheck",
+    "workspace:test",
+    "workspace:diff-check",
+  ]);
+  assert.deepEqual(plan.checks.find((check) => check.id === "workspace:typecheck")?.command, {
+    executable: "pnpm",
+    args: ["typecheck"],
+    cwd: "/workspace/project",
+    timeoutMs: 300_000,
+  });
+  assert.deepEqual(plan.checks.find((check) => check.id === "workspace:test")?.command, {
+    executable: "pnpm",
+    args: ["test"],
+    cwd: "/workspace/project",
+    timeoutMs: 600_000,
+  });
+});
+
+test("unknown policy and invalid timeout values are rejected before planning", () => {
+  const input = review("cs-policy-validation", [
+    { path: "packages/tools/src/filesystem.ts", before: "a", after: "b" },
+  ]);
+
+  assert.throws(
+    () => deriveValidationPlan(input, { ...context, policy: "unsafe" as any }),
+    /unknown validation policy/i
+  );
+  assert.throws(
+    () => deriveValidationPlan(input, { ...context, timeouts: { typecheckMs: 120_001 } }),
+    /timeout.*(maximum|limit)|exceeds/i
+  );
+  assert.throws(
+    () => deriveValidationPlan(input, { ...context, timeouts: { testMs: 0 } }),
+    /timeout.*positive|invalid timeout/i
+  );
+});

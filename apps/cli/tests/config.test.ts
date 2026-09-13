@@ -13,6 +13,7 @@ import {
   resolveRustBinaryPath,
   resolveSummarizeContext,
   resolveSummaryMaxChars,
+  resolveValidationPolicy,
 } from "../dist/config.js";
 
 test("parseConfig returns parsed object for valid JSON config", () => {
@@ -171,4 +172,27 @@ test("parseApprovalMode normalises known modes and rejects the rest", () => {
   assert.equal(resolveApprovalMode({ approvalMode: "review-writes" }, {}), "review-writes");
   assert.equal(parseApprovalMode("nope"), undefined);
   assert.equal(parseApprovalMode(undefined), undefined);
+});
+
+
+test("validation policy config accepts only predefined policy names", () => {
+  assert.equal(parseConfig('{"validation":{"policy":"fast"}}').validation?.policy, "fast");
+  assert.equal(parseConfig('{"validationPolicy":"strict"}').validationPolicy, "strict");
+  assert.equal(resolveValidationPolicy({ validation: { policy: "default" } }, {}), "default");
+  assert.equal(
+    resolveValidationPolicy({}, { DEV_AGENT_VALIDATION_POLICY: "FAST" }),
+    "fast"
+  );
+  assert.throws(
+    () => parseConfig('{"validation":{"policy":"unsafe"}}'),
+    /unknown validation policy/i
+  );
+  assert.throws(
+    () => parseConfig('{"validation":{"policy":"fast","executable":"sh"}}'),
+    /validation.*(only|unsupported|unknown)|executable/i
+  );
+  assert.throws(
+    () => parseConfig('{"validation":{"policy":"fast","args":["-c","echo injected"]}}'),
+    /validation.*(only|unsupported|unknown)|args/i
+  );
 });

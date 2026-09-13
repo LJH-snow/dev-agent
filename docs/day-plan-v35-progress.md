@@ -6,10 +6,11 @@
 
 ## 当前结论
 
-v35 的前两项基础能力已经完成：
+v35 的前三项基础能力已经完成：
 
 1. approved apply 产生的 validation result 会作为结构化 evidence 写入 session memory，并可在后续查询、CLI JSON 和 Desktop 导出/历史中读取。
 2. applied change set 可以通过显式入口重跑 trusted validation。重跑不会接收模型提供的命令，不会自动修复或回滚文件，并会为每一次重跑生成独立 attempt id。
+3. validation policy 已限制为代码内的 `fast`、`default`、`strict` 三个选项，且 planner 命令和 timeout 都有安全边界。
 
 ## 已完成
 
@@ -37,18 +38,18 @@ v35 的前两项基础能力已经完成：
 - Desktop HTTP 入口：`POST /api/changesets/validate`；验证卡提供 rerun 按钮。
 - rerun 失败、取消、超时或 blocked 不会写回用户文件；postimage 冲突以 blocked evidence 呈现。
 - 验证门槛：agent-core **92/92**、tools **112/112**、Desktop **68/68**、CLI **108/108**、inline script **1/1**。
-
-## 当前未完成
+- 已完成提交：`c672859`。
 
 ### Task 3：受限 validation policy
 
-下一步实现三个代码内预定义 policy：
+- planner 支持三个代码内预定义 policy：`fast`、`default`、`strict`。
+- `fast` 对源码变更只运行相关 typecheck，对 test-only 变更保留对应 test，Rust 只运行 fmt；`default` 保持 v34 的 changed-path checks；`strict` 在相关 package 或 workspace 配置变化时增加固定的 `pnpm typecheck` 和 `pnpm test`。
+- timeout 只允许正整数，并受每类 check 的代码内上限约束；workspace strict timeout 也是固定值。
+- CLI/Desktop 配置只允许选择 policy 名称；validation 配置中的 executable、shell、args、cwd、diff/check 定义等注入字段会被拒绝。
+- 验证：agent-core **92/92**、tools **115/115**、Desktop **68/68**、CLI **109/109**，typecheck 和 `git diff --check` 通过。
+- 已完成提交：本轮 Task 3 实现待完成全量回归后再推送发布记录。
 
-- `fast`：仅运行最小且快速的相关检查，适用于交互反馈。
-- `default`：保持当前按 changed paths 派生的 package/Rust/diff checks。
-- `strict`：在安全上限内补充更完整的 package 与 workspace 检查。
-
-共同约束：policy 只能选择固定 check id 和固定 timeout 上限；配置只能声明 policy 名称，不能声明 executable、shell、args、任意工作目录或 diff 文本。未知 policy、非法 timeout 和注入字段都必须拒绝。
+## 当前未完成
 
 ### Task 4：全量回归、文档和发布
 

@@ -48,6 +48,7 @@ import {
   resolveRustBinaryPath,
   resolveSummarizeContext,
   resolveSummaryMaxChars,
+  resolveValidationPolicy,
   type ApprovalMode,
   type CliConfig,
 } from "./config.js";
@@ -70,6 +71,7 @@ import {
   createValidationRunner,
   deriveValidationPlan,
   FilesystemTool,
+  type ValidationPolicy,
 } from "@dev-agent/tools";
 
 const version = "0.1.0";
@@ -369,7 +371,7 @@ export async function main(argv: string[]): Promise<void> {
       tools.register(tool);
     }
     const filesystem = tools.get("filesystem");
-    const validation = createCliValidationAdapter(executor);
+    const validation = createCliValidationAdapter(executor, resolveValidationPolicy(config));
     const approval = buildApprovalPolicy(
       approvalMode,
       questionBox,
@@ -1173,13 +1175,17 @@ interface UsageCostOptions {
   readonly pricing?: PriceTable;
 }
 
-function createCliValidationAdapter(executor: ReturnType<typeof createExecutor>): ValidationAdapter {
+function createCliValidationAdapter(
+  executor: ReturnType<typeof createExecutor>,
+  policy: ValidationPolicy = "default"
+): ValidationAdapter {
   const runner = createValidationRunner(executor);
   return {
     prepare: (review, context, options) =>
       deriveValidationPlan(review, {
         workingDirectory: context.workingDirectory,
         isGitRepository: existsSync(join(context.workingDirectory, ".git")),
+        policy,
         validationId: options?.validationId,
       }),
     run: (plan, options) => runner.run(plan, options),

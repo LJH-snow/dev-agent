@@ -3,6 +3,12 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import type { PriceTable } from "@dev-agent/model";
+import {
+  normalizeValidationPolicySettings,
+  resolveValidationPolicy as resolveSharedValidationPolicy,
+  type ValidationPolicy,
+  type ValidationPolicySettings,
+} from "@dev-agent/tools";
 
 export interface CliConfig {
   readonly defaultProvider?: string;
@@ -11,6 +17,8 @@ export interface CliConfig {
   readonly maxContextChars?: number;
   readonly summarizeContext?: boolean;
   readonly summaryMaxChars?: number;
+  readonly validation?: ValidationPolicySettings["validation"];
+  readonly validationPolicy?: ValidationPolicy;
   /** USD-per-million-token prices keyed by model-name prefix. */
   readonly pricing?: PriceTable;
   readonly approvalMode?: ApprovalMode;
@@ -28,15 +36,19 @@ export interface CliConfig {
 }
 
 export function parseConfig(raw: string): CliConfig {
+  let parsed: unknown;
   try {
-    const parsed = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null) {
-      return parsed as CliConfig;
-    }
-    return {};
+    parsed = JSON.parse(raw);
   } catch {
     return {};
   }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {};
+  }
+  return {
+    ...(parsed as Record<string, unknown>),
+    ...normalizeValidationPolicySettings(parsed),
+  } as CliConfig;
 }
 
 export function loadConfig(): CliConfig {
@@ -45,12 +57,15 @@ export function loadConfig(): CliConfig {
     return {};
   }
 
+  let raw: string;
   try {
-    const raw = readFileSync(configPath, "utf8");
-    return parseConfig(raw);
+    raw = readFileSync(configPath, "utf8");
   } catch {
     return {};
   }
+  // Structural validation errors in the validation section intentionally
+  // propagate instead of silently disabling the safety policy.
+  return parseConfig(raw);
 }
 
 type Env = Readonly<Record<string, string | undefined>>;
@@ -201,4 +216,12 @@ export function resolveApprovalMode(
   }
   const fromConfig = parseApprovalMode(config.approvalMode);
   return fromConfig ?? "allow";
+}
+
+/** Resolves the validation policy using the shared, allowlisted policy parser. */
+export function resolveValidationPolicy(
+  config: CliConfig = {},
+  env: Env = process.env
+): ValidationPolicy {
+  return resolveSharedValidationPolicy(config, env);
 }

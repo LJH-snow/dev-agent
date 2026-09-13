@@ -95,16 +95,26 @@ Expected: 编译或测试失败，因为 `ValidationRecord`、`recordValidation`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/src/index.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/server.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/chat-session.ts`
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/tools/src/filesystem.ts`
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/tools/src/validation-plan.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/packages/agent-core/tests/validation-lifecycle.test.ts`
+- Test: `/Users/Admin/Desktop/dev-agent/packages/tools/tests/filesystem-changeset.test.ts`
+- Test: `/Users/Admin/Desktop/dev-agent/packages/tools/tests/validation-plan.test.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/validation.test.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/validation.test.ts`
 
-- [ ] **Step 1: 写失败测试。** 覆盖按 `changeSetId` 找不到、已 rollback、postimage 不匹配、工作区快照变化、并发 session 和取消时的 rerun；成功 rerun 必须生成新的 `createValidationAttemptId`，但仍关联原 change set。
-- [ ] **Step 2: 运行 focused test 确认失败。**
-- [ ] **Step 3: 实现显式入口。** CLI 提供明确的 rerun 操作，Desktop 提供对应 HTTP/SSE 流程；入口只接收 change-set id，通过现有 change-set store/guard 确认状态，再调用可信 planner/runner。
-- [ ] **Step 4: 验证失败、冲突和取消语义。** apply 已完成但 rerun 失败仍保留文件 bytes；不得用 rerun 覆盖、修复或回滚用户文件。
-- [ ] **Step 5: 运行 focused tests 和 typecheck。**
-- [ ] **Step 6: Commit。**
+- [x] **Step 1: 写失败测试。** 覆盖按 `changeSetId` 找不到、已 rollback、postimage 不匹配、工作区快照变化、并发 session 和取消时的 rerun；成功 rerun 必须生成新的 `createValidationAttemptId`，但仍关联原 change set。
+- [x] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 3: 实现显式入口。** CLI 提供 `:validate <changeSetId>`，Desktop 提供 `POST /api/changesets/validate` 和验证卡按钮；入口只接收 change-set id，通过现有 change-set store/guard 确认状态，再调用可信 planner/runner。
+- [x] **Step 4: 验证失败、冲突和取消语义。** apply 已完成但 rerun 失败仍保留文件 bytes；不得用 rerun 覆盖、修复或回滚用户文件；postimage 冲突以 `blocked` evidence 返回。
+- [x] **Step 5: 运行 focused tests 和 typecheck。**
+- [x] **Step 6: Commit。**
+
+**Task 2 verification record (2026-09-13):**
+
+- RED：核心首次编译因 `runValidationAttempt`、可选 `prepare` options 和 `withAppliedChangeSet` 尚未存在而失败；CLI 入口测试还暴露了模块导入时不应自动启动交互主循环的问题。
+- GREEN：agent-core **92/92**、tools **112/112**、Desktop **68/68**、CLI **108/108**、Desktop inline script syntax **1/1**；四个包 typecheck 和 `git diff --check` 通过。
+- 安全边界：rerun 使用新 attempt id，planner/runner identity 不匹配会变成 `blocked`；change-set guard 在回调前后检查 postimage，并与 rollback 串行；失败、取消、timeout 和 blocked 不自动 rollback 或写回文件；unknown/prepared/rolled-back/in-flight change set 返回明确错误。
 
 ## Task 3：增加受限 validation policy
 
@@ -117,11 +127,18 @@ Expected: 编译或测试失败，因为 `ValidationRecord`、`recordValidation`
 - Test: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/config.test.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/validation.test.ts`
 
-- [ ] **Step 1: 写失败测试。** 覆盖 `default`、`fast`、`strict` 三个预定义 policy 的 check 集合、timeout 上限、未知 policy 拒绝、超出上限拒绝，以及配置中命令/参数注入被拒绝。
-- [ ] **Step 2: 运行 focused test 确认失败。**
-- [ ] **Step 3: 实现 policy 映射。** policy 只能选择代码内预定义的 check id 和合法 timeout；planner 继续从真实 changed paths 派生命令，不读取配置中的 executable、shell 或 args。
-- [ ] **Step 4: 运行 planner、CLI 和 Desktop focused tests。**
-- [ ] **Step 5: Commit。**
+- [x] **Step 1: 写失败测试。** 覆盖 `default`、`fast`、`strict` 三个预定义 policy 的 check 集合、timeout 上限、未知 policy 拒绝、超出上限拒绝，以及配置中命令/参数注入被拒绝。
+- [x] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 3: 实现 policy 映射。** policy 只能选择代码内预定义的 check id 和合法 timeout；planner 继续从真实 changed paths 派生命令，不读取配置中的 executable、shell 或 args。
+- [x] **Step 4: 运行 planner、CLI 和 Desktop focused tests。**
+- [x] **Step 5: Commit。**
+
+**Task 3 verification record (2026-09-13):**
+
+- RED：planner context 尚未接受 policy，CLI config 也没有 validation policy 字段或 resolver；新增测试先按预期编译失败。
+- GREEN：agent-core **92/92**、tools **115/115**、Desktop **68/68**、CLI **109/109**；四个包 typecheck 通过，`git diff --check` 通过。
+- 策略：`fast` 对源码变更只运行相关 typecheck，对 test-only 变更保留对应 test，Rust 只做 fmt；`default` 保持 v34 的 changed-path checks；`strict` 在相关 package/workspace 配置变化时增加固定的 `pnpm typecheck` 和 `pnpm test`。
+- 安全边界：policy 只接受 `fast/default/strict`；timeout 必须是正整数且不超过代码内上限；配置 validation 段只允许 `policy`，`executable`、`shell`、`args`、`cwd`、diff/check 定义等字段会被拒绝；所有命令仍由 planner 固定生成。
 
 ## Task 4：全量回归、文档和发布
 
