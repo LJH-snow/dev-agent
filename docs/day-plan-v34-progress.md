@@ -6,7 +6,7 @@
 
 - 当前阶段：Task 6 已完成，v34 文档、全量回归与发布已闭环
 - v33 release：`4ee7ab7 docs: record v33 review workflow`，已推送到 `origin/main`
-- 当前分支：`main`；Task 0–6 已完成，最终提交已推送到 `origin/main`，工作区干净
+- 当前分支：`main`；Task 0–6 已完成，v34 release 提交 `a76435e` 已推送到 `origin/main`，工作区干净
 - v34 全量验证：TypeScript **543/543**、Rust unit/doc **46/46**、真实运行时集成 **10/10** 通过
 
 ## 阶段目标
@@ -26,7 +26,7 @@
 | Task 3 | 已完成 | RED 因 AgentLoop 无 validation 注入点而失败；agent-core **85/85** 通过；approved apply 后才规划/运行验证，失败不伪装 apply 失败 | `4a80cd6 feat(agent): validate applied change sets` |
 | Task 4 | 已完成 | RED 因 CLI JSON 尚未包含 `validations` 而失败；CLI **105/105** 通过；human 输出、JSON pass/fail/skipped、非 Git 安全跳过和 v33 review-writes 组合通过 | `995a925 feat(cli): expose change-set validation results` |
 | Task 5 | 已完成 | RED 因 ChatSession/UI 尚未接入 validation 而失败；agent-core **86/86**、Desktop **65/65** 通过；SSE 顺序、取消 blocked、session 隔离、validation 与 Undo 共存通过；inline script syntax check 通过 | `66d4b83 feat(desktop): stream change-set validation results` |
-| Task 6 | 已完成 | 文档、全量回归和人工安全 review 通过；TypeScript **543/543**、Rust unit/doc **46/46**、real-binary integration **10/10**、Desktop inline script **1/1** 通过；已推送 | 见最终 `git log` |
+| Task 6 | 已完成 | 文档、全量回归和人工安全 review 通过；TypeScript **543/543**、Rust unit/doc **46/46**、real-binary integration **10/10**、Desktop inline script **1/1** 通过；已推送 | `a76435e docs: close v34 validation rollout` |
 
 ### Task 0：建立 v34 进度账本和验证基线（已完成）
 
@@ -82,7 +82,7 @@
 - 测试统计：TypeScript **543/543**（model 54、code-intelligence 30、MCP 49、executor 48、agent-core 86、tools 106、Desktop 65、CLI 105）；Rust unit/doc **46/46**（library 43、binary 3、doctest 0）；real-binary integration **10/10**。
 - 文档：更新根 README、tools/CLI/Desktop README、CHANGELOG，并记录 validation DTO、默认检查集合、结构化命令、失败/取消/回滚语义、CLI `validations` 和 Desktop `validation` SSE/UI。
 - 人工 review：确认 planner 只生成 allowlisted structured commands，不执行模型命令或 diff 文本；validation failure 保留已应用 bytes 且不自动 rollback；abort 通过共享取消链路收敛；MCP 无交互路径继续拒绝写入；v33 review diff、preimage/postimage guard 和 Undo 保持兼容。
-- 提交与发布：Task 6 文档提交已推送到 `origin/main`；最终 hash 以 `git log --oneline --decorate` 为准。
+- 提交与发布：v34 release 提交 `a76435e docs: close v34 validation rollout` 已推送到 `origin/main`；本账本的 hash 修订会作为后续 docs 提交单独记录。
 
 ## 错误与卡点
 
