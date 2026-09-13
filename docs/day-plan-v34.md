@@ -77,17 +77,18 @@ Expected: FAIL，因为 validation DTO、planner 和公共导出不存在。
 **Files:**
 - Modify/Create: `/Users/Admin/Desktop/dev-agent/packages/tools/src/validation-runner.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/packages/tools/src/index.ts`
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/validation.ts`
 - Tests: `/Users/Admin/Desktop/dev-agent/packages/tools/tests/validation-runner.test.ts`
 
 **Interfaces:**
 - `createValidationRunner(executor, options)`：只运行 planner 生成的 check，统一 capture bounded stdout/stderr、exit code、duration、timeout/abort 状态。
 - 每个 check 有独立结果；一个 check 失败默认停止后续高成本 check，并将未运行项标记 `skipped`，而不是丢失信息。
 
-- [ ] **Step 1: 写失败测试。** 覆盖 pass/fail、超时会杀掉进程、AbortSignal、输出上限、cwd、命令参数不可注入、失败后的 skipped 和空 plan。
-- [ ] **Step 2: 运行 focused test 确认失败。**
-- [ ] **Step 3: 用现有 executor 实现 runner。** 不重复实现进程组终止、Rust cancel 或 quota；把 executor 错误归一化为 check result。
-- [ ] **Step 4: 运行 tools 全套测试。**
-- [ ] **Step 5: Commit。**
+- [x] **Step 1: 写失败测试。** 覆盖 pass/fail、超时会杀掉进程、AbortSignal、输出上限、cwd、命令参数不可注入、失败后的 skipped 和空 plan。
+- [x] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 3: 用现有 executor 实现 runner。** 不重复实现进程组终止、Rust cancel 或 quota；把 executor 错误归一化为 check result。
+- [x] **Step 4: 运行 tools 全套测试。**
+- [x] **Step 5: Commit。**
 
 ### Task 3: 将验证接入 AgentLoop 的 apply 生命周期
 

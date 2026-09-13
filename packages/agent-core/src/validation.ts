@@ -38,6 +38,7 @@ export interface ValidationCheckResult extends ValidationCheck {
   readonly exitCode?: number;
   readonly output?: string;
   readonly error?: string;
+  readonly reason?: string;
 }
 
 /** The complete outcome returned to a caller after validation. */

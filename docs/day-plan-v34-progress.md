@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 当前阶段：Task 2，实施受约束 runner、超时和取消
+- 当前阶段：Task 3，将验证接入 AgentLoop 的 apply 生命周期
 - v33 release：`4ee7ab7 docs: record v33 review workflow`，已推送到 `origin/main`
 - 工作区基线：v33 release 后代码相对 `origin/main` 无修改；Task 0 计划与账本已提交
 - v33 最近一次验证：TypeScript 512/512、Rust unit/doc 46/46、真实运行时集成 10/10 通过
@@ -22,7 +22,7 @@
 |------|------|----------|------|
 | Task 0 | 已完成 | structure check 通过；build/typecheck 通过；TypeScript **512/512**、Rust unit/doc **46/46**、real-binary integration **10/10** 通过 | `036c0b7 docs: add v34 validation plan` |
 | Task 1 | 已完成 | RED 因 validation 导出/planner 不存在而失败；agent-core **80/80**、tools **98/98** 通过；planner 仅输出结构化 allowlisted commands | `82adf30 feat(validation): add change-set validation plans` |
-| Task 2 | 未开始 | - | - |
+| Task 2 | 已完成 | RED 因 runner 导出不存在而失败；tools **105/105**、agent-core **80/80** 通过；runner 复用 executor 并支持 bounded output/abort/stop-on-failure | `eb880b6 feat(validation): run bounded change-set checks` |
 | Task 3 | 未开始 | - | - |
 | Task 4 | 未开始 | - | - |
 | Task 5 | 未开始 | - | - |
@@ -42,6 +42,14 @@
 - 覆盖：单/跨 package TypeScript、test-only、Rust fmt/clippy/test、docs/config `git diff --check`、无变化/未知路径 skipped、重复/越界路径 blocked、稳定排序和 diff 文本不可进入命令；实际 change-set 的绝对路径会先归一化到 working directory。
 - 实现：agent-core 新增 validation DTO、结构化 command、runner contract 和 deterministic id；tools 新增路径归一化 planner，固定 `pnpm`/`cargo`/`git` 可执行文件与参数，并补上 workspace dependency/lockfile。
 - 提交：`82adf30 feat(validation): add change-set validation plans`。
+
+### Task 2：实现受约束 runner、超时和取消（已完成）
+
+- RED：首次 focused test 编译失败，tools 尚未导出 `createValidationRunner` 和 `ValidationRunnerOptions`，确认 runner contract 尚不存在。
+- GREEN：`pnpm --filter @dev-agent/agent-core typecheck` 与全套测试 **80/80** 通过；tools typecheck 与全套测试 **105/105** 通过。
+- 覆盖：成功/失败、失败后 skipped、executor timeout、运行前/运行中 abort、cwd/timeout/signal/maxOutputBytes 透传、UTF-8 bounded output、空/blocked plan，以及结构化 args 不经 shell 拼接。
+- 实现：`createValidationRunner` 顺序运行 planner 生成的 command；复用现有 Executor 的进程终止、Rust cancel 和 quota；将非零退出、timeout、executor error、abort 归一化为 check result，并保留可审计 reason。
+- 提交：`eb880b6 feat(validation): run bounded change-set checks`。
 
 ## 错误与卡点
 
