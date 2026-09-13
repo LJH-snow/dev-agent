@@ -29,7 +29,7 @@ v37 计划已建立，当前从 Task 0 开始。v36 已经让 applied change-set
 - [x] `InMemoryMemory` / `FileMemory` 默认保留 100 条 validation 和 100 条 change-set evidence；超过 change-set 软上限时仍保护全部 `applied` records。
 - [x] 增加 `pruneEvidence()`、`markChangeSetRolledBack()` 和防止 rolled-back evidence 重新激活的状态约束；清理只改 memory 元数据。
 - [x] 聚焦回归：agent-core **105/105** 通过；非法上限、旧 memory、并发写入和跨实例持久化均覆盖。
-- [x] 已完成提交：待本次提交完成后补入。
+- [x] 已完成提交：`8bfecbf`。
 
 ### Task 2：Undo 状态和显式 cleanup 生命周期
 
