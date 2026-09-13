@@ -50,10 +50,10 @@
 
 **Produces:** 一个版本化、不可变、字段显式 allowlist 的 evidence audit snapshot。
 
-- [ ] **Step 1: 写 RED 测试。** 覆盖稳定排序、相对路径校验、敏感字段排除、旧 memory 空导出和输入对象不被修改。
-- [ ] **Step 2: 写最小实现。** projection 只读取已持久化 evidence 和 summary，不改变 memory，不触碰 workspace。
-- [ ] **Step 3: 聚焦回归。** agent-core 与 tools 的相关测试全部通过。
-- [ ] **Step 4: 提交。**
+- [x] **Step 1: 写 RED 测试。** 覆盖稳定排序、相对路径校验、敏感字段排除、旧 memory 空导出和输入对象不被修改。
+- [x] **Step 2: 写最小实现。** `createEvidenceAuditExport()` 只读取已提供的 evidence 和 summary，显式重建 DTO，不改变 memory，不触碰 workspace。
+- [x] **Step 3: 聚焦回归。** agent-core **109/109** 通过，包含 projection 的 allowlist、排序、路径和 legacy 空快照测试。
+- [x] **Step 4: 提交。** `9e3beac`。
 
 ## Task 2：CLI/Desktop 只读导出入口
 

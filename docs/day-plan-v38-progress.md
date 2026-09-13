@@ -21,7 +21,7 @@ v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 已建�
 - [x] 新建 `docs/day-plan-v38.md`，明确审计投影、before-image 设计评审、长期回归矩阵和验收标准。
 - [x] 新建 `docs/evidence-audit-design-v38.md` 并完成 Task 0 评审，提交 `636947c`。
 
-## 进行中
+## 已完成
 
 ### Task 0：before-image 与导出边界设计评审
 
@@ -30,9 +30,21 @@ v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 已建�
 - [x] 为 projection、CLI、Desktop 和长期回归矩阵写 RED 测试契约。
 - [x] 设计记录：`docs/evidence-audit-design-v38.md`，提交 `636947c`。
 
+### Task 1：Agent-core metadata-only audit projection
+
+- [x] RED 测试覆盖稳定排序、相对路径校验、敏感字段排除、legacy 空 evidence 和输入不可变性。
+- [x] 新增版本化 `EvidenceAuditExport` projection，显式排除 command、args、cwd、output、error、reason、workingDirectory、diff、patch 和 before-image。
+- [x] 聚焦回归：agent-core **109/109** 通过；projection 代码不读取或写入 working directory。
+- [x] 实现提交：`9e3beac`。
+
+## 进行中
+
+### Task 2：CLI/Desktop 只读导出入口
+
+- [ ] 为显式命令和 API 写 RED 测试，验证 schema 一致、session 隔离、非法输入和无 workspace 副作用。
+
 ## 后续任务
 
-- [ ] Task 1：Agent-core metadata-only audit projection。
 - [ ] Task 2：CLI/Desktop 只读导出入口。
 - [ ] Task 3：长期 evidence 回归矩阵。
 - [ ] Task 4：全量验证、文档和发布。
