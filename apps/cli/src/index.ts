@@ -1123,9 +1123,6 @@ async function interactive(
   // on the same stdin.
   questionBox.ask = (prompt) => rl.question(prompt);
 
-  console.log(
-    "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':validate <changeSetId>' to rerun trusted checks or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
-  );
   let interrupted = false;
   let abort: AbortController | undefined;
   // Closing the readline interface does not settle a pending `question()` --
@@ -1147,6 +1144,11 @@ async function interactive(
     wakeOnInterrupt?.();
   };
   process.on("SIGINT", onSigint);
+  // Publish readiness only after the handler is installed. stdout is piped in
+  // callers, so the banner can be observed before a later listener setup.
+  console.log(
+    "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':validate <changeSetId>' to rerun trusted checks or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
+  );
 
   // Each prompt continues from the previous run's context, so `turns` and
   // `usage` accumulate across the session instead of restarting every time.
