@@ -112,14 +112,14 @@ Expected: FAIL，因为 validation DTO、planner 和公共导出不存在。
 
 **Files:**
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/src/index.ts`
-- Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/src/config.ts`
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/tools/src/validation-plan.ts`
 - Tests: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/validation.test.ts`
 
-- [ ] **Step 1: 写失败测试。** 覆盖 human 输出、`--json` 单对象的 `validations`、失败/跳过摘要、Ctrl-C、`review-writes` 与 validation 的组合，以及 MCP server 没有验证 runner 时的安全行为。
-- [ ] **Step 2: 运行 focused test 确认失败。**
-- [ ] **Step 3: 接入同一 planner/runner。** human mode 展示 check id、命令摘要、耗时和失败原因；JSON 保持 stdout 单值、保留完整结构化结果。
-- [ ] **Step 4: 运行 CLI build + full tests。**
-- [ ] **Step 5: Commit。**
+- [x] **Step 1: 写失败测试。** 覆盖 human 输出、`--json` 单对象的 `validations`、失败/跳过摘要、`review-writes` 与 validation 的组合，以及 MCP server 没有验证 runner 时的安全行为。Ctrl-C 的底层取消行为由已有 CLI/AgentLoop/runner 测试覆盖。
+- [x] **Step 2: 运行 focused test 确认失败。** 初始新增 CLI validation tests 在 `validations` 字段尚未接入时失败；human command-summary 回归测试在实现前也失败。
+- [x] **Step 3: 接入同一 planner/runner。** human mode 展示 check id、结构化命令摘要、耗时和失败原因；JSON 保持 stdout 单值并保留完整结构化结果；非 Git workspace 不运行 `git diff --check`。
+- [x] **Step 4: 运行 CLI build + full tests。**
+- [x] **Step 5: Commit。**
 
 ### Task 5: Desktop SSE、验证卡片和 Undo 协同
 

@@ -23,6 +23,8 @@ export interface ValidationPlanTimeouts {
 
 export interface ValidationPlanContext {
   readonly workingDirectory: string;
+  /** Set false when the workspace is not a Git checkout. */
+  readonly isGitRepository?: boolean;
   readonly timeouts?: ValidationPlanTimeouts;
 }
 
@@ -90,7 +92,7 @@ export function deriveValidationPlan(
     if (isRustRuntimePath(file.path)) {
       hasRust = true;
     }
-    if (isDiffCheckPath(file.path)) {
+    if (context.isGitRepository !== false && isDiffCheckPath(file.path)) {
       diffPaths.push(file.path);
     }
   }

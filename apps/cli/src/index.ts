@@ -20,6 +20,8 @@ import {
   type ApprovalRequest,
   type ChangeSetReview,
   type CompiledApprovalConfig,
+  type ValidationAdapter,
+  type ValidationResult,
   type SessionMetadata,
 } from "@dev-agent/agent-core";
 import { createExecutor } from "@dev-agent/executor";
@@ -59,7 +61,12 @@ import {
   type ModelProvider,
   type PriceTable,
 } from "@dev-agent/model";
-import { createDefaultTools, FilesystemTool } from "@dev-agent/tools";
+import {
+  createDefaultTools,
+  createValidationRunner,
+  deriveValidationPlan,
+  FilesystemTool,
+} from "@dev-agent/tools";
 
 const version = "0.1.0";
 const defaultSystemPrompt =
@@ -352,8 +359,9 @@ export async function main(argv: string[]): Promise<void> {
     const provider = createProvider(config);
     const approvalMode = approvalFlagMode ?? resolveApprovalMode(config);
     const questionBox: QuestionBox = {};
+    const executor = createExecutor({ rustBinaryPath });
     const tools = new AgentToolRegistry();
-    for (const tool of createDefaultTools(createExecutor({ rustBinaryPath }))) {
+    for (const tool of createDefaultTools(executor)) {
       tools.register(tool);
     }
     const filesystem = tools.get("filesystem");
@@ -462,6 +470,7 @@ export async function main(argv: string[]): Promise<void> {
     // Token streaming would interleave with the JSON document.
     const streaming = new StreamingRun({ enabled: !noStream && !jsonOutput });
     const reviews: ReviewRecord[] = [];
+    const validations: ValidationResult[] = [];
     const loop = new AgentLoop({
       model: provider,
       tools,
@@ -488,6 +497,13 @@ export async function main(argv: string[]): Promise<void> {
           );
         }
       },
+      onValidation: (result) => {
+        validations.push(result);
+        if (!jsonOutput) {
+          printValidationResult(result);
+        }
+      },
+      validation: createCliValidationAdapter(executor),
       onTurn: (turn) => {
         if (!jsonOutput) {
           process.stdout.write(`[turn ${turn}]\n`);
@@ -508,14 +524,14 @@ export async function main(argv: string[]): Promise<void> {
       await runPrompt(loop, context, streaming, oncePrompt, jsonOutput, {
         model: provider.model,
         pricing: config.pricing,
-      }, reviews);
+      }, reviews, validations);
       return;
     }
 
     await interactive(loop, context, streaming, questionBox, jsonOutput, {
       model: provider.model,
       pricing: config.pricing,
-    }, reviews);
+    }, reviews, validations);
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
   }
@@ -1021,7 +1037,8 @@ async function interactive(
   questionBox: QuestionBox,
   jsonOutput = false,
   cost?: UsageCostOptions,
-  reviews: readonly ReviewRecord[] = []
+  reviews: readonly ReviewRecord[] = [],
+  validations: readonly ValidationResult[] = []
 ): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
@@ -1085,6 +1102,7 @@ async function interactive(
           jsonOutput,
           cost,
           reviews,
+          validations,
           controller.signal
         );
       } catch (error) {
@@ -1110,6 +1128,35 @@ interface UsageCostOptions {
   readonly pricing?: PriceTable;
 }
 
+function createCliValidationAdapter(executor: ReturnType<typeof createExecutor>): ValidationAdapter {
+  const runner = createValidationRunner(executor);
+  return {
+    prepare: (review, context) =>
+      deriveValidationPlan(review, {
+        workingDirectory: context.workingDirectory,
+        isGitRepository: existsSync(join(context.workingDirectory, ".git")),
+      }),
+    run: (plan, options) => runner.run(plan, options),
+  };
+}
+
+function printValidationResult(result: ValidationResult): void {
+  process.stdout.write(`[validation] ${result.status}: ${result.summary}\n`);
+  for (const check of result.checks) {
+    const detail = check.reason ? ` — ${check.reason}` : "";
+    const command = formatValidationCommand(check.command.executable, check.command.args);
+    process.stdout.write(
+      `  [${check.status}] ${check.id} (${check.durationMs}ms) — ${command}${detail}\n`
+    );
+  }
+}
+
+function formatValidationCommand(executable: string, args: readonly string[]): string {
+  return [executable, ...args]
+    .map((part) => /^[A-Za-z0-9_./:@%+=,-]+$/.test(part) ? part : JSON.stringify(part))
+    .join(" ");
+}
+
 async function runPrompt(
   loop: AgentLoop,
   context: AgentContext,
@@ -1118,6 +1165,7 @@ async function runPrompt(
   jsonOutput = false,
   costOptions?: UsageCostOptions,
   reviews: readonly ReviewRecord[] = [],
+  validations: readonly ValidationResult[] = [],
   signal?: AbortSignal
 ): Promise<AgentContext> {
   const result = await loop.run(context, prompt, signal ? { signal } : undefined);
@@ -1138,6 +1186,7 @@ async function runPrompt(
         usage: result.usage ?? null,
         cost: cost ?? null,
         reviews: [...reviews],
+        validations: [...validations],
       })
     );
     return result;

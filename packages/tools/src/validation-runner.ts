@@ -84,7 +84,14 @@ async function runValidation(
 
       if (signal?.aborted) {
         results.push(
-          blockedResult(check, "validation aborted while the check was running", elapsedSince(checkStartedAt), execution)
+          blockedResult(
+            check,
+            "validation aborted while the check was running",
+            elapsedSince(checkStartedAt),
+            execution,
+            undefined,
+            maxOutputBytes
+          )
         );
         appendSkipped(results, plan.checks, index + 1, "validation aborted before check started");
         break;
@@ -99,7 +106,16 @@ async function runValidation(
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (signal?.aborted || isAbortError(error)) {
-        results.push(blockedResult(check, "validation aborted while the check was running", elapsedSince(checkStartedAt), undefined, message));
+        results.push(
+          blockedResult(
+            check,
+            "validation aborted while the check was running",
+            elapsedSince(checkStartedAt),
+            undefined,
+            message,
+            maxOutputBytes
+          )
+        );
         appendSkipped(results, plan.checks, index + 1, "validation aborted before check started");
         break;
       }
@@ -160,9 +176,10 @@ function blockedResult(
   reason: string,
   durationMs = 0,
   execution?: ExecutorResult,
-  error?: string
+  error?: string,
+  maxOutputBytes = DEFAULT_MAX_OUTPUT_BYTES
 ): ValidationCheckResult {
-  const output = execution ? boundedOutput(execution, DEFAULT_MAX_OUTPUT_BYTES) : "";
+  const output = execution ? boundedOutput(execution, maxOutputBytes) : "";
   return {
     ...check,
     status: "blocked",

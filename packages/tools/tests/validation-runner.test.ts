@@ -154,6 +154,20 @@ test("an executor abort during a check blocks that check and skips the rest", as
   assert.equal(result.checks[1]?.status, "skipped");
 });
 
+test("an aborted check also respects the configured output bound", async () => {
+  const controller = new AbortController();
+  const { executor } = fakeExecutor(async () => {
+    controller.abort();
+    return ok("0123456789abcdef");
+  });
+  const runner = createValidationRunner(executor, { maxOutputBytes: 8 });
+
+  const result = await runner.run(plan([check("aborted")]), { signal: controller.signal });
+
+  assert.equal(result.status, "blocked");
+  assert.ok(Buffer.byteLength(result.checks[0]?.output ?? "", "utf8") <= 8);
+});
+
 test("runner bounds captured output and never turns it into a shell command", async () => {
   const { executor, calls } = fakeExecutor(async () => ok("0123456789abcdef"));
   const options: ValidationRunnerOptions = { maxOutputBytes: 8 };
