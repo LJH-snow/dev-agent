@@ -55,8 +55,8 @@ git commit -m "docs: add v33 write review plan"
 - `hashBytes(value: Uint8Array): string` 使用 SHA-256 hex digest。
 - `buildUnifiedDiff(path, before, after): { diff: string; additions: number; deletions: number }`；输出 `--- a/<path>`, `+++ b/<path>`, `@@` 和带 `+`/`-`/` ` 前缀的行。
 
-- [ ] **Step 1: 写失败测试。** 覆盖新文件、修改文件、空文件、删除全部文本、无变化、UTF-8 内容、SHA-256 稳定值和多文件聚合统计；断言 preview 结果包含路径、哈希、diff 和增删数量。
-- [ ] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 1: 写失败测试。** 覆盖新文件、修改文件、空文件、删除全部文本、无变化、UTF-8 内容、SHA-256 稳定值和多文件聚合统计；断言 preview 结果包含路径、哈希、diff 和增删数量。
+- [x] **Step 2: 运行 focused test 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/tools test -- --test-name-pattern="change set"
@@ -64,8 +64,8 @@ pnpm --filter @dev-agent/tools test -- --test-name-pattern="change set"
 
 Expected: FAIL，因为 change-set 模块和导出尚不存在。
 
-- [ ] **Step 3: 实现最小模型。** 在 `change-set.ts` 中只放纯类型、id/hash、按行 LCS diff 和汇总函数；不读写工作区，不引入第三方 diff 包。统一 diff 对最后没有换行的文件保持稳定，不把空字符串误计为一行。
-- [ ] **Step 4: 运行 focused test 确认通过。**
+- [x] **Step 3: 实现最小模型。** 在 `change-set.ts` 中只放纯类型、id/hash、按行 LCS diff 和汇总函数；不读写工作区，不引入第三方 diff 包。统一 diff 对最后没有换行的文件保持稳定，不把空字符串误计为一行。
+- [x] **Step 4: 运行 focused test 确认通过。**
 
 ```bash
 pnpm --filter @dev-agent/tools test
@@ -73,7 +73,7 @@ pnpm --filter @dev-agent/tools test
 
 Expected: 新增 change-set 测试和现有 tools 测试全部通过。
 
-- [ ] **Step 5: Commit。**
+- [x] **Step 5: Commit。**
 
 ```bash
 git add packages/tools/src/change-set.ts packages/tools/src/index.ts packages/tools/tests/change-set.test.ts

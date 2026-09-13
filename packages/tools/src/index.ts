@@ -31,6 +31,7 @@ export class ToolRegistry {
   }
 }
 
+export * from "./change-set.js";
 export * from "./filesystem.js";
 export * from "./shell.js";
 export * from "./git.js";

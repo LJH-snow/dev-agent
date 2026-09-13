@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 当前阶段：Task 1，建立 change-set 数据模型、哈希和统一 diff
+- 当前阶段：Task 2，FilesystemTool preview/apply/rollback 和原子写入
 - 已完成阶段：无；v32 已完成并推送到 `origin/main`
 - 工作区基线：`bd05586 docs: record v32 release verification`
 - 最近一次 v32 验证：TypeScript 477/477、Rust 46/46、真实运行时集成 10/10 通过
@@ -33,7 +33,15 @@
 | Task | 状态 | 实际结果 | 提交 |
 |------|------|----------|------|
 | Task 0 | 已完成 | tools 75/75；agent-core 72/72；基线与远端一致 | `docs: add v33 write review plan`（待提交） |
-| Task 1 | 进行中 | 先写失败测试，再实现纯数据模型与 diff/hash | - |
+| Task 1 | 已完成 | 首次 focused test 按预期因公共导出不存在而失败；随后 tools 全套 80/80 通过 | `feat(tools): add change-set diff and hash model` |
+
+### Task 1：建立 change-set 数据模型、哈希和统一 diff（已完成）
+
+- RED：`pnpm --filter @dev-agent/tools test -- --test-name-pattern="change set|change-set|UnifiedDiff|hashBytes"` 首次因 `dist/index.d.ts` 尚无 5 个新导出而失败，确认失败来自待实现功能。
+- GREEN：`pnpm --filter @dev-agent/tools build` 后运行 `pnpm --filter @dev-agent/tools test`，tools **80/80** 通过（基线 75 + 新增 5）。
+- 覆盖：新文件、修改、空文件、全量删除、无变化、UTF-8、稳定 SHA-256、UUID change-set id、多文件增删汇总。
+- 实现：`packages/tools/src/change-set.ts` 使用 Node 内置 crypto、TextEncoder/TextDecoder 和按行 LCS；无运行时依赖、无工作区写入。
+- 提交：待本账本同步后提交 `feat(tools): add change-set diff and hash model`。
 
 ## 错误与卡点
 
