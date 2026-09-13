@@ -4,6 +4,12 @@ import type { AgentContext } from "./context.js";
 import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.js";
 import type { ChatMessage, ModelProvider, ToolCall, ToolSchema } from "@dev-agent/model";
 import type { ChatUsage } from "@dev-agent/model";
+import {
+  createValidationId,
+  type ValidationAdapter,
+  type ValidationPlan,
+  type ValidationResult,
+} from "./validation.js";
 import { addUsage } from "./usage.js";
 import {
   runTool,
@@ -36,6 +42,9 @@ export interface AgentLoopOptions {
     outcome: ApprovalOutcome,
     context: AgentContext
   ) => void;
+  /** Plans and runs checks after a reviewed filesystem apply succeeds. */
+  readonly validation?: ValidationAdapter;
+  readonly onValidation?: (result: ValidationResult, context: AgentContext) => void;
   readonly toolDefaults?: ToolDefaults;
   readonly contextBudget?: ContextBudget;
 }
@@ -98,6 +107,8 @@ export class AgentLoop {
     outcome: ApprovalOutcome,
     context: AgentContext
   ) => void;
+  private readonly validation?: ValidationAdapter;
+  private readonly onValidation?: (result: ValidationResult, context: AgentContext) => void;
   private readonly toolDefaults?: ToolDefaults;
   private readonly contextBudget?: ContextBudget;
   /** Digest of the entries trimmed off so far, grown incrementally. */
@@ -119,6 +130,8 @@ export class AgentLoop {
     this.onUsage = options.onUsage;
     this.approval = options.approval;
     this.onApproval = options.onApproval;
+    this.validation = options.validation;
+    this.onValidation = options.onValidation;
     this.toolDefaults = options.toolDefaults;
     this.contextBudget = options.contextBudget;
   }
@@ -212,8 +225,20 @@ export class AgentLoop {
           };
           const result = await this.runToolSafely(executionCall, toolContext, options.signal);
           this.onToolResult?.({ name: call.name, output: result }, context);
+          const validation = await this.validateAppliedChange(
+            preparation,
+            result,
+            context,
+            options.signal
+          );
+          if (validation) {
+            this.onValidation?.(validation, context);
+          }
+          const memoryResult = validation
+            ? `${result}\n[validation] ${JSON.stringify(validation)}`
+            : result;
           await memory.append(
-            createMemoryEntry("tool", result, { toolCallId: call.id, toolName: call.name })
+            createMemoryEntry("tool", memoryResult, { toolCallId: call.id, toolName: call.name })
           );
         }
 
@@ -350,6 +375,47 @@ export class AgentLoop {
    * that tool's result, so the model can correct the call instead of losing the
    * whole run. An abort still propagates.
    */
+  private async validateAppliedChange(
+    preparation: { request: ApprovalRequest; executeInput?: unknown; outcome?: ApprovalOutcome } | undefined,
+    toolResult: string,
+    context: AgentContext,
+    signal: AbortSignal | undefined
+  ): Promise<ValidationResult | undefined> {
+    const review = preparation?.request.review;
+    if (!this.validation || !review || !isPreparedApply(preparation.executeInput, review) || !isSuccessfulApply(toolResult, review)) {
+      return undefined;
+    }
+    throwIfAborted(signal);
+
+    const startedAt = Date.now();
+    let plan: ValidationPlan;
+    try {
+      plan = await this.validation.prepare(review, context);
+    } catch (error) {
+      return blockedValidation(
+        review.changeSetId,
+        startedAt,
+        `validation preparation failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+
+    try {
+      const result = await this.validation.run(plan, { signal });
+      throwIfAborted(signal);
+      return result;
+    } catch (error) {
+      if (signal?.aborted) {
+        throw error;
+      }
+      return blockedValidation(
+        review.changeSetId,
+        startedAt,
+        `validation runner failed: ${error instanceof Error ? error.message : String(error)}`,
+        plan
+      );
+    }
+  }
+
   private async runToolSafely(
     call: ToolCall,
     context: ToolExecutionContext,
@@ -471,6 +537,50 @@ export class AgentLoop {
       parameters: tool.parameters,
     }));
   }
+}
+
+function isPreparedApply(
+  input: unknown,
+  review: { readonly changeSetId: string }
+): boolean {
+  if (typeof input !== "object" || input === null) {
+    return false;
+  }
+  const record = input as Record<string, unknown>;
+  return record.action === "apply" && record.changeSetId === review.changeSetId;
+}
+
+function isSuccessfulApply(
+  output: string,
+  review: { readonly changeSetId: string }
+): boolean {
+  try {
+    const parsed: unknown = JSON.parse(output);
+    if (typeof parsed !== "object" || parsed === null) {
+      return false;
+    }
+    const record = parsed as Record<string, unknown>;
+    return record.ok === true && record.changeSetId === review.changeSetId;
+  } catch {
+    return false;
+  }
+}
+
+function blockedValidation(
+  changeSetId: string,
+  startedAt: number,
+  reason: string,
+  plan?: ValidationPlan
+): ValidationResult {
+  return {
+    validationId: plan?.validationId ?? createValidationId(changeSetId),
+    changeSetId,
+    status: "blocked",
+    checks: [],
+    durationMs: Math.max(0, Date.now() - startedAt),
+    summary: "validation is blocked",
+    reason,
+  };
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {

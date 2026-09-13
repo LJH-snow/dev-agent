@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 当前阶段：Task 3，将验证接入 AgentLoop 的 apply 生命周期
+- 当前阶段：Task 4，CLI 验证展示和结构化输出
 - v33 release：`4ee7ab7 docs: record v33 review workflow`，已推送到 `origin/main`
 - 工作区基线：v33 release 后代码相对 `origin/main` 无修改；Task 0 计划与账本已提交
 - v33 最近一次验证：TypeScript 512/512、Rust unit/doc 46/46、真实运行时集成 10/10 通过
@@ -23,7 +23,7 @@
 | Task 0 | 已完成 | structure check 通过；build/typecheck 通过；TypeScript **512/512**、Rust unit/doc **46/46**、real-binary integration **10/10** 通过 | `036c0b7 docs: add v34 validation plan` |
 | Task 1 | 已完成 | RED 因 validation 导出/planner 不存在而失败；agent-core **80/80**、tools **98/98** 通过；planner 仅输出结构化 allowlisted commands | `82adf30 feat(validation): add change-set validation plans` |
 | Task 2 | 已完成 | RED 因 runner 导出不存在而失败；tools **105/105**、agent-core **80/80** 通过；runner 复用 executor 并支持 bounded output/abort/stop-on-failure | `eb880b6 feat(validation): run bounded change-set checks` |
-| Task 3 | 未开始 | - | - |
+| Task 3 | 已完成 | RED 因 AgentLoop 无 validation 注入点而失败；agent-core **85/85** 通过；approved apply 后才规划/运行验证，失败不伪装 apply 失败 | `7adcf1d feat(agent): validate applied change sets` |
 | Task 4 | 未开始 | - | - |
 | Task 5 | 未开始 | - | - |
 | Task 6 | 未开始 | - | - |
@@ -50,6 +50,14 @@
 - 覆盖：成功/失败、失败后 skipped、executor timeout、运行前/运行中 abort、cwd/timeout/signal/maxOutputBytes 透传、UTF-8 bounded output、空/blocked plan，以及结构化 args 不经 shell 拼接。
 - 实现：`createValidationRunner` 顺序运行 planner 生成的 command；复用现有 Executor 的进程终止、Rust cancel 和 quota；将非零退出、timeout、executor error、abort 归一化为 check result，并保留可审计 reason。
 - 提交：`eb880b6 feat(validation): run bounded change-set checks`。
+
+### Task 3：将验证接入 AgentLoop 的 apply 生命周期（已完成）
+
+- RED：首次 focused test 编译失败，`AgentLoopOptions` 没有 `validation`，agent-core 没有 `ValidationAdapter`。
+- GREEN：`pnpm --filter @dev-agent/agent-core typecheck` 与全套测试通过，agent-core **85/85**。
+- 覆盖：approved apply 后才调用 planner/runner；deny、apply 错误和无 review 不触发；validation passed/failed/blocked 都写入模型可见 tool result；事件顺序为 tool-result → validation；validation planning/runner 非 abort 异常转为 blocked；外层 AbortSignal 透传且不自动 rollback。
+- 实现：AgentLoop 新增可注入 `ValidationAdapter` 与 `onValidation` callback；仅识别带相同 changeSetId 的成功 `{ ok: true, action: apply }` 结果，验证结果与 apply 输出合并到同一 tool memory entry，保持 provider 的 tool-call 对应关系。
+- 提交：`7adcf1d feat(agent): validate applied change sets`。
 
 ## 错误与卡点
 

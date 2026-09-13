@@ -95,17 +95,18 @@ Expected: FAIL，因为 validation DTO、planner 和公共导出不存在。
 **Files:**
 - Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/loop.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/approval.ts`
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/validation.ts`
 - Tests: `/Users/Admin/Desktop/dev-agent/packages/agent-core/tests/validation-lifecycle.test.ts`
 
 **Interfaces:**
 - `AgentLoopOptions.validation` 或等价注入点：提供 `prepare(review)`/`run(plan, signal)`，不让 agent-core 依赖 `@dev-agent/tools`。
 - 新增 `onValidation` callback；事件顺序明确为 `approval` → `tool-result`（apply）→ `validation`，或在现有生命周期中记录同等可观察顺序。
 
-- [ ] **Step 1: 写失败测试。** 覆盖 approved apply 才验证、deny/prepare failure/preimage conflict 不验证、validation failure 不伪装 apply failure、abort 会取消 runner、无 validation 注入保持 v33 行为。
-- [ ] **Step 2: 运行 focused test 确认失败。**
-- [ ] **Step 3: 实现最小生命周期和 callback。** validation result 写入模型可见的 tool result/context，但不自动 rollback。
-- [ ] **Step 4: 运行 agent-core 全套测试。**
-- [ ] **Step 5: Commit。**
+- [x] **Step 1: 写失败测试。** 覆盖 approved apply 才验证、deny/prepare failure/preimage conflict 不验证、validation failure 不伪装 apply failure、abort 会取消 runner、无 validation 注入保持 v33 行为。
+- [x] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 3: 实现最小生命周期和 callback。** validation result 写入模型可见的 tool result/context，但不自动 rollback。
+- [x] **Step 4: 运行 agent-core 全套测试。**
+- [x] **Step 5: Commit。**
 
 ### Task 4: CLI 验证展示和结构化输出
 

@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import type { ChangeSetReview } from "./approval.js";
+import type { AgentContext } from "./context.js";
 
 /** The final state of a validation run or of an individual check. */
 export type ValidationStatus = "passed" | "failed" | "skipped" | "blocked";
@@ -58,6 +60,18 @@ export interface ValidationRunOptions {
 
 /** Runs only the structured commands supplied by a validation planner. */
 export interface ValidationRunner {
+  run(plan: ValidationPlan, options?: ValidationRunOptions): Promise<ValidationResult>;
+}
+
+/**
+ * Integration point for AgentLoop. A host supplies a planner and a runner so
+ * the core package stays independent of filesystem/tool implementations.
+ */
+export interface ValidationAdapter {
+  prepare(
+    review: ChangeSetReview,
+    context: AgentContext
+  ): Promise<ValidationPlan> | ValidationPlan;
   run(plan: ValidationPlan, options?: ValidationRunOptions): Promise<ValidationResult>;
 }
 
