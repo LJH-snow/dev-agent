@@ -167,6 +167,8 @@ test("parseApprovalMode normalises known modes and rejects the rest", () => {
   assert.equal(parseApprovalMode("DENY-DANGEROUS"), "deny-dangerous");
   assert.equal(parseApprovalMode(" ask "), "ask");
   assert.equal(parseApprovalMode("allow"), "allow");
+  assert.equal(parseApprovalMode(" REVIEW-WRITES "), "review-writes");
+  assert.equal(resolveApprovalMode({ approvalMode: "review-writes" }, {}), "review-writes");
   assert.equal(parseApprovalMode("nope"), undefined);
   assert.equal(parseApprovalMode(undefined), undefined);
 });

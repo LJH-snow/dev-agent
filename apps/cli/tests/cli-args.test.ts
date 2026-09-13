@@ -98,6 +98,16 @@ test("valid flag combinations still run", async () => {
   });
 });
 
+test("review-writes is accepted as an approval mode", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--approval", "review-writes", "--tools"], dir);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /filesystem/);
+    assert.doesNotMatch(result.stderr, /Unknown approval mode/);
+  });
+});
+
 test("optional-value flags still work without a value", async () => {
   await withSessionDir(async (dir) => {
     const result = await runCli(["--compact"], dir);

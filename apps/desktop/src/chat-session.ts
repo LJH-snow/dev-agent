@@ -9,9 +9,12 @@ import {
   normalizeApprovalKey,
   createAgentContext,
   denyDangerousPolicy,
+  reviewWritesPolicy,
   FileMemory,
   type AgentContext,
   type ApprovalPolicy,
+  type ApprovalRequest,
+  type ChangeSetReview,
 } from "@dev-agent/agent-core";
 import { createExecutor } from "@dev-agent/executor";
 import {
@@ -24,7 +27,7 @@ import {
   type PriceTable,
   type ModelProvider,
 } from "@dev-agent/model";
-import { createDefaultTools } from "@dev-agent/tools";
+import { createDefaultTools, FilesystemTool } from "@dev-agent/tools";
 import { McpStdioClient, type McpClientConfig } from "@dev-agent/mcp";
 
 export interface StreamEvent {
@@ -42,7 +45,7 @@ export interface StreamEvent {
   readonly data: Record<string, unknown>;
 }
 
-export type DesktopApprovalMode = "allow" | "deny-dangerous" | "ask";
+export type DesktopApprovalMode = "allow" | "deny-dangerous" | "ask" | "review-writes";
 
 export interface ApprovalPrompt {
   readonly tool: string;
@@ -50,6 +53,8 @@ export interface ApprovalPrompt {
   readonly input: unknown;
   /** Normalized command key, used to remember "always allow" decisions. */
   readonly key?: string;
+  /** Real change-set review shown before a filesystem mutation is applied. */
+  readonly review?: ChangeSetReview;
 }
 
 export type ApprovalRequester = (prompt: ApprovalPrompt) => Promise<"allow" | "deny">;
@@ -73,6 +78,7 @@ export interface ChatSessionOptions {
 export class ChatSession {
   private readonly model: ModelProvider;
   private readonly tools: AgentToolRegistry;
+  private readonly filesystem: FilesystemTool;
   private readonly memory: FileMemory;
   private readonly workingDirectory: string;
   private readonly systemPrompt: string;
@@ -96,6 +102,11 @@ export class ChatSession {
     for (const tool of createDefaultTools(createExecutor({ rustBinaryPath }))) {
       this.tools.register(tool);
     }
+    const filesystem = this.tools.get("filesystem");
+    if (!(filesystem instanceof FilesystemTool)) {
+      throw new Error("filesystem tool is unavailable for write review");
+    }
+    this.filesystem = filesystem;
 
     const sessionId = normalizeSessionId(options.sessionId ?? "desktop-default");
     const memoryFile =
@@ -111,8 +122,8 @@ export class ChatSession {
       options.summarizeContext ?? parseBoolean(process.env.DEV_AGENT_SUMMARIZE_CONTEXT);
     this.summaryMaxChars =
       options.summaryMaxChars ?? parsePositiveInt(process.env.DEV_AGENT_SUMMARY_MAX_CHARS);
-    this.approvalMode = resolveApprovalMode(options.approvalMode);
     const config = loadConfigFile();
+    this.approvalMode = resolveApprovalMode(options.approvalMode, config.approvalMode);
     this.compiledApproval = compileApprovalConfig(config.approval);
     this.pricing = config.pricing;
     this.mcpServers = options.mcpServers ?? loadMcpServers(config.mcpServers);
@@ -135,7 +146,8 @@ export class ChatSession {
     const approval = buildApprovalPolicy(
       this.approvalMode,
       options.requestApproval,
-      this.compiledApproval
+      this.compiledApproval,
+      this.filesystem
     );
     const loop = new AgentLoop({
       model: this.model,
@@ -186,6 +198,7 @@ export class ChatSession {
             tool: request.toolName,
             decision: outcome.decision,
             reason: outcome.reason,
+            ...(request.review === undefined ? {} : { review: request.review }),
           },
         }),
     });
@@ -323,9 +336,19 @@ function parseBoolean(value: string | undefined): boolean {
   return ["1", "true", "yes"].includes(value.trim().toLowerCase());
 }
 
-function resolveApprovalMode(mode: DesktopApprovalMode | undefined): DesktopApprovalMode {
-  const resolved = (mode ?? process.env.DEV_AGENT_APPROVAL ?? "allow").trim().toLowerCase();
-  if (resolved === "allow" || resolved === "deny-dangerous" || resolved === "ask") {
+function resolveApprovalMode(
+  mode: DesktopApprovalMode | undefined,
+  configuredMode?: DesktopApprovalMode
+): DesktopApprovalMode {
+  const resolved = (mode ?? process.env.DEV_AGENT_APPROVAL ?? configuredMode ?? "allow")
+    .trim()
+    .toLowerCase();
+  if (
+    resolved === "allow" ||
+    resolved === "deny-dangerous" ||
+    resolved === "ask" ||
+    resolved === "review-writes"
+  ) {
     return resolved;
   }
   return "allow";
@@ -338,7 +361,8 @@ function resolveApprovalMode(mode: DesktopApprovalMode | undefined): DesktopAppr
 function buildApprovalPolicy(
   mode: DesktopApprovalMode,
   requestApproval: ApprovalRequester | undefined,
-  compiled: { patterns: readonly RegExp[]; allowlist: readonly string[] }
+  compiled: { patterns: readonly RegExp[]; allowlist: readonly string[] },
+  filesystem: FilesystemTool
 ): ApprovalPolicy | undefined {
   if (mode === "allow") {
     return undefined;
@@ -348,7 +372,42 @@ function buildApprovalPolicy(
     patterns: [...compiled.patterns],
     allowlist: [...compiled.allowlist],
   });
-  if (mode === "deny-dangerous" || !requestApproval) {
+  if (mode === "deny-dangerous") {
+    return dangerous;
+  }
+
+  if (mode === "review-writes") {
+    return reviewWritesPolicy({
+      prepare: (request) =>
+        filesystem.prepareChangeSet(request.input, {
+          sessionId: request.sessionId,
+          workingDirectory: request.workingDirectory,
+        }),
+      patterns: [...compiled.patterns],
+      allowlist: [...compiled.allowlist],
+      requestApproval: requestApproval
+        ? async (request, reason) => {
+            const answer = await requestApproval({
+              tool: request.toolName,
+              reason,
+              input: request.input,
+              key: normalizeApprovalKey(request),
+              ...(request.review === undefined ? {} : { review: request.review }),
+            });
+            return answer === "allow"
+              ? { decision: "allow" }
+              : {
+                  decision: "deny",
+                  reason: request.review
+                    ? `filesystem ${reviewAction(request)} review declined`
+                    : `${reason ?? "dangerous call"} (declined)`,
+                };
+          }
+        : undefined,
+    });
+  }
+
+  if (!requestApproval) {
     return dangerous;
   }
 
@@ -374,7 +433,18 @@ function buildApprovalPolicy(
   };
 }
 
+function reviewAction(request: ApprovalRequest): string {
+  if (typeof request.input === "object" && request.input !== null) {
+    const action = (request.input as Record<string, unknown>).action;
+    if (typeof action === "string") {
+      return action;
+    }
+  }
+  return "write";
+}
+
 interface DesktopConfigFile {
+  readonly approvalMode?: DesktopApprovalMode;
   readonly approval?: { readonly allow?: readonly string[]; readonly deny?: readonly string[] };
   readonly pricing?: PriceTable;
   readonly mcpServers?: readonly McpClientConfig[];

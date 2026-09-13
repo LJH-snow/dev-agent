@@ -180,6 +180,7 @@ git commit -m "feat(agent): prepare reviewed tool changes before approval"
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/chat-session.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/packages/agent-core/tests/approval-review-writes.test.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/cli-args.test.ts`
+- Test: `/Users/Admin/Desktop/dev-agent/apps/cli/tests/mcp-server.test.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/approval-review-writes.test.ts`
 
 **Interfaces:**
@@ -188,8 +189,8 @@ git commit -m "feat(agent): prepare reviewed tool changes before approval"
 - `reviewWritesPolicy({ prepare, requestApproval, patterns, allowlist })`：普通 filesystem mutation 必须先返回 review；无 requester 时安全 deny；危险 shell/git 仍按现有 dangerous policy 处理。
 - `ApprovalRequester` 扩展为接收 `{ tool, reason, input, key?, review? }`，现有 ask 调用保持兼容。
 
-- [ ] **Step 1: 写 mode 和 policy 失败测试。** 断言 `--approval review-writes` 与 config `approvalMode: review-writes` 能解析；safe filesystem write 也要求审批；read/list/stat、普通 shell 和普通 git 不被无故拦截；deny-dangerous/ask/allow 输出与既有测试一致。
-- [ ] **Step 2: 运行 focused tests 确认失败。**
+- [x] **Step 1: 写 mode 和 policy 失败测试。** 断言 `--approval review-writes` 与 config `approvalMode: review-writes` 能解析；safe filesystem write 也要求审批；read/list/stat、普通 shell 和普通 git 不被无故拦截；deny-dangerous/ask/allow 输出与既有测试一致。
+- [x] **Step 2: 运行 focused tests 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/agent-core test -- --test-name-pattern="review-writes"
@@ -199,10 +200,10 @@ pnpm --filter @dev-agent/desktop test -- --test-name-pattern="review-writes"
 
 Expected: FAIL，因为新 mode 和 policy 尚不存在。
 
-- [ ] **Step 3: 实现通用 policy。** 复用 `denyDangerousPolicy` 的 command/allowlist 判断；review request 无论是否匹配危险规则都走 requester。没有 requester 时，对 review write 和危险调用都返回 deny，并说明无法进行交互式审阅。`prepare` 只对 filesystem mutation 生成 change set；manual `apply` 也必须重新获得 review。
-- [ ] **Step 4: 接入 CLI。** 在创建 approval 前注册 default tools，拿到 `FilesystemTool`，让 review policy 的 prepare 调用 `prepareChangeSet(input, { sessionId, workingDirectory })`；交互提示将真实 unified diff 写到 stderr/stdout 的人类区域后再询问 `Apply this change? [y/N]`。`--json` 只把 review/decision/status 写进最终 JSON，diff 不污染 JSON stdout。
-- [ ] **Step 5: 接入 Desktop ChatSession。** 在 `ChatSession` 中保存 filesystem tool 引用，review policy 的 prepare 使用同一 session 的 change-set store；`ApprovalPrompt` 携带 review；审批超时、断开和拒绝都不调用 apply。`DEV_AGENT_APPROVAL=review-writes` 和 config `approvalMode` 都生效。
-- [ ] **Step 6: 运行 focused tests。**
+- [x] **Step 3: 实现通用 policy。** 复用 `denyDangerousPolicy` 的 command/allowlist 判断；review request 无论是否匹配危险规则都走 requester。没有 requester 时，对 review write 和危险调用都返回 deny，并说明无法进行交互式审阅。`prepare` 只对 filesystem mutation 生成 change set；manual `apply` 也必须重新获得 review。
+- [x] **Step 4: 接入 CLI。** 在创建 approval 前注册 default tools，拿到 `FilesystemTool`，让 review policy 的 prepare 调用 `prepareChangeSet(input, { sessionId, workingDirectory })`；交互提示将真实 unified diff 写到 stderr/stdout 的人类区域后再询问 `Apply this change? [y/N]`。`--json` 只把 review/decision/status 写进最终 JSON，diff 不污染 JSON stdout。
+- [x] **Step 5: 接入 Desktop ChatSession。** 在 `ChatSession` 中保存 filesystem tool 引用，review policy 的 prepare 使用同一 session 的 change-set store；`ApprovalPrompt` 携带 review；审批超时、断开和拒绝都不调用 apply。`DEV_AGENT_APPROVAL=review-writes` 和 config `approvalMode` 都生效。
+- [x] **Step 6: 运行 focused tests。**
 
 ```bash
 pnpm --filter @dev-agent/agent-core test
@@ -212,7 +213,7 @@ pnpm --filter @dev-agent/desktop test
 
 Expected: 全部通过，旧 approval 行为保持兼容。
 
-- [ ] **Step 7: Commit。**
+- [x] **Step 7: Commit。**
 
 ```bash
 git add packages/agent-core/src/approval.ts apps/cli/src/config.ts apps/cli/src/index.ts apps/desktop/src/chat-session.ts packages/agent-core/tests/approval-review-writes.test.ts apps/cli/tests/cli-args.test.ts apps/desktop/tests/approval-review-writes.test.ts

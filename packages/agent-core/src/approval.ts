@@ -101,6 +101,22 @@ export const DANGEROUS_PATTERNS: readonly DangerousPattern[] = [
   { name: "privileged container", pattern: /\b(?:nsenter\b|docker\s+run\s+--privileged\b)/ },
 ];
 
+export interface ReviewWritesOptions {
+  /** Builds a review and the input that is safe to execute after approval. */
+  readonly prepare: (
+    request: ApprovalRequest
+  ) => Promise<ApprovalPreparation | undefined> | ApprovalPreparation | undefined;
+  /** Receives dangerous calls and reviewed writes when an interactive channel exists. */
+  readonly requestApproval?: (
+    request: ApprovalRequest,
+    reason?: string
+  ) => Promise<ApprovalOutcome | ApprovalDecision> | ApprovalOutcome | ApprovalDecision;
+  /** Extra dangerous-command patterns, matched the same way as built-ins. */
+  readonly patterns?: readonly RegExp[];
+  /** Commands containing these substrings bypass dangerous-command prompts only. */
+  readonly allowlist?: readonly string[];
+}
+
 export interface DenyDangerousOptions {
   /** Extra patterns, matched the same way as the built-in ones. */
   readonly patterns?: readonly RegExp[];
@@ -148,6 +164,92 @@ export function compileApprovalConfig(
   }
 
   return { allowlist, patterns };
+}
+
+/**
+ * Returns true for filesystem actions that can change the working tree. A
+ * preview only reads and prepares bytes, so it deliberately stays outside the
+ * review-writes gate.
+ */
+export function isFilesystemMutation(request: ApprovalRequest): boolean {
+  if (request.toolName !== "filesystem") {
+    return false;
+  }
+  const action = asRecord(request.input).action;
+  return (
+    action === "write" ||
+    action === "edit" ||
+    action === "patch" ||
+    action === "mkdir" ||
+    action === "apply" ||
+    action === "rollback"
+  );
+}
+
+/**
+ * Requires an interactive review for filesystem mutations while retaining the
+ * existing dangerous-command policy for shell and git calls.
+ */
+export function reviewWritesPolicy(options: ReviewWritesOptions): ApprovalPolicy {
+  const dangerous = denyDangerousPolicy({
+    patterns: options.patterns,
+    allowlist: options.allowlist,
+  });
+
+  return {
+    prepare: async (request) => {
+      if (!isFilesystemMutation(request)) {
+        return undefined;
+      }
+      return options.prepare(request);
+    },
+    async decide(request) {
+      if (isFilesystemMutation(request)) {
+        if (!request.review) {
+          return {
+            decision: "deny",
+            reason: `filesystem ${String(asRecord(request.input).action)} requires an interactive review`,
+          };
+        }
+        if (!options.requestApproval) {
+          return {
+            decision: "deny",
+            reason: `filesystem ${String(asRecord(request.input).action)} requires an interactive review`,
+          };
+        }
+        return normalizeApprovalOutcome(
+          await options.requestApproval(request),
+          `filesystem ${String(asRecord(request.input).action)} review declined`
+        );
+      }
+
+      const outcome = await dangerous.decide(request);
+      const decision = typeof outcome === "string" ? outcome : outcome.decision;
+      if (decision === "allow" || !options.requestApproval) {
+        return typeof outcome === "string" ? { decision: outcome } : outcome;
+      }
+      const reason = typeof outcome === "string" ? undefined : outcome.reason;
+      return normalizeApprovalOutcome(
+        await options.requestApproval(request, reason),
+        `${reason ?? "dangerous call"} (declined)`
+      );
+    },
+  };
+}
+
+function normalizeApprovalOutcome(
+  outcome: ApprovalOutcome | ApprovalDecision,
+  deniedReason: string
+): ApprovalOutcome {
+  if (typeof outcome === "string") {
+    return outcome === "allow"
+      ? { decision: "allow" }
+      : { decision: "deny", reason: deniedReason };
+  }
+  if (outcome.decision === "deny" && !outcome.reason) {
+    return { ...outcome, reason: deniedReason };
+  }
+  return outcome;
 }
 
 /** Allows everything: the default, matching the behaviour before policies existed. */

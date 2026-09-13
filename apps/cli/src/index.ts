@@ -12,6 +12,7 @@ import {
   normalizeApprovalKey,
   createAgentContext,
   denyDangerousPolicy,
+  reviewWritesPolicy,
   FileMemory,
   type AgentContext,
   type AgentMemory,
@@ -57,7 +58,7 @@ import {
   type ModelProvider,
   type PriceTable,
 } from "@dev-agent/model";
-import { createDefaultTools } from "@dev-agent/tools";
+import { createDefaultTools, FilesystemTool } from "@dev-agent/tools";
 
 const version = "0.1.0";
 const defaultSystemPrompt =
@@ -216,13 +217,13 @@ export async function main(argv: string[]): Promise<void> {
   const approvalIndex = args.indexOf("--approval");
   const approvalFlag = approvalIndex >= 0 ? args[approvalIndex + 1] : undefined;
   if (approvalIndex >= 0 && approvalFlag === undefined) {
-    console.error("--approval requires one of: allow, deny-dangerous, ask");
+    console.error("--approval requires one of: allow, deny-dangerous, ask, review-writes");
     process.exitCode = 1;
     return;
   }
   const approvalFlagMode = approvalFlag === undefined ? undefined : parseApprovalMode(approvalFlag);
   if (approvalFlag !== undefined && approvalFlagMode === undefined) {
-    console.error(`Unknown approval mode '${approvalFlag}'. Use allow, deny-dangerous, or ask.`);
+    console.error(`Unknown approval mode '${approvalFlag}'. Use allow, deny-dangerous, ask, or review-writes.`);
     process.exitCode = 1;
     return;
   }
@@ -350,11 +351,17 @@ export async function main(argv: string[]): Promise<void> {
     const provider = createProvider(config);
     const approvalMode = approvalFlagMode ?? resolveApprovalMode(config);
     const questionBox: QuestionBox = {};
-    const approval = buildApprovalPolicy(approvalMode, questionBox, config);
     const tools = new AgentToolRegistry();
     for (const tool of createDefaultTools(createExecutor({ rustBinaryPath }))) {
       tools.register(tool);
     }
+    const filesystem = tools.get("filesystem");
+    const approval = buildApprovalPolicy(
+      approvalMode,
+      questionBox,
+      config,
+      filesystem instanceof FilesystemTool ? filesystem : undefined
+    );
 
     const mcpSupplement = await registerMcpTools(tools, mcpSessions, {
       sessionId: normalizedSessionId,
@@ -554,16 +561,44 @@ async function runMcpServer(options: {
   readonly approvalConfig: CompiledApprovalConfig;
 }): Promise<void> {
   const tools = createDefaultTools(createExecutor({ rustBinaryPath: options.rustBinaryPath }));
+  const filesystem = tools.find(
+    (tool): tool is FilesystemTool => tool instanceof FilesystemTool
+  );
   const memory = createMemory(options.sessionId);
-  // MCP has no interactive channel, so `ask` behaves like `deny-dangerous`:
-  // a flagged call is refused with a reason the host model can act on.
-  const policy =
-    options.approvalMode === "allow"
-      ? undefined
-      : denyDangerousPolicy({
-          patterns: [...options.approvalConfig.patterns],
-          allowlist: [...options.approvalConfig.allowlist],
-        });
+  const policy = (() => {
+    if (options.approvalMode === "allow") {
+      return undefined;
+    }
+
+    const policyOptions = {
+      patterns: [...options.approvalConfig.patterns],
+      allowlist: [...options.approvalConfig.allowlist],
+    };
+
+    if (options.approvalMode === "review-writes") {
+      // MCP has no interactive channel. The review-writes policy therefore
+      // prepares the same change set as the local agent, but denies the
+      // mutation because no reviewer can approve it over stdio.
+      return reviewWritesPolicy({
+        prepare: filesystem
+          ? (request) =>
+              filesystem.prepareChangeSet(request.input, {
+                sessionId: request.sessionId,
+                workingDirectory: request.workingDirectory,
+              })
+          : async () => {
+              throw new Error("filesystem tool is unavailable for write review");
+            },
+        patterns: policyOptions.patterns,
+        allowlist: policyOptions.allowlist,
+      });
+    }
+
+    // MCP has no interactive channel, so `ask` behaves like
+    // `deny-dangerous`: a flagged call is refused with a reason the host model
+    // can act on.
+    return denyDangerousPolicy(policyOptions);
+  })();
   const server = createMcpServer({
     tools: tools.map((tool) => ({
       name: tool.name,
@@ -682,7 +717,8 @@ interface QuestionBox {
 function buildApprovalPolicy(
   mode: ApprovalMode,
   questionBox: QuestionBox,
-  config: CliConfig = {}
+  config: CliConfig = {},
+  filesystem?: FilesystemTool
 ): ApprovalPolicy | undefined {
   if (mode === "allow") {
     // No policy means no per-call overhead, exactly as before.
@@ -694,6 +730,32 @@ function buildApprovalPolicy(
 
   if (mode === "deny-dangerous") {
     return denyDangerousPolicy(policyOptions);
+  }
+
+  if (mode === "review-writes") {
+    const sessionAllowed = new Set<string>();
+    const requestApproval = (request: ApprovalRequest, reason?: string) =>
+      requestReviewedCall(request, reason, questionBox, sessionAllowed);
+    if (!filesystem) {
+      return reviewWritesPolicy({
+        prepare: async () => {
+          throw new Error("filesystem tool is unavailable for write review");
+        },
+        patterns: policyOptions.patterns,
+        allowlist: policyOptions.allowlist,
+        requestApproval,
+      });
+    }
+    return reviewWritesPolicy({
+      prepare: (request) =>
+        filesystem.prepareChangeSet(request.input, {
+          sessionId: request.sessionId,
+          workingDirectory: request.workingDirectory,
+        }),
+      patterns: policyOptions.patterns,
+      allowlist: policyOptions.allowlist,
+      requestApproval,
+    });
   }
 
   const dangerous = denyDangerousPolicy(policyOptions);
@@ -729,6 +791,69 @@ function buildApprovalPolicy(
         : { decision: "deny", reason: `${reason ?? "dangerous call"} (declined)` };
     },
   };
+}
+
+async function requestReviewedCall(
+  request: ApprovalRequest,
+  reason: string | undefined,
+  questionBox: QuestionBox,
+  sessionAllowed: Set<string>
+): Promise<{ decision: "allow" | "deny"; reason?: string }> {
+  const isReview = request.review !== undefined;
+  const key = isReview ? undefined : normalizeApprovalKey(request);
+  if (key && sessionAllowed.has(key)) {
+    return { decision: "allow" };
+  }
+  const prompt = isReview
+    ? formatChangeSetPrompt(request)
+    : `${reason ?? "dangerous call"}\nRun ${request.toolName} anyway? [y/N/a] `;
+  const answer = questionBox.ask
+    ? await questionBox.ask(prompt)
+    : await readLineFromStdin(prompt);
+  const normalized = answer.trim().toLowerCase();
+
+  if (!isReview && normalized.startsWith("a") && key) {
+    // Remember dangerous approvals for this process only; reviewed writes are
+    // intentionally confirmed per change set.
+    sessionAllowed.add(key);
+    return { decision: "allow" };
+  }
+  return normalized.startsWith("y")
+    ? { decision: "allow" }
+    : {
+        decision: "deny",
+        reason: isReview
+          ? `filesystem ${String(reviewAction(request))} review declined`
+          : `${reason ?? "dangerous call"} (declined)`,
+      };
+}
+
+function reviewAction(request: ApprovalRequest): string {
+  if (typeof request.input === "object" && request.input !== null) {
+    const action = (request.input as Record<string, unknown>).action;
+    if (typeof action === "string") {
+      return action;
+    }
+  }
+  return "write";
+}
+
+function formatChangeSetPrompt(request: ApprovalRequest): string {
+  const review = request.review;
+  if (!review) {
+    return `Review ${request.toolName} before running? [y/N] `;
+  }
+  const files = review.files
+    .map((file) => {
+      const diff = file.diff ? `\n${file.diff}` : "\n(no textual changes; hash/existence still checked)";
+      return `${file.path} (+${file.additions}/-${file.deletions})${diff}`;
+    })
+    .join("\n");
+  return [
+    `Change set ${review.changeSetId}: ${review.files.length} file(s), +${review.additions}/-${review.deletions}`,
+    files,
+    "Apply this change? [y/N] ",
+  ].join("\n");
 }
 
 /** Reads one confirmation line; EOF and read failures count as "no". */

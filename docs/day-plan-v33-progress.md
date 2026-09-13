@@ -4,8 +4,8 @@
 
 ## 当前状态
 
-- 当前阶段：Task 3，AgentLoop review preparation 和批准后的 apply 输入
-- 已完成阶段：Task 0、Task 1、Task 2、Task 3；v32 已完成并推送到 `origin/main`
+- 当前阶段：Task 5，CLI diff 展示和结构化 review 输出
+- 已完成阶段：Task 0、Task 1、Task 2、Task 3、Task 4；v32 已完成并推送到 `origin/main`
 - 工作区基线：`bd05586 docs: record v32 release verification`
 - 最近一次 v32 验证：TypeScript 477/477、Rust 46/46、真实运行时集成 10/10 通过
 
@@ -33,8 +33,10 @@
 | Task | 状态 | 实际结果 | 提交 |
 |------|------|----------|------|
 | Task 0 | 已完成 | tools 75/75；agent-core 72/72；基线与远端一致 | `docs: add v33 write review plan` |
-| Task 1 | 已完成 | 首次 focused test 按预期因公共导出不存在而失败；随后 tools 全套 80/80 通过 | `feat(tools): add change-set diff and hash model` |
-| Task 3 | 已完成 | 首次测试因 ApprovalPolicy 不含 prepare、ApprovalRequest 不含 review 而编译失败；随后 agent-core 全套 76/76 通过 | `feat(agent): prepare reviewed tool changes before approval`（待提交） |
+| Task 1 | 已完成 | 首次 focused test 按预期因公共导出不存在而失败；随后 tools 全套 80/80 通过 | `bccb6a4 feat(tools): add change-set diff and hash model` |
+| Task 2 | 已完成 | preview/apply/rollback 红测与目录依赖边界红测后，tools 全套 90/90 通过 | `83e15db feat(filesystem): preview atomically apply and rollback changes` |
+| Task 3 | 已完成 | 首次测试因 ApprovalPolicy 不含 prepare、ApprovalRequest 不含 review 而编译失败；随后 agent-core 全套 76/76 通过 | `8a325ec feat(agent): prepare reviewed tool changes before approval` |
+| Task 4 | 已完成 | mode/policy 初次编译红测；MCP review-writes 初次因复用 deny-dangerous 而返回 workspace 越界理由；修正后 agent-core 79/79、CLI 99/99、Desktop 55/55 通过 | `feat: add review-writes approval mode`（待提交） |
 
 ### Task 1：建立 change-set 数据模型、哈希和统一 diff（已完成）
 
@@ -42,7 +44,7 @@
 - GREEN：`pnpm --filter @dev-agent/tools build` 后运行 `pnpm --filter @dev-agent/tools test`，tools **80/80** 通过（基线 75 + 新增 5）。
 - 覆盖：新文件、修改、空文件、全量删除、无变化、UTF-8、稳定 SHA-256、UUID change-set id、多文件增删汇总。
 - 实现：`packages/tools/src/change-set.ts` 使用 Node 内置 crypto、TextEncoder/TextDecoder 和按行 LCS；无运行时依赖、无工作区写入。
-- 提交：待本账本同步后提交 `feat(tools): add change-set diff and hash model`。
+- 提交：`bccb6a4 feat(tools): add change-set diff and hash model`。
 
 ### Task 2：FilesystemTool preview/apply/rollback 和原子写入（已完成）
 
@@ -52,7 +54,7 @@
 - 覆盖：只读 preview、write/edit/patch/mkdir、缺失/重复 hunk、目录/文件冲突、单文件 apply、全量 preimage 预检、多文件冲突全不写、原子替换、existing/new file rollback、mkdir rollback、postimage 冲突、目录依赖无序。
 - 实现：`FilesystemTool` 维护最多 64 个 change set；preview 只读记录 bytes/hash/diff，apply 统一预检后先建目录再同目录临时文件 rename，rollback 校验 postimage 后恢复或删除并清理本次创建的空目录。
 - 额外修正：保持旧 read 的 working-directory 解析行为；将 edit/patch 的纯计算与写盘拆开；apply/rollback 错误包含 change-set id 和冲突路径。
-- 提交：待本账本同步后提交 `feat(filesystem): preview atomically apply and rollback changes`。
+- 提交：`83e15db feat(filesystem): preview atomically apply and rollback changes`。
 
 ### Task 3：AgentLoop review preparation 和批准后的 apply 输入（已完成）
 
@@ -60,13 +62,21 @@
 - GREEN：`pnpm --filter @dev-agent/agent-core typecheck` 与 `pnpm --filter @dev-agent/agent-core test` 通过，agent-core **76/76**（基线 72 + 新增 4）。
 - 覆盖：prepare 返回 review/apply input 后 allow 才执行 apply；deny 不执行原始 mutation；prepare 异常转 denial；未配置 prepare 保持旧 input 行为；`onApproval` 收到同一 review DTO。
 - 实现：agent-core 增加 tool-agnostic change-set DTO 和 `ApprovalPreparation`；AgentLoop 在 `decide` 前执行 prepare，失败即拒绝，批准后只将 `executeInput` 交给工具。
-- 提交：待本账本同步后提交 `feat(agent): prepare reviewed tool changes before approval`。
+- 提交：`8a325ec feat(agent): prepare reviewed tool changes before approval`。
+
+### Task 4：增加 review-writes policy 和配置解析（已完成）
+
+- RED：新增 mode、policy 和 Desktop review 测试后，首次因 `review-writes` 尚未进入类型与导出而编译失败；修复 policy 后又补上 MCP 回归测试，首次暴露 `--mcp-server` 仍复用 `deny-dangerous` 的语义缺口。
+- GREEN：agent-core 全套 **79/79**、CLI 全套 **99/99**、Desktop 全套 **55/55** 通过；CLI 与 Desktop build、agent-core typecheck 通过。
+- 覆盖：`review-writes` CLI/config/env 解析；write/edit/patch/mkdir/apply/rollback 分类；preview/read/list/stat、普通 shell/git 保持可用；交互 CLI 与 Desktop 只在批准后执行 apply；无交互 MCP 对 mutation 明确拒绝且不写盘；危险命令仍沿用原有规则。
+- 实现：`reviewWritesPolicy` 复用 dangerous command/allowlist 判断；filesystem mutation 通过同一 `FilesystemTool` 生成 review 与 apply input；CLI 使用 unified diff prompt，Desktop `ApprovalPrompt` 携带 review；MCP 无 requester 时返回 interactive review denial。
+- 提交：待账本同步后提交 `feat: add review-writes approval mode`。
 
 ## 错误与卡点
 
 | 时间 | Task | 问题 | 处理 |
 |------|------|------|------|
-| - | - | 暂无 | - |
+| 2026-09-13 | Task 4 | MCP server 初版仍使用 `denyDangerousPolicy`，测试收到 workspace boundary denial 而不是 review-writes denial | 增加 `review-writes` 专用 policy wiring；MCP 保持无交互安全拒绝，CLI/Desktop 使用真实 review preparation |
 
 ## 后续路线
 

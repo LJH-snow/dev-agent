@@ -139,3 +139,98 @@ test("a policy without preparation keeps existing approval behavior and runs the
     { action: "write", path: "example.txt", content: "new" },
   ]);
 });
+
+test("review-writes classifies filesystem mutations but not preview or read calls", async () => {
+  const { isFilesystemMutation } = await import("../dist/index.js");
+
+  for (const action of ["write", "edit", "patch", "mkdir", "apply", "rollback"]) {
+    assert.equal(
+      isFilesystemMutation({
+        toolName: "filesystem",
+        input: { action },
+        sessionId: "s",
+        workingDirectory: "/workspace",
+      }),
+      true,
+      `${action} should require review`
+    );
+  }
+  for (const request of [
+    { toolName: "filesystem", input: { action: "preview" } },
+    { toolName: "filesystem", input: { action: "read" } },
+    { toolName: "shell", input: { command: "echo", args: ["ok"] } },
+    { toolName: "git", input: { args: ["status"] } },
+  ]) {
+    assert.equal(
+      isFilesystemMutation({ ...request, sessionId: "s", workingDirectory: "/workspace" }),
+      false
+    );
+  }
+});
+
+test("reviewWritesPolicy requires a reviewed filesystem mutation and still allows ordinary tools", async () => {
+  const requests: any[] = [];
+  const policy = (await import("../dist/index.js")).reviewWritesPolicy({
+    prepare: async (request) => ({ review, executeInput: { action: "apply", changeSetId: review.changeSetId } }),
+    requestApproval: async (request) => {
+      requests.push(request);
+      return "allow" as const;
+    },
+  });
+
+  const filesystemRequest = {
+    toolName: "filesystem",
+    input: { action: "write", path: "example.txt", content: "new" },
+    sessionId: "s",
+    workingDirectory: "/workspace",
+  };
+  const preparation = (await policy.prepare(filesystemRequest))!;
+  assert.equal((preparation.executeInput as any).changeSetId, review.changeSetId);
+  const reviewedRequest = { ...filesystemRequest, review: preparation.review };
+  assert.deepEqual(await policy.decide(reviewedRequest), { decision: "allow" });
+  assert.strictEqual(requests[0], reviewedRequest);
+
+  assert.deepEqual(
+    await policy.decide({
+      toolName: "filesystem",
+      input: { action: "read", path: "example.txt" },
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    }),
+    { decision: "allow" }
+  );
+  assert.deepEqual(
+    await policy.decide({
+      toolName: "shell",
+      input: { command: "echo", args: ["ok"] },
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    }),
+    { decision: "allow" }
+  );
+});
+
+test("reviewWritesPolicy denies unreviewed writes and dangerous calls without an interactive requester", async () => {
+  const policy = (await import("../dist/index.js")).reviewWritesPolicy({
+    prepare: async () => ({ review, executeInput: { action: "apply", changeSetId: review.changeSetId } }),
+  });
+
+  assert.deepEqual(
+    await policy.decide({
+      toolName: "filesystem",
+      input: { action: "write", path: "example.txt", content: "new" },
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    }),
+    { decision: "deny", reason: "filesystem write requires an interactive review" }
+  );
+  assert.deepEqual(
+    await policy.decide({
+      toolName: "shell",
+      input: { command: "rm", args: ["-rf", "tmp"] },
+      sessionId: "s",
+      workingDirectory: "/workspace",
+    }),
+    { decision: "deny", reason: "recursive delete: rm -rf tmp" }
+  );
+});

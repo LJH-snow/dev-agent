@@ -174,12 +174,17 @@ export function resolveSummaryMaxChars(
   return undefined;
 }
 
-export type ApprovalMode = "allow" | "deny-dangerous" | "ask";
+export type ApprovalMode = "allow" | "deny-dangerous" | "ask" | "review-writes";
 
 /** Validates a user-supplied approval mode, returning undefined when unknown. */
 export function parseApprovalMode(value: string | undefined): ApprovalMode | undefined {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "allow" || normalized === "deny-dangerous" || normalized === "ask") {
+  if (
+    normalized === "allow" ||
+    normalized === "deny-dangerous" ||
+    normalized === "ask" ||
+    normalized === "review-writes"
+  ) {
     return normalized;
   }
   return undefined;

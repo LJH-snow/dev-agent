@@ -182,6 +182,36 @@ test("--approval deny-dangerous gates MCP tool calls", async () => {
   }
 });
 
+test("--approval review-writes refuses filesystem mutations without an interactive reviewer", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-policy-"));
+  const target = join(dir, "mutation.txt");
+  const { child, send, stderr } = spawnServer(
+    { DEV_AGENT_MEMORY_FILE: join(dir, "session.json") },
+    ["--approval", "review-writes"]
+  );
+
+  try {
+    await send({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
+
+    const denied = await send({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: {
+        name: "filesystem",
+        arguments: { action: "write", path: target, content: "needs approval" },
+      },
+    });
+    assert.equal(denied.result.isError, true);
+    assert.match(denied.result.content[0].text, /filesystem write requires an interactive review/);
+    assert.equal(existsSync(target), false, "an unreviewed write must not reach disk");
+  } finally {
+    await closeServer(child);
+    assert.equal(stderr(), "");
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("--approval allow keeps MCP tool calls ungated", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-allow-"));
   const outside = join(dir, "outside.txt");
