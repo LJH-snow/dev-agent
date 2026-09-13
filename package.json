@@ -11,6 +11,9 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
     "test": "pnpm -r run test",
+    "verify": "node scripts/release-gate.mjs",
+    "verify:typescript": "node scripts/release-gate.mjs --typescript",
+    "verify:rust": "node scripts/release-gate.mjs --rust",
     "check": "node scripts/check.mjs",
     "clean": "pnpm -r run clean",
     "cli": "pnpm --filter @dev-agent/cli run start"
