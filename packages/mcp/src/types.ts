@@ -74,11 +74,26 @@ export interface McpToolInfo {
   readonly inputSchema?: Record<string, unknown>;
 }
 
+export interface McpToolProgress {
+  readonly progress: number;
+  readonly total?: number;
+}
+
+export interface McpCallOptions {
+  readonly signal?: AbortSignal;
+  readonly onProgress?: (progress: McpToolProgress) => void;
+}
+
+export interface McpToolExecutionContext {
+  readonly signal?: AbortSignal;
+  readonly onProgress?: (progress: McpToolProgress) => void;
+}
+
 export interface McpTool {
   readonly name: string;
   readonly description: string;
   readonly parameters?: Record<string, unknown>;
-  execute(input: unknown): Promise<unknown>;
+  execute(input: unknown, context?: McpToolExecutionContext): Promise<unknown>;
 }
 
 export interface McpToolResult {
@@ -138,7 +153,7 @@ export interface McpPrompt {
 export interface McpClient {
   connect(config: McpClientConfig): Promise<void>;
   listTools(): Promise<McpTool[]>;
-  callTool(name: string, input: unknown): Promise<McpToolResult>;
+  callTool(name: string, input: unknown, options?: McpCallOptions): Promise<McpToolResult>;
   listResources(): Promise<McpResource[]>;
   readResource(uri: string): Promise<McpResourceContents>;
   /** Every content block the server returned, in order. */

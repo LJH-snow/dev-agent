@@ -166,7 +166,7 @@ AgentLoop 为每个工具调用创建的 context 必须把 progress callback 绑
 - Create: `/Users/Admin/Desktop/dev-agent/packages/mcp/tests/mcp-cancel-progress.test.ts`
 - Create: `/Users/Admin/Desktop/dev-agent/packages/mcp/tests/cancelable-mcp-server.mjs`
 
-- [ ] **Step 1: 写失败测试。** 先让可取消 fixture 实现以下固定契约：
+- [x] **Step 1: 写失败测试。** 先让可取消 fixture 实现以下固定契约：
   - `tools/list` 返回一个 `progressive` 工具；
   - `tools/call(progressive)` 读取 `params._meta.progressToken`，依次发送 progress `1/3`、`2/3`、`3/3`，并在最后返回文本结果；
   - 收到无 id 的 `notifications/cancelled` 后，将 `requestId` 和 `reason` 追加到 `MCP_CANCEL_MARKER` 指定的文件，但仍会按 fixture 设计发送一次延迟 response，用于验证客户端忽略晚到结果；
@@ -178,7 +178,7 @@ AgentLoop 为每个工具调用创建的 context 必须把 progress callback 绑
   - progress callback 收到 `[1, 2, 3]`，total 始终为 `3`，调用最终成功；
   - progress callback 抛出异常时，RPC 调用仍能完成，后续 `ping()` 仍能成功。
 
-- [ ] **Step 2: 只运行 MCP 新测试，确认测试先失败。**
+- [x] **Step 2: 只运行 MCP 新测试，确认测试先失败。**
 
 ```bash
 pnpm --filter @dev-agent/mcp test
@@ -198,15 +198,15 @@ Expected: 新增取消、progress 断言失败；v31 已有的 44 个测试保�
 - Consumes: `McpCallOptions`, `McpToolProgress` and existing `McpRequestError`.
 - Produces: `McpClient.callTool(name, input, options?)`, `createMcpTool().execute(input, context?)`, and a private request lifecycle that removes all routing state on settle.
 
-- [ ] **Step 1:** Extend `PendingRequest` with optional `progressToken` and callback; add `progressPending` routing map if the implementation uses a separate index.
-- [ ] **Step 2:** Let `callTool()` pass options to the private request method. Generate a numeric token from the request id when `onProgress` exists and add it under `params._meta.progressToken` without changing requests that do not request progress.
-- [ ] **Step 3:** Add an abort listener before writing the request. Handle an already-aborted signal synchronously within the returned Promise and never leave a pending map entry.
-- [ ] **Step 4:** Add `cancelRequest(id, reason)` that removes pending/routing/timer state, sends `notifications/cancelled` when the child is writable, and rejects exactly once with the requested client-side error.
-- [ ] **Step 5:** Make the existing timeout path call `cancelRequest(id, "request timed out")` while preserving code `-32000` and the existing timeout message.
-- [ ] **Step 6:** In `handleLine()`, route progress notifications to the matching callback, catch callback exceptions, then preserve the existing global notification dispatch.
-- [ ] **Step 7:** Update `createMcpTool()` so its optional context forwards `signal` and `onProgress` to `client.callTool()`.
+- [x] **Step 1:** Extend `PendingRequest` with optional `progressToken` and callback; add `progressPending` routing map if the implementation uses a separate index.
+- [x] **Step 2:** Let `callTool()` pass options to the private request method. Generate a numeric token from the request id when `onProgress` exists and add it under `params._meta.progressToken` without changing requests that do not request progress.
+- [x] **Step 3:** Add an abort listener before writing the request. Handle an already-aborted signal synchronously within the returned Promise and never leave a pending map entry.
+- [x] **Step 4:** Add `cancelRequest(id, reason)` that removes pending/routing/timer state, sends `notifications/cancelled` when the child is writable, and rejects exactly once with the requested client-side error.
+- [x] **Step 5:** Make the existing timeout path call `cancelRequest(id, "request timed out")` while preserving code `-32000` and the existing timeout message.
+- [x] **Step 6:** In `handleLine()`, route progress notifications to the matching callback, catch callback exceptions, then preserve the existing global notification dispatch.
+- [x] **Step 7:** Update `createMcpTool()` so its optional context forwards `signal` and `onProgress` to `client.callTool()`.
 
-- [ ] **Step 8: 运行 MCP 测试确认通过。**
+- [x] **Step 8: 运行 MCP 测试确认通过。**
 
 ```bash
 pnpm --filter @dev-agent/mcp test
@@ -214,7 +214,7 @@ pnpm --filter @dev-agent/mcp test
 
 Expected: MCP package tests pass, including cancellation, timeout cancellation, progress ordering, callback isolation, and all previous tests.
 
-- [ ] **Step 9: Commit the self-contained MCP core change.**
+- [x] **Step 9: Commit the self-contained MCP core change.**
 
 ```bash
 git add packages/mcp/src/types.ts packages/mcp/src/stdio-client.ts packages/mcp/tests/cancelable-mcp-server.mjs packages/mcp/tests/mcp-cancel-progress.test.ts packages/mcp/tests/mcp-timeout.test.ts

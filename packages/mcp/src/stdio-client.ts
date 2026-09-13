@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
 import type {
   McpClient,
+  McpCallOptions,
   McpClientConfig,
   McpClientCapabilities,
   McpInitializeResult,
@@ -15,6 +16,7 @@ import type {
   McpServerCapabilities,
   McpServerInfo,
   McpTool,
+  McpToolProgress,
   McpToolInfo,
   McpToolResult,
 } from "./types.js";
@@ -34,12 +36,24 @@ interface JsonRpcMessage {
 interface PendingRequest {
   resolve(value: unknown): void;
   reject(reason: unknown): void;
+  timer?: NodeJS.Timeout;
+  signal?: AbortSignal;
+  abortHandler?: () => void;
+  progressToken?: string | number;
+  onProgress?: (progress: McpToolProgress) => void;
+}
+
+interface RequestOptions {
+  readonly signal?: AbortSignal;
+  readonly onProgress?: (progress: McpToolProgress) => void;
 }
 
 /** How long any single MCP request may stay unanswered. */
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 /** JSON-RPC-ish code used for client-side timeouts (not sent by the server). */
 const REQUEST_TIMEOUT_CODE = -32000;
+/** JSON-RPC-ish code used when the caller aborts a request. */
+const REQUEST_ABORTED_CODE = -32001;
 
 type NotificationHandler = (notification: McpNotification) => void;
 
@@ -48,6 +62,7 @@ export class McpStdioClient implements McpClient {
   private config?: McpClientConfig;
   private initializeResult?: McpInitializeResult;
   private readonly pending = new Map<number, PendingRequest>();
+  private readonly progressRequests = new Map<string | number, number>();
   private nextId = 1;
   private buffer = "";
   private notificationHandlers: NotificationHandler[] = [];
@@ -132,11 +147,15 @@ export class McpStdioClient implements McpClient {
     return (result?.tools ?? []).map((info) => createMcpTool(this, info));
   }
 
-  async callTool(name: string, input: unknown): Promise<McpToolResult> {
+  async callTool(
+    name: string,
+    input: unknown,
+    options: McpCallOptions = {}
+  ): Promise<McpToolResult> {
     const result = (await this.request("tools/call", {
       name,
       arguments: input,
-    })) as McpToolResult | undefined;
+    }, options)) as McpToolResult | undefined;
     const toolResult = result ?? { content: [] };
     if (toolResult.isError) {
       // `isError` results carry the server's own explanation in `content`;
@@ -257,7 +276,11 @@ export class McpStdioClient implements McpClient {
     return [{ uri: `file://${root}`, name: "workspace" }];
   }
 
-  private request(method: string, params: unknown): Promise<unknown> {
+  private request(
+    method: string,
+    params: unknown,
+    options: RequestOptions = {}
+  ): Promise<unknown> {
     const id = this.nextId;
     this.nextId += 1;
     return new Promise((resolve, reject) => {
@@ -265,34 +288,117 @@ export class McpStdioClient implements McpClient {
       // forever, which hung `connect()` (and therefore the whole CLI at
       // startup) with no output at all.
       const timeoutMs = this.config?.timeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
-      const timer = setTimeout(() => {
-        this.pending.delete(id);
+      if (options.signal?.aborted) {
         reject(
+          new McpRequestError(
+            REQUEST_ABORTED_CODE,
+            `MCP request "${method}" was aborted`
+          )
+        );
+        return;
+      }
+      const progressToken = options.onProgress ? id : undefined;
+      const pending: PendingRequest = {
+        resolve,
+        reject,
+        signal: options.signal,
+        progressToken,
+        onProgress: options.onProgress,
+      };
+      this.pending.set(id, pending);
+      if (progressToken !== undefined) {
+        this.progressRequests.set(progressToken, id);
+      }
+
+      const abortHandler = (): void => {
+        this.cancelRequest(
+          id,
+          "request aborted",
+          new McpRequestError(
+            REQUEST_ABORTED_CODE,
+            `MCP request "${method}" was aborted`
+          )
+        );
+      };
+      pending.abortHandler = abortHandler;
+      if (options.signal) {
+        if (options.signal.aborted) {
+          abortHandler();
+          return;
+        }
+        options.signal.addEventListener("abort", abortHandler, { once: true });
+      }
+
+      pending.timer = setTimeout(() => {
+        this.cancelRequest(
+          id,
+          "request timed out",
           new McpRequestError(
             REQUEST_TIMEOUT_CODE,
             `MCP request "${method}" timed out after ${timeoutMs}ms`
           )
         );
       }, timeoutMs);
-      const settle = {
-        resolve: (value: unknown) => {
-          clearTimeout(timer);
-          resolve(value);
-        },
-        reject: (reason: unknown) => {
-          clearTimeout(timer);
-          reject(reason);
-        },
-      };
-      this.pending.set(id, settle);
+
       if (!this.child) {
-        this.pending.delete(id);
-        clearTimeout(timer);
-        reject(new Error("MCP client is not connected"));
+        const removed = this.removePending(id);
+        removed?.reject(new Error("MCP client is not connected"));
         return;
       }
-      this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, method, params })}\n`);
+      const requestParams = progressToken === undefined
+        ? params
+        : {
+            ...asRecord(params),
+            _meta: {
+              ...asRecord(asRecord(params)._meta),
+              progressToken,
+            },
+          };
+      try {
+        this.child.stdin.write(
+          `${JSON.stringify({ jsonrpc: "2.0", id, method, params: requestParams })}\n`
+        );
+      } catch (error) {
+        const removed = this.removePending(id);
+        removed?.reject(error);
+      }
     });
+  }
+
+  private cancelRequest(id: number, reason: string, error: McpRequestError): void {
+    const pending = this.removePending(id);
+    if (!pending) {
+      return;
+    }
+    this.sendCancellation(id, reason);
+    pending.reject(error);
+  }
+
+  private sendCancellation(id: number, reason: string): void {
+    try {
+      this.notify("notifications/cancelled", { requestId: id, reason });
+    } catch {
+      // The original abort or timeout is the useful error. A closed stdin
+      // must not replace it with a write failure.
+    }
+  }
+
+  private removePending(id: number): PendingRequest | undefined {
+    const pending = this.pending.get(id);
+    if (!pending) {
+      return undefined;
+    }
+    this.pending.delete(id);
+    if (pending.timer) {
+      clearTimeout(pending.timer);
+    }
+    if (pending.signal && pending.abortHandler) {
+      pending.signal.removeEventListener("abort", pending.abortHandler);
+    }
+    if (pending.progressToken !== undefined) {
+      this.progressRequests.delete(pending.progressToken);
+    }
+    return pending;
   }
 
   private notify(method: string, params: unknown): void {
@@ -325,7 +431,7 @@ export class McpStdioClient implements McpClient {
     if (typeof message.id === "number" && message.id > 0) {
       const pending = this.pending.get(message.id);
       if (pending) {
-        this.pending.delete(message.id);
+        this.removePending(message.id);
         if (message.error) {
           pending.reject(new McpRequestError(message.error.code, message.error.message ?? "MCP request failed"));
         } else {
@@ -343,6 +449,20 @@ export class McpStdioClient implements McpClient {
     if (message.method && message.id === undefined) {
       const notification = parseNotification(message.method, message.params);
       if (notification) {
+        if (notification.method === "progress") {
+          const requestId = this.progressRequests.get(notification.progressToken);
+          const pending = requestId === undefined ? undefined : this.pending.get(requestId);
+          if (pending?.onProgress) {
+            try {
+              pending.onProgress({
+                progress: notification.progress,
+                total: notification.total,
+              });
+            } catch {
+              // A consumer callback must not break the MCP read loop.
+            }
+          }
+        }
         for (const handler of this.notificationHandlers) {
           handler(notification);
         }
@@ -358,10 +478,11 @@ export class McpStdioClient implements McpClient {
   }
 
   private rejectAll(error: unknown): void {
-    for (const pending of this.pending.values()) {
-      pending.reject(error);
+    for (const id of [...this.pending.keys()]) {
+      const pending = this.removePending(id);
+      pending?.reject(error);
     }
-    this.pending.clear();
+    this.progressRequests.clear();
   }
 }
 
@@ -432,8 +553,11 @@ export function createMcpTool(client: McpClient, info: McpToolInfo): McpTool {
     name: info.name,
     description: info.description ?? "",
     parameters: info.inputSchema,
-    async execute(input: unknown) {
-      return client.callTool(info.name, input);
+    async execute(input: unknown, context) {
+      return client.callTool(info.name, input, {
+        signal: context?.signal,
+        onProgress: context?.onProgress,
+      });
     },
   };
 }
