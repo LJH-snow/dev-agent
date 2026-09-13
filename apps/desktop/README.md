@@ -72,11 +72,14 @@ are accepted, and validation command fields are deliberately not configurable.
 - `GET /health` — `{ "status": "ok" }`.
 - `GET /api/sessions` — the default session id plus every session file in
   `DEV_AGENT_SESSION_DIR` (`~/.dev-agent/sessions` by default), newest first.
+  Each summary includes a metadata-only `evidenceSummary` with retained counts,
+  effective limits, and the number/reason for protected applied guards.
 - `GET /api/sessions/<id>/messages` — the stored transcript of one session,
-  returned as `{ messages, validations, changeSets }`; validation and applied
-  change-set evidence stay separate from the model message list. Optional query
-  filters `changeSetId`, `validationId`, and `status` (`passed`, `failed`,
-  `skipped`, or `blocked`) narrow the evidence arrays without removing messages.
+  returned as `{ messages, validations, changeSets, evidenceSummary }`; validation
+  and applied change-set evidence stay separate from the model message list. The
+  summary always describes the whole session, while optional query filters
+  `changeSetId`, `validationId`, and `status` (`passed`, `failed`, `skipped`, or
+  `blocked`) narrow only the evidence arrays without removing messages.
   An invalid `status` returns a structured `400` response.
 - `DELETE /api/sessions/<id>` — delete a session's memory file and drop it from
   the in-memory registry; unknown ids return `404`.
@@ -87,7 +90,7 @@ are accepted, and validation command fields are deliberately not configurable.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
   accepts the same `changeSetId`, `validationId`, and `status` filters and adds
-  a metadata-only change-set evidence section.
+  metadata-only change-set evidence and evidence-retention summary sections.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-progress`, `tool-result`, `turn`, `usage`,
   `approval-request`, `approval`, `validation`, `done`, `error`. A
@@ -113,9 +116,18 @@ are accepted, and validation command fields are deliberately not configurable.
   `404`.
 - `POST /api/changesets/rollback` — body `{ "sessionId": "...",
   "changeSetId": "..." }`; guarded rollback of an applied reviewed change set.
-  A successful response is the change-set result. Unknown or expired ids return
-  `404`; an in-flight session, postimage conflict, or already rolled-back set
-  returns `409`; an unavailable rollback implementation returns `501`.
+  A successful response is the change-set result and durable evidence is then
+  marked `rolled-back`. Unknown or expired ids return `404`; an in-flight session,
+  postimage conflict, or already rolled-back set returns `409`; an unavailable
+  rollback implementation returns `501`.
+- `POST /api/changesets/cleanup` — body `{ "sessionId": "...",
+  "maxValidations": 3, "maxChangeSets": 10, "removeRolledBack": true }`; all
+  fields except `sessionId` are optional. It changes only the selected session's
+  memory metadata and returns removal counts, protected applied-guard counts,
+  remaining counts, and `evidenceSummary`. Invalid JSON/limits return `400`, an
+  unknown session returns `404`, an in-flight session returns `409`, and an
+  unavailable cleanup implementation returns `501`. It never executes commands or
+  reads/writes the working directory.
 - `POST /api/changesets/validate` — body `{ "sessionId": "...",
   "changeSetId": "..." }`; explicitly reruns trusted validation for the
   applied change set without changing files. A successful response is the full

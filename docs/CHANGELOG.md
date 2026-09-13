@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-09-13 (Day plan v37: evidence lifecycle and continuous regression guard)
+
+Executed `docs/day-plan-v37.md`. v36 made applied change-set evidence safe to
+restore across processes; v37 adds bounded retention, durable rollback state,
+explicit cleanup, and operator-visible summaries without making evidence an
+execution input.
+
+### Added: bounded evidence lifecycle
+
+- `InMemoryMemory` and `FileMemory` retain at most 100 validation attempts and
+  use a soft 100-record change-set limit by default. `applied` change-set guards
+  are never implicitly pruned; only non-active `rolled-back` records are
+  eligible for explicit cleanup.
+- `markChangeSetRolledBack()` is persisted only after a guarded filesystem Undo
+  succeeds. A postimage conflict, failed operation, cancellation, or unavailable
+  sync leaves the durable state unchanged; rolled-back records do not revive an
+  old before-image or enable cross-process Undo.
+- `pruneEvidence()` changes only memory metadata and returns removal, protected,
+  and remaining counts. `evidenceSummary()` exposes counts, effective limits,
+  and the reason applied guards remain protected.
+
+### Added: CLI/Desktop visibility and cleanup
+
+- CLI adds `--cleanup-evidence` with optional bounds and
+  `--remove-rolled-back`; interactive mode adds `:cleanup` with the same options.
+  JSON prompt, metadata, session-list, and cleanup results include structured
+  retention summaries.
+- Desktop history/session summaries and Markdown exports include the same
+  metadata-only summary. `POST /api/changesets/cleanup` validates session/limit
+  input, serializes cleanup per session, distinguishes `400`/`404`/`409`/`501`,
+  and never touches the working directory.
+- Existing history fields, old `version: 1` memory files, validation filters,
+  restore guards, cancellation, MCP, and Rust boundaries remain compatible.
+
+### Tests
+
+- Focused suites after the lifecycle changes: agent-core **106/106**, CLI
+  **112/112**, and Desktop **73/73**.
+- The v37 regression matrix retains coverage for session/workdir binding,
+  postimage conflicts, rolled-back restore rejection, cancellation, no-auto-
+  rollback, metadata-only cleanup, and protected applied guards.
+
 ## 2026-09-14 (Day plan v36: cross-process change-set evidence)
 
 Executed `docs/day-plan-v36.md`. v35 persisted validation attempts, but the

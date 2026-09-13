@@ -9,6 +9,7 @@ pnpm cli -- --version
 pnpm cli -- --once "list files in the current directory"
 pnpm cli -- --session docs --once "answer in code"
 pnpm cli -- --session docs --reset-memory --once "start over"
+pnpm cli -- --cleanup-evidence --remove-rolled-back --json
 pnpm cli -- --tools
 DEV_AGENT_MODEL_PROVIDER=ollama pnpm cli
 ```
@@ -20,9 +21,17 @@ Options:
 - `--reset-memory` - clear the selected memory before running
 - `--tools` - list registered tools and exit
 - `--metadata` - print metadata for the selected session and exit, including the
-  accumulated token usage when the session has any
+  accumulated token usage and a metadata-only `evidenceSummary` when the session
+  has any
 - `--session-list` - list saved sessions, newest first; `--json` includes each
-  session's accumulated `usage` (`null` when it never reported tokens)
+  session's accumulated `usage` (`null` when it never reported tokens) and its
+  metadata-only `evidenceSummary`
+- `--cleanup-evidence` - explicitly prune metadata-only evidence for the selected
+  session and exit. Optional `--max-validations <n>`, `--max-change-sets <n>`, and
+  `--remove-rolled-back` control the cleanup; limits must be positive integers no
+  greater than 10000. Applied change-set guards are always protected. The command
+  never reads or changes workspace files, and `--json` returns removal, protection,
+  remaining-count, and `evidenceSummary` fields
 - `--compact <n>` - compact the selected session, keeping the `n` most recent turns
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary
@@ -45,10 +54,10 @@ Options:
   apply it only after an explicit `y`; dangerous shell/git calls keep their
   existing approval rules; EOF or a read failure denies it)
 - `--json` - machine-readable output for `--once`, `--tools`, `--metadata`,
-  `--session-list`, and `--compact`; implies `--no-stream` so nothing else is
-  written to stdout. A prompt run in `review-writes` mode also includes a
-  structured `reviews` array with each change-set id, decision, files, and
-  addition/deletion totals.
+  `--session-list`, `--compact`, and `--cleanup-evidence`; implies `--no-stream`
+  so nothing else is written to stdout. Prompt results include structured
+  `reviews`, `validations`, `changeSets`, and metadata-only `evidenceSummary`
+  fields.
 - `--doctor` - check the environment (Node version, `rg`, `protoc`, the Rust
   runtime binary, the provider API key, `~/.dev-agent/config.json`, and the
   session directory); a missing config is fine, while malformed JSON is reported
@@ -78,7 +87,12 @@ fall through to interactive mode (`--nope`), send the next flag as the prompt
 
 Running without `--once` starts an interactive session. Each prompt continues
 from the previous run, so `[state=… turns=…]` counts the whole session and
-`[usage]` accumulates instead of reporting one prompt at a time. `Ctrl-C`
+`[usage]` accumulates instead of reporting one prompt at a time. Use
+`:validate <changeSetId>` for a guarded validation rerun, or
+`:cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]`
+for explicit metadata-only evidence cleanup. Cleanup reports removed validations,
+removed change sets, protected applied guards, remaining counts, and the current
+retention summary; it never executes a command or touches workspace files. `Ctrl-C`
 cancels the request that is in flight (through the same abort path the
 desktop uses) and exits with status `130`; it also exits immediately when
 the CLI is idle at the prompt. `exit` or `quit` leaves with status `0`.

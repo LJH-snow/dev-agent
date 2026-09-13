@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-v37 的 Task 0、Task 1、Task 2 已完成，当前进入 Task 3：把 retention、protected applied guard、rollback state 和 metadata-only cleanup 暴露给 CLI/Desktop，并同步对外文档。v36 已经让 applied change-set evidence 可以跨进程安全恢复；本阶段继续保证生命周期治理不会削弱 restore、postimage conflict、取消和 no-auto-rollback 边界。
+v37 的 Task 0、Task 1、Task 2、Task 3 已完成，当前进入 Task 4：运行全量 TypeScript/Executor/Rust/结构检查，完成发布记录并推送。v36 已经让 applied change-set evidence 可以跨进程安全恢复；本阶段继续保证生命周期治理不会削弱 restore、postimage conflict、取消和 no-auto-rollback 边界。
 
 ## 已完成
 
@@ -41,8 +41,12 @@ v37 的 Task 0、Task 1、Task 2 已完成，当前进入 Task 3：把 retention
 
 ### Task 3：CLI/Desktop 可见性、API 和文档
 
-- [ ] 暴露 retention 摘要和结构化 cleanup 结果，同时保持旧 history/JSON 兼容。
-- [ ] 增加 CLI 显式 cleanup 与交互式 `:cleanup`，并让 history/export/API 展示受保护 applied guard 的数量和原因。
+- [x] 首轮 RED 覆盖缺少 `evidenceSummary()` 类型、CLI cleanup flag/命令和 Desktop history summary。
+- [x] `EvidenceSummary` 只暴露数量、上限和 protected applied guard 原因，不携带命令、diff、文件内容或 before-image。
+- [x] CLI 增加 `--cleanup-evidence`、`--max-validations`、`--max-change-sets`、`--remove-rolled-back` 及交互式 `:cleanup`；prompt/metadata/session-list JSON 均可见 summary。
+- [x] Desktop sessions/history/export 暴露 summary；cleanup API 只操作选定 session 的 memory metadata，并按 session 串行化。
+- [x] 聚焦回归：agent-core **106/106**、CLI **112/112**、Desktop **73/73**。
+- [x] 已完成提交：`c97020a`。
 
 ### Task 4：全量回归、文档和发布
 
@@ -58,12 +62,14 @@ v37 的 Task 0、Task 1、Task 2 已完成，当前进入 Task 3：把 retention
 - v37 Task 0 聚焦结果：tools **121/121**。
 - v37 Task 1 聚焦结果：agent-core **105/105**。
 - v37 Task 2 聚焦结果：Desktop **71/71**；实现提交：`a271df8`。
+- v37 Task 3 聚焦结果：agent-core **106/106**、CLI **112/112**、Desktop **73/73**；实现提交：`c97020a`。
 
 ## 安全不变量
 
 - persisted evidence 不成为执行输入；不存储命令、shell、diff、patch、文件内容或 before-image。
 - 仍为 `applied` 的记录受保护；自动 retention 不得让跨进程 validation 失去安全 guard。
 - cleanup 只改 session memory 元数据，不能创建、修复、覆盖、回滚或删除 working directory 中的文件；Desktop API 只调用 `pruneEvidence()`。
+- evidence summary 只包含结构化数量、上限和保护原因，不能进入模型上下文，也不包含命令、diff、文件字节或 before-image。
 - rollback 只有在 postimage guard 成功后才可将 durable record 标为 `rolled-back`；冲突、失败、取消和 blocked 均保持原状态。
 
 ## 后续路线

@@ -125,6 +125,24 @@ blocked validation describes what happened but never rolls back the already
 applied change set. Callers can still use the guarded `rollback` operation when
 they explicitly want to undo it.
 
+## Evidence lifecycle
+
+`AgentMemory` keeps validation attempts and minimal applied change-set evidence
+separate from the model message context. `FileMemory` and `InMemoryMemory` use
+default retention limits of 100 validation records and 100 change-set records.
+When the change-set soft limit is reached, records in `applied` state are always
+protected because they remain usable as postimage validation guards; only
+non-active (`rolled-back`) records can be removed.
+
+`pruneEvidence({ maxValidations, maxChangeSets, removeRolledBack })` is an
+explicit, idempotent, metadata-only operation. It returns validation/change-set
+removal counts, the number of protected applied guards, and remaining counts.
+`markChangeSetRolledBack(changeSetId)` is only called after a guarded filesystem
+rollback succeeds; it never stores or reconstructs a before-image.
+`evidenceSummary()` exposes counts, effective limits, and the reason applied
+guards remain protected. Old `version: 1` memory files without validation or
+change-set fields remain readable with empty evidence counts.
+
 Built-in tools accept an optional context object with `sessionId` and
 `workingDirectory`. Shell/git/search commands run in that working directory,
 and filesystem and code-search paths are resolved relative to it. `code-search`

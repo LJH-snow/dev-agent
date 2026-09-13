@@ -233,6 +233,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - Applied reviewed change sets derive deterministic, allowlisted validation
   checks from their real paths; `ValidationResult` keeps pass/fail/skipped/blocked
   separate from apply status, forwards cancellation, and never auto-rolls back
+- Evidence lifecycle is bounded and visible: validation history has a default
+  limit, applied change-set guards are protected, explicit metadata-only cleanup
+  can remove rolled-back evidence, and CLI/Desktop expose retention summaries
+  without putting commands, diffs, or file contents into model context
 - CLI human output and `--json.validations` expose the same check ids, structured
   commands, durations, bounded output, and failure reasons; Desktop emits a
   `validation` SSE frame and renders a card without hiding the guarded Undo

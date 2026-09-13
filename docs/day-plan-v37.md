@@ -83,14 +83,18 @@
 
 **Produces:** 用户能知道 evidence 被保留、保护或清理，且旧调用方不需要迁移。
 
-- [ ] **Step 1: 写失败测试。**
+- [x] **Step 1: 写失败测试。**
   - CLI `--json`、交互式命令和 Desktop history/export/API 返回 retention 摘要。
   - Desktop cleanup 的错误映射区分未知 session、非法参数、protected applied guard 和实际删除结果。
   - messages 仍不混入 evidence；历史输出不出现命令、diff、文件字节或 before-image。
-- [ ] **Step 2: 运行聚焦测试确认 RED。**
-- [ ] **Step 3: 写最小实现。** 保持现有字段和状态兼容，新增字段只使用结构化元数据。
-- [ ] **Step 4: 运行聚焦测试确认 GREEN。**
-- [ ] **Step 5: 提交。**
+- [x] **Step 2: 运行聚焦测试确认 RED。** agent-core 先因缺少 `evidenceSummary()` 类型而编译失败；CLI 暴露未知 `--cleanup-evidence` 与缺少 `:cleanup`；Desktop history summary 仍为 `undefined`。
+- [x] **Step 3: 写最小实现。**
+  - `EvidenceSummary` 只包含记录数量、有效 retention 上限、protected applied guard 数量/原因和 rolled-back 数量。
+  - CLI 增加 `--cleanup-evidence`、限额参数、`--remove-rolled-back` 和交互式 `:cleanup`；prompt/metadata/session-list JSON 暴露 summary。
+  - Desktop sessions/history/export 暴露 summary；cleanup route 按 session 串行化并区分 `400`/`404`/`409`/`501`，只操作 memory metadata。
+  - 保持现有字段和状态兼容，新增字段只使用结构化元数据。
+- [x] **Step 4: 运行聚焦测试确认 GREEN。** agent-core **106/106**、CLI **112/112**、Desktop **73/73**。
+- [x] **Step 5: 提交。** `c97020a`。
 
 ## Task 4：全量回归、文档和发布
 
