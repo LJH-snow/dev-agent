@@ -343,6 +343,114 @@ test("ChatSession reruns trusted validation with a fresh attempt id and preserve
   }
 });
 
+test("a new Desktop session reruns evidence persisted by an earlier session", async () => {
+  const workspace = await createGitWorkspace();
+  const provider = await startStubProvider("changed\n");
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(workspace.directory, "session.json"),
+  });
+  let firstSession: ChatSession | undefined;
+  let secondSession: ChatSession | undefined;
+  let changeSetId = "";
+  try {
+    firstSession = new ChatSession({
+      sessionId: "restart",
+      workingDirectory: workspace.directory,
+      approvalMode: "review-writes",
+    });
+    await firstSession.run("change and verify", (event) => {
+      const data = event.data as any;
+      if (event.type === "approval" && data.review?.changeSetId) {
+        changeSetId = data.review.changeSetId;
+      }
+    }, { requestApproval: async () => "allow" });
+    await firstSession.close();
+    firstSession = undefined;
+
+    secondSession = new ChatSession({
+      sessionId: "restart",
+      workingDirectory: workspace.directory,
+      approvalMode: "review-writes",
+    });
+    const rerun = await secondSession.rerunValidation(changeSetId);
+
+    assert.equal(rerun.changeSetId, changeSetId);
+    assert.match(rerun.validationId, new RegExp(`^validation:${changeSetId}:`));
+    assert.equal(rerun.status, "passed");
+    assert.equal(await readFile(workspace.target, "utf8"), "changed\n");
+  } finally {
+    await firstSession?.close();
+    await secondSession?.close();
+    await provider.close();
+    restoreEnv();
+    await rm(workspace.directory, { recursive: true, force: true });
+  }
+});
+
+test("restored evidence cannot cross session or working-directory boundaries", async () => {
+  const workspace = await createGitWorkspace();
+  const otherWorkspace = await createGitWorkspace();
+  const provider = await startStubProvider("changed\n");
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(workspace.directory, "session.json"),
+  });
+  let firstSession: ChatSession | undefined;
+  let wrongSession: ChatSession | undefined;
+  let wrongWorkspaceSession: ChatSession | undefined;
+  let changeSetId = "";
+  try {
+    firstSession = new ChatSession({
+      sessionId: "restart",
+      workingDirectory: workspace.directory,
+      approvalMode: "review-writes",
+    });
+    await firstSession.run("change and verify", (event) => {
+      const data = event.data as any;
+      if (event.type === "approval" && data.review?.changeSetId) {
+        changeSetId = data.review.changeSetId;
+      }
+    }, { requestApproval: async () => "allow" });
+    await firstSession.close();
+    firstSession = undefined;
+
+    wrongSession = new ChatSession({
+      sessionId: "other-session",
+      workingDirectory: workspace.directory,
+      approvalMode: "review-writes",
+    });
+    const sessionMismatch = await wrongSession.rerunValidation(changeSetId);
+    assert.equal(sessionMismatch.status, "blocked");
+    assert.match(sessionMismatch.reason ?? "", /session/);
+    await wrongSession.close();
+    wrongSession = undefined;
+
+    wrongWorkspaceSession = new ChatSession({
+      sessionId: "restart",
+      workingDirectory: otherWorkspace.directory,
+      approvalMode: "review-writes",
+    });
+    const workingDirectoryMismatch = await wrongWorkspaceSession.rerunValidation(changeSetId);
+    assert.equal(workingDirectoryMismatch.status, "blocked");
+    assert.match(workingDirectoryMismatch.reason ?? "", /working directory/);
+    assert.equal(await readFile(workspace.target, "utf8"), "changed\n");
+    assert.equal(await readFile(otherWorkspace.target, "utf8"), "keep\n");
+  } finally {
+    await firstSession?.close();
+    await wrongSession?.close();
+    await wrongWorkspaceSession?.close();
+    await provider.close();
+    restoreEnv();
+    await rm(workspace.directory, { recursive: true, force: true });
+    await rm(otherWorkspace.directory, { recursive: true, force: true });
+  }
+});
+
 test("ChatSession turns a rerun postimage conflict into blocked evidence without undoing user bytes", async () => {
   const workspace = await createGitWorkspace();
   const provider = await startStubProvider("changed\n");

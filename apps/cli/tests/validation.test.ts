@@ -5,7 +5,7 @@ import { promisify } from "node:util";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcess } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -104,6 +104,105 @@ function runCli(
   });
 }
 
+async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("condition was not met before the timeout");
+}
+
+function runCliInteractiveValidation(
+  args: readonly string[],
+  env: NodeJS.ProcessEnv,
+  changeSetId: string
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const child: ChildProcess = spawn("node", [cliPath, ...args], {
+      env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        child.kill("SIGKILL");
+        settled = true;
+        reject(new Error("the interactive CLI did not finish in time"));
+      }
+    }, 10000);
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
+      clearTimeout(timer);
+      settled = true;
+      resolve({ code, stdout, stderr });
+    });
+
+    void (async () => {
+      try {
+        await waitFor(() => stdout.includes("Type 'exit' or 'quit' to stop."), 5000);
+        child.stdin.write(`:validate ${changeSetId}\n`);
+        await waitFor(() => stdout.includes(`"changeSetId": "${changeSetId}"`), 5000);
+        child.stdin.write("exit\n");
+      } catch (error) {
+        if (settled) {
+          return;
+        }
+        child.kill("SIGKILL");
+        settled = true;
+        clearTimeout(timer);
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    })();
+  });
+}
+
+function parseFirstJsonObject(output: string): any {
+  const start = output.indexOf("{");
+  assert.ok(start >= 0, `expected JSON object in output: ${output}`);
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = start; index < output.length; index += 1) {
+    const character = output[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === "\\") {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return JSON.parse(output.slice(start, index + 1));
+      }
+    }
+  }
+  assert.fail(`incomplete JSON object in output: ${output}`);
+}
+
 async function createGitWorkspace(): Promise<{ dir: string; target: string }> {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-validation-cli-"));
   const target = join(dir, "target.md");
@@ -143,6 +242,37 @@ test("CLI reports a passed validation after an approved apply", async () => {
     assert.equal(payload.validations[0].status, "passed");
     assert.equal(payload.validations[0].checks[0].id, "workspace:diff-check");
     assert.match(result.stdout.trim(), /^\{.*\}$/s);
+  } finally {
+    await provider.close();
+    await rm(workspace.dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI reruns persisted change-set validation after a new process", async () => {
+  const workspace = await createGitWorkspace();
+  const provider = await startStubProvider(workspace.target, "changed\n");
+  try {
+    const env = environment(workspace.dir, provider.baseUrl);
+    const first = await runCli(
+      ["--once", "change and verify", "--no-stream", "--json", "--approval", "review-writes"],
+      env,
+      "y\n"
+    );
+    assert.equal(first.code, 0, first.stderr);
+    const firstPayload = JSON.parse(first.stdout);
+    const changeSetId = firstPayload.reviews[0].changeSetId;
+
+    const second = await runCliInteractiveValidation(
+      ["--no-stream", "--json"],
+      env,
+      changeSetId
+    );
+    assert.equal(second.code, 0, second.stderr);
+    const validationPayload = parseFirstJsonObject(second.stdout);
+    assert.equal(validationPayload.validation.changeSetId, changeSetId);
+    assert.match(validationPayload.validation.validationId, new RegExp(`^validation:${changeSetId}:`));
+    assert.equal(validationPayload.validation.status, "passed");
+    assert.equal(await readFile(workspace.target, "utf8"), "changed\n");
   } finally {
     await provider.close();
     await rm(workspace.dir, { recursive: true, force: true });

@@ -20,8 +20,8 @@ const review = {
     {
       path: "/workspace/example.txt",
       kind: "file" as const,
-      beforeHash: "before",
-      afterHash: "after",
+      beforeHash: "b".repeat(64),
+      afterHash: "a".repeat(64),
       diff: "--- a/example.txt\n+++ b/example.txt\n-old\n+new\n",
       additions: 1,
       deletions: 1,
@@ -76,12 +76,16 @@ function scenario({
   validation,
   events = [],
   validationResults = [],
+  memory = new InMemoryMemory(),
+  approval,
 }: {
   decision?: "allow" | "deny";
   toolResult?: unknown;
   validation?: ValidationAdapter;
   events?: string[];
   validationResults?: ValidationResult[];
+  memory?: InMemoryMemory;
+  approval?: ApprovalPolicy;
 } = {}) {
   const inputs: unknown[] = [];
   const tools = new AgentToolRegistry();
@@ -115,11 +119,10 @@ function scenario({
     },
   };
 
-  const memory = new InMemoryMemory();
   const context = createAgentContext("validation-session", memory, {
     workingDirectory: "/workspace",
   });
-  const policy: ApprovalPolicy = {
+  const policy: ApprovalPolicy = approval ?? {
     async prepare() {
       return {
         review,
@@ -175,9 +178,34 @@ test("approved change-set apply runs validation after the tool result and expose
   assert.equal(records[0]?.changeSetId, review.changeSetId);
   assert.equal(records[0]?.status, "passed");
   assert.equal(records[0]?.recordedAt.length > 0, true);
+  const changeSets = await scenarioState.memory.changeSets();
+  assert.equal(changeSets.length, 1);
+  assert.equal(changeSets[0]?.changeSetId, review.changeSetId);
+  assert.equal(changeSets[0]?.sessionId, "validation-session");
+  assert.equal(changeSets[0]?.workingDirectory, "/workspace");
+  assert.equal(changeSets[0]?.files[0]?.path, "example.txt");
+  assert.equal(Object.hasOwn(changeSets[0]?.files[0] ?? {}, "diff"), false);
 });
 
-test("denied or unsuccessful applies do not run validation", async () => {
+test("ordinary successful writes without review do not record change-set evidence", async () => {
+  const ordinary = scenario({
+    approval: {
+      decide() {
+        return { decision: "allow" };
+      },
+    },
+  });
+
+  const context = await ordinary.loop.run(ordinary.context, "write without review");
+
+  assert.equal(context.state.status, "done");
+  assert.deepEqual(ordinary.inputs, [
+    { action: "write", path: "example.txt", content: "new" },
+  ]);
+  assert.deepEqual(await ordinary.memory.changeSets(), []);
+});
+
+test("denied or unsuccessful applies do not run validation or record change-set evidence", async () => {
   const deniedCalls: string[] = [];
   const validation: ValidationAdapter = {
     prepare() {
@@ -193,6 +221,7 @@ test("denied or unsuccessful applies do not run validation", async () => {
   await denied.loop.run(denied.context, "do not write");
   assert.deepEqual(denied.inputs, []);
   assert.deepEqual(deniedCalls, []);
+  assert.deepEqual(await denied.memory.changeSets(), []);
 
   const failedApply = scenario({
     validation,
@@ -203,6 +232,22 @@ test("denied or unsuccessful applies do not run validation", async () => {
     { action: "apply", changeSetId: review.changeSetId },
   ]);
   assert.deepEqual(deniedCalls, []);
+  assert.deepEqual(await failedApply.memory.changeSets(), []);
+});
+
+test("evidence persistence failure does not turn a successful apply into an error", async () => {
+  const memory = new InMemoryMemory();
+  (memory as any).recordChangeSet = async () => {
+    throw new Error("disk full");
+  };
+  const scenarioState = scenario({ memory });
+
+  const context = await scenarioState.loop.run(scenarioState.context, "write without evidence");
+
+  assert.equal(context.state.status, "done");
+  assert.deepEqual(scenarioState.inputs, [
+    { action: "apply", changeSetId: review.changeSetId },
+  ]);
 });
 
 test("validation failure is reported without turning a successful apply into a loop error", async () => {

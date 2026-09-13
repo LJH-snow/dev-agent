@@ -494,7 +494,7 @@ function isSafeRelativePath(value: string): boolean {
     return false;
   }
   const normalized = value.replaceAll("\\", "/");
-  return normalized !== "." && normalized !== ".." && !normalized.startsWith("../");
+  return normalized !== "." && normalized !== ".." && !normalized.split("/").includes("..");
 }
 
 function isSha256(value: unknown): value is string {

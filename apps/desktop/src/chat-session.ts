@@ -176,6 +176,7 @@ export class ChatSession {
       readonly requestApproval?: ApprovalRequester;
     } = {}
   ): Promise<void> {
+    await this.restorePersistedChangeSets();
     let turns = this.context.state.turns;
     const approval = buildApprovalPolicy(
       this.approvalMode,
@@ -260,6 +261,7 @@ export class ChatSession {
 
   /** Rolls back the most recently prepared change set when its postimage still matches. */
   async rollbackChangeSet(changeSetId: string): Promise<unknown> {
+    await this.restorePersistedChangeSets();
     return this.filesystem.rollbackChangeSet(changeSetId);
   }
 
@@ -271,24 +273,37 @@ export class ChatSession {
     const startedAt = Date.now();
     const validationId = createValidationAttemptId(changeSetId);
     let result: ValidationResult;
-    try {
-      result = await this.filesystem.withAppliedChangeSet(changeSetId, (review) =>
-        runValidationAttempt(this.validation, review, this.context, {
-          signal: options.signal,
-          validationId,
-        })
-      );
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!isPostimageConflict(message)) {
-        throw error;
-      }
+    const restoreResults = await this.restorePersistedChangeSets();
+    const blockedRestore = restoreResults.find(
+      (candidate) => candidate.changeSetId === changeSetId && candidate.status === "blocked"
+    );
+    if (blockedRestore) {
       result = createBlockedValidationResult(
         changeSetId,
         validationId,
-        `validation rerun blocked: ${message}`,
+        `validation rerun blocked: ${blockedRestore.reason ?? "persisted change-set evidence could not be restored"}`,
         startedAt
       );
+    } else {
+      try {
+        result = await this.filesystem.withAppliedChangeSet(changeSetId, (review) =>
+          runValidationAttempt(this.validation, review, this.context, {
+            signal: options.signal,
+            validationId,
+          })
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!isPostimageConflict(message)) {
+          throw error;
+        }
+        result = createBlockedValidationResult(
+          changeSetId,
+          validationId,
+          `validation rerun blocked: ${message}`,
+          startedAt
+        );
+      }
     }
 
     try {
@@ -298,6 +313,14 @@ export class ChatSession {
       // filesystem error or an implicit rollback.
     }
     return result;
+  }
+
+  private async restorePersistedChangeSets() {
+    const records = (await this.memory.changeSets?.()) ?? [];
+    return this.filesystem.restoreAppliedChangeSets(records, {
+      sessionId: this.sessionId,
+      workingDirectory: this.workingDirectory,
+    });
   }
 
   private async ensureMcpTools(signal?: AbortSignal): Promise<void> {

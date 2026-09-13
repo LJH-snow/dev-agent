@@ -1,7 +1,14 @@
 import type { AgentState } from "./agent-state.js";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { ApprovalOutcome, ApprovalPolicy, ApprovalPreparation, ApprovalRequest } from "./approval.js";
 import type { AgentContext } from "./context.js";
-import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.js";
+import {
+  createMemoryEntry,
+  type AgentMemory,
+  type AppliedChangeSetRecord,
+  type ChangeSetEvidenceFile,
+  type MemoryEntry,
+} from "./memory.js";
 import type { ChatMessage, ModelProvider, ToolCall, ToolSchema } from "@dev-agent/model";
 import type { ChatUsage } from "@dev-agent/model";
 import {
@@ -224,6 +231,7 @@ export class AgentLoop {
           };
           const result = await this.runToolSafely(executionCall, toolContext, options.signal);
           this.onToolResult?.({ name: call.name, output: result }, context);
+          await this.recordAppliedChangeSet(preparation, result, context);
           const validation = await this.validateAppliedChange(
             preparation,
             result,
@@ -380,6 +388,35 @@ export class AgentLoop {
    * that tool's result, so the model can correct the call instead of losing the
    * whole run. An abort still propagates.
    */
+  private async recordAppliedChangeSet(
+    preparation:
+      | { request: ApprovalRequest; executeInput?: unknown; outcome?: ApprovalOutcome }
+      | undefined,
+    toolResult: string,
+    context: AgentContext
+  ): Promise<void> {
+    const review = preparation?.request.review;
+    if (
+      !review ||
+      !isPreparedApply(preparation.executeInput, review) ||
+      !isSuccessfulApply(toolResult, review) ||
+      !context.memory.recordChangeSet
+    ) {
+      return;
+    }
+
+    const record = createAppliedChangeSetRecord(review, context);
+    if (!record) {
+      return;
+    }
+    try {
+      await context.memory.recordChangeSet(record);
+    } catch {
+      // Evidence persistence is best-effort; a durable record must never turn
+      // a successful apply into an error or trigger an implicit rollback.
+    }
+  }
+
   private async validateAppliedChange(
     preparation: { request: ApprovalRequest; executeInput?: unknown; outcome?: ApprovalOutcome } | undefined,
     toolResult: string,
@@ -514,6 +551,78 @@ export class AgentLoop {
       parameters: tool.parameters,
     }));
   }
+}
+
+function createAppliedChangeSetRecord(
+  review: ApprovalRequest["review"],
+  context: AgentContext
+): AppliedChangeSetRecord | undefined {
+  if (
+    !review ||
+    review.files.length === 0 ||
+    !isNonNegativeInteger(review.additions) ||
+    !isNonNegativeInteger(review.deletions)
+  ) {
+    return undefined;
+  }
+
+  const workingDirectory = resolve(context.workingDirectory);
+  const files: ChangeSetEvidenceFile[] = [];
+  const paths = new Set<string>();
+  for (const file of review.files) {
+    const target = resolve(workingDirectory, file.path);
+    const path = relative(workingDirectory, target).split("\\").join("/");
+    if (
+      path.length === 0 ||
+      path === "." ||
+      path === ".." ||
+      path.startsWith("../") ||
+      isAbsolute(path) ||
+      path.split("/").includes("..") ||
+      path.includes("\0") ||
+      paths.has(path) ||
+      (file.kind !== "file" && file.kind !== "directory") ||
+      !isSha256(file.afterHash) ||
+      (file.beforeHash !== undefined && !isSha256(file.beforeHash)) ||
+      !isNonNegativeInteger(file.additions) ||
+      !isNonNegativeInteger(file.deletions) ||
+      typeof file.beforeExists !== "boolean" ||
+      typeof file.afterExists !== "boolean"
+    ) {
+      return undefined;
+    }
+    paths.add(path);
+    files.push({
+      path,
+      kind: file.kind,
+      beforeHash: file.beforeHash,
+      afterHash: file.afterHash,
+      additions: file.additions,
+      deletions: file.deletions,
+      beforeExists: file.beforeExists,
+      afterExists: file.afterExists,
+    });
+  }
+
+  return {
+    changeSetId: review.changeSetId,
+    sessionId: context.sessionId,
+    workingDirectory,
+    files,
+    additions: review.additions,
+    deletions: review.deletions,
+    createdAt: review.createdAt,
+    recordedAt: new Date().toISOString(),
+    state: "applied",
+  };
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function isPreparedApply(

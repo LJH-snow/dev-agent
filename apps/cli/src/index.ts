@@ -474,6 +474,9 @@ export async function main(argv: string[]): Promise<void> {
       workingDirectory,
       metadata: { cliVersion: version, provider: provider.id },
     });
+    if (filesystem instanceof FilesystemTool) {
+      await restorePersistedChangeSets(filesystem, context);
+    }
     const rerunValidation =
       filesystem instanceof FilesystemTool
         ? (changeSetId: string, signal?: AbortSignal) =>
@@ -1197,6 +1200,17 @@ type ValidationRerunner = (
   signal?: AbortSignal
 ) => Promise<ValidationResult>;
 
+async function restorePersistedChangeSets(
+  filesystem: FilesystemTool,
+  context: AgentContext
+) {
+  const records = (await context.memory.changeSets?.()) ?? [];
+  return filesystem.restoreAppliedChangeSets(records, {
+    sessionId: context.sessionId,
+    workingDirectory: context.workingDirectory,
+  });
+}
+
 /** Runs an explicit, guarded validation attempt from the interactive CLI. */
 export async function runExplicitValidation(
   filesystem: FilesystemTool,
@@ -1208,24 +1222,37 @@ export async function runExplicitValidation(
   const startedAt = Date.now();
   const validationId = createValidationAttemptId(changeSetId);
   let result: ValidationResult;
-  try {
-    result = await filesystem.withAppliedChangeSet(changeSetId, (review) =>
-      runValidationAttempt(validation, review, context, {
-        signal,
-        validationId,
-      })
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (!/postimage|hash conflict|cannot rollback non-empty directory/i.test(message)) {
-      throw error;
-    }
+  const restoreResults = await restorePersistedChangeSets(filesystem, context);
+  const blockedRestore = restoreResults.find(
+    (candidate) => candidate.changeSetId === changeSetId && candidate.status === "blocked"
+  );
+  if (blockedRestore) {
     result = createBlockedValidationResult(
       changeSetId,
       validationId,
-      `validation rerun blocked: ${message}`,
+      `validation rerun blocked: ${blockedRestore.reason ?? "persisted change-set evidence could not be restored"}`,
       startedAt
     );
+  } else {
+    try {
+      result = await filesystem.withAppliedChangeSet(changeSetId, (review) =>
+        runValidationAttempt(validation, review, context, {
+          signal,
+          validationId,
+        })
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/postimage|hash conflict|cannot rollback non-empty directory/i.test(message)) {
+        throw error;
+      }
+      result = createBlockedValidationResult(
+        changeSetId,
+        validationId,
+        `validation rerun blocked: ${message}`,
+        startedAt
+      );
+    }
   }
 
   try {
