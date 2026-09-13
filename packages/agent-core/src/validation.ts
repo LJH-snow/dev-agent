@@ -54,6 +54,11 @@ export interface ValidationResult {
   readonly reason?: string;
 }
 
+/** A validation result retained as structured session evidence. */
+export interface ValidationRecord extends ValidationResult {
+  readonly recordedAt: string;
+}
+
 export interface ValidationRunOptions {
   readonly signal?: AbortSignal;
 }

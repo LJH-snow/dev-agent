@@ -167,6 +167,12 @@ test("approved change-set apply runs validation after the tool result and expose
   assert.deepEqual(scenarioState.events, ["tool-result", "validation"]);
   const entries = await scenarioState.memory.entries();
   assert.match(entries.find((entry) => entry.role === "tool")?.content ?? "", /validation passed/);
+  const records = await scenarioState.memory.validations();
+  assert.equal(records.length, 1);
+  assert.equal(records[0]?.validationId, result("passed").validationId);
+  assert.equal(records[0]?.changeSetId, review.changeSetId);
+  assert.equal(records[0]?.status, "passed");
+  assert.equal(records[0]?.recordedAt.length > 0, true);
 });
 
 test("denied or unsuccessful applies do not run validation", async () => {

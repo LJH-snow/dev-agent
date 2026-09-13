@@ -120,3 +120,113 @@ test("file memory persists accumulated usage across instances", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("in-memory memory records structured validation evidence", async () => {
+  const memory = new InMemoryMemory();
+  const result = makeValidationResult("passed");
+
+  await memory.recordValidation(result);
+
+  const records = await memory.validations();
+  assert.equal(records.length, 1);
+  assert.equal(records[0]?.validationId, result.validationId);
+  assert.equal(records[0]?.changeSetId, result.changeSetId);
+  assert.equal(records[0]?.status, "passed");
+  assert.equal(records[0]?.recordedAt.length > 0, true);
+  assert.deepEqual(records[0]?.checks, result.checks);
+});
+
+test("file memory persists validation evidence across instances and preserves it across writes", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "sessions", "validation.json");
+    const first = new FileMemory({ filePath });
+    const result = makeValidationResult("failed");
+
+    await first.append(createMemoryEntry("user", "write and verify"));
+    await first.recordValidation(result);
+    await first.recordUsage({ promptTokens: 4, completionTokens: 2, totalTokens: 6 });
+    await first.setSummary({
+      lastEntryId: "entry-1",
+      entriesCovered: 1,
+      text: "write and verify",
+    });
+
+    const reopened = new FileMemory({ filePath });
+    const records = await reopened.validations();
+    assert.equal(records.length, 1);
+    assert.equal(records[0]?.status, "failed");
+    assert.equal(records[0]?.reason, "test failed");
+    assert.equal(records[0]?.recordedAt.length > 0, true);
+    assert.equal((await reopened.entries()).length, 1);
+    assert.deepEqual((await reopened.getMetadata())?.usage, {
+      promptTokens: 4,
+      completionTokens: 2,
+      totalTokens: 6,
+    });
+    assert.equal((await reopened.getSummary())?.text, "write and verify");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("file memory treats a missing validations field as an empty evidence list", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "legacy.json");
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        entries: [createMemoryEntry("user", "legacy")],
+      }),
+      "utf8"
+    );
+
+    const memory = new FileMemory({ filePath });
+    assert.deepEqual(await memory.validations(), []);
+    assert.equal((await memory.entries())[0]?.content, "legacy");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("clearing file memory removes validation evidence", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "clear-validation.json");
+    const memory = new FileMemory({ filePath });
+    await memory.recordValidation(makeValidationResult("skipped"));
+    await memory.clear();
+
+    assert.deepEqual(await memory.validations(), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function makeValidationResult(status: "passed" | "failed" | "skipped" | "blocked") {
+  return {
+    validationId: "validation:memory",
+    changeSetId: "cs-memory",
+    status,
+    checks: [
+      {
+        id: "workspace:diff-check",
+        label: "Check workspace diff",
+        command: {
+          executable: "git",
+          args: ["diff", "--check", "--", "target.md"],
+          cwd: "/workspace",
+          timeoutMs: 30_000,
+        },
+        status,
+        durationMs: 12,
+        ...(status === "failed" ? { exitCode: 1, reason: "test failed" } : { exitCode: 0 }),
+      },
+    ],
+    durationMs: 12,
+    summary: `validation ${status}`,
+    ...(status === "failed" ? { reason: "test failed" } : {}),
+  };
+}

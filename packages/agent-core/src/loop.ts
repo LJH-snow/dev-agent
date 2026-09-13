@@ -233,6 +233,12 @@ export class AgentLoop {
           );
           if (validation) {
             this.onValidation?.(validation, context);
+            try {
+              await memory.recordValidation?.(validation);
+            } catch {
+              // Evidence persistence must not turn a successful apply into a
+              // failed run or trigger an implicit rollback.
+            }
           }
           const memoryResult = validation
             ? `${result}\n[validation] ${JSON.stringify(validation)}`

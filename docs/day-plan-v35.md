@@ -43,8 +43,8 @@ export interface AgentMemory {
 }
 ```
 
-- [ ] **Step 1: 写失败测试。** 为 `InMemoryMemory` 和 `FileMemory` 增加 validation record 写入、跨实例读取、clear 清理和旧 JSON 缺少 `validations` 字段仍可读取的测试；在 lifecycle 测试中断言 approved apply 之后 memory 有一条带 `recordedAt` 的完整结果。
-- [ ] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 1: 写失败测试。** 为 `InMemoryMemory` 和 `FileMemory` 增加 validation record 写入、跨实例读取、clear 清理和旧 JSON 缺少 `validations` 字段仍可读取的测试；在 lifecycle 测试中断言 approved apply 之后 memory 有一条带 `recordedAt` 的完整结果。
+- [x] **Step 2: 运行 focused test 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/agent-core typecheck
@@ -53,10 +53,16 @@ pnpm --filter @dev-agent/agent-core test
 
 Expected: 编译或测试失败，因为 `ValidationRecord`、`recordValidation` 和 `validations` 尚未存在。
 
-- [ ] **Step 3: 写最小实现。** 为 in-memory/file memory 添加可选 validation records；保持 memory 文件 `version: 1`，将 `validations` 作为可选数组校验和持久化，并确保 append、compact、summary、usage 写入都会保留已有 records。
-- [ ] **Step 4: 接入 AgentLoop 持久化。** validation callback 发送后调用 `context.memory.recordValidation?.(validation)`；记录失败不得把已经成功的 apply 伪装成失败，也不得触发 rollback。
-- [ ] **Step 5: 运行 focused test 确认通过。**
+- [x] **Step 3: 写最小实现。** 为 in-memory/file memory 添加可选 validation records；保持 memory 文件 `version: 1`，将 `validations` 作为可选数组校验和持久化，并确保 append、compact、summary、usage 写入都会保留已有 records。
+- [x] **Step 4: 接入 AgentLoop 持久化。** validation callback 发送后调用 `context.memory.recordValidation?.(validation)`；记录失败不得把已经成功的 apply 伪装成失败，也不得触发 rollback。
+- [x] **Step 5: 运行 focused test 确认通过。**
 - [ ] **Step 6: Commit。**
+
+**Task 0 verification record (2026-09-14):**
+
+- RED：新增 memory/lifecycle tests 首次运行时因 `ValidationRecord`、`recordValidation` 和 `validations` 不存在而编译失败。
+- GREEN：agent-core build 与全套测试通过，**90/90**；覆盖 in-memory/file memory evidence、跨实例持久化、append/usage/summary 保留、clear 清理、旧 session 缺少 `validations` 字段兼容，以及 approved apply 自动记录完整 validation DTO。
+- 设计：session 文件继续使用 `version: 1`，`validations` 是可选结构化数组，不进入模型 ChatMessage 上下文；AgentLoop 发出 validation 后 best-effort 写入 evidence，失败不触发 rollback。
 
 ## Task 1：把 validation records 接入 session 查询与导出
 

@@ -3,6 +3,11 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import type { ChatMessage, ChatUsage, ToolCall } from "@dev-agent/model";
+import type {
+  ValidationRecord,
+  ValidationResult,
+  ValidationStatus,
+} from "./validation.js";
 import { addUsage } from "./usage.js";
 
 export interface MemoryEntry extends ChatMessage {
@@ -27,6 +32,10 @@ export interface AgentMemory {
   /** Digest of entries that were trimmed off the front of the history. */
   getSummary?(): Promise<ContextSummary | undefined>;
   setSummary?(summary: ContextSummary): Promise<void>;
+  /** Persists a structured validation result without adding it to model context. */
+  recordValidation?(result: ValidationResult): Promise<void>;
+  /** Returns structured validation evidence in recording order. */
+  validations?(): Promise<readonly ValidationRecord[]>;
 }
 
 export interface ContextSummary {
@@ -41,6 +50,7 @@ export class InMemoryMemory implements AgentMemory {
   private readonly items: MemoryEntry[] = [];
   private summary?: ContextSummary;
   private usage?: ChatUsage;
+  private readonly validationRecords: ValidationRecord[] = [];
   private readonly createdAt = new Date().toISOString();
   private lastActiveAt = this.createdAt;
 
@@ -57,6 +67,7 @@ export class InMemoryMemory implements AgentMemory {
     this.items.length = 0;
     this.summary = undefined;
     this.usage = undefined;
+    this.validationRecords.length = 0;
     this.lastActiveAt = new Date().toISOString();
   }
 
@@ -82,6 +93,18 @@ export class InMemoryMemory implements AgentMemory {
   async setSummary(summary: ContextSummary): Promise<void> {
     this.summary = summary;
   }
+
+  async recordValidation(result: ValidationResult): Promise<void> {
+    this.validationRecords.push({
+      ...result,
+      recordedAt: new Date().toISOString(),
+    });
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async validations(): Promise<readonly ValidationRecord[]> {
+    return [...this.validationRecords];
+  }
 }
 
 export interface FileMemoryOptions {
@@ -102,6 +125,7 @@ interface MemoryFile {
   readonly metadata?: SessionMetadata;
   readonly entries: MemoryEntry[];
   readonly summary?: ContextSummary;
+  readonly validations?: ValidationRecord[];
 }
 
 export class FileMemory implements AgentMemory {
@@ -167,6 +191,43 @@ export class FileMemory implements AgentMemory {
     });
   }
 
+  recordValidation(result: ValidationResult): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const validations = [
+        ...(existing?.validations ?? []),
+        {
+          ...result,
+          recordedAt: new Date().toISOString(),
+        },
+      ];
+      await this.persist(entries, undefined, undefined, validations);
+    });
+  }
+
+  validations(): Promise<readonly ValidationRecord[]> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return [...(file.validations ?? [])];
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return [];
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error(`Invalid memory file: ${this.filePath}`);
+      }
+    });
+  }
+
   recordUsage(usage: ChatUsage): Promise<void> {
     return this.enqueue(async () => {
       const entries = await this.readEntries();
@@ -209,7 +270,8 @@ export class FileMemory implements AgentMemory {
   private async persist(
     entries: readonly MemoryEntry[],
     summary?: ContextSummary,
-    usage?: ChatUsage
+    usage?: ChatUsage,
+    validations?: readonly ValidationRecord[]
   ): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     const existing = await this.readMemoryFile().catch(() => undefined);
@@ -227,6 +289,7 @@ export class FileMemory implements AgentMemory {
       entries: [...entries],
       // Keep an existing digest unless this write replaces it.
       summary: summary ?? existing?.summary,
+      validations: validations === undefined ? existing?.validations : [...validations],
     };
     await writeFile(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   }
@@ -271,7 +334,9 @@ function isMemoryFile(value: unknown): value is MemoryFile {
     Array.isArray(candidate.entries) &&
     candidate.entries.every(isMemoryEntry) &&
     (candidate.summary === undefined || isContextSummary(candidate.summary)) &&
-    (candidate.metadata === undefined || isSessionMetadataValue(candidate.metadata))
+    (candidate.metadata === undefined || isSessionMetadataValue(candidate.metadata)) &&
+    (candidate.validations === undefined ||
+      (Array.isArray(candidate.validations) && candidate.validations.every(isValidationRecord)))
   );
 }
 
@@ -292,6 +357,55 @@ function isChatUsage(value: unknown): value is ChatUsage {
     typeof (value as Record<string, unknown>).completionTokens === "number" &&
     typeof (value as Record<string, unknown>).totalTokens === "number"
   );
+}
+
+function isValidationRecord(value: unknown): value is ValidationRecord {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.recordedAt === "string" &&
+    typeof candidate.validationId === "string" &&
+    typeof candidate.changeSetId === "string" &&
+    isValidationStatus(candidate.status) &&
+    Array.isArray(candidate.checks) &&
+    candidate.checks.every(isValidationCheckResult) &&
+    typeof candidate.durationMs === "number" &&
+    typeof candidate.summary === "string" &&
+    (candidate.reason === undefined || typeof candidate.reason === "string")
+  );
+}
+
+function isValidationCheckResult(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  const command = candidate.command;
+  if (typeof command !== "object" || command === null) {
+    return false;
+  }
+  const commandValue = command as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.label === "string" &&
+    typeof commandValue.executable === "string" &&
+    Array.isArray(commandValue.args) &&
+    commandValue.args.every((arg) => typeof arg === "string") &&
+    typeof commandValue.cwd === "string" &&
+    typeof commandValue.timeoutMs === "number" &&
+    isValidationStatus(candidate.status) &&
+    typeof candidate.durationMs === "number" &&
+    (candidate.exitCode === undefined || typeof candidate.exitCode === "number") &&
+    (candidate.output === undefined || typeof candidate.output === "string") &&
+    (candidate.error === undefined || typeof candidate.error === "string") &&
+    (candidate.reason === undefined || typeof candidate.reason === "string")
+  );
+}
+
+function isValidationStatus(value: unknown): value is ValidationStatus {
+  return value === "passed" || value === "failed" || value === "skipped" || value === "blocked";
 }
 
 function isContextSummary(value: unknown): value is ContextSummary {
