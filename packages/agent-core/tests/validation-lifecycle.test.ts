@@ -73,11 +73,13 @@ function scenario({
   toolResult = { ok: true, changeSetId: review.changeSetId },
   validation,
   events = [],
+  validationResults = [],
 }: {
   decision?: "allow" | "deny";
   toolResult?: unknown;
   validation?: ValidationAdapter;
   events?: string[];
+  validationResults?: ValidationResult[];
 } = {}) {
   const inputs: unknown[] = [];
   const tools = new AgentToolRegistry();
@@ -132,10 +134,13 @@ function scenario({
     approval: policy,
     validation,
     onToolResult: () => events.push("tool-result"),
-    onValidation: () => events.push("validation"),
+    onValidation: (receivedResult) => {
+      events.push("validation");
+      validationResults.push(receivedResult);
+    },
   });
 
-  return { context, events, inputs, loop, memory };
+  return { context, events, inputs, loop, memory, validationResults };
 }
 
 test("approved change-set apply runs validation after the tool result and exposes it to memory", async () => {
@@ -222,6 +227,27 @@ test("validation planning errors become blocked validation results and do not un
   assert.equal(context.state.status, "done");
   const entries = await scenarioState.memory.entries();
   assert.ok(entries.some((entry) => entry.role === "tool" && /blocked/.test(entry.content)));
+});
+
+test("a blocked validation result is observable before an abort ends the loop", async () => {
+  const controller = new AbortController();
+  const validationResults: ValidationResult[] = [];
+  const validation: ValidationAdapter = {
+    prepare: () => plan,
+    run: async (_receivedPlan, options) => {
+      assert.strictEqual(options?.signal, controller.signal);
+      controller.abort();
+      return result("blocked");
+    },
+  };
+  const scenarioState = scenario({ validation, validationResults });
+
+  await assert.rejects(
+    () => scenarioState.loop.run(scenarioState.context, "write then stop", { signal: controller.signal }),
+    /aborted|abort/i
+  );
+  assert.deepEqual(scenarioState.events, ["tool-result", "validation"]);
+  assert.equal(validationResults[0]?.status, "blocked");
 });
 
 test("validation receives the outer abort signal", async () => {

@@ -385,9 +385,15 @@ export class AgentLoop {
     if (!this.validation || !review || !isPreparedApply(preparation.executeInput, review) || !isSuccessfulApply(toolResult, review)) {
       return undefined;
     }
-    throwIfAborted(signal);
-
     const startedAt = Date.now();
+    if (signal?.aborted) {
+      return blockedValidation(
+        review.changeSetId,
+        startedAt,
+        "validation aborted before checks started"
+      );
+    }
+
     let plan: ValidationPlan;
     try {
       plan = await this.validation.prepare(review, context);
@@ -401,11 +407,23 @@ export class AgentLoop {
 
     try {
       const result = await this.validation.run(plan, { signal });
-      throwIfAborted(signal);
+      if (signal?.aborted && result.status !== "blocked") {
+        return blockedValidation(
+          review.changeSetId,
+          startedAt,
+          "validation aborted while the checks were running",
+          plan
+        );
+      }
       return result;
     } catch (error) {
       if (signal?.aborted) {
-        throw error;
+        return blockedValidation(
+          review.changeSetId,
+          startedAt,
+          "validation aborted while the checks were running",
+          plan
+        );
       }
       return blockedValidation(
         review.changeSetId,

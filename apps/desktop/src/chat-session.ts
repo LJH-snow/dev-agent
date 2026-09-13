@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -13,10 +13,12 @@ import {
   FileMemory,
   type AgentContext,
   type ApprovalPolicy,
+  type ValidationAdapter,
+  type ValidationResult,
   type ApprovalRequest,
   type ChangeSetReview,
 } from "@dev-agent/agent-core";
-import { createExecutor } from "@dev-agent/executor";
+import { createExecutor, type Executor } from "@dev-agent/executor";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -27,7 +29,12 @@ import {
   type PriceTable,
   type ModelProvider,
 } from "@dev-agent/model";
-import { createDefaultTools, FilesystemTool } from "@dev-agent/tools";
+import {
+  createDefaultTools,
+  createValidationRunner,
+  deriveValidationPlan,
+  FilesystemTool,
+} from "@dev-agent/tools";
 import { McpStdioClient, type McpClientConfig } from "@dev-agent/mcp";
 
 export interface StreamEvent {
@@ -40,6 +47,7 @@ export interface StreamEvent {
     | "usage"
     | "approval"
     | "approval-request"
+    | "validation"
     | "done"
     | "error";
   readonly data: Record<string, unknown>;
@@ -77,6 +85,8 @@ export interface ChatSessionOptions {
 
 export class ChatSession {
   private readonly model: ModelProvider;
+  private readonly executor: Executor;
+  private readonly validation: ValidationAdapter;
   private readonly tools: AgentToolRegistry;
   private readonly filesystem: FilesystemTool;
   private readonly memory: FileMemory;
@@ -98,8 +108,18 @@ export class ChatSession {
   constructor(options: ChatSessionOptions = {}) {
     this.model = createProvider();
     const rustBinaryPath = options.rustBinaryPath ?? process.env.DEV_AGENT_RUST_BINARY;
+    this.executor = createExecutor({ rustBinaryPath });
+    const validationRunner = createValidationRunner(this.executor);
+    this.validation = {
+      prepare: (review, context) =>
+        deriveValidationPlan(review, {
+          workingDirectory: context.workingDirectory,
+          isGitRepository: existsSync(join(context.workingDirectory, ".git")),
+        }),
+      run: (plan, runOptions) => validationRunner.run(plan, runOptions),
+    };
     this.tools = new AgentToolRegistry();
-    for (const tool of createDefaultTools(createExecutor({ rustBinaryPath }))) {
+    for (const tool of createDefaultTools(this.executor)) {
       this.tools.register(tool);
     }
     const filesystem = this.tools.get("filesystem");
@@ -201,6 +221,8 @@ export class ChatSession {
             ...(request.review === undefined ? {} : { review: request.review }),
           },
         }),
+      validation: this.validation,
+      onValidation: (result) => emitValidation(emit, this.sessionId, result),
     });
 
     try {
@@ -306,6 +328,17 @@ export class ChatSession {
   estimateCost(usage: ChatUsage): number | undefined {
     return estimateUsageCost(usage, this.model.model, this.pricing);
   }
+}
+
+function emitValidation(
+  emit: (event: StreamEvent) => void,
+  sessionId: string,
+  result: ValidationResult
+): void {
+  emit({
+    type: "validation",
+    data: { sessionId, ...result },
+  });
 }
 
 const defaultSystemPrompt =

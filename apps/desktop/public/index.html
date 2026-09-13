@@ -77,6 +77,17 @@
     .msg.approval .review-file-label { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
     .msg.approval pre { margin: 6px 0 0; padding: 8px; border-radius: 8px; background: var(--bg); color: var(--fg); overflow: auto; max-height: 240px; white-space: pre; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
     .msg.approval .undo-status { color: var(--muted); font-size: 12px; }
+    .msg.validation { align-self: flex-start; background: var(--assistant-bg); border: 1px solid var(--border); padding: 10px 12px; border-radius: 10px; max-width: 760px; width: 100%; font-size: 13px; }
+    .msg.validation.validation-passed { border-color: #86efac; }
+    .msg.validation.validation-failed, .msg.validation.validation-blocked { border-color: #fca5a5; }
+    .msg.validation.validation-skipped { border-color: #fde68a; }
+    .msg.validation .validation-header { display: flex; justify-content: space-between; gap: 12px; font-weight: 600; }
+    .msg.validation .validation-status { text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
+    .msg.validation .validation-summary, .msg.validation .validation-reason { color: var(--muted); margin-top: 4px; }
+    .msg.validation .validation-check { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+    .msg.validation .validation-check-line { display: flex; justify-content: space-between; gap: 12px; }
+    .msg.validation .validation-check-status { color: var(--muted); white-space: nowrap; }
+    .msg.validation .validation-command { color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
     .composer {
       border-top: 1px solid var(--border);
       padding: 12px 16px;
@@ -611,6 +622,10 @@
         case "approval-request":
           appendApprovalRequest(parsed);
           break;
+        case "validation":
+          if (parsed.sessionId && currentSessionId !== null && parsed.sessionId !== currentSessionId) break;
+          appendValidation(parsed);
+          break;
         case "error":
           appendMessage("error", parsed.message || "unknown error");
           break;
@@ -620,6 +635,76 @@
           loadSessions();
           break;
       }
+    }
+
+    function appendValidation(result) {
+      const div = document.createElement("div");
+      div.className = "msg validation";
+      const statusValue = ["passed", "failed", "skipped", "blocked"].includes(result.status)
+        ? result.status
+        : "blocked";
+      div.classList.add("validation-" + statusValue);
+
+      const header = document.createElement("div");
+      header.className = "validation-header";
+      const title = document.createElement("span");
+      title.textContent = "Validation · " + (result.changeSetId || "change set");
+      const statusLabel = document.createElement("span");
+      statusLabel.className = "validation-status";
+      statusLabel.textContent = statusValue;
+      header.append(title, statusLabel);
+      div.appendChild(header);
+
+      if (result.summary) {
+        const summary = document.createElement("div");
+        summary.className = "validation-summary";
+        summary.textContent = result.summary;
+        div.appendChild(summary);
+      }
+
+      for (const check of Array.isArray(result.checks) ? result.checks : []) {
+        const row = document.createElement("div");
+        row.className = "validation-check";
+        const line = document.createElement("div");
+        line.className = "validation-check-line";
+        const label = document.createElement("span");
+        label.textContent = check.id || "validation check";
+        const checkStatus = document.createElement("span");
+        checkStatus.className = "validation-check-status";
+        checkStatus.textContent = (check.status || "unknown") + " · " + (Number(check.durationMs) || 0) + "ms";
+        line.append(label, checkStatus);
+        row.appendChild(line);
+        const command = document.createElement("div");
+        command.className = "validation-command";
+        command.textContent = formatValidationCommand(check.command);
+        row.appendChild(command);
+        if (check.reason) {
+          const reason = document.createElement("div");
+          reason.className = "validation-reason";
+          reason.textContent = check.reason;
+          row.appendChild(reason);
+        }
+        div.appendChild(row);
+      }
+
+      if (result.reason) {
+        const reason = document.createElement("div");
+        reason.className = "validation-reason";
+        reason.textContent = result.reason;
+        div.appendChild(reason);
+      }
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+      return div;
+    }
+
+    function formatValidationCommand(command) {
+      if (!command || typeof command.executable !== "string") return "command unavailable";
+      const args = Array.isArray(command.args) ? command.args : [];
+      return [command.executable, ...args].map((part) => {
+        const value = String(part);
+        return /^[A-Za-z0-9_./:@%+=,-]+$/.test(value) ? value : JSON.stringify(value);
+      }).join(" ");
     }
 
     function summarize(output) {
