@@ -139,7 +139,16 @@ export class McpStdioClient implements McpClient {
     })) as McpToolResult | undefined;
     const toolResult = result ?? { content: [] };
     if (toolResult.isError) {
-      throw new McpRequestError(-32603, `MCP tool "${name}" reported an error`);
+      // `isError` results carry the server's own explanation in `content`;
+      // dropping it left the caller (and the model reading the tool result)
+      // with only "reported an error", with no way to adapt.
+      const detail = toolErrorDetail(toolResult);
+      throw new McpRequestError(
+        -32603,
+        detail
+          ? `MCP tool "${name}" failed: ${detail}`
+          : `MCP tool "${name}" reported an error`
+      );
     }
     return toolResult;
   }
@@ -427,6 +436,36 @@ export function createMcpTool(client: McpClient, info: McpToolInfo): McpTool {
       return client.callTool(info.name, input);
     },
   };
+}
+
+/** How much of a server's error text is worth embedding in an error message. */
+const MAX_TOOL_ERROR_CHARS = 2000;
+
+/**
+ * Concatenates the text blocks of a failed `tools/call` result so the caller
+ * sees the server's actual explanation. A long result is truncated rather than
+ * pasted whole, since the point is the reason, not the payload.
+ */
+function toolErrorDetail(result: McpToolResult): string | undefined {
+  const text = (result.content ?? [])
+    .map((block) => {
+      if (typeof block !== "object" || block === null) {
+        return "";
+      }
+      const candidate = block as { readonly type?: unknown; readonly text?: unknown };
+      return candidate.type === "text" && typeof candidate.text === "string"
+        ? candidate.text
+        : "";
+    })
+    .filter((value) => value.length > 0)
+    .join("\n")
+    .trim();
+  if (!text) {
+    return undefined;
+  }
+  return text.length > MAX_TOOL_ERROR_CHARS
+    ? `${text.slice(0, MAX_TOOL_ERROR_CHARS)}… (truncated)`
+    : text;
 }
 
 export function createMcpResource(client: McpClient, info: McpResourceInfo): McpResource {

@@ -47,3 +47,99 @@ test("request rejects with McpRequestError on JSON-RPC error", async () => {
     await client.close();
   }
 });
+
+test("callTool includes descriptive server text in tool failures", async () => {
+  const client = new McpStdioClient();
+  try {
+    await client.connect({
+      command: process.execPath,
+      args: [fakeServer],
+      env: { MCP_INCLUDE_FAILURE_TOOLS: "1" },
+    });
+    await assert.rejects(
+      () => client.callTool("failing", {}),
+      (error) => {
+        assert.ok(error instanceof McpRequestError);
+        assert.equal(error.code, -32603);
+        assert.equal(
+          error.message,
+          'MCP tool "failing" failed: permission denied: cannot read /etc/shadow (EACCES)'
+        );
+        return true;
+      }
+    );
+  } finally {
+    await client.close();
+  }
+});
+
+test("callTool concatenates multiple server error text blocks in order", async () => {
+  const client = new McpStdioClient();
+  try {
+    await client.connect({
+      command: process.execPath,
+      args: [fakeServer],
+      env: { MCP_INCLUDE_FAILURE_TOOLS: "1" },
+    });
+    await assert.rejects(
+      () => client.callTool("failing", { mode: "multi" }),
+      (error) => {
+        assert.ok(error instanceof McpRequestError);
+        assert.match(
+          error.message,
+          /MCP tool "failing" failed: permission denied\ncannot read \/etc\/shadow \(EACCES\)/
+        );
+        return true;
+      }
+    );
+  } finally {
+    await client.close();
+  }
+});
+
+test("callTool falls back to the generic message when a failure has no text", async () => {
+  const client = new McpStdioClient();
+  try {
+    await client.connect({
+      command: process.execPath,
+      args: [fakeServer],
+      env: { MCP_INCLUDE_FAILURE_TOOLS: "1" },
+    });
+    await assert.rejects(
+      () => client.callTool("silent-failure", {}),
+      (error) => {
+        assert.ok(error instanceof McpRequestError);
+        assert.equal(error.code, -32603);
+        assert.equal(error.message, 'MCP tool "silent-failure" reported an error');
+        return true;
+      }
+    );
+  } finally {
+    await client.close();
+  }
+});
+
+test("callTool truncates an oversized server error detail", async () => {
+  const client = new McpStdioClient();
+  try {
+    await client.connect({
+      command: process.execPath,
+      args: [fakeServer],
+      env: { MCP_INCLUDE_FAILURE_TOOLS: "1" },
+    });
+    await assert.rejects(
+      () => client.callTool("failing", { mode: "long" }),
+      (error) => {
+        assert.ok(error instanceof McpRequestError);
+        assert.ok(error.message.endsWith("… (truncated)"));
+        assert.equal(
+          error.message.length,
+          'MCP tool "failing" failed: '.length + 2000 + "… (truncated)".length
+        );
+        return true;
+      }
+    );
+  } finally {
+    await client.close();
+  }
+});

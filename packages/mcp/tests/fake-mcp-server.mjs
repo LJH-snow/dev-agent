@@ -169,6 +169,20 @@ rl.on("line", (line) => {
             description: "Trigger a tools/list_changed notification",
             inputSchema: { type: "object" },
           },
+          ...(process.env.MCP_INCLUDE_FAILURE_TOOLS === "1"
+            ? [
+                {
+                  name: "failing",
+                  description: "Always fails with a descriptive message",
+                  inputSchema: { type: "object" },
+                },
+                {
+                  name: "silent-failure",
+                  description: "Fails without any content",
+                  inputSchema: { type: "object" },
+                },
+              ]
+            : []),
         ],
       },
     });
@@ -219,6 +233,27 @@ rl.on("line", (line) => {
       send({
         jsonrpc: "2.0",
         method: "notifications/tools/list_changed",
+      });
+    } else if (request.params?.name === "failing") {
+      const mode = request.params.arguments?.mode;
+      const content = mode === "multi"
+        ? [
+            { type: "text", text: "permission denied" },
+            { type: "text", text: "cannot read /etc/shadow (EACCES)" },
+          ]
+        : mode === "long"
+          ? [{ type: "text", text: "x".repeat(2500) }]
+          : [{ type: "text", text: "permission denied: cannot read /etc/shadow (EACCES)" }];
+      send({
+        jsonrpc: "2.0",
+        id: request.id,
+        result: { isError: true, content },
+      });
+    } else if (request.params?.name === "silent-failure") {
+      send({
+        jsonrpc: "2.0",
+        id: request.id,
+        result: { isError: true, content: [] },
       });
     } else {
       send({

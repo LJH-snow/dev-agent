@@ -140,7 +140,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   history via `historyLimit`. `RustExecutor` implements `SandboxExecutor` over the
   protobuf stdio boundary
 - Stdio MCP client with reconnect backoff, notification debounce, structured error
-  codes (`McpRequestError`), and graceful close in `@dev-agent/mcp`
+  codes (`McpRequestError`), server-provided tool failure details, and graceful
+  close in `@dev-agent/mcp`
 - MCP resources, prompts, capability negotiation, and roots handling
 - MCP server mode: `createMcpServer` plus `--mcp-server` exposes the built-in
   tools to a host agent over stdio (`initialize`, `tools/list`, `tools/call`)
@@ -334,7 +335,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 407 TypeScript tests + 46 Rust tests, all passing
+- Test suite: 465 TypeScript tests + 46 Rust tests, all passing
 
 ### Rust runtime progress
 
@@ -417,3 +418,4 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 51. ~~Always-allow keys keep two leading arguments~~ (done)
 52. ~~Tool errors are reported back to the model instead of ending the run~~ (done)
 53. ~~Readable `code-search` errors for out-of-range positions~~ (done)
+54. ~~MCP tool failures preserve server-provided error details~~ (done)

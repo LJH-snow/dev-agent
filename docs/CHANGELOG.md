@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-13 (Day plan v31: preserve MCP tool failure details)
+
+Executed `docs/day-plan-v31.md`. MCP tool failures carried a useful explanation
+in the server's `content` blocks, but the client discarded it and exposed only a
+generic error to the caller and model.
+
+### Fixed: MCP tool failure reasons survive the client boundary
+- `McpStdioClient.callTool()` now collects every `type: "text"` block from an
+  `isError` result in order and throws `McpRequestError(-32603, ...)` with the
+  server-provided explanation.
+- Details are capped at 2000 characters and marked as truncated; empty or
+  non-text error results retain the existing generic message.
+- The JSON-RPC error classification, successful results, `structuredContent`,
+  and request options are unchanged.
+
+### Tests
+- Added coverage for descriptive, multi-block, empty, and oversized MCP tool
+  failures. TypeScript: 465 tests; Rust: 46; real-binary integration: 10.
+
 ## 2026-09-12 (Day plan v30: same-name rename is not a missing session)
 
 Executed `docs/day-plan-v30.md`. Renaming a session to the name it already had

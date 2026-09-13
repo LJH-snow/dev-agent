@@ -14,7 +14,10 @@ built-in tool set plus `dev-agent://session`, `dev-agent://workspace`, and two
 prompt templates in with `--mcp-server` (see `apps/cli/README.md`). Tool
 execution failures come back as `{ isError: true }` results so the host model
 can react, while unknown tools, resources, prompts, and methods are JSON-RPC
-errors.
+errors. When a tool result is marked `isError`, `McpStdioClient.callTool()`
+preserves the server's text content in the thrown `McpRequestError` (multiple
+text blocks are joined in order and oversized details are truncated); an empty
+error result keeps the generic `reported an error` message.
 
 ## Client
 
