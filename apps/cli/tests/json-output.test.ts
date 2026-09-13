@@ -117,6 +117,7 @@ test("--once --json prints one machine-readable result object", async () => {
       completionTokens: 3,
       totalTokens: 8,
     });
+    assert.deepEqual(payload.changeSets, []);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });

@@ -1123,7 +1123,8 @@ async function interactive(
           const validation = await rerunValidation(changeSetId, controller.signal);
           validations.push(validation);
           if (jsonOutput) {
-            console.log(JSON.stringify({ validation }, null, 2));
+            const changeSets = (await context.memory.changeSets?.()) ?? [];
+            console.log(JSON.stringify({ validation, changeSets: [...changeSets] }, null, 2));
           } else {
             printValidationResult(validation);
           }
@@ -1295,7 +1296,9 @@ async function runPrompt(
   const result = await loop.run(context, prompt, signal ? { signal } : undefined);
   const entries = await result.memory.entries();
   const persistedValidations = await result.memory.validations?.();
+  const persistedChangeSets = await result.memory.changeSets?.();
   const outputValidations = persistedValidations ?? validations;
+  const outputChangeSets = persistedChangeSets ?? [];
   const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
   const cost =
     result.usage && costOptions
@@ -1313,6 +1316,7 @@ async function runPrompt(
         cost: cost ?? null,
         reviews: [...reviews],
         validations: [...outputValidations],
+        changeSets: [...outputChangeSets],
       })
     );
     return result;

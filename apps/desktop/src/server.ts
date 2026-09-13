@@ -8,10 +8,12 @@ import { dirname, join, extname } from "node:path";
 
 import {
   FileMemory,
+  type AppliedChangeSetRecord,
   type MemoryEntry,
   type SessionMetadata,
   type ValidationRecord,
   type ValidationResult,
+  type ValidationStatus,
 } from "@dev-agent/agent-core";
 import type { ChatUsage } from "@dev-agent/model";
 
@@ -72,6 +74,22 @@ export interface DesktopHistoryMessage {
 }
 
 type ApprovalDecision = "allow" | "deny" | "allow-always";
+type EvidenceFilterResult =
+  | { readonly filters: EvidenceFilters }
+  | { readonly error: string };
+
+interface EvidenceFilters {
+  readonly changeSetId?: string;
+  readonly validationId?: string;
+  readonly status?: ValidationStatus;
+}
+
+const validationStatuses: readonly ValidationStatus[] = [
+  "passed",
+  "failed",
+  "skipped",
+  "blocked",
+];
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
@@ -151,7 +169,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       ) {
         const rawId = url.pathname.slice("/api/sessions/".length, -"/messages".length);
         const sessionId = normalizeSessionId(decodeURIComponent(rawId));
-        const history = await readHistory(sessionId);
+        const filterResult = parseEvidenceFilters(url);
+        if ("error" in filterResult) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: filterResult.error }));
+          return;
+        }
+        const history = await readHistory(sessionId, filterResult.filters);
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ sessionId, ...history }));
         return;
@@ -254,14 +278,25 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
+        const filterResult = parseEvidenceFilters(url);
+        if ("error" in filterResult) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: filterResult.error }));
+          return;
+        }
+
         const entries = await memory.entries();
         const validations = await memory.validations();
+        const changeSets = await memory.changeSets();
         const metadata = await memory.getMetadata();
+        const evidence = filterEvidence(validations, changeSets, filterResult.filters);
         res.writeHead(200, {
           "content-type": "text/markdown; charset=utf-8",
           "content-disposition": `attachment; filename="${sessionId}.md"`,
         });
-        res.end(renderTranscript(sessionId, entries, metadata, validations));
+        res.end(
+          renderTranscript(sessionId, entries, metadata, evidence.validations, evidence.changeSets)
+        );
         return;
       }
 
@@ -721,7 +756,8 @@ function renderTranscript(
   sessionId: string,
   entries: readonly MemoryEntry[],
   metadata: SessionMetadata | undefined,
-  validations: readonly ValidationRecord[] = []
+  validations: readonly ValidationRecord[] = [],
+  changeSets: readonly AppliedChangeSetRecord[] = []
 ): string {
   const lines: string[] = [`# Session ${sessionId}`, ""];
   if (metadata) {
@@ -748,6 +784,17 @@ function renderTranscript(
       "",
       "```json",
       JSON.stringify(validations, null, 2),
+      "```",
+      ""
+    );
+  }
+
+  if (changeSets.length > 0) {
+    lines.push(
+      "## Change-set evidence",
+      "",
+      "```json",
+      JSON.stringify(changeSets, null, 2),
       "```",
       ""
     );
@@ -800,14 +847,20 @@ export async function listSessions(
   );
 }
 
-async function readHistory(sessionId: string): Promise<{
+async function readHistory(
+  sessionId: string,
+  filters: EvidenceFilters = {}
+): Promise<{
   messages: DesktopHistoryMessage[];
   validations: ValidationRecord[];
+  changeSets: AppliedChangeSetRecord[];
 }> {
   const memory = new FileMemory({ filePath: memoryPathFor(sessionId) });
   try {
     const entries = await memory.entries();
     const validations = await memory.validations();
+    const changeSets = await memory.changeSets();
+    const evidence = filterEvidence(validations, changeSets, filters);
     return {
       messages: entries.map((entry) => ({
         role: entry.role,
@@ -815,11 +868,78 @@ async function readHistory(sessionId: string): Promise<{
         toolName: entry.toolName,
         toolCallId: entry.toolCallId,
       })),
-      validations: [...validations],
+      validations: [...evidence.validations],
+      changeSets: [...evidence.changeSets],
     };
   } catch {
-    return { messages: [], validations: [] };
+    return { messages: [], validations: [], changeSets: [] };
   }
+}
+
+function parseEvidenceFilters(url: URL): EvidenceFilterResult {
+  const changeSetId = nonEmptyQueryValue(url.searchParams.get("changeSetId"));
+  const validationId = nonEmptyQueryValue(url.searchParams.get("validationId"));
+  const rawStatus = nonEmptyQueryValue(url.searchParams.get("status"));
+  if (
+    rawStatus !== undefined &&
+    !validationStatuses.includes(rawStatus as ValidationStatus)
+  ) {
+    return {
+      error: `status must be one of: ${validationStatuses.join(", ")}`,
+    };
+  }
+  return {
+    filters: {
+      ...(changeSetId === undefined ? {} : { changeSetId }),
+      ...(validationId === undefined ? {} : { validationId }),
+      ...(rawStatus === undefined ? {} : { status: rawStatus as ValidationStatus }),
+    },
+  };
+}
+
+function nonEmptyQueryValue(value: string | null): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? normalized : undefined;
+}
+
+function filterEvidence(
+  validations: readonly ValidationRecord[],
+  changeSets: readonly AppliedChangeSetRecord[],
+  filters: EvidenceFilters
+): { validations: ValidationRecord[]; changeSets: AppliedChangeSetRecord[] } {
+  const matchingValidations = validations.filter((validation) => {
+    if (
+      filters.changeSetId !== undefined &&
+      validation.changeSetId !== filters.changeSetId
+    ) {
+      return false;
+    }
+    if (
+      filters.validationId !== undefined &&
+      validation.validationId !== filters.validationId
+    ) {
+      return false;
+    }
+    return filters.status === undefined || validation.status === filters.status;
+  });
+  const hasValidationFilter =
+    filters.validationId !== undefined || filters.status !== undefined;
+  const matchingChangeSetIds = new Set(
+    matchingValidations.map((validation) => validation.changeSetId)
+  );
+  const matchingChangeSets = changeSets.filter((changeSet) => {
+    if (
+      filters.changeSetId !== undefined &&
+      changeSet.changeSetId !== filters.changeSetId
+    ) {
+      return false;
+    }
+    return !hasValidationFilter || matchingChangeSetIds.has(changeSet.changeSetId);
+  });
+  return {
+    validations: matchingValidations,
+    changeSets: matchingChangeSets,
+  };
 }
 
 export function startServer(options: DesktopServerOptions = {}): Promise<Server> {

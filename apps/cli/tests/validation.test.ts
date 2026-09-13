@@ -272,6 +272,8 @@ test("CLI reruns persisted change-set validation after a new process", async () 
     assert.equal(validationPayload.validation.changeSetId, changeSetId);
     assert.match(validationPayload.validation.validationId, new RegExp(`^validation:${changeSetId}:`));
     assert.equal(validationPayload.validation.status, "passed");
+    assert.equal(validationPayload.changeSets.length, 1);
+    assert.equal(validationPayload.changeSets[0].changeSetId, changeSetId);
     assert.equal(await readFile(workspace.target, "utf8"), "changed\n");
   } finally {
     await provider.close();
@@ -304,6 +306,10 @@ test("CLI JSON includes validation evidence persisted by an earlier run", async 
     assert.equal(payload.validations[0].changeSetId, expectedChangeSetId);
     assert.equal(payload.validations[0].status, "passed");
     assert.equal(typeof payload.validations[0].recordedAt, "string");
+    assert.equal(payload.changeSets.length, 1);
+    assert.equal(payload.changeSets[0].changeSetId, expectedChangeSetId);
+    assert.equal(payload.changeSets[0].files[0].path, "target.md");
+    assert.equal(Object.hasOwn(payload.changeSets[0].files[0], "diff"), false);
   } finally {
     await provider.close();
     await rm(workspace.dir, { recursive: true, force: true });

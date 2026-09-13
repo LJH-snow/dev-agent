@@ -99,6 +99,42 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
       summary: "validation passed: 1 passed",
       recordedAt: "2026-01-01T00:02:00.000Z",
     };
+    const failedValidation = {
+      validationId: "validation:beta-change",
+      changeSetId: "beta-change",
+      status: "failed",
+      checks: [],
+      durationMs: 4,
+      summary: "validation failed: 0 passed",
+      recordedAt: "2026-01-01T00:04:00.000Z",
+    };
+    const changeSet = {
+      changeSetId: "alpha-change",
+      sessionId: "alpha",
+      workingDirectory: "/workspace",
+      files: [
+        {
+          path: "target.md",
+          kind: "file",
+          beforeHash: "b".repeat(64),
+          afterHash: "a".repeat(64),
+          additions: 1,
+          deletions: 1,
+          beforeExists: true,
+          afterExists: true,
+        },
+      ],
+      additions: 1,
+      deletions: 1,
+      createdAt: "2026-01-01T00:01:00.000Z",
+      recordedAt: "2026-01-01T00:01:01.000Z",
+      state: "applied",
+    };
+    const failedChangeSet = {
+      ...changeSet,
+      changeSetId: "beta-change",
+      files: [{ ...changeSet.files[0], path: "other.md" }],
+    };
     await writeFile(
       join(dir, "alpha.json"),
       JSON.stringify({ version: 1, metadata: {
@@ -107,7 +143,7 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
           lastActiveAt: "2026-01-01T00:01:00.000Z",
           entryCount: entries.length,
           usage: { promptTokens: 12, completionTokens: 5, totalTokens: 17 },
-        }, entries, validations: [validation] }),
+        }, entries, validations: [validation, failedValidation], changeSets: [changeSet, failedChangeSet] }),
       "utf8"
     );
 
@@ -134,7 +170,27 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
       body.messages.map((message) => message.content),
       ["hello", "hi"]
     );
-    assert.deepEqual(body.validations, [validation]);
+    assert.deepEqual(body.validations, [validation, failedValidation]);
+    assert.deepEqual(body.changeSets, [changeSet, failedChangeSet]);
+
+    const filtered = await fetch(
+      `${base}/api/sessions/alpha/messages?changeSetId=alpha-change&status=passed`
+    );
+    assert.equal(filtered.status, 200);
+    const filteredBody: any = await filtered.json();
+    assert.deepEqual(filteredBody.validations, [validation]);
+    assert.deepEqual(filteredBody.changeSets, [changeSet]);
+
+    const attemptFiltered = await fetch(
+      `${base}/api/sessions/alpha/messages?validationId=${encodeURIComponent(failedValidation.validationId)}`
+    );
+    assert.equal(attemptFiltered.status, 200);
+    const attemptFilteredBody: any = await attemptFiltered.json();
+    assert.deepEqual(attemptFilteredBody.validations, [failedValidation]);
+    assert.deepEqual(attemptFilteredBody.changeSets, [failedChangeSet]);
+
+    const invalidFilter = await fetch(`${base}/api/sessions/alpha/messages?status=unknown`);
+    assert.equal(invalidFilter.status, 400);
 
     const exported = await fetch(`${base}/api/sessions/alpha/export`);
     assert.equal(exported.status, 200);
@@ -142,6 +198,14 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
     assert.match(transcript, /Validation evidence/);
     assert.match(transcript, /validation:alpha-change/);
     assert.match(transcript, /workspace:diff-check/);
+    assert.match(transcript, /Change-set evidence/);
+    assert.match(transcript, /target\.md/);
+
+    const filteredExport = await fetch(`${base}/api/sessions/alpha/export?status=failed`);
+    assert.equal(filteredExport.status, 200);
+    const filteredTranscript = await filteredExport.text();
+    assert.match(filteredTranscript, /beta-change/);
+    assert.doesNotMatch(filteredTranscript, /alpha-change/);
   } finally {
     await close(server);
     if (previousDir === undefined) {
