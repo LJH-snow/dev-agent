@@ -32,6 +32,13 @@ Options:
   greater than 10000. Applied change-set guards are always protected. The command
   never reads or changes workspace files, and `--json` returns removal, protection,
   remaining-count, and `evidenceSummary` fields
+- `--export-evidence` - print a versioned, read-only metadata-only audit snapshot as
+  JSON without loading a model provider or MCP server. Optional
+  `--change-set-id <id>`, `--validation-id <id>`, and
+  `--status passed|failed|skipped|blocked` filter the snapshot. The projection
+  excludes commands, arguments, cwd, output, errors, diffs, patches, file bytes,
+  before-images, and absolute working-directory paths; `--json` may be combined
+  for scripting consistency
 - `--compact <n>` - compact the selected session, keeping the `n` most recent turns
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary

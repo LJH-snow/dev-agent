@@ -237,6 +237,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   limit, applied change-set guards are protected, explicit metadata-only cleanup
   can remove rolled-back evidence, and CLI/Desktop expose retention summaries
   without putting commands, diffs, or file contents into model context
+- v38 adds a versioned metadata-only evidence audit projection: CLI
+  `--export-evidence` and Desktop `GET /api/sessions/<id>/evidence` share the
+  same allowlisted shape, support bounded filters, and omit commands, output,
+  diffs, patches, file bytes, before-images, and absolute working-directory paths
 - CLI human output and `--json.validations` expose the same check ids, structured
   commands, durations, bounded output, and failure reasons; Desktop emits a
   `validation` SSE frame and renders a card without hiding the guarded Undo

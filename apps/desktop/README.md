@@ -128,6 +128,13 @@ are accepted, and validation command fields are deliberately not configurable.
   unknown session returns `404`, an in-flight session returns `409`, and an
   unavailable cleanup implementation returns `501`. It never executes commands or
   reads/writes the working directory.
+- `GET /api/sessions/<id>/evidence` — returns the selected session's versioned,
+  metadata-only audit projection as JSON. It accepts the same `changeSetId`,
+  `validationId`, and `status` filters as history/export, returns `400` for an
+  invalid status and `404` for an unknown session, and never initializes a model,
+  executes a command, or reads/writes the working directory. The projection
+  excludes command inputs, output/error text, diffs, patches, file bytes,
+  before-images, and the absolute working-directory path.
 - `POST /api/changesets/validate` — body `{ "sessionId": "...",
   "changeSetId": "..." }`; explicitly reruns trusted validation for the
   applied change set without changing files. A successful response is the full

@@ -59,10 +59,10 @@
 
 **Produces:** 两个宿主表面都能获取同一 schema 的 audit JSON。
 
-- [ ] **Step 1: 写 RED 测试。** CLI 显式命令和 Desktop API 在多 session、非法过滤、未知 session 下返回确定结果。
-- [ ] **Step 2: 写最小实现。** CLI 不初始化 provider/MCP；Desktop 不进入 in-flight chat 队列；两者不读写 working directory。
-- [ ] **Step 3: 聚焦回归。** CLI/Desktop 测试通过，输出不混入普通 transcript 或模型上下文。
-- [ ] **Step 4: 更新使用文档并提交。**
+- [x] **Step 1: 写 RED 测试。** CLI 显式命令和 Desktop API 在多 session、非法过滤、未知 session 下返回确定结果；首轮按预期暴露未知 CLI flag 和 Desktop `404`。
+- [x] **Step 2: 写最小实现。** CLI `--export-evidence` 不初始化 provider/MCP；Desktop `GET /api/sessions/<id>/evidence` 不进入 in-flight chat 队列；两者不读写 working directory。
+- [x] **Step 3: 聚焦回归。** agent-core **109/109**、CLI **114/114**、Desktop **73/73** 通过，输出不混入普通 transcript 或模型上下文。
+- [x] **Step 4: 更新使用文档并提交。** README、CLI/Desktop/tools 文档已同步；实现提交 `2439d09`。
 
 ## Task 3：长期 evidence 回归矩阵
 

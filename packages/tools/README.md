@@ -143,6 +143,14 @@ rollback succeeds; it never stores or reconstructs a before-image.
 guards remain protected. Old `version: 1` memory files without validation or
 change-set fields remain readable with empty evidence counts.
 
+For operator/audit consumers, `createEvidenceAuditExport()` builds a separate
+versioned projection instead of serializing the internal evidence DTOs. It keeps
+only stable identities, statuses, timings, hashes, relative paths, counts, and
+retention metadata. It excludes executable commands and arguments, cwd, output,
+errors, reasons, diffs, patches, file bytes, before-images, and absolute
+working-directory paths; the projection is read-only and does not inspect the
+workspace.
+
 Built-in tools accept an optional context object with `sessionId` and
 `workingDirectory`. Shell/git/search commands run in that working directory,
 and filesystem and code-search paths are resolved relative to it. `code-search`

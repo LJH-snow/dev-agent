@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 已建立计划，当前从 Task 0 的 before-image 与 metadata-only audit projection 边界评审开始；跨进程 Undo 暂不实现。
+v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task 0、Task 1、Task 2 已完成，当前进入 Task 3：把 restore、retention、cleanup、rollback、validation、cancellation 和 audit projection 固化为长期回归矩阵；跨进程 Undo 暂不实现。
 
 ## 已完成
 
@@ -37,15 +37,23 @@ v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 已建�
 - [x] 聚焦回归：agent-core **109/109** 通过；projection 代码不读取或写入 working directory。
 - [x] 实现提交：`9e3beac`。
 
-## 进行中
-
 ### Task 2：CLI/Desktop 只读导出入口
 
-- [ ] 为显式命令和 API 写 RED 测试，验证 schema 一致、session 隔离、非法输入和无 workspace 副作用。
+- [x] RED 覆盖 CLI 显式导出、provider 未加载、非法 status、Desktop schema、过滤、未知 session 和 memory 文件不变。
+- [x] CLI `--export-evidence` 输出 versioned JSON；Desktop `GET /api/sessions/<id>/evidence` 输出同一 allowlist projection。两者均为只读，不初始化模型/MCP，不触碰 working directory。
+- [x] 聚焦回归：agent-core **109/109**、CLI **114/114**、Desktop **73/73**。
+- [x] 实现提交：`2439d09`；README、CLI/Desktop/tools 文档已同步更新。
+
+## 进行中
+
+### Task 3：长期 evidence 回归矩阵
+
+- [ ] 扩展 restore、retention、cleanup、rollback、validation、cancellation 与 audit projection 的 table-driven 组合覆盖。
 
 ## 后续任务
 
-- [ ] Task 2：CLI/Desktop 只读导出入口。
+- [x] Task 1：Agent-core metadata-only audit projection。
+- [x] Task 2：CLI/Desktop 只读导出入口。
 - [ ] Task 3：长期 evidence 回归矩阵。
 - [ ] Task 4：全量验证、文档和发布。
 
