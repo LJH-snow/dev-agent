@@ -18,6 +18,12 @@ const FIXED_STEPS = Object.freeze({
     step("build", "TypeScript build", packageManager, ["build"]),
     step("typecheck", "TypeScript typecheck", packageManager, ["typecheck"]),
     step("typescript-test", "TypeScript tests", packageManager, ["test"]),
+    step(
+      "gate-contract",
+      "release gate contract tests",
+      "node",
+      ["--test", "tests/release-gate.test.mjs"]
+    ),
   ]),
   rust: Object.freeze([
     step("rust-fmt", "Rust format check", "cargo", ["fmt", "--check"], rustRoot),

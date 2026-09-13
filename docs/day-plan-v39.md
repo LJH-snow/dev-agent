@@ -58,9 +58,9 @@
 - Modify: `/Users/Admin/Desktop/dev-agent/README.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/README.md`
 
-- [ ] **Step 1: 更新 CI。** TypeScript job 使用 `pnpm verify:typescript`；Rust job 使用 `pnpm verify:rust`，并保留各自运行所需的依赖安装、工作目录和工具链配置。
-- [ ] **Step 2: 更新使用文档。** 说明完整门禁、按 job 门禁、失败阶段和不触碰用户工作目录的边界。
-- [ ] **Step 3: 运行 workflow 文本检查。** 确认 CI 不再重复维护相同的结构/build/typecheck/test/fmt/clippy/cargo test 命令。
+- [x] **Step 1: 更新 CI。** TypeScript job 使用 `pnpm verify:typescript`；Rust job 使用 `pnpm verify:rust`，并保留各自运行所需的依赖安装、工作目录和工具链配置。
+- [x] **Step 2: 更新使用文档。** README 和 `docs/README.md` 已说明完整门禁、按 job 门禁、失败阶段和不触碰用户工作目录的边界。
+- [x] **Step 3: 运行 workflow 文本检查。** 确认 CI 不再重复维护相同的结构/build/typecheck/test/fmt/clippy/cargo test 命令。
 - [ ] **Step 4: 提交。** 提交 CI 与文档同步。
 
 ## Task 3：before-image 可行性闸门记录

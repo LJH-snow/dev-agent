@@ -58,3 +58,20 @@ a `ctx` struct including `ctx.network_policy` (`"enabled"`, `"disabled"`, `"loop
 make network access decisions.
 
 See `runtime/rust/README.md` for the policy model and Linux backend status.
+
+## Verification and release gates
+
+The repository has one fixed verification runner so local checks and CI do not
+drift:
+
+```bash
+pnpm verify                 # TypeScript → Rust → real-Rust integration
+pnpm verify:typescript      # structure check, build, typecheck, workspace tests
+pnpm verify:rust            # cargo fmt, clippy, and Rust unit/doc tests
+```
+
+The runner uses fixed argument arrays and fixed working directories, never enables
+a shell, and stops at the first failed phase. The integration phase is separate
+so it can be run after the Rust test phase has built the debug runtime. Gate
+selection does not accept arbitrary commands, model output, or persisted evidence
+as execution input.

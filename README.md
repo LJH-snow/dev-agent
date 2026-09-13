@@ -55,6 +55,18 @@ pnpm test
 pnpm cli -- --version
 ```
 
+The fixed release gate is the preferred pre-push check:
+
+```bash
+pnpm verify                 # TypeScript → Rust → real-Rust integration
+pnpm verify:typescript      # the TypeScript CI job
+pnpm verify:rust            # the Rust CI job
+```
+
+Each gate uses repository-defined commands and working directories, stops at the
+first failed phase, and does not use model output or historical evidence as
+execution input.
+
 `pnpm build` must run before `pnpm typecheck`/`pnpm test` on a fresh checkout:
 workspace packages resolve each other through their published `dist/*.d.ts`,
 which the build step emits.
@@ -75,8 +87,10 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 
 `.github/workflows/ci.yml` runs on every push to `main` and on pull requests:
 
-- **TypeScript**: install, structure check, build, typecheck, test (Node 26, pnpm 12.3.4).
-- **Rust**: `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo test`.
+- **TypeScript**: `pnpm verify:typescript` runs the fixed structure check, build,
+  typecheck, and workspace tests (Node 26, pnpm 12.3.4).
+- **Rust**: `pnpm verify:rust` runs the fixed `cargo fmt --check`, clippy, and
+  unit/doc test phases from `runtime/rust`.
 
 ## Releases
 
