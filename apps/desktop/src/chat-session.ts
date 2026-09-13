@@ -15,6 +15,8 @@ import {
   FileMemory,
   type AgentContext,
   type ApprovalPolicy,
+  type EvidencePruneOptions,
+  type EvidencePruneResult,
   runValidationAttempt,
   type ValidationAdapter,
   type ValidationResult,
@@ -262,7 +264,24 @@ export class ChatSession {
   /** Rolls back the most recently prepared change set when its postimage still matches. */
   async rollbackChangeSet(changeSetId: string): Promise<unknown> {
     await this.restorePersistedChangeSets();
-    return this.filesystem.rollbackChangeSet(changeSetId);
+    const result = await this.filesystem.rollbackChangeSet(changeSetId);
+    try {
+      await this.memory.markChangeSetRolledBack?.(changeSetId);
+    } catch {
+      // The guarded filesystem rollback already succeeded; durable evidence
+      // sync is best-effort and must not turn a safe rollback into a failure.
+    }
+    return result;
+  }
+
+  /** Removes bounded, metadata-only evidence without touching the workspace. */
+  async pruneEvidence(
+    options: EvidencePruneOptions = {}
+  ): Promise<EvidencePruneResult> {
+    if (!this.memory.pruneEvidence) {
+      throw new Error("evidence cleanup is unavailable");
+    }
+    return this.memory.pruneEvidence(options);
   }
 
   /** Reruns trusted checks for an applied change set without changing files. */

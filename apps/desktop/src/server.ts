@@ -9,6 +9,8 @@ import { dirname, join, extname } from "node:path";
 import {
   FileMemory,
   type AppliedChangeSetRecord,
+  type EvidencePruneOptions,
+  type EvidencePruneResult,
   type MemoryEntry,
   type SessionMetadata,
   type ValidationRecord,
@@ -40,6 +42,8 @@ export interface DesktopChatSession {
   ): Promise<void>;
   /** Applies a guarded rollback for a change set prepared by this session. */
   rollbackChangeSet?(changeSetId: string): Promise<unknown>;
+  /** Removes bounded, metadata-only evidence without touching the workspace. */
+  pruneEvidence?(options?: EvidencePruneOptions): Promise<EvidencePruneResult>;
   /** Reruns trusted validation for an applied change set without changing files. */
   rerunValidation?(
     changeSetId: string,
@@ -76,6 +80,9 @@ export interface DesktopHistoryMessage {
 type ApprovalDecision = "allow" | "deny" | "allow-always";
 type EvidenceFilterResult =
   | { readonly filters: EvidenceFilters }
+  | { readonly error: string };
+type EvidenceCleanupOptionsResult =
+  | { readonly options: EvidencePruneOptions }
   | { readonly error: string };
 
 interface EvidenceFilters {
@@ -442,6 +449,59 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           if (runControllers.get(sessionId) === controller) {
             runControllers.delete(sessionId);
           }
+        }
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/changesets/cleanup") {
+        const body = await readBody(req);
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(body) as Record<string, unknown>;
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          return;
+        }
+
+        const parsedOptions = parseEvidenceCleanupOptions(parsed);
+        if ("error" in parsedOptions) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: parsedOptions.error }));
+          return;
+        }
+
+        const sessionId = normalizeSessionId(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : defaultSessionId
+        );
+        if (inFlight.has(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({ error: "a chat, validation, or cleanup request is already running in this session" })
+          );
+          return;
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        if (!session.pruneEvidence) {
+          res.writeHead(501, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "evidence cleanup is unavailable" }));
+          return;
+        }
+
+        try {
+          const result = await session.pruneEvidence(parsedOptions.options);
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ sessionId, ...result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: message }));
         }
         return;
       }
@@ -874,6 +934,47 @@ async function readHistory(
   } catch {
     return { messages: [], validations: [], changeSets: [] };
   }
+}
+
+function parseEvidenceCleanupOptions(
+  value: Record<string, unknown>
+): EvidenceCleanupOptionsResult {
+  const maxValidations = parseOptionalEvidenceLimit(value.maxValidations, "maxValidations");
+  if ("error" in maxValidations) {
+    return maxValidations;
+  }
+  const maxChangeSets = parseOptionalEvidenceLimit(value.maxChangeSets, "maxChangeSets");
+  if ("error" in maxChangeSets) {
+    return maxChangeSets;
+  }
+  if (value.removeRolledBack !== undefined && typeof value.removeRolledBack !== "boolean") {
+    return { error: "removeRolledBack must be a boolean" };
+  }
+  return {
+    options: {
+      ...(maxValidations.value === undefined ? {} : { maxValidations: maxValidations.value }),
+      ...(maxChangeSets.value === undefined ? {} : { maxChangeSets: maxChangeSets.value }),
+      ...(value.removeRolledBack === undefined ? {} : { removeRolledBack: value.removeRolledBack }),
+    },
+  };
+}
+
+function parseOptionalEvidenceLimit(
+  value: unknown,
+  name: string
+): { readonly value?: number } | { readonly error: string } {
+  if (value === undefined) {
+    return {};
+  }
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value <= 0 ||
+    value > 10_000
+  ) {
+    return { error: `${name} must be a positive integer no greater than 10000` };
+  }
+  return { value };
 }
 
 function parseEvidenceFilters(url: URL): EvidenceFilterResult {

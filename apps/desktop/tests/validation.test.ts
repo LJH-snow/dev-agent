@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
+import { FileMemory } from "@dev-agent/agent-core";
 import { ChatSession } from "../dist/chat-session.js";
 import { createDesktopServer } from "../dist/server.js";
 
@@ -161,6 +162,14 @@ test("ChatSession emits validation after apply and keeps Undo available", async 
     const rollback = await session.rollbackChangeSet(changeSetId) as any;
     assert.equal(rollback.ok, true);
     assert.equal(await readFile(workspace.target, "utf8"), "keep\n");
+
+    const persisted = new FileMemory({
+      filePath: join(workspace.directory, "session.json"),
+    });
+    assert.equal(
+      (await persisted.changeSets()).find((record) => record.changeSetId === changeSetId)?.state,
+      "rolled-back"
+    );
   } finally {
     await session.close();
     await provider.close();

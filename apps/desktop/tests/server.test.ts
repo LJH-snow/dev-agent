@@ -195,6 +195,47 @@ test("POST /api/changesets/rollback delegates to the session", async () => {
   }
 });
 
+test("POST /api/changesets/cleanup delegates metadata-only evidence cleanup", async () => {
+  let received;
+  const result = {
+    validationsRemoved: 2,
+    changeSetsRemoved: 1,
+    protectedChangeSets: 1,
+    remainingValidations: 3,
+    remainingChangeSets: 1,
+  };
+  const session = {
+    id: "default",
+    async run() {},
+    async pruneEvidence(options) {
+      received = options;
+      return result;
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/changesets/cleanup`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        maxValidations: 3,
+        maxChangeSets: 2,
+        removeRolledBack: true,
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { sessionId: "default", ...result });
+    assert.deepEqual(received, {
+      maxValidations: 3,
+      maxChangeSets: 2,
+      removeRolledBack: true,
+    });
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
 test("POST /api/changesets/rollback maps a postimage conflict to 409", async () => {
   const session = {
     async run() {},
