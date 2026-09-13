@@ -19,8 +19,9 @@ v37 计划已建立，当前从 Task 0 开始。v36 已经让 applied change-set
 
 ### Task 0：建立持续回归矩阵
 
-- [ ] 为 restore、postimage conflict、session isolation、no-auto-rollback、cancellation 和 rolled-back state 建立 table-driven regression coverage。
-- [ ] 先确认 RED，再完成最小测试整理并确认 GREEN。
+- [x] 为 restore、postimage conflict、session isolation、no-auto-rollback、cancellation 和 rolled-back state 建立 table-driven regression coverage；新增矩阵覆盖 session、working directory、postimage 和 rolled-back 四类 restore 阻断边界，并确认工作区字节不变。
+- [x] 该任务仅增加 v36 安全语义的持续回归护栏，不修改运行时行为；tools 聚焦回归 **121/121** 通过。
+- [x] 已完成提交：待本次提交完成后补入。
 
 ### Task 1：Memory retention contract
 

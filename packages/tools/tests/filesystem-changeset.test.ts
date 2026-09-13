@@ -463,6 +463,65 @@ test("batch restore reports blocked records without restoring them", async () =>
   });
 });
 
+test("restore regression matrix blocks unsafe evidence without touching the workspace", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const original: any = new FilesystemTool();
+    const prepared = await original.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(original, prepared, context);
+    const valid = toEvidence(prepared.review, directory, context.sessionId);
+    const otherDirectory = await mkdtemp(join(tmpdir(), "dev-agent-restore-matrix-other-"));
+
+    try {
+      const cases = [
+        {
+          label: "session mismatch",
+          record: { ...valid, changeSetId: "cs-matrix-session", sessionId: "other-session" },
+          reason: /session/,
+        },
+        {
+          label: "working-directory mismatch",
+          record: { ...valid, changeSetId: "cs-matrix-directory", workingDirectory: otherDirectory },
+          reason: /working directory/,
+        },
+        {
+          label: "postimage conflict",
+          record: {
+            ...valid,
+            changeSetId: "cs-matrix-postimage",
+            files: [{ ...valid.files[0], afterHash: "0".repeat(64) }],
+          },
+          reason: /postimage|hash/,
+        },
+        {
+          label: "rolled-back evidence",
+          record: { ...valid, changeSetId: "cs-matrix-rolled-back", state: "rolled-back" },
+          reason: /rolled-back/,
+        },
+      ];
+
+      for (const candidate of cases) {
+        const restored: any = new FilesystemTool();
+        const results = await restored.restoreAppliedChangeSets([candidate.record], context);
+        assert.equal(results.length, 1, `${candidate.label} should return one result`);
+        assert.equal(results[0]?.status, "blocked", candidate.label);
+        assert.match(results[0]?.reason ?? "", candidate.reason, candidate.label);
+        await assert.rejects(
+          () => restored.withAppliedChangeSet(candidate.record.changeSetId, async () => undefined),
+          /unknown or expired/
+        );
+        assert.equal(await readFile(path, "utf8"), "after\n", `${candidate.label} changed the file`);
+      }
+    } finally {
+      await rm(otherDirectory, { recursive: true, force: true });
+    }
+  });
+});
+
 function toEvidence(review: any, directory: string, sessionId: string): any {
   return {
     changeSetId: review.changeSetId,

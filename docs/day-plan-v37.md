@@ -37,14 +37,14 @@
 
 **Produces:** 一组明确的 table-driven regression tests，覆盖 v36 最容易被后续 retention 改坏的安全不变量。
 
-- [ ] **Step 1: 写失败测试。**
+- [x] **Step 1: 写回归矩阵测试。**
   - restore 的 `applied` guard 在 retention/cleanup 前后仍可 validation；postimage 改变、session/workdir 不匹配仍 blocked。
   - cancellation、validation failure 和 no-auto-rollback 仍不改变用户文件。
   - 已 rolled-back 的 evidence 不会被重新恢复为 applied guard。
-- [ ] **Step 2: 运行聚焦测试确认 RED。**
-- [ ] **Step 3: 写最小测试整理或测试辅助。** 不修改运行时语义；优先用矩阵减少重复 fixture。
-- [ ] **Step 4: 运行聚焦测试确认 GREEN。**
-- [ ] **Step 5: 提交。**
+- [x] **Step 2: 评估 RED。** 本任务只增加对 v36 已有安全语义的回归覆盖，不引入临时破坏来制造 production RED。
+- [x] **Step 3: 写最小测试整理或测试辅助。** 不修改运行时语义；优先用矩阵减少重复 fixture。
+- [x] **Step 4: 运行聚焦测试确认 GREEN。**
+- [x] **Step 5: 提交。**
 
 ## Task 1：Memory retention contract
 
