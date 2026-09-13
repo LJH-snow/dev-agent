@@ -1,5 +1,45 @@
 # Changelog
 
+## 2026-09-13 (Day plan v33: reviewed filesystem changes)
+
+Executed `docs/day-plan-v33.md`. The agent could approve dangerous commands, but
+filesystem mutations were still opaque: a user had to trust a write before
+seeing the exact bytes, and there was no guarded way to undo an approved change.
+
+### Added: change-set preview, approval, atomic apply, and rollback
+
+- `FilesystemTool` now has a read-only `preview` action and a
+  `prepareChangeSet()` contract. A preview records a stable `changeSetId`,
+  per-file existence/kind, SHA-256 before/after hashes, unified diff, and
+  addition/deletion counts without writing to the workspace.
+- `write`, `edit`, `patch`, and `mkdir` mutations can be reviewed as one
+  all-or-nothing change set. Applying it rechecks every preimage and replaces
+  files through same-directory temporary files plus rename, so a stale review or
+  partial failure cannot silently leave a mixed change behind.
+- A successfully applied change set can be rolled back only while every
+  postimage still matches. External edits produce a conflict instead of being
+  overwritten; new files and created directories are removed during a guarded
+  rollback.
+- `review-writes` is available in the AgentLoop, CLI, and Desktop. The CLI
+  prints the real diff and records structured `reviews` in `--json`; MCP stdio
+  mode denies mutations because it has no interactive reviewer channel.
+- Desktop `approval-request` SSE events carry the review payload, the browser
+  renders it as a safe diff card, and `POST /api/changesets/rollback` powers the
+  post-approval **Undo** action with explicit 404/409/501 outcomes.
+
+### Tests
+
+- Focused package suites pass: tools **90/90**, agent-core **79/79**, CLI
+  **101/101**, and Desktop **61/61**.
+- Repository-wide TypeScript tests: **512 passed**.
+- Real Rust-binary integration tests: **10 passed**.
+- Rust `fmt --check`, `clippy --all-targets -- -D warnings`, and unit/doc tests
+  pass: **46 passed** (43 library, 3 binary, 0 doctests).
+- Structure check, build, typecheck, browser-script syntax check, and
+  `git diff --check` all pass. Manual review confirmed preimage/postimage
+  conflict guards, atomic failure paths, bounded change-set retention,
+  approval cleanup, and per-session concurrency protection.
+
 ## 2026-09-13 (Day plan v32: cancellable and observable MCP tools)
 
 Executed `docs/day-plan-v32.md`. MCP calls could time out, but there was no

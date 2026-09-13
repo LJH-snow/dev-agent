@@ -33,18 +33,22 @@ Options:
   `explain-codebase` prompts to a host agent (no model provider needed).
   `--approval` (and the config file's `approval` section) also applies here:
   with `deny-dangerous` a flagged call comes back as `isError` with the reason
-  instead of running, and `ask` behaves the same because MCP has no prompt
-  channel.
+  instead of running, `ask` behaves the same because MCP has no prompt channel,
+  and `review-writes` prepares the same change set but refuses filesystem
+  mutations because stdio has no interactive reviewer.
 - `--approval <mode>` - tool approval policy: `allow` (default, everything runs),
   `deny-dangerous` (block the built-in dangerous command patterns and writes
-  outside the working directory), or `ask` (same detection, but confirm with
+  outside the working directory), `ask` (same detection, but confirm with
   `y/N/a` first: `y` runs once, `a` runs and remembers the command + subcommand
   key for the rest of the session (`npm test` also covers
-  `npm test -- --watch`), anything else — including EOF or a read failure —
-  denies it)
+  `npm test -- --watch`), or `review-writes` (show the real filesystem diff and
+  apply it only after an explicit `y`; dangerous shell/git calls keep their
+  existing approval rules; EOF or a read failure denies it)
 - `--json` - machine-readable output for `--once`, `--tools`, `--metadata`,
   `--session-list`, and `--compact`; implies `--no-stream` so nothing else is
-  written to stdout
+  written to stdout. A prompt run in `review-writes` mode also includes a
+  structured `reviews` array with each change-set id, decision, files, and
+  addition/deletion totals.
 - `--doctor` - check the environment (Node version, `rg`, `protoc`, the Rust
   runtime binary, the provider API key, `~/.dev-agent/config.json`, and the
   session directory); a missing config is fine, while malformed JSON is reported
@@ -91,6 +95,24 @@ stdout is a protocol message, so logs (if any) go to stderr:
 node apps/cli/dist/index.js --mcp-server
 ```
 
+### Reviewed filesystem writes
+
+Use `review-writes` when a human should see the exact file changes before the
+agent writes them:
+
+```bash
+pnpm cli -- --approval review-writes --once "update the README"
+```
+
+The CLI prepares a change set before approval and prints its id, file paths,
+addition/deletion totals, and unified diff to stderr. `y` applies the prepared
+change set; any other answer leaves the original bytes unchanged. A reviewed
+write is always decided per change set, so it never inherits the `ask` mode's
+"always allow" memory. With `--json`, stdout remains one parseable JSON object
+and the `reviews` field records the structured review outcome. In
+`--mcp-server` mode there is no reviewer channel, so `--approval review-writes`
+denies filesystem mutations safely rather than applying them.
+
 Configuration is read from the environment:
 
 - `DEV_AGENT_MODEL_PROVIDER` - `ollama` (default), `openai`, `anthropic`, or `gemini`
@@ -118,8 +140,9 @@ Configuration is read from the environment:
   turns it off.
 - `DEV_AGENT_SUMMARY_MAX_CHARS` - cap for the digest; over-long summaries keep
   their newest part. Defaults to 2000 characters.
-- `DEV_AGENT_APPROVAL` - approval mode (`allow`, `deny-dangerous`, `ask`);
-  `--approval` wins over it, and it wins over `approvalMode` in the config file.
+- `DEV_AGENT_APPROVAL` - approval mode (`allow`, `deny-dangerous`, `ask`,
+  `review-writes`); `--approval` wins over it, and it wins over `approvalMode`
+  in the config file.
 - `DEV_AGENT_RUST_BINARY` - path to the `dev-agent-executor` binary. Applies to
   real tool runs as well as `--check-rust`, so setting it routes every tool
   command through the Rust sandbox. `--rust-executor <path>` wins over it.
@@ -174,7 +197,8 @@ invocation.
   announced; used when `DEV_AGENT_SUMMARIZE_CONTEXT` is unset.
 - `summaryMaxChars` - digest length cap; used when
   `DEV_AGENT_SUMMARY_MAX_CHARS` is unset.
-- `approvalMode` - approval policy; used when `DEV_AGENT_APPROVAL` is unset.
+- `approvalMode` - approval policy (`allow`, `deny-dangerous`, `ask`, or
+  `review-writes`); used when `DEV_AGENT_APPROVAL` is unset.
 - `approval.allow` / `approval.deny` - extra approval rules shared with the
   desktop app. `allow` entries are command substrings that always pass (for
   example `"npm test"`); `deny` entries are regular expressions added to the

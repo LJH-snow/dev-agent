@@ -289,7 +289,7 @@ Expected: FAIL，因为 review payload、rollback route 和 UI 尚不存在。
 pnpm --filter @dev-agent/desktop test
 ```
 
-Expected: 新增 review/rollback 测试和原有 52 个测试全部通过。
+Expected: 新增 review/rollback 测试和现有 Desktop 回归测试全部通过。
 
 - [x] **Step 6: Commit。**
 
@@ -309,8 +309,8 @@ git commit -m "feat(desktop): review diffs and rollback change sets"
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/day-plan-v33-progress.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/day-plan-v33.md`
 
-- [ ] **Step 1: 文档化 contract。** 记录 preview 输入、changeSetId、unified diff、SHA-256 conflict、review-writes、CLI `--json` reviews、Desktop SSE review payload 和 rollback endpoint。
-- [ ] **Step 2: 运行完整验证。**
+- [x] **Step 1: 文档化 contract。** 记录 preview 输入、changeSetId、unified diff、SHA-256 conflict、review-writes、CLI `--json` reviews、Desktop SSE review payload 和 rollback endpoint。
+- [x] **Step 2: 运行完整验证。**
 
 ```bash
 node scripts/check.mjs
@@ -326,24 +326,26 @@ cd ../..
 git diff --check
 ```
 
-- [ ] **Step 3: 统计测试并人工 review。** 以实际输出记录 TypeScript/Rust/integration 数量；检查 apply/rollback 所有失败路径、临时文件、change-set store 上限、approval request 清理和并发冲突。
-- [ ] **Step 4: Commit and push。**
+实际结果（2026-09-13）：structure check 通过（13 个目录、34 个预期文件）；`pnpm build`、`pnpm typecheck` 通过；TypeScript **512/512**、真实 Rust-binary integration **10/10**、Rust unit/doc **46/46** 通过；浏览器脚本 `node --check` 和 `git diff --check` 通过。
+
+- [x] **Step 3: 统计测试并人工 review。** 实际 focused suite 为 tools 90/90、agent-core 79/79、CLI 101/101、Desktop 61/61；检查了 apply/rollback 的 preimage/postimage 冲突、原子失败清理、change-set store 上限、approval request 清理和 session 并发冲突。
+- [x] **Step 4: Commit and push。**
 
 ```bash
 git add packages/tools packages/agent-core apps/cli apps/desktop README.md docs/CHANGELOG.md docs/day-plan-v33-progress.md docs/day-plan-v33.md
-git commit -m "feat: review and rollback workspace changes"
+git commit -m "docs: record v33 review workflow"
 git push origin main
 ```
 
 ## Acceptance Checklist
 
-- [ ] `filesystem preview` 对 write/edit/patch/mkdir 返回真实 diff、before/after hash 和增删统计，且不写盘。
-- [ ] `review-writes` 在所有 filesystem mutation apply 前显示实际 diff；deny/timeout/disconnect 不改变文件字节。
-- [ ] apply 只使用稳定 change-set id 并重新校验所有 preimage；多文件冲突不会留下部分修改。
-- [ ] rollback 重新校验 postimage，恢复原字节/删除新文件/清理新目录；外部修改不会被覆盖。
-- [ ] CLI 普通模式显示 diff，`--json` 保持单一可解析 JSON 并包含结构化 review 状态。
-- [ ] Desktop approval-request 携带 review diff，Allow/Deny 可用，Undo endpoint 能成功回滚和报告冲突。
-- [ ] v32 的 `allow`、`deny-dangerous`、`ask`、MCP cancellation/progress 测试和所有 Rust checks 仍通过。
+- [x] `filesystem preview` 对 write/edit/patch/mkdir 返回真实 diff、before/after hash 和增删统计，且不写盘。
+- [x] `review-writes` 在所有 filesystem mutation apply 前显示实际 diff；deny/timeout/disconnect 不改变文件字节。
+- [x] apply 只使用稳定 change-set id 并重新校验所有 preimage；多文件冲突不会留下部分修改。
+- [x] rollback 重新校验 postimage，恢复原字节/删除新文件/清理新目录；外部修改不会被覆盖。
+- [x] CLI 普通模式显示 diff，`--json` 保持单一可解析 JSON 并包含结构化 review 状态。
+- [x] Desktop approval-request 携带 review diff，Allow/Deny 可用，Undo endpoint 能成功回滚和报告冲突。
+- [x] v32 的 `allow`、`deny-dangerous`、`ask`、MCP cancellation/progress 测试和所有 Rust checks 仍通过。
 
 ## Execution Protocol
 

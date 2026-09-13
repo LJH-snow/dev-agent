@@ -219,6 +219,17 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   working directory, and a denial is written back to the model so it can pick
   another path. The CLI exposes it as `--approval allow|deny-dangerous|ask`,
   the desktop via `DEV_AGENT_APPROVAL` and an `approval` SSE frame
+- `review-writes` is an explicit approval mode for filesystem mutations: a
+  read-only preview produces a real unified diff, SHA-256 preimage/postimage,
+  and file statistics before the approved `apply` runs
+- Filesystem change sets support all-or-nothing multi-file apply, atomic
+  same-directory replacement, preimage conflict checks, and guarded rollback
+  that refuses to overwrite an externally changed postimage
+- CLI reviewed writes render the diff in human mode and add structured `reviews`
+  records to `--json`; MCP stdio mode denies `review-writes` mutations because
+  it has no interactive reviewer channel
+- Desktop reviewed writes carry the change set in `approval-request` SSE
+  events and expose `POST /api/changesets/rollback` for an in-app **Undo**
 - The workspace boundary check resolves symlinks, so a link inside the working
   directory cannot be used to read or overwrite a file outside it; links that
   stay inside are still allowed
@@ -340,7 +351,7 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 477 TypeScript tests + 46 Rust unit/doc tests + 10 real-binary
+- Test suite: 512 TypeScript tests + 46 Rust unit/doc tests + 10 real-binary
   integration tests, all passing
 
 ### Rust runtime progress
@@ -418,7 +429,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 59. ~~Working-directory validation before spawning~~ (done)
 60. ~~Same-name session rename is no longer reported as missing~~ (done)
 61. ~~End-to-end MCP tool cancellation and progress propagation~~ (done)
-62. MCP-aware diff review, approval, rollback, and automated verification (next)
+62. ~~MCP-aware diff review, approval, and rollback~~ (done)
+63. Change-set-derived automated verification (next)
 47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
 48. ~~Approval coverage for git command-execution options~~ (done)
 49. ~~Clear `--metadata` error for a corrupt session file~~ (done)

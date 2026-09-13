@@ -27,6 +27,48 @@ in-memory copy: every hunk must match exactly once and hunks must not overlap,
 otherwise nothing is written. The file is saved once at the end, so a failing
 patch leaves it byte-for-byte unchanged.
 
+## Reviewed filesystem changes
+
+`filesystem` also supports a read-only `preview` action for turning one or more
+mutations into a reviewable change set:
+
+```json
+{
+  "action": "preview",
+  "changes": [
+    {
+      "action": "edit",
+      "path": "src/app.ts",
+      "oldText": "const port = 3000;",
+      "newText": "const port = 4000;"
+    },
+    { "action": "mkdir", "path": "tmp/reports" }
+  ]
+}
+```
+
+The result is a `ChangeSetReview` with a stable `changeSetId`, one entry per
+path, before/after SHA-256 hashes, existence and file-kind information, a
+unified diff, and aggregate addition/deletion counts. Preview never writes to
+the workspace. Paths in one preview must be unique; `write`, `edit`, `patch`,
+and `mkdir` can be grouped into the same all-or-nothing change set.
+
+`FilesystemTool.prepareChangeSet()` accepts either a single mutation input or a
+`preview` input and returns both the review and the `{ action: "apply",
+changeSetId }` input to execute after approval. `apply` rechecks every recorded
+preimage before writing, creates parent directories as needed, and uses
+same-directory temporary files plus rename for atomic file replacement. If a
+preimage, write, or directory operation fails, the change set is not left
+partially applied.
+
+After a successful apply, `rollback` accepts the same `changeSetId` only while
+all postimages still match. It restores the original bytes and modes, removes
+new files, and cleans up directories created by the change set. An external edit
+causes a guarded conflict instead of overwriting the newer content. The tool
+keeps a bounded in-memory store of recent change sets, so callers should apply
+or roll back a preview with the same `FilesystemTool` instance.
+
+
 Built-in tools accept an optional context object with `sessionId` and
 `workingDirectory`. Shell/git/search commands run in that working directory,
 and filesystem and code-search paths are resolved relative to it. `code-search`

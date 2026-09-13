@@ -4,8 +4,8 @@
 
 ## 当前状态
 
-- 当前阶段：Task 7，文档、全量回归与发布
-- 已完成阶段：Task 0、Task 1、Task 2、Task 3、Task 4、Task 5、Task 6；v32 已完成并推送到 `origin/main`
+- 当前阶段：v33 已完成，已建立 v34 验证计划
+- 已完成阶段：Task 0、Task 1、Task 2、Task 3、Task 4、Task 5、Task 6、Task 7；v32 已完成并推送到 `origin/main`
 - 工作区基线：`bd05586 docs: record v32 release verification`
 - 最近一次 v32 验证：TypeScript 477/477、Rust 46/46、真实运行时集成 10/10 通过
 
@@ -38,7 +38,8 @@
 | Task 3 | 已完成 | 首次测试因 ApprovalPolicy 不含 prepare、ApprovalRequest 不含 review 而编译失败；随后 agent-core 全套 76/76 通过 | `8a325ec feat(agent): prepare reviewed tool changes before approval` |
 | Task 4 | 已完成 | mode/policy 初次编译红测；MCP review-writes 初次因复用 deny-dangerous 而返回 workspace 越界理由；修正后 agent-core 79/79、CLI 99/99、Desktop 55/55 通过 | `aa646ab feat: add review-writes approval mode` |
 | Task 5 | 已完成 | CLI E2E 首次因 JSON 缺少 `reviews` 失败；随后 CLI build 与全套 **101/101** 通过，JSON 只输出一个对象且记录 allow review | `d546dd8 feat(cli): show and record reviewed diffs` |
-| Task 6 | 已完成 | Desktop rollback 方法、SSE review payload、endpoint 与 UI 初次红测后，Desktop 全套 **61/61** 通过；UI 脚本 `node --check` 通过 | `feat(desktop): review diffs and rollback change sets`（待提交） |
+| Task 6 | 已完成 | Desktop rollback 方法、SSE review payload、endpoint 与 UI 初次红测后，Desktop 全套 **61/61** 通过；UI 脚本 `node --check` 通过 | `1c6ea11 feat(desktop): review diffs and rollback change sets` |
+| Task 7 | 已完成 | 文档同步；structure check、build、typecheck、TypeScript **512/512**、Rust integration **10/10**、Rust unit/doc **46/46**、diff check 全部通过；人工复核 change-set 冲突与回滚边界 | `09ce3e4 docs: record v33 review workflow` |
 
 ### Task 1：建立 change-set 数据模型、哈希和统一 diff（已完成）
 
@@ -88,7 +89,14 @@
 - GREEN：`pnpm --filter @dev-agent/desktop test` 通过，Desktop **61/61**；从 HTML `<script>` 抽出的浏览器脚本通过 `node --check`。
 - 覆盖：approval-request 携带完整 review；批准后顺序为 approval → tool-result；rollback 成功返回 apply result；postimage 冲突映射 409 且不覆盖外部修改；运行中 rollback 返回 409；review UI 使用 `textContent`/`<pre>` 展示 diff，review request 隐藏 Always allow，批准后提供 Undo。
 - 实现：`ChatSession.rollbackChangeSet` 委托同一 filesystem change-set store；Desktop server 增加 guarded rollback route、未知/冲突状态码和 review SSE payload；浏览器端维护 review card、Undo 状态和 session 绑定。
-- 提交：待账本同步后提交 `feat(desktop): review diffs and rollback change sets`。
+- 提交：`1c6ea11 feat(desktop): review diffs and rollback change sets`。
+
+### Task 7：文档、全量回归与发布（已完成）
+
+- 文档：tools、CLI、Desktop、根 README、CHANGELOG 和 v33 计划均记录了 preview 输入、changeSetId、统一 diff、哈希冲突、`review-writes`、CLI `--json.reviews`、Desktop SSE review payload 和 rollback endpoint。
+- 验证：`node scripts/check.mjs` 通过（13 个目录、34 个预期文件）；`pnpm build`、`pnpm typecheck` 通过；TypeScript **512/512**；真实 Rust-binary integration **10/10**；Rust fmt、clippy 和 unit/doc **46/46**；浏览器脚本 `node --check`、`git diff --check` 通过。
+- 人工 review：确认 apply/rollback 的 preimage/postimage 冲突保护、临时文件失败清理、64 条 change-set 保留上限、approval request 清理、session 级并发回滚保护和 MCP 无交互 mutation 拒绝。
+- 提交：`09ce3e4 docs: record v33 review workflow`；push 目标为 `origin/main`。
 
 ## 错误与卡点
 
@@ -98,4 +106,4 @@
 
 ## 后续路线
 
-- v33 完成后执行 v34：根据 change set 计算最小验证集合，把 typecheck/test/真实运行时结果反馈给模型和 Desktop。
+- v33 已完成；下一阶段执行 `/Users/Admin/Desktop/dev-agent/docs/day-plan-v34.md`：根据 change set 计算最小验证集合，把 typecheck/test/真实运行时结果反馈给模型和 Desktop。

@@ -29,8 +29,9 @@ Configure the model provider the same way as the CLI, via environment variables:
 - `DEV_AGENT_SUMMARY_MAX_CHARS` — cap for that digest (default 2000 characters)
 - `DEV_AGENT_APPROVAL` — `deny-dangerous` blocks the built-in dangerous command
   patterns and filesystem writes outside the working directory; `ask` shows the
-  flagged call in the chat and waits for an Allow/Deny click. Without a client
-  to answer, `ask` stays conservative and denies.
+  flagged call in the chat and waits for an Allow/Deny click; `review-writes`
+  shows the real filesystem diff and applies it only after Allow. Without a
+  client to answer, `ask` and `review-writes` stay conservative and deny.
 - `DEV_AGENT_APPROVAL_TIMEOUT_MS` — how long an `ask` prompt may stay unanswered
   before it is denied (default 120000).
 - `DEV_AGENT_SSE_MAX_BYTES` — how many bytes one SSE stream may buffer before the
@@ -78,10 +79,13 @@ only tokens are shown.
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-progress`, `tool-result`, `turn`, `usage`,
-  `approval`, `done`, `error`. A `tool-progress` frame carries
+  `approval-request`, `approval`, `done`, `error`. A `tool-progress` frame carries
   `{ name, progress, total? }`; for one tool call it appears after `tool` and
-  before `tool-result`. An `approval` frame carries `{ tool, decision, reason }`;
-  a denial is also written back to the model as that tool's result.
+  before `tool-result`. An `approval-request` frame carries `{ id, tool, reason,
+  input }`; in `review-writes` mode it also carries `review` with the
+  `changeSetId`, per-file hashes/diff, and addition/deletion totals. The matching
+  `approval` frame preserves the decision and includes the same review. A
+  denial is also written back to the model as that tool's result.
 - `POST /api/chat` takes an optional `sessionId` (unknown ids are created on
   first use). The `409` guard is per session: different sessions run
   concurrently while one session stays serialised.
@@ -93,6 +97,11 @@ only tokens are shown.
 - `POST /api/approval` — body `{ "id": "...", "decision": "allow" | "deny" }`
   answers an `approval-request` frame; unknown or already answered ids return
   `404`.
+- `POST /api/changesets/rollback` — body `{ "sessionId": "...",
+  "changeSetId": "..." }`; guarded rollback of an applied reviewed change set.
+  A successful response is the change-set result. Unknown or expired ids return
+  `404`; an in-flight session, postimage conflict, or already rolled-back set
+  returns `409`; an unavailable rollback implementation returns `501`.
 
 ## Interrupts
 
@@ -138,6 +147,16 @@ the command + subcommand key for the rest of the session, so `npm test` and
 `npm test -- --watch` only ask once. The decision is echoed as an `approval`
 frame, and a denial is written back to the model as the tool's result so it can
 pick another path.
+
+With `DEV_AGENT_APPROVAL=review-writes`, filesystem `write`, `edit`, `patch`,
+and `mkdir` mutation calls are first converted into a read-only change set. The
+chat shows the change-set id, file-level additions/deletions,
+SHA-256 preimage/postimage metadata, and the real unified diff. Allow applies
+that exact change set atomically; Deny, timeout, or client disconnect leaves the
+workspace unchanged. Reviewed cards do not offer "Always allow". After a
+successful Allow, the card offers **Undo**, which calls
+`POST /api/changesets/rollback`; rollback is guarded by the postimage hash and
+will report a conflict rather than overwrite an external edit.
 
 ## Tests
 
