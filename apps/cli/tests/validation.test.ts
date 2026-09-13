@@ -340,6 +340,108 @@ test("CLI cleanup reports protected evidence and removes only rolled-back record
   }
 });
 
+test("CLI exports a metadata-only audit snapshot without initializing a provider", async () => {
+  const workspace = await createGitWorkspace();
+  const memoryFile = join(workspace.dir, "audit-session.json");
+  try {
+    const memory = new FileMemory({ filePath: memoryFile });
+    await memory.recordValidation({
+      validationId: "validation:audit",
+      changeSetId: "audit-change",
+      status: "failed",
+      checks: [
+        {
+          id: "workspace:check",
+          label: "internal label",
+          command: {
+            executable: "secret-command",
+            args: ["--token", "secret"],
+            cwd: workspace.dir,
+            timeoutMs: 1000,
+          },
+          status: "failed",
+          durationMs: 8,
+          exitCode: 1,
+          output: "secret output",
+          error: "secret error",
+          reason: "secret reason",
+        },
+      ],
+      durationMs: 8,
+      summary: "internal validation summary",
+      reason: "internal validation reason",
+    });
+    await memory.recordChangeSet({
+      changeSetId: "audit-change",
+      sessionId: "audit",
+      workingDirectory: workspace.dir,
+      files: [
+        {
+          path: "target.md",
+          kind: "file",
+          beforeHash: "b".repeat(64),
+          afterHash: "a".repeat(64),
+          additions: 1,
+          deletions: 1,
+          beforeExists: true,
+          afterExists: true,
+        },
+      ],
+      additions: 1,
+      deletions: 1,
+      createdAt: "2026-09-13T00:01:00.000Z",
+      recordedAt: "2026-09-13T00:01:01.000Z",
+      state: "applied",
+    });
+    const before = await readFile(memoryFile);
+
+    const result = await runCli(
+      ["--session", "audit", "--export-evidence", "--status", "failed", "--json"],
+      {
+        ...process.env,
+        INIT_CWD: workspace.dir,
+        DEV_AGENT_MODEL_PROVIDER: "provider-that-must-not-be-loaded",
+        DEV_AGENT_MEMORY_FILE: memoryFile,
+      },
+      ""
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.sessionId, "audit");
+    assert.equal(payload.validations.length, 1);
+    assert.equal(payload.validations[0].validationId, "validation:audit");
+    assert.equal(payload.changeSets.length, 1);
+    assert.equal(payload.changeSets[0].changeSetId, "audit-change");
+    assert.deepEqual(payload.validations[0].checks, [
+      { id: "workspace:check", status: "failed", durationMs: 8, exitCode: 1 },
+    ]);
+    assert.equal(Object.hasOwn(payload.validations[0], "summary"), false);
+    assert.equal(Object.hasOwn(payload.validations[0], "reason"), false);
+    assert.equal(Object.hasOwn(payload.validations[0].checks[0], "command"), false);
+    assert.equal(Object.hasOwn(payload.changeSets[0], "workingDirectory"), false);
+    assert.equal(result.stdout.includes("secret-command"), false);
+    assert.equal(result.stdout.includes("secret output"), false);
+    assert.equal(result.stdout.includes(workspace.dir), false);
+    assert.deepEqual(await readFile(memoryFile), before);
+  } finally {
+    await rm(workspace.dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI rejects an invalid audit status before loading the provider", async () => {
+  const result = await runCli(
+    ["--export-evidence", "--status", "not-a-status"],
+    { ...process.env, DEV_AGENT_MODEL_PROVIDER: "provider-that-must-not-be-loaded" },
+    ""
+  );
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /status must be one of/);
+  assert.equal(result.stdout, "");
+});
+
 test("interactive CLI exposes explicit evidence cleanup", async () => {
   const workspace = await createGitWorkspace();
   const memoryFile = join(workspace.dir, "session.json");

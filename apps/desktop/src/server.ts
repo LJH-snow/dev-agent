@@ -7,9 +7,12 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
 
 import {
+  createEvidenceAuditExport,
   DEFAULT_EVIDENCE_RETENTION,
   FileMemory,
+  selectEvidenceForAudit,
   type AppliedChangeSetRecord,
+  type EvidenceAuditFilters,
   type EvidencePruneOptions,
   type EvidencePruneResult,
   type EvidenceSummary,
@@ -90,11 +93,7 @@ type EvidenceCleanupOptionsResult =
   | { readonly options: EvidencePruneOptions }
   | { readonly error: string };
 
-interface EvidenceFilters {
-  readonly changeSetId?: string;
-  readonly validationId?: string;
-  readonly status?: ValidationStatus;
-}
+type EvidenceFilters = EvidenceAuditFilters;
 
 const validationStatuses: readonly ValidationStatus[] = [
   "passed",
@@ -273,6 +272,50 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ from, to, renamed: from !== to }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/evidence")
+      ) {
+        const rawId = url.pathname.slice("/api/sessions/".length, -"/evidence".length);
+        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const filePath = memoryPathFor(sessionId);
+        if (!existsSync(filePath)) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+
+        const filterResult = parseEvidenceFilters(url);
+        if ("error" in filterResult) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: filterResult.error }));
+          return;
+        }
+
+        const memory = new FileMemory({ filePath });
+        const validations = await memory.validations();
+        const changeSets = await memory.changeSets();
+        const evidenceSummary = await memory.evidenceSummary();
+        const evidence = selectEvidenceForAudit(
+          validations,
+          changeSets,
+          filterResult.filters
+        );
+        const audit = createEvidenceAuditExport(
+          sessionId,
+          evidence.validations,
+          evidence.changeSets,
+          evidenceSummary
+        );
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        res.end(JSON.stringify(audit));
         return;
       }
 
@@ -1080,39 +1123,7 @@ function filterEvidence(
   changeSets: readonly AppliedChangeSetRecord[],
   filters: EvidenceFilters
 ): { validations: ValidationRecord[]; changeSets: AppliedChangeSetRecord[] } {
-  const matchingValidations = validations.filter((validation) => {
-    if (
-      filters.changeSetId !== undefined &&
-      validation.changeSetId !== filters.changeSetId
-    ) {
-      return false;
-    }
-    if (
-      filters.validationId !== undefined &&
-      validation.validationId !== filters.validationId
-    ) {
-      return false;
-    }
-    return filters.status === undefined || validation.status === filters.status;
-  });
-  const hasValidationFilter =
-    filters.validationId !== undefined || filters.status !== undefined;
-  const matchingChangeSetIds = new Set(
-    matchingValidations.map((validation) => validation.changeSetId)
-  );
-  const matchingChangeSets = changeSets.filter((changeSet) => {
-    if (
-      filters.changeSetId !== undefined &&
-      changeSet.changeSetId !== filters.changeSetId
-    ) {
-      return false;
-    }
-    return !hasValidationFilter || matchingChangeSetIds.has(changeSet.changeSetId);
-  });
-  return {
-    validations: matchingValidations,
-    changeSets: matchingChangeSets,
-  };
+  return selectEvidenceForAudit(validations, changeSets, filters);
 }
 
 export function startServer(options: DesktopServerOptions = {}): Promise<Server> {

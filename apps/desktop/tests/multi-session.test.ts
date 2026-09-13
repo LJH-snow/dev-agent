@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -200,6 +200,44 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
 
     const invalidFilter = await fetch(`${base}/api/sessions/alpha/messages?status=unknown`);
     assert.equal(invalidFilter.status, 400);
+
+    const memoryBeforeAudit = await readFile(join(dir, "alpha.json"));
+    const auditResponse = await fetch(`${base}/api/sessions/alpha/evidence`);
+    assert.equal(auditResponse.status, 200);
+    assert.match(auditResponse.headers.get("content-type") ?? "", /application\/json/);
+    const audit: any = await auditResponse.json();
+    assert.equal(audit.schemaVersion, 1);
+    assert.equal(audit.sessionId, "alpha");
+    assert.deepEqual(audit.validations.map((record) => record.validationId), [
+      validation.validationId,
+      failedValidation.validationId,
+    ]);
+    assert.deepEqual(audit.changeSets.map((record) => record.changeSetId), [
+      changeSet.changeSetId,
+      failedChangeSet.changeSetId,
+    ]);
+    assert.equal(Object.hasOwn(audit.validations[0], "summary"), false);
+    assert.equal(Object.hasOwn(audit.validations[0].checks[0], "command"), false);
+    assert.equal(Object.hasOwn(audit.changeSets[0], "workingDirectory"), false);
+    assert.equal(JSON.stringify(audit).includes("/workspace"), false);
+
+    const filteredAuditResponse = await fetch(
+      `${base}/api/sessions/alpha/evidence?status=failed`
+    );
+    assert.equal(filteredAuditResponse.status, 200);
+    const filteredAudit: any = await filteredAuditResponse.json();
+    assert.deepEqual(filteredAudit.validations.map((record) => record.validationId), [
+      failedValidation.validationId,
+    ]);
+    assert.deepEqual(filteredAudit.changeSets.map((record) => record.changeSetId), [
+      failedChangeSet.changeSetId,
+    ]);
+
+    const invalidAuditFilter = await fetch(
+      `${base}/api/sessions/alpha/evidence?status=not-a-status`
+    );
+    assert.equal(invalidAuditFilter.status, 400);
+    assert.deepEqual(await readFile(join(dir, "alpha.json")), memoryBeforeAudit);
 
     const exported = await fetch(`${base}/api/sessions/alpha/export`);
     assert.equal(exported.status, 200);
@@ -471,6 +509,8 @@ test("GET /api/sessions/<id>/export returns 404 for an unknown session", async (
     try {
       const res = await fetch(`${base}/api/sessions/missing/export`);
       assert.equal(res.status, 404);
+      const audit = await fetch(`${base}/api/sessions/missing/evidence`);
+      assert.equal(audit.status, 404);
     } finally {
       await close(server);
     }

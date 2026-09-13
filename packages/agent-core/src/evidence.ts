@@ -12,6 +12,12 @@ export interface EvidenceAuditOptions {
   readonly generatedAt?: string;
 }
 
+export interface EvidenceAuditFilters {
+  readonly changeSetId?: string;
+  readonly validationId?: string;
+  readonly status?: ValidationStatus;
+}
+
 export interface EvidenceAuditCheck {
   readonly id: string;
   readonly status: ValidationStatus;
@@ -63,6 +69,54 @@ export interface EvidenceAuditExport {
   readonly summary: EvidenceSummary;
   readonly validations: readonly EvidenceAuditValidation[];
   readonly changeSets: readonly EvidenceAuditChangeSet[];
+}
+
+/**
+ * Selects the evidence associated with an optional audit filter. Change sets
+ * follow validation filters so a filtered audit cannot accidentally include an
+ * unrelated change-set record.
+ */
+export function selectEvidenceForAudit(
+  validations: readonly ValidationRecord[],
+  changeSets: readonly AppliedChangeSetRecord[],
+  filters: EvidenceAuditFilters = {}
+): {
+  readonly validations: ValidationRecord[];
+  readonly changeSets: AppliedChangeSetRecord[];
+} {
+  const matchingValidations = validations.filter((validation) => {
+    if (
+      filters.changeSetId !== undefined &&
+      validation.changeSetId !== filters.changeSetId
+    ) {
+      return false;
+    }
+    if (
+      filters.validationId !== undefined &&
+      validation.validationId !== filters.validationId
+    ) {
+      return false;
+    }
+    return filters.status === undefined || validation.status === filters.status;
+  });
+  const hasValidationFilter =
+    filters.validationId !== undefined || filters.status !== undefined;
+  const matchingChangeSetIds = new Set(
+    matchingValidations.map((validation) => validation.changeSetId)
+  );
+  const matchingChangeSets = changeSets.filter((changeSet) => {
+    if (
+      filters.changeSetId !== undefined &&
+      changeSet.changeSetId !== filters.changeSetId
+    ) {
+      return false;
+    }
+    return !hasValidationFilter || matchingChangeSetIds.has(changeSet.changeSetId);
+  });
+  return {
+    validations: matchingValidations,
+    changeSets: matchingChangeSets,
+  };
 }
 
 /**

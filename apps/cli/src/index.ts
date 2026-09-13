@@ -13,6 +13,8 @@ import {
   normalizeApprovalKey,
   createAgentContext,
   createBlockedValidationResult,
+  createEvidenceAuditExport,
+  selectEvidenceForAudit,
   createValidationAttemptId,
   denyDangerousPolicy,
   reviewWritesPolicy,
@@ -23,6 +25,7 @@ import {
   type ApprovalPolicy,
   type ApprovalRequest,
   type ChangeSetReview,
+  type EvidenceAuditFilters,
   type EvidencePruneOptions,
   type EvidencePruneResult,
   type EvidenceSummary,
@@ -97,6 +100,10 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--metadata": "none",
   "--session-list": "none",
   "--cleanup-evidence": "none",
+  "--export-evidence": "none",
+  "--change-set-id": "one",
+  "--validation-id": "one",
+  "--status": "one",
   "--remove-rolled-back": "none",
   "--max-validations": "one",
   "--max-change-sets": "one",
@@ -195,9 +202,21 @@ export async function main(argv: string[]): Promise<void> {
   const noStream = args.includes("--no-stream");
   const jsonOutput = args.includes("--json");
   const cleanupEvidence = args.includes("--cleanup-evidence");
+  const exportEvidence = args.includes("--export-evidence");
   const cleanupOptionsResult = parseCliEvidenceCleanupOptions(args, cleanupEvidence);
   if ("error" in cleanupOptionsResult) {
     console.error(cleanupOptionsResult.error);
+    process.exitCode = 1;
+    return;
+  }
+  const auditFiltersResult = parseCliEvidenceAuditFilters(args, exportEvidence);
+  if ("error" in auditFiltersResult) {
+    console.error(auditFiltersResult.error);
+    process.exitCode = 1;
+    return;
+  }
+  if (cleanupEvidence && exportEvidence) {
+    console.error("--cleanup-evidence and --export-evidence cannot be used together");
     process.exitCode = 1;
     return;
   }
@@ -369,6 +388,34 @@ export async function main(argv: string[]): Promise<void> {
         console.log(`Languages: ${languages}`);
       }
       console.log(`Index written to ${report.indexPath}`);
+    }
+    return;
+  }
+
+  if (exportEvidence) {
+    const memory = createMemory(normalizedSessionId);
+    try {
+      const validations = await memory.validations();
+      const changeSets = await memory.changeSets();
+      const evidenceSummary = await memory.evidenceSummary();
+      const evidence = selectEvidenceForAudit(
+        validations,
+        changeSets,
+        auditFiltersResult.filters
+      );
+      const audit = createEvidenceAuditExport(
+        normalizedSessionId,
+        evidence.validations,
+        evidence.changeSets,
+        evidenceSummary
+      );
+      // This command is intentionally JSON even without --json so callers can
+      // redirect it directly to an audit artifact.
+      console.log(JSON.stringify(audit, null, 2));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`Evidence export failed: ${message}`);
+      process.exitCode = 1;
     }
     return;
   }
@@ -1386,6 +1433,49 @@ function formatValidationCommand(executable: string, args: readonly string[]): s
   return [executable, ...args]
     .map((part) => /^[A-Za-z0-9_./:@%+=,-]+$/.test(part) ? part : JSON.stringify(part))
     .join(" ");
+}
+
+function parseCliEvidenceAuditFilters(
+  args: readonly string[],
+  exportEvidence: boolean
+): { readonly filters: EvidenceAuditFilters } | { readonly error: string } {
+  const changeSetId = readCliEvidenceFilterValue(args, "--change-set-id");
+  if ("error" in changeSetId) return changeSetId;
+  const validationId = readCliEvidenceFilterValue(args, "--validation-id");
+  if ("error" in validationId) return validationId;
+  const status = readCliEvidenceFilterValue(args, "--status");
+  if ("error" in status) return status;
+
+  const hasFilter =
+    changeSetId.value !== undefined ||
+    validationId.value !== undefined ||
+    status.value !== undefined;
+  if (hasFilter && !exportEvidence) {
+    return { error: "evidence export filters require --export-evidence" };
+  }
+  if (status.value !== undefined && !["passed", "failed", "skipped", "blocked"].includes(status.value)) {
+    return { error: "status must be one of: passed, failed, skipped, blocked" };
+  }
+  return {
+    filters: {
+      ...(changeSetId.value === undefined ? {} : { changeSetId: changeSetId.value }),
+      ...(validationId.value === undefined ? {} : { validationId: validationId.value }),
+      ...(status.value === undefined ? {} : { status: status.value as EvidenceAuditFilters["status"] }),
+    },
+  };
+}
+
+function readCliEvidenceFilterValue(
+  args: readonly string[],
+  flag: string
+): { readonly value?: string } | { readonly error: string } {
+  const index = args.indexOf(flag);
+  if (index < 0) return {};
+  const value = args[index + 1]?.trim();
+  if (!value) {
+    return { error: `${flag} requires a non-empty value` };
+  }
+  return { value };
 }
 
 function parseCliEvidenceCleanupOptions(
