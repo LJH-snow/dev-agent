@@ -132,7 +132,10 @@ operation if an explicit Undo is wanted. Non-Git workspaces and unknown-only
 changes are reported as `skipped` instead of attempting an unsafe Git check.
 
 With `--json`, stdout remains one JSON value and includes the complete
-`validations` DTO:
+`validations` DTO plus a `changeSets` evidence summary. The change-set summary
+is metadata-only: it includes identity, session/workdir binding, file hashes and
+stats, existence, state, and timestamps, but never includes a diff, command, or
+file bytes.
 
 ```json
 {
@@ -157,6 +160,24 @@ With `--json`, stdout remains one JSON value and includes the complete
       "durationMs": 12,
       "summary": "validation passed: 1 passed"
     }
+  ],
+  "changeSets": [
+    {
+      "changeSetId": "<change-set-id>",
+      "sessionId": "docs",
+      "workingDirectory": "/workspace",
+      "state": "applied",
+      "files": [
+        {
+          "path": "target.md",
+          "kind": "file",
+          "exists": true,
+          "beforeSha256": "…",
+          "afterSha256": "…",
+          "size": 42
+        }
+      ]
+    }
   ]
 }
 ```
@@ -171,10 +192,14 @@ In interactive mode, `:validate <changeSetId>` explicitly reruns the trusted
 checks for an applied change set. The command accepts only the change-set id;
 the planner recreates the structured commands and assigns a fresh validation
 attempt id. A rerun is serialized with Undo, checks the postimage before and
-after execution, and never overwrites or rolls back user bytes. The change-set
-store is process-local, so the command is available for change sets prepared by
-the current CLI process; persisted validation records remain available in later
-`--json` output.
+after execution, and never overwrites or rolls back user bytes. On startup and
+before an explicit rerun, the CLI restores persisted applied evidence only after
+rechecking the session id, canonical working directory, safe relative paths,
+file kinds, existence, and postimage hashes. A valid cross-process restore is a
+read-only validation guard, so it can be rerun but cannot be used for Undo;
+conflicts or session/workdir mismatches are reported as `blocked` and leave the
+workspace unchanged. Older session memory without `changeSets` remains readable
+and simply reports an empty evidence array.
 
 Configuration is read from the environment:
 

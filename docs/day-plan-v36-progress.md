@@ -1,12 +1,12 @@
 # v36 开发进度：跨进程变更集证据与安全重跑
 
-> 最后更新：2026-09-13
+> 最后更新：2026-09-14
 
 > 本文件记录当前实现状态、验证结果和后续路线；详细接口约束以 `docs/day-plan-v36.md` 为准。
 
 ## 当前状态
 
-v36 计划已建立，目标是解决 v35 明确留下的限制：change-set 状态此前只保存在当前进程内，应用重启后无法安全识别已应用变更集，因此不能继续使用显式 validation rerun。
+v36 已完成，解决了 v35 明确留下的限制：change-set 状态此前只保存在当前进程内，应用重启后无法安全识别已应用变更集，因此不能继续使用显式 validation rerun。
 
 本阶段先落地三条边界：
 
@@ -61,16 +61,17 @@ v36 计划已建立，目标是解决 v35 明确留下的限制：change-set 状
 
 ### Task 4：全量回归、文档和发布
 
-- [ ] 运行完整 TypeScript、Executor、Rust、结构检查和 diff check。
-- [ ] 更新 README、CHANGELOG、本计划和本进度文件。
-- [ ] 提交并推送 v36。
+- [x] 运行完整 TypeScript、Executor、Rust、结构检查和 diff check。
+- [x] 更新 README、CHANGELOG、本计划和本进度文件；同时修复全量并行测试暴露的 MCP 取消 fixture 写入时序竞态，未改变运行时行为。
+- [x] 提交并推送 v36。
 
 ## 验证记录
 
 - 计划建立日期：2026-09-13。
 - 当前分支起点：v35 release commit `9b33aac`。
-- 当前全量基线：TypeScript **565/565**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**。
+- 当前全量结果：TypeScript **580/580**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**。
 - v36 Task 0–3 新增测试和实现已完成；提交依次为 `2324ed4`、`1766743`、`3dc2d1c`、`af7f3d4`。
+- v36 Task 4 的结构检查、build、typecheck、Rust fmt/clippy 和 `git diff --check` 均通过；完整结果已记录在 `docs/CHANGELOG.md`。
 
 ## 后续路线
 

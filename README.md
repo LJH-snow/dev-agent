@@ -240,6 +240,18 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   and can be explicitly rerun with `:validate <changeSetId>` in the interactive
   CLI or `POST /api/changesets/validate` in Desktop; each rerun gets a fresh
   attempt id and never auto-rolls back the applied bytes
+- Applied reviewed change sets now persist a minimal, session-bound evidence
+  record so a new CLI process or Desktop session can restore a trusted
+  postimage-only validation guard. Restore rechecks the canonical working
+  directory, relative paths, file kinds, existence, and SHA-256 postimages;
+  conflicts become `blocked` without writing, repairing, executing historical
+  commands, or exposing evidence to the model context
+- Cross-process restored evidence is intentionally read-only: it can be used for
+  explicit validation reruns but cannot provide **Undo** because its before-image
+  is not persisted. Evidence summaries in CLI JSON and Desktop history/export
+  contain metadata, hashes, state, and validation relationships only — never
+  diffs, commands, or file bytes. Desktop history/export also accept
+  `changeSetId`, `validationId`, and `status` filters
 - Validation planning has three code-defined policies: `fast`, `default`, and
   `strict`. `DEV_AGENT_VALIDATION_POLICY` or `validation.policy` selects only
   the policy name; commands, arguments, working directories, and timeout caps

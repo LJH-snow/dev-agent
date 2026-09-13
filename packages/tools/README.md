@@ -66,7 +66,28 @@ all postimages still match. It restores the original bytes and modes, removes
 new files, and cleans up directories created by the change set. An external edit
 causes a guarded conflict instead of overwriting the newer content. The tool
 keeps a bounded in-memory store of recent change sets, so callers should apply
-or roll back a preview with the same `FilesystemTool` instance.
+or roll back a preview with the same `FilesystemTool` instance. A change set
+restored from persisted evidence is different: it contains only postimage
+metadata and can be used as a read-only validation guard, but `rollback` rejects
+it because no before-image is available.
+
+### Persisted applied evidence
+
+`FilesystemTool.restoreAppliedChangeSet(record, context)` and
+`restoreAppliedChangeSets(records, context)` restore only records whose state is
+`applied` and whose session id and canonical working directory match the current
+context. Before a record is accepted, the tool validates safe relative paths,
+duplicate/ancestor-symlink boundaries, file kinds, existence, and every
+postimage SHA-256 hash. It never reads a command, shell, diff, or file content
+from the record and never creates or repairs files during restore.
+
+The batch API returns one `restored` or `blocked` result per record. A blocked
+record is safe to report to the caller and leaves the workspace unchanged. A
+restored record can be used for an explicit validation rerun; the rerun checks
+the postimage before and after validation and does not auto-rollback. The
+persisted contract is intentionally minimal so old memory files without a
+`changeSets` field remain readable and so evidence stays outside ordinary model
+messages.
 
 
 ## Change-set validation

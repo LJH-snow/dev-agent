@@ -327,7 +327,16 @@ test("desktop cancel aborts MCP and emits aborted done without a late result", a
     assert.match(text, /event: done/);
     assert.match(text, /"status":"aborted"/);
     assert.doesNotMatch(text, /event: tool-result/);
-    assert.ok(await waitFor(() => exists(marker)), "the MCP fixture should receive cancellation");
+    assert.ok(
+      await waitFor(async () => {
+        try {
+          return (await readFile(marker, "utf8")).includes('"reason":"request aborted"');
+        } catch {
+          return false;
+        }
+      }),
+      "the MCP fixture should receive cancellation"
+    );
     assert.match(await readFile(marker, "utf8"), /"reason":"request aborted"/);
 
     // The fixture deliberately sends its response after cancellation; the

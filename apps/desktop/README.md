@@ -73,8 +73,11 @@ are accepted, and validation command fields are deliberately not configurable.
 - `GET /api/sessions` — the default session id plus every session file in
   `DEV_AGENT_SESSION_DIR` (`~/.dev-agent/sessions` by default), newest first.
 - `GET /api/sessions/<id>/messages` — the stored transcript of one session,
-  returned as `{ messages, validations }`; validation evidence stays separate
-  from the model message list.
+  returned as `{ messages, validations, changeSets }`; validation and applied
+  change-set evidence stay separate from the model message list. Optional query
+  filters `changeSetId`, `validationId`, and `status` (`passed`, `failed`,
+  `skipped`, or `blocked`) narrow the evidence arrays without removing messages.
+  An invalid `status` returns a structured `400` response.
 - `DELETE /api/sessions/<id>` — delete a session's memory file and drop it from
   the in-memory registry; unknown ids return `404`.
 - `POST /api/sessions/<id>/rename` — body `{ "sessionId": "new-id" }`; moves the
@@ -82,7 +85,9 @@ are accepted, and validation command fields are deliberately not configurable.
   missing. Renaming to the current id is idempotent (`200` with
   `renamed: false`) when the session exists, and `404` when it does not.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
-  (`text/markdown`, attachment filename `<id>.md`); `404` when unknown.
+  (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
+  accepts the same `changeSetId`, `validationId`, and `status` filters and adds
+  a metadata-only change-set evidence section.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-progress`, `tool-result`, `turn`, `usage`,
   `approval-request`, `approval`, `validation`, `done`, `error`. A
@@ -163,6 +168,17 @@ serialized with Undo. If Stop is pressed while a check is active, the current
 validation is reported as `blocked` before the stream closes with `done { "status":
 "aborted" }`.
 
+Applied change-set evidence is persisted with the session in a minimal,
+non-executable form. When a session is opened again, Desktop rechecks the
+session/workdir binding, canonical paths, file kinds, existence, and postimage
+hashes before restoring a read-only validation guard. A conflict becomes a
+`blocked` validation and does not create, repair, overwrite, or roll back files.
+Restored evidence supports explicit validation reruns but not **Undo**, because
+the before-image is deliberately not persisted. Evidence is never added to the
+model context, and its history/export summaries omit diffs, commands, and file
+bytes. Session files from before this feature remain compatible and expose an
+empty `changeSets` array.
+
 ## Sessions
 
 The header has a session picker plus a `+` button for a new one. Switching
@@ -181,8 +197,10 @@ The `Rename` button prompts for a new session id and moves the stored file; an i
 that already exists is reported as a conflict instead of overwriting anything.
 
 The `Download` button saves the current session as a Markdown file,
-including a structured validation-evidence section. The history endpoint and
-export preserve validation attempts without adding them to model context.
+including structured validation and change-set evidence sections. The history
+endpoint and export preserve both kinds of evidence without adding them to model
+context; use `changeSetId`, `validationId`, and `status` query filters when a
+focused view is needed.
 
 ## Approvals
 

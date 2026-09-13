@@ -111,8 +111,8 @@
 
 **Produces:** v36 可审计、可回滚（代码层面的提交回滚，不是自动 Undo）并可交付。
 
-- [ ] **Step 1: 更新 README、CLI/Desktop/tools 文档和 CHANGELOG。**
-- [ ] **Step 2: 运行完整验证。**
+- [x] **Step 1: 更新 README、CLI/Desktop/tools 文档和 CHANGELOG。**
+- [x] **Step 2: 运行完整验证。**
 
 ```bash
 node scripts/check.mjs
@@ -128,17 +128,17 @@ cd ../..
 git diff --check
 ```
 
-- [ ] **Step 3: 人工 review。** 确认历史 JSON 不成为执行输入、session/workdir/path/hash guard、恢复记录禁止 rollback、失败不自动修复/回滚、旧 memory migration、MCP 与 v35 policy 边界均保持不变。
-- [ ] **Step 4: Commit and push。**
+- [x] **Step 3: 人工 review。** 确认历史 JSON 不成为执行输入、session/workdir/path/hash guard、恢复记录禁止 rollback、失败不自动修复/回滚、旧 memory migration、MCP 与 v35 policy 边界均保持不变。
+- [x] **Step 4: Commit and push。**
 
 ## Acceptance Checklist
 
-- [ ] 成功 apply 的 change set 会留下最小、结构化、session-bound 的 evidence；denied/failed/prepared 不会成为可重跑 evidence。
-- [ ] 重启后可恢复合法 applied evidence，并在 rerun 前重新检查工作目录、相对路径、文件类型、存在性和 postimage hash。
-- [ ] 任何恢复冲突均不写文件、不回滚、不执行历史命令或 diff，并以 blocked/明确错误返回。
-- [ ] 跨进程恢复记录不能 Undo；同进程完整 before-image rollback 行为保持不变。
-- [ ] CLI 和 Desktop 的显式 rerun 在重启后可工作，session/workdir 隔离有效。
-- [ ] evidence 不进入模型上下文；旧 v35 session、validation、approval、policy、cancel、MCP 和 Rust 回归均通过。
+- [x] 成功 apply 的 change set 会留下最小、结构化、session-bound 的 evidence；denied/failed/prepared 不会成为可重跑 evidence。
+- [x] 重启后可恢复合法 applied evidence，并在 rerun 前重新检查工作目录、相对路径、文件类型、存在性和 postimage hash。
+- [x] 任何恢复冲突均不写文件、不回滚、不执行历史命令或 diff，并以 blocked/明确错误返回。
+- [x] 跨进程恢复记录不能 Undo；同进程完整 before-image rollback 行为保持不变。
+- [x] CLI 和 Desktop 的显式 rerun 在重启后可工作，session/workdir 隔离有效。
+- [x] evidence 不进入模型上下文；旧 v35 session、validation、approval、policy、cancel、MCP 和 Rust 回归均通过。
 
 ## v36 完成后的后续路线
 

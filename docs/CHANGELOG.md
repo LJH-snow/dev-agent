@@ -1,5 +1,57 @@
 # Changelog
 
+## 2026-09-14 (Day plan v36: cross-process change-set evidence)
+
+Executed `docs/day-plan-v36.md`. v35 persisted validation attempts, but the
+applied change-set guard itself was process-local, so a restart could not safely
+rerun validation. v36 persists the smallest evidence needed to recognize an
+already-applied change without turning history into executable input.
+
+### Added: restart-safe applied evidence
+
+- `AgentMemory` now exposes `recordChangeSet()` and `changeSets()` for a
+  minimal `AppliedChangeSetRecord`. `FileMemory` persists it and remains
+  compatible with older `version: 1` session files that have no `changeSets`
+  field. The record contains session/workdir binding, relative file metadata,
+  existence, SHA-256 before/after hashes, statistics, and applied state — never
+  commands, diffs, or file bytes.
+- `AgentLoop` records evidence only after a review-backed apply succeeds. A
+  persistence failure is best-effort and does not turn a successful apply into a
+  failure or trigger rollback.
+- `FilesystemTool` restores records only after rechecking session id,
+  canonical working directory, safe paths, file kind, existence, ancestor
+  symlink boundaries, and postimage hashes. A conflict is returned as blocked
+  without writing or repairing the workspace. Restored records are postimage-
+  only guards and explicitly cannot be undone across processes.
+- CLI and Desktop restore evidence at session startup and before explicit
+  validation reruns. A new process/session can rerun trusted validation when the
+  postimage still matches; a session/workdir mismatch or changed file becomes a
+  blocked result. Evidence remains outside model context.
+
+### Added: structured evidence visibility and filters
+
+- CLI prompt JSON and interactive `:validate` JSON now include a metadata-only
+  `changeSets` array alongside `reviews`/`validations`.
+- Desktop history and Markdown export now include `changeSets`. `GET
+  /api/sessions/<id>/messages` and `/export` accept `changeSetId`, `validationId`,
+  and `status` filters; invalid statuses return a structured `400`, while full
+  messages remain available and only evidence arrays are narrowed.
+- Legacy memory without change-set evidence remains readable and returns an
+  empty array. Evidence summaries omit diffs, commands, and file contents.
+
+### Tests
+
+- Focused suites: agent-core **99/99**, tools **120/120**, CLI **110/110**, and
+  Desktop **70/70**.
+- Full TypeScript workspace tests: **580 passed**; real Rust-binary integration:
+  **10 passed**; Rust unit/doc tests: **46 passed**.
+- The full parallel run exposed a cancellation-fixture race that observed the
+  marker file between creation and write; the test now waits for the cancellation
+  record contents, keeping the suite deterministic without changing runtime
+  behavior.
+- Structure check, build, typecheck, Rust fmt/clippy, and `git diff --check` all
+  pass.
+
 ## 2026-09-13 (Day plan v35: validation evidence, reruns, and policies)
 
 Executed `docs/day-plan-v35.md`. v35 turns one-shot change-set validation into
