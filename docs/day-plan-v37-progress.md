@@ -1,12 +1,12 @@
 # v37 开发进度：证据生命周期与持续回归守护
 
-> 最后更新：2026-09-14
+> 最后更新：2026-09-13
 
 > 本文件记录当前实现状态、验证结果和后续路线；详细约束以 `docs/day-plan-v37.md` 为准。
 
 ## 当前状态
 
-v37 计划已建立，当前从 Task 0 开始。v36 已经让 applied change-set evidence 可以跨进程安全恢复，但 validation attempts 和历史 evidence 仍缺少明确的生命周期治理；本阶段先建立回归护栏，再实现“只清理非 active evidence”的 retention contract。
+v37 的 Task 0、Task 1、Task 2 已完成，当前进入 Task 3：把 retention、protected applied guard、rollback state 和 metadata-only cleanup 暴露给 CLI/Desktop，并同步对外文档。v36 已经让 applied change-set evidence 可以跨进程安全恢复；本阶段继续保证生命周期治理不会削弱 restore、postimage conflict、取消和 no-auto-rollback 边界。
 
 ## 已完成
 
@@ -33,11 +33,16 @@ v37 计划已建立，当前从 Task 0 开始。v36 已经让 applied change-set
 
 ### Task 2：Undo 状态和显式 cleanup 生命周期
 
-- [ ] 设计并实现 rollback 成功后的 durable state 同步与 session-bound cleanup。
+- [x] 首轮 Desktop 聚焦测试按预期以 69/71 暴露两个 RED：rollback durable state 仍为 `applied`，cleanup API 返回 404。
+- [x] `ChatSession.rollbackChangeSet()` 只在受保护 filesystem rollback 成功后 best-effort 写入 `rolled-back`；冲突、失败、busy、取消不会改变 evidence state。
+- [x] Desktop 增加 `POST /api/changesets/cleanup`，校验 session 和 retention 参数，串行化于 session 的 in-flight guard，且只调用 metadata-only `pruneEvidence()`。
+- [x] 聚焦回归：Desktop **71/71** 通过。
+- [x] 已完成提交：`a271df8`。
 
 ### Task 3：CLI/Desktop 可见性、API 和文档
 
 - [ ] 暴露 retention 摘要和结构化 cleanup 结果，同时保持旧 history/JSON 兼容。
+- [ ] 增加 CLI 显式 cleanup 与交互式 `:cleanup`，并让 history/export/API 展示受保护 applied guard 的数量和原因。
 
 ### Task 4：全量回归、文档和发布
 
@@ -47,16 +52,18 @@ v37 计划已建立，当前从 Task 0 开始。v36 已经让 applied change-set
 
 ## 验证记录
 
-- 计划建立日期：2026-09-14。
+- 计划建立日期：2026-09-14（按历史提交保留）；本次进度更新日期：2026-09-13。
 - v36 发布提交：`308b685`；进度记录：`49af56d`；已推送到 `origin/main`。
 - v36 全量结果：TypeScript **580/580**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**。
-- v37 当前没有新增运行时改动；Task 0 的聚焦测试结果将在首次实现后补充。
+- v37 Task 0 聚焦结果：tools **121/121**。
+- v37 Task 1 聚焦结果：agent-core **105/105**。
+- v37 Task 2 聚焦结果：Desktop **71/71**；实现提交：`a271df8`。
 
 ## 安全不变量
 
 - persisted evidence 不成为执行输入；不存储命令、shell、diff、patch、文件内容或 before-image。
 - 仍为 `applied` 的记录受保护；自动 retention 不得让跨进程 validation 失去安全 guard。
-- cleanup 只改 session memory 元数据，不能创建、修复、覆盖、回滚或删除 working directory 中的文件。
+- cleanup 只改 session memory 元数据，不能创建、修复、覆盖、回滚或删除 working directory 中的文件；Desktop API 只调用 `pruneEvidence()`。
 - rollback 只有在 postimage guard 成功后才可将 durable record 标为 `rolled-back`；冲突、失败、取消和 blocked 均保持原状态。
 
 ## 后续路线

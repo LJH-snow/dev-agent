@@ -67,16 +67,17 @@
 
 **Produces:** rollback 后的 durable state 与安全的显式 evidence 删除/压缩入口。
 
-- [ ] **Step 1: 写失败测试。**
+- [x] **Step 1: 写失败测试。**
   - Desktop Undo 成功后把对应记录标为 `rolled-back`；冲突、busy、失败或取消不改变 durable state。
   - cleanup 不接受其它 session 的 evidence；删除后工作区和其它 session 完全不变。
   - 清理后旧 validation attempts 不能重新激活一个 applied guard。
-- [ ] **Step 2: 运行聚焦测试确认 RED。**
-- [ ] **Step 3: 写最小实现。**
-  - 为 cleanup 返回结构化 `{ removed, protected, skipped }` 类结果和明确原因。
+- [x] **Step 2: 运行聚焦测试确认 RED。** 首轮 Desktop 回归为 69/71，按预期暴露 durable state 未同步和 cleanup 路由 404。
+- [x] **Step 3: 写最小实现。**
+  - rollback 只有在受保护的 filesystem rollback 成功后才 best-effort 标记 `rolled-back`；同步失败不会伪造成功，也不会撤销已完成的安全回滚。
+  - Desktop 增加 `POST /api/changesets/cleanup`，只调用 session memory 的 metadata-only cleanup，并返回删除数、保护数和剩余数。
   - 不引入跨进程 Undo；rolled-back 只代表文件已经由受保护 rollback 完成，不代表可以恢复 before-image。
-- [ ] **Step 4: 运行聚焦测试确认 GREEN。**
-- [ ] **Step 5: 提交。**
+- [x] **Step 4: 运行聚焦测试确认 GREEN。** Desktop 聚焦回归 **71/71** 通过。
+- [x] **Step 5: 提交。** `a271df8`。
 
 ## Task 3：CLI/Desktop 可见性、API 和文档
 
