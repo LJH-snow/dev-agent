@@ -57,10 +57,11 @@ only tokens are shown.
   and streams chat responses from `POST /api/chat` as Server-Sent Events.
 - `src/chat-session.ts` — builds the `AgentLoop` with the default tools and model
   provider, optionally connects configured MCP stdio servers, and bridges its
-  `onToken` / `onToolCall` / `onToolProgress` / `onToolResult` / `onTurn`
-  callbacks to SSE events.
+  `onToken` / `onToolCall` / `onToolProgress` / `onToolResult` / `onValidation` /
+  `onTurn` callbacks to SSE events.
 - `public/index.html` — single-page chat UI (vanilla JS, no build step) that
-  renders streaming tokens live and shows tool call/result activity.
+  renders streaming tokens live, shows tool call/result activity, and renders
+  validation cards next to reviewed-change Undo actions.
 
 ## API
 
@@ -79,12 +80,15 @@ only tokens are shown.
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-progress`, `tool-result`, `turn`, `usage`,
-  `approval-request`, `approval`, `done`, `error`. A `tool-progress` frame carries
-  `{ name, progress, total? }`; for one tool call it appears after `tool` and
-  before `tool-result`. An `approval-request` frame carries `{ id, tool, reason,
-  input }`; in `review-writes` mode it also carries `review` with the
-  `changeSetId`, per-file hashes/diff, and addition/deletion totals. The matching
-  `approval` frame preserves the decision and includes the same review. A
+  `approval-request`, `approval`, `validation`, `done`, `error`. A
+  `tool-progress` frame carries `{ name, progress, total? }`; for one tool call it
+  appears after `tool` and before `tool-result`. An `approval-request` frame
+  carries `{ id, tool, reason, input }`; in `review-writes` mode it also carries
+  `review` with the `changeSetId`, per-file hashes/diff, and addition/deletion
+  totals. The matching `approval` frame preserves the decision and includes the
+  same review. After a successful reviewed apply, a `validation` frame carries
+  the complete validation DTO plus the session id, and arrives after the apply
+  `tool-result`; its `status` is `passed`, `failed`, `skipped`, or `blocked`. A
   denial is also written back to the model as that tool's result.
 - `POST /api/chat` takes an optional `sessionId` (unknown ids are created on
   first use). The `409` guard is per session: different sessions run
@@ -119,6 +123,24 @@ executor, which kills the command (see `packages/executor`), or reaches a
 configured MCP client, which sends `notifications/cancelled` to that server.
 The aborted stream still emits its terminal `done { "status": "aborted" }` frame
 and does not emit a late MCP `tool-result`.
+
+## Validation
+
+A reviewed filesystem apply is followed by a deterministic, allowlisted
+validation plan derived from the changed paths. Package source changes run the
+affected package's typecheck and test; Rust runtime changes run format, clippy,
+and tests; documentation/configuration changes in a Git checkout run
+`git diff --check` for the changed paths. Unknown-only or non-Git changes are
+reported as `skipped`, and unsafe review paths are `blocked` before a command
+runs. No model-provided shell string becomes a validation command.
+
+The browser renders `passed`, `failed`, `skipped`, and `blocked` results as a
+validation card with the change-set id, check id, command summary, duration, and
+reason. A failed validation explicitly means the apply succeeded but the check
+failed; the already-applied bytes remain available to the guarded **Undo**
+action. If Stop is pressed while a check is active, the current validation is
+reported as `blocked` before the stream closes with `done { "status":
+"aborted" }`.
 
 ## Sessions
 

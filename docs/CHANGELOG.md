@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-09-14 (Day plan v34: change-set validation)
+
+Executed `docs/day-plan-v34.md`. After v33 made filesystem changes reviewable
+and reversible, the next gap was knowing whether an approved change still
+passed the smallest relevant checks. v34 adds deterministic validation derived
+from the applied change set and keeps validation status separate from apply
+status.
+
+### Added: structured validation plans and bounded execution
+
+- `@dev-agent/agent-core` now defines `ValidationPlan`, `ValidationCheck`,
+  `ValidationResult`, and `ValidationAdapter`. Validation runs only after a
+  reviewed filesystem `apply` returns `{ ok: true, changeSetId }` for the same
+  reviewed change set.
+- `@dev-agent/tools` derives allowlisted checks from changed paths: affected
+  package typecheck/test, Rust format/lint/test, or a bounded Git whitespace
+  check for documentation/configuration paths. Unknown-only changes are skipped;
+  duplicate or escaping review paths are blocked. Model-provided command strings
+  and diff text never become validation commands.
+- `createValidationRunner` reuses the existing executor, forwards cwd/timeout
+  and AbortSignal, bounds captured output to 64 KiB by default, stops after the
+  first failure, and records skipped/blocked reasons. Validation failure never
+  auto-rolls back an already-applied change.
+
+### CLI and Desktop feedback
+
+- CLI human mode prints validation status, check id, command summary, duration,
+  and failure reason. `--json` remains one stdout object and adds a complete
+  `validations` array alongside `reviews`. Non-Git workspaces safely report a
+  skipped validation, while MCP server mode keeps its no-review mutation denial.
+- Desktop emits a `validation` SSE frame after the apply `tool-result`, including
+  the session id and full validation DTO. The UI renders pass/fail/skipped/blocked
+  cards and keeps guarded Undo available. Stopping during validation reports a
+  blocked validation before the terminal aborted event.
+
+### Tests
+
+- Agent-core validation lifecycle: **86/86**; tools validation runner/planner:
+  **106/106**; CLI: **105/105**; Desktop: **65/65**.
+- Repository-wide TypeScript tests: **543 passed**.
+- Real Rust-binary integration tests: **10 passed**.
+- Rust `fmt --check`, `clippy --all-targets -- -D warnings`, and unit/doc tests
+  pass: **46 passed** (43 library, 3 binary, 0 doctests).
+
 ## 2026-09-13 (Day plan v33: reviewed filesystem changes)
 
 Executed `docs/day-plan-v33.md`. The agent could approve dangerous commands, but

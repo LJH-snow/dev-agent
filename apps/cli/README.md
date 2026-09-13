@@ -113,6 +113,60 @@ and the `reviews` field records the structured review outcome. In
 `--mcp-server` mode there is no reviewer channel, so `--approval review-writes`
 denies filesystem mutations safely rather than applying them.
 
+### Change-set validation
+
+After an approved `review-writes` apply, the CLI derives safe checks from the
+actual changed paths and runs them through the same executor as the built-in
+tools. Human mode reports each check with its status, id, duration, and
+structured command summary:
+
+```text
+[validation] passed: validation passed: 1 passed
+  [passed] workspace:diff-check (12ms) — git diff --check -- target.md
+```
+
+A failing check means **the change was applied, but validation failed**. The
+CLI keeps the changed bytes on disk and does not automatically roll them back.
+Use the review's change-set id with a caller that supports the guarded rollback
+operation if an explicit Undo is wanted. Non-Git workspaces and unknown-only
+changes are reported as `skipped` instead of attempting an unsafe Git check.
+
+With `--json`, stdout remains one JSON value and includes the complete
+`validations` DTO:
+
+```json
+{
+  "validations": [
+    {
+      "validationId": "validation:<change-set-id>",
+      "changeSetId": "<change-set-id>",
+      "status": "passed",
+      "checks": [
+        {
+          "id": "workspace:diff-check",
+          "status": "passed",
+          "durationMs": 12,
+          "command": {
+            "executable": "git",
+            "args": ["diff", "--check", "--", "target.md"],
+            "cwd": "/workspace",
+            "timeoutMs": 30000
+          }
+        }
+      ],
+      "durationMs": 12,
+      "summary": "validation passed: 1 passed"
+    }
+  ]
+}
+```
+
+Validation failures do not turn a successful apply into a CLI error state;
+validation status and apply status remain separate. Ctrl-C still cancels the
+active model/tool/validation path through the shared abort signal. MCP server
+mode has no validation runner and continues to deny `review-writes` mutations
+when no interactive reviewer is available.
+
 Configuration is read from the environment:
 
 - `DEV_AGENT_MODEL_PROVIDER` - `ollama` (default), `openai`, `anthropic`, or `gemini`

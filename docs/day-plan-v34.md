@@ -124,17 +124,19 @@ Expected: FAIL，因为 validation DTO、planner 和公共导出不存在。
 ### Task 5: Desktop SSE、验证卡片和 Undo 协同
 
 **Files:**
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/loop.ts`
+- Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/tests/validation-lifecycle.test.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/chat-session.ts`
-- Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/server.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/public/index.html`
 - Tests: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/validation.test.ts`
-- Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/server.test.ts`
 
-- [ ] **Step 1: 写失败测试。** 覆盖 validation SSE payload/order、失败/取消 UI、验证中 Stop、validation 与 Undo 并存、session 隔离和未知事件兼容。
-- [ ] **Step 2: 运行 focused test 确认失败。**
-- [ ] **Step 3: 接入 validation callback 和安全 UI。** 验证结果显示 pass/fail/skipped/blocked；Undo 仍只回滚已 apply 的 change set，验证失败不得覆盖 rollback guard。
-- [ ] **Step 4: 运行 Desktop 全套测试和浏览器脚本语法检查。**
-- [ ] **Step 5: Commit。**
+> `server.ts` 保持通用 SSE 转发，不需要为新增事件增加分支；validation 的 SSE、session 隔离和 cancel 行为由新增 Desktop tests 覆盖。
+
+- [x] **Step 1: 写失败测试。** 覆盖 validation SSE payload/order、失败/取消 UI、验证中 Stop、validation 与 Undo 并存、session 隔离和既有未知事件兼容。
+- [x] **Step 2: 运行 focused test 确认失败。** 初始 functional run 在 ChatSession 尚未接入 validation、UI 尚未处理 `validation` 事件时失败。
+- [x] **Step 3: 接入 validation callback 和安全 UI。** ChatSession 复用同一 planner/runner；验证结果显示 pass/fail/skipped/blocked；Undo 仍只回滚已 apply 的 change set；取消时先发送 blocked validation，再以 aborted done 收尾。
+- [x] **Step 4: 运行 Desktop 全套测试和浏览器脚本语法检查。**
+- [x] **Step 5: Commit。**
 
 ### Task 6: 文档、全量回归与发布
 
@@ -147,8 +149,8 @@ Expected: FAIL，因为 validation DTO、planner 和公共导出不存在。
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/day-plan-v34-progress.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/day-plan-v34.md`
 
-- [ ] **Step 1: 文档化 validation contract、默认 check 集合、失败语义、取消语义和 `validations`/SSE payload。**
-- [ ] **Step 2: 运行完整验证。**
+- [x] **Step 1: 文档化 validation contract、默认 check 集合、失败语义、取消语义和 `validations`/SSE payload。**
+- [x] **Step 2: 运行完整验证。**
 
 ```bash
 node scripts/check.mjs
@@ -164,18 +166,28 @@ cd ../..
 git diff --check
 ```
 
-- [ ] **Step 3: 统计测试和人工 review。** 特别检查命令派生不可注入、验证失败不自动回滚、abort 无后台进程、MCP 无交互行为和 v33 Undo 兼容性。
-- [ ] **Step 4: Commit and push。**
+- [x] **Step 3: 统计测试和人工 review。** 已确认命令派生不可注入、验证失败不自动回滚、abort 通过共享取消链路收敛、MCP 无交互行为安全、v33 Undo guard 不回归。
+- [x] **Step 4: Commit and push。**
+
+**Task 6 verification record (2026-09-14):**
+
+- `node scripts/check.mjs`: 13 directories and 34 expected files verified.
+- `pnpm build` and `pnpm typecheck`: passed.
+- `pnpm test`: **543/543** TypeScript tests passed (model 54, code-intelligence 30, MCP 49, executor 48, agent-core 86, tools 106, Desktop 65, CLI 105).
+- Real Rust-binary integration: **10/10** passed.
+- Rust `fmt --check`, `clippy --all-targets -- -D warnings`, and unit/doc tests: **46/46** passed (43 library, 3 binary; 0 doctests).
+- Desktop inline browser script: **1/1** `node --check`; `git diff --check`: passed.
+- Manual review confirmed structured allowlisted commands, no model shell/diff injection, apply/validation status separation, no automatic rollback, abort propagation, MCP no-review denial, and v33 guarded Undo compatibility.
 
 ## Acceptance Checklist
 
-- [ ] 同一 change set 在同一仓库快照上生成稳定、最小、可解释的 validation plan。
-- [ ] planner 不执行模型提供的任意命令；每条 check 的命令、cwd、timeout 和结果可审计。
-- [ ] approved apply 后才运行验证；deny/冲突/rollback 不误触发。
-- [ ] 验证支持 pass/fail/skipped/blocked、超时、取消和 bounded output；失败不会遗留后台进程。
-- [ ] validation failure 明确表示 apply 已完成且检查失败，不自动覆盖用户的 rollback 决策。
-- [ ] CLI human/JSON 与 Desktop SSE/UI 展示同一 validation DTO；MCP 无交互路径保持安全。
-- [ ] v33 的 review diff、preimage/postimage guard、Undo、旧 approval modes、MCP cancellation/progress 和所有 Rust checks 无回归。
+- [x] 同一 change set 在同一仓库快照上生成稳定、最小、可解释的 validation plan。
+- [x] planner 不执行模型提供的任意命令；每条 check 的命令、cwd、timeout 和结果可审计。
+- [x] approved apply 后才运行验证；deny/冲突/rollback 不误触发。
+- [x] 验证支持 pass/fail/skipped/blocked、超时、取消和 bounded output；失败不会遗留后台进程。
+- [x] validation failure 明确表示 apply 已完成且检查失败，不自动覆盖用户的 rollback 决策。
+- [x] CLI human/JSON 与 Desktop SSE/UI 展示同一 validation DTO；MCP 无交互路径保持安全。
+- [x] v33 的 review diff、preimage/postimage guard、Undo、旧 approval modes、MCP cancellation/progress 和所有 Rust checks 无回归。
 
 ## Execution Protocol
 

@@ -69,6 +69,32 @@ keeps a bounded in-memory store of recent change sets, so callers should apply
 or roll back a preview with the same `FilesystemTool` instance.
 
 
+## Change-set validation
+
+After `review-writes` successfully applies a change set, the shared validation
+planner can derive a small, deterministic set of checks from the changed paths:
+
+- TypeScript source under `packages/<name>` or `apps/<name>` plans
+  `pnpm --filter @dev-agent/<name> typecheck` and `test`. Test-only changes
+  plan only the package test.
+- `runtime/rust` changes plan `cargo fmt --check`, `cargo clippy --all-targets
+  -- -D warnings`, and `cargo test` from the Rust runtime directory.
+- Documentation/configuration changes in a Git checkout plan
+  `git diff --check -- <changed paths>`. Non-Git workspaces do not invoke Git.
+- Unknown or unchanged paths return `skipped`; duplicate or escaping paths
+  return `blocked` before any command is run.
+
+`deriveValidationPlan(review, context)` emits structured commands with an
+executable, argument array, working directory, and timeout. It never copies a
+model-provided shell string or diff text into a command.
+`createValidationRunner(executor)` runs the plan sequentially through the same
+executor used by the tools, keeps output bounded (64 KiB by default), forwards
+the outer abort signal, and marks checks after the first failure as `skipped`.
+The result status is `passed`, `failed`, `skipped`, or `blocked`; a failed or
+blocked validation describes what happened but never rolls back the already
+applied change set. Callers can still use the guarded `rollback` operation when
+they explicitly want to undo it.
+
 Built-in tools accept an optional context object with `sessionId` and
 `workingDirectory`. Shell/git/search commands run in that working directory,
 and filesystem and code-search paths are resolved relative to it. `code-search`
