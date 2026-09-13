@@ -146,8 +146,8 @@ git commit -m "feat(filesystem): preview atomically apply and rollback changes"
 - `ApprovalPolicy.prepare?(request): Promise<ApprovalPreparation | undefined>`。
 - `AgentLoopOptions.prepareApproval?` 不新增第二条 preparation 路径；AgentLoop 只调用 `approval.prepare`，保证策略和审批请求是同一个对象。
 
-- [ ] **Step 1: 写失败测试。** 用一个 fake `ApprovalPolicy`：`prepare` 返回 review 和 `{ action: "apply", changeSetId }`，approval allow 时 fake tool 只能收到 apply 输入；deny、prepare error 和未配置 prepare 时都不能执行 apply；`onApproval` 必须收到同一个 review。
-- [ ] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 1: 写失败测试。** 用一个 fake `ApprovalPolicy`：`prepare` 返回 review 和 `{ action: "apply", changeSetId }`，approval allow 时 fake tool 只能收到 apply 输入；deny、prepare error 和未配置 prepare 时都不能执行 apply；`onApproval` 必须收到同一个 review。
+- [x] **Step 2: 运行 focused test 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/agent-core test -- --test-name-pattern="review preparation"
@@ -155,8 +155,8 @@ pnpm --filter @dev-agent/agent-core test -- --test-name-pattern="review preparat
 
 Expected: FAIL，因为 ApprovalRequest 没有 review、policy 没有 prepare、loop 仍直接执行原始 input。
 
-- [ ] **Step 3: 实现 DTO 和 preparation 生命周期。** AgentLoop 在 `checkApproval` 前调用 `approval.prepare`；成功后把 review 合并进 request；拒绝时不执行 `executeInput`；批准时只运行 preparation 的 `executeInput`。preparation 异常转成 deny reason，避免未经 review 的原始写入继续执行；allow 模式没有 policy，保持零 preparation 开销。
-- [ ] **Step 4: 运行 AgentLoop 全套测试。**
+- [x] **Step 3: 实现 DTO 和 preparation 生命周期。** AgentLoop 在 `checkApproval` 前调用 `approval.prepare`；成功后把 review 合并进 request；拒绝时不执行 `executeInput`；批准时只运行 preparation 的 `executeInput`。preparation 异常转成 deny reason，避免未经 review 的原始写入继续执行；allow 模式没有 policy，保持零 preparation 开销。
+- [x] **Step 4: 运行 AgentLoop 全套测试。**
 
 ```bash
 pnpm --filter @dev-agent/agent-core test
@@ -164,7 +164,7 @@ pnpm --filter @dev-agent/agent-core test
 
 Expected: 新增 review preparation 测试和原有 72 个测试全部通过。
 
-- [ ] **Step 5: Commit。**
+- [x] **Step 5: Commit。**
 
 ```bash
 git add packages/agent-core/src/approval.ts packages/agent-core/src/loop.ts packages/agent-core/tests/approval-review-writes.test.ts

@@ -16,14 +16,45 @@ export interface ApprovalOutcome {
   readonly reason?: string;
 }
 
+/** Tool-agnostic review information attached to a write approval request. */
+export interface ChangeSetFileReview {
+  readonly path: string;
+  readonly kind: "file" | "directory";
+  readonly beforeHash?: string;
+  readonly afterHash: string;
+  readonly diff: string;
+  readonly additions: number;
+  readonly deletions: number;
+  readonly beforeExists: boolean;
+  readonly afterExists: boolean;
+}
+
+export interface ChangeSetReview {
+  readonly changeSetId: string;
+  readonly files: readonly ChangeSetFileReview[];
+  readonly additions: number;
+  readonly deletions: number;
+  readonly createdAt: string;
+}
+
 export interface ApprovalRequest {
   readonly toolName: string;
   readonly input: unknown;
   readonly sessionId: string;
   readonly workingDirectory: string;
+  readonly review?: ChangeSetReview;
+}
+
+export interface ApprovalPreparation {
+  readonly review?: ChangeSetReview;
+  /** Input to run after approval; omitted keeps the original tool input. */
+  readonly executeInput?: unknown;
 }
 
 export interface ApprovalPolicy {
+  prepare?(
+    request: ApprovalRequest
+  ): Promise<ApprovalPreparation | undefined> | ApprovalPreparation | undefined;
   decide(
     request: ApprovalRequest
   ): Promise<ApprovalOutcome | ApprovalDecision> | ApprovalOutcome | ApprovalDecision;

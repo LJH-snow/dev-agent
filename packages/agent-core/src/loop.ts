@@ -1,5 +1,5 @@
 import type { AgentState } from "./agent-state.js";
-import type { ApprovalOutcome, ApprovalPolicy, ApprovalRequest } from "./approval.js";
+import type { ApprovalOutcome, ApprovalPolicy, ApprovalPreparation, ApprovalRequest } from "./approval.js";
 import type { AgentContext } from "./context.js";
 import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.js";
 import type { ChatMessage, ModelProvider, ToolCall, ToolSchema } from "@dev-agent/model";
@@ -178,9 +178,11 @@ export class AgentLoop {
             sessionId: context.sessionId,
             workingDirectory: context.workingDirectory,
           };
-          const outcome = await this.checkApproval(approvalRequest);
+          const preparation = await this.prepareApproval(approvalRequest);
+          const requestForApproval = preparation?.request ?? approvalRequest;
+          const outcome = preparation?.outcome ?? (await this.checkApproval(requestForApproval));
           if (outcome) {
-            this.onApproval?.(approvalRequest, outcome, context);
+            this.onApproval?.(requestForApproval, outcome, context);
             if (outcome.decision === "deny") {
               const denial = `[denied by policy] ${
                 outcome.reason ?? "the approval policy denied this call"
@@ -193,6 +195,9 @@ export class AgentLoop {
             }
           }
 
+          const executionCall = preparation?.executeInput === undefined
+            ? call
+            : { ...call, input: preparation.executeInput };
           const toolContext: ToolExecutionContext = {
             sessionId: context.sessionId,
             workingDirectory: context.workingDirectory,
@@ -205,7 +210,7 @@ export class AgentLoop {
                   )
               : undefined,
           };
-          const result = await this.runToolSafely(call, toolContext, options.signal);
+          const result = await this.runToolSafely(executionCall, toolContext, options.signal);
           this.onToolResult?.({ name: call.name, output: result }, context);
           await memory.append(
             createMemoryEntry("tool", result, { toolCallId: call.id, toolName: call.name })
@@ -358,6 +363,39 @@ export class AgentLoop {
       }
       const message = error instanceof Error ? error.message : String(error);
       return JSON.stringify({ error: message });
+    }
+  }
+
+  /**
+   * Gives a policy a chance to create a review before the decision is made.
+   * Preparation failures are denials: the original input must never bypass a
+   * policy that requires a reviewed execution input.
+   */
+  private async prepareApproval(
+    request: ApprovalRequest
+  ): Promise<{ request: ApprovalRequest; executeInput?: unknown; outcome?: ApprovalOutcome } | undefined> {
+    if (!this.approval?.prepare) {
+      return undefined;
+    }
+    try {
+      const preparation: ApprovalPreparation | undefined = await this.approval.prepare(request);
+      if (!preparation) {
+        return { request };
+      }
+      return {
+        request: preparation.review ? { ...request, review: preparation.review } : request,
+        ...(preparation.executeInput !== undefined
+          ? { executeInput: preparation.executeInput }
+          : {}),
+      };
+    } catch (error) {
+      return {
+        request,
+        outcome: {
+          decision: "deny",
+          reason: `approval preparation failed: ${error instanceof Error ? error.message : String(error)}`,
+        },
+      };
     }
   }
 

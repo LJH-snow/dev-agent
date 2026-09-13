@@ -4,8 +4,8 @@
 
 ## 当前状态
 
-- 当前阶段：Task 2，FilesystemTool preview/apply/rollback 和原子写入
-- 已完成阶段：Task 0、Task 1、Task 2；v32 已完成并推送到 `origin/main`
+- 当前阶段：Task 3，AgentLoop review preparation 和批准后的 apply 输入
+- 已完成阶段：Task 0、Task 1、Task 2、Task 3；v32 已完成并推送到 `origin/main`
 - 工作区基线：`bd05586 docs: record v32 release verification`
 - 最近一次 v32 验证：TypeScript 477/477、Rust 46/46、真实运行时集成 10/10 通过
 
@@ -34,6 +34,7 @@
 |------|------|----------|------|
 | Task 0 | 已完成 | tools 75/75；agent-core 72/72；基线与远端一致 | `docs: add v33 write review plan` |
 | Task 1 | 已完成 | 首次 focused test 按预期因公共导出不存在而失败；随后 tools 全套 80/80 通过 | `feat(tools): add change-set diff and hash model` |
+| Task 3 | 已完成 | 首次测试因 ApprovalPolicy 不含 prepare、ApprovalRequest 不含 review 而编译失败；随后 agent-core 全套 76/76 通过 | `feat(agent): prepare reviewed tool changes before approval`（待提交） |
 
 ### Task 1：建立 change-set 数据模型、哈希和统一 diff（已完成）
 
@@ -52,6 +53,14 @@
 - 实现：`FilesystemTool` 维护最多 64 个 change set；preview 只读记录 bytes/hash/diff，apply 统一预检后先建目录再同目录临时文件 rename，rollback 校验 postimage 后恢复或删除并清理本次创建的空目录。
 - 额外修正：保持旧 read 的 working-directory 解析行为；将 edit/patch 的纯计算与写盘拆开；apply/rollback 错误包含 change-set id 和冲突路径。
 - 提交：待本账本同步后提交 `feat(filesystem): preview atomically apply and rollback changes`。
+
+### Task 3：AgentLoop review preparation 和批准后的 apply 输入（已完成）
+
+- RED：`pnpm --filter @dev-agent/agent-core test -- --test-name-pattern="approval preparation|prepared change|preparation failure|without preparation"` 首次因 `ApprovalPolicy.prepare`、`ApprovalRequest.review` 尚不存在而失败，确认测试锁定了新生命周期。
+- GREEN：`pnpm --filter @dev-agent/agent-core typecheck` 与 `pnpm --filter @dev-agent/agent-core test` 通过，agent-core **76/76**（基线 72 + 新增 4）。
+- 覆盖：prepare 返回 review/apply input 后 allow 才执行 apply；deny 不执行原始 mutation；prepare 异常转 denial；未配置 prepare 保持旧 input 行为；`onApproval` 收到同一 review DTO。
+- 实现：agent-core 增加 tool-agnostic change-set DTO 和 `ApprovalPreparation`；AgentLoop 在 `decide` 前执行 prepare，失败即拒绝，批准后只将 `executeInput` 交给工具。
+- 提交：待本账本同步后提交 `feat(agent): prepare reviewed tool changes before approval`。
 
 ## 错误与卡点
 
