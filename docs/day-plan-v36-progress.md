@@ -49,12 +49,15 @@ v36 计划已建立，目标是解决 v35 明确留下的限制：change-set 状
 - [x] 聚焦回归：agent-core **99/99**、tools **120/120**、CLI **110/110**、Desktop **70/70**；typecheck 和 `git diff --check` 通过。
 - [x] 已完成提交：`3dc2d1c`.
 
-## 进行中
-
 ### Task 3：详情、筛选和兼容性
 
-- [ ] 评估并补充 CLI JSON、Desktop history/export 的 evidence 摘要和筛选。
-- [ ] 保持 evidence 与模型上下文分离。
+- [x] CLI JSON 和交互式验证 JSON 增加 `changeSets` 摘要；只包含结构化元数据、哈希、存在性和状态，不包含 diff、命令或文件字节。
+- [x] Desktop history/export 增加 `changeSets`；`changeSetId`、`validationId`、`status` 查询筛选保持 change-set 与 validation attempt 的关联。
+- [x] 无效 validation status 返回结构化 `400`；旧 memory 没有 `changeSets` 字段时仍返回空数组，既有 messages/validations 形状保持可读。
+- [x] 聚焦回归：CLI **110/110**、Desktop **70/70**；typecheck 和 `git diff --check` 通过。
+- [x] 已完成提交：`af7f3d4`。
+
+## 进行中
 
 ### Task 4：全量回归、文档和发布
 
@@ -67,7 +70,7 @@ v36 计划已建立，目标是解决 v35 明确留下的限制：change-set 状
 - 计划建立日期：2026-09-13。
 - 当前分支起点：v35 release commit `9b33aac`。
 - 当前全量基线：TypeScript **565/565**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**。
-- v36 Task 0–2 新增测试和实现已完成；Task 0–1 的提交分别为 `2324ed4`、`1766743`，Task 2 提交为 `3dc2d1c`.
+- v36 Task 0–3 新增测试和实现已完成；提交依次为 `2324ed4`、`1766743`、`3dc2d1c`、`af7f3d4`。
 
 ## 后续路线
 

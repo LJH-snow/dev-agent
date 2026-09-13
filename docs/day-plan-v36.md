@@ -96,16 +96,16 @@
 
 **Produces:** 用户可以按 change set / attempt / status 查看证据，但 evidence 仍不会进入模型上下文；对外接口清楚区分历史记录、可重跑记录和被阻断记录。
 
-- [ ] **Step 1: 写失败测试。**
+- [x] **Step 1: 写失败测试。**
   - CLI JSON、Desktop history/export 能返回 change-set evidence 摘要和恢复状态。
   - validation attempt 与 change-set identity 保持一对多关系，筛选不会混用 session。
   - 旧 history、旧 memory、没有 evidence 的 session 输出保持兼容。
-- [ ] **Step 2: 运行聚焦测试确认 RED。**
-- [ ] **Step 3: 写最小实现。**
+- [x] **Step 2: 运行聚焦测试确认 RED。**
+- [x] **Step 3: 写最小实现。**
   - 只公开元数据、哈希、状态和阻断原因；不公开命令执行入口，也不把 evidence 拼进模型消息。
   - 若现有接口不足，优先扩展结构化字段而非改变既有事件名称。
-- [ ] **Step 4: 运行聚焦测试确认 GREEN。**
-- [ ] **Step 5: 提交。**
+- [x] **Step 4: 运行聚焦测试确认 GREEN。**
+- [x] **Step 5: 提交。**
 
 ## Task 4：全量回归、文档和发布
 
