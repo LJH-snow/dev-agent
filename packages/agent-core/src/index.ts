@@ -10,6 +10,7 @@ export type {
   ToolSchema,
 } from "@dev-agent/model";
 export * from "./context.js";
+export * from "./evidence.js";
 export * from "./loop.js";
 export * from "./memory.js";
 export * from "./tools.js";

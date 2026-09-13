@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { addUsage, createMemoryEntry, FileMemory, InMemoryMemory } from "../dist/index.js";
+import {
+  addUsage,
+  createEvidenceAuditExport,
+  createMemoryEntry,
+  FileMemory,
+  InMemoryMemory,
+} from "../dist/index.js";
 
 function makeTempDir() {
   return mkdtempSync(join(tmpdir(), "dev-agent-memory-"));
@@ -530,4 +536,178 @@ test("memory rejects non-positive or non-integer evidence retention limits", () 
     () => new FileMemory({ filePath: "/tmp/dev-agent-retention.json", evidenceRetention: { maxChangeSets: 1.5 } }),
     /positive integer/
   );
+});
+
+
+test("metadata audit projection is allowlisted, sorted, and immutable", () => {
+  const validationLate = {
+    ...makeValidationResult("failed"),
+    validationId: "validation:z",
+    changeSetId: "cs-z",
+    recordedAt: "2026-09-13T00:02:00.000Z",
+    summary: "contains a command-like summary",
+    reason: "secret/path should not be exported",
+  };
+  const validationEarly = {
+    ...makeValidationResult("passed"),
+    validationId: "validation:a",
+    changeSetId: "cs-a",
+    recordedAt: "2026-09-13T00:01:00.000Z",
+  };
+  const changeSetLate = makeChangeSetRecord({
+    changeSetId: "cs-z",
+    recordedAt: "2026-09-13T00:04:00.000Z",
+    files: [
+      {
+        path: "src\\z.ts",
+        kind: "file",
+        beforeHash: "b".repeat(64),
+        afterHash: "a".repeat(64),
+        additions: 3,
+        deletions: 1,
+        beforeExists: true,
+        afterExists: true,
+      },
+      {
+        path: "README.md",
+        kind: "file",
+        afterHash: "c".repeat(64),
+        additions: 1,
+        deletions: 0,
+        beforeExists: false,
+        afterExists: true,
+      },
+    ],
+  });
+  const changeSetEarly = makeChangeSetRecord({
+    changeSetId: "cs-a",
+    recordedAt: "2026-09-13T00:03:00.000Z",
+  });
+  const summary = {
+    validations: 2,
+    changeSets: 2,
+    protectedChangeSets: 2,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+    injected: "must not leak",
+  } as typeof summary & { injected: string };
+  const inputSnapshot = structuredClone({
+    validations: [validationLate, validationEarly],
+    changeSets: [changeSetLate, changeSetEarly],
+    summary,
+  });
+
+  const audit = createEvidenceAuditExport(
+    "session-memory",
+    [validationLate, validationEarly],
+    [changeSetLate, changeSetEarly],
+    summary,
+    { generatedAt: "2026-09-13T00:05:00.000Z" }
+  );
+
+  assert.equal(audit.schemaVersion, 1);
+  assert.equal(audit.sessionId, "session-memory");
+  assert.equal(audit.generatedAt, "2026-09-13T00:05:00.000Z");
+  assert.deepEqual(
+    audit.validations.map((record) => record.validationId),
+    ["validation:a", "validation:z"]
+  );
+  assert.deepEqual(
+    audit.changeSets.map((record) => record.changeSetId),
+    ["cs-a", "cs-z"]
+  );
+  assert.deepEqual(audit.validations[0]?.checks, [
+    { id: "workspace:diff-check", status: "passed", durationMs: 12, exitCode: 0 },
+  ]);
+  assert.deepEqual(audit.changeSets[1]?.files.map((file) => file.path), ["README.md", "src/z.ts"]);
+
+  assert.equal("summary" in (audit.validations[1] as object), false);
+  assert.equal("reason" in (audit.validations[1] as object), false);
+  const serialized = JSON.stringify(audit);
+  for (const forbidden of [
+    "contains a command-like summary",
+    "secret/path should not be exported",
+    '"command"',
+    '"executable"',
+    '"args"',
+    '"cwd"',
+    '"workingDirectory"',
+    '"output"',
+    '"error"',
+    '"diff"',
+    '"patch"',
+    '"beforeImage"',
+    '"injected"',
+    "/workspace",
+  ]) {
+    assert.equal(serialized.includes(forbidden), false, `forbidden field leaked: ${forbidden}`);
+  }
+  assert.deepEqual(
+    audit.validations[1],
+    {
+      validationId: "validation:z",
+      changeSetId: "cs-z",
+      status: "failed",
+      durationMs: 12,
+      recordedAt: "2026-09-13T00:02:00.000Z",
+      checks: [{ id: "workspace:diff-check", status: "failed", durationMs: 12, exitCode: 1 }],
+    }
+  );
+  assert.deepEqual(inputSnapshot, {
+    validations: [validationLate, validationEarly],
+    changeSets: [changeSetLate, changeSetEarly],
+    summary,
+  });
+});
+
+test("metadata audit projection rejects absolute and escaping evidence paths", () => {
+  const summary = {
+    validations: 0,
+    changeSets: 1,
+    protectedChangeSets: 1,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+  };
+  for (const path of ["../secret.txt", "/tmp/secret.txt", "C:\\secret.txt", "dir/../secret.txt", "bad\u0000name"]) {
+    assert.throws(
+      () =>
+        createEvidenceAuditExport(
+          "session-memory",
+          [],
+          [makeChangeSetRecord({ files: [{
+            path,
+            kind: "file",
+            afterHash: "a".repeat(64),
+            additions: 0,
+            deletions: 0,
+            beforeExists: false,
+            afterExists: true,
+          }] })],
+          summary,
+          { generatedAt: "2026-09-13T00:05:00.000Z" }
+        ),
+      /relative path/
+    );
+  }
+});
+
+test("metadata audit projection supports an empty legacy evidence snapshot", () => {
+  const audit = createEvidenceAuditExport(
+    "legacy",
+    [],
+    [],
+    {
+      validations: 0,
+      changeSets: 0,
+      protectedChangeSets: 0,
+      rolledBackChangeSets: 0,
+      retention: { maxValidations: 100, maxChangeSets: 100 },
+      protectedChangeSetsReason: "applied change-set guards are retained for validation",
+    },
+    { generatedAt: "2026-09-13T00:06:00.000Z" }
+  );
+  assert.deepEqual(audit.validations, []);
+  assert.deepEqual(audit.changeSets, []);
 });
