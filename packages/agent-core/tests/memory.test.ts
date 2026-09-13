@@ -8,6 +8,7 @@ import {
   addUsage,
   createEvidenceAuditExport,
   createMemoryEntry,
+  selectEvidenceForAudit,
   FileMemory,
   InMemoryMemory,
 } from "../dist/index.js";
@@ -386,7 +387,7 @@ test("clearing memory removes applied change-set evidence", async () => {
 
 test("memory retention bounds validation history but protects applied change sets", async () => {
   const memory = new InMemoryMemory({
-    evidenceRetention: { maxValidations: 2, maxChangeSets: 1 },
+    evidenceRetention: { maxValidations: 2, maxChangeSets: 3 },
   });
 
   for (let index = 1; index <= 3; index += 1) {
@@ -710,4 +711,105 @@ test("metadata audit projection supports an empty legacy evidence snapshot", () 
   );
   assert.deepEqual(audit.validations, []);
   assert.deepEqual(audit.changeSets, []);
+});
+
+
+test("evidence lifecycle matrix preserves active guards through filtering and cleanup", async () => {
+  const memory = new InMemoryMemory({
+    evidenceRetention: { maxValidations: 2, maxChangeSets: 3 },
+  });
+  const active = makeChangeSetRecord({
+    changeSetId: "matrix-active",
+    recordedAt: "2026-09-13T00:10:00.000Z",
+  });
+  const rolledBack = makeChangeSetRecord({
+    changeSetId: "matrix-rolled-back",
+    recordedAt: "2026-09-13T00:11:00.000Z",
+  });
+  await memory.recordChangeSet(active);
+  await memory.recordChangeSet(rolledBack);
+  assert.equal(await memory.markChangeSetRolledBack(rolledBack.changeSetId), true);
+  await memory.recordValidation({
+    ...makeValidationResult("passed"),
+    validationId: "validation:matrix-active",
+    changeSetId: active.changeSetId,
+  });
+  await memory.recordValidation({
+    ...makeValidationResult("failed"),
+    validationId: "validation:matrix-rolled-back",
+    changeSetId: rolledBack.changeSetId,
+  });
+
+  const filters = [
+    { name: "all", filters: {}, validationIds: ["validation:matrix-active", "validation:matrix-rolled-back"], changeSetIds: ["matrix-active", "matrix-rolled-back"] },
+    { name: "status", filters: { status: "failed" as const }, validationIds: ["validation:matrix-rolled-back"], changeSetIds: ["matrix-rolled-back"] },
+    { name: "change set", filters: { changeSetId: active.changeSetId }, validationIds: ["validation:matrix-active"], changeSetIds: ["matrix-active"] },
+    { name: "validation", filters: { validationId: "validation:matrix-rolled-back" }, validationIds: ["validation:matrix-rolled-back"], changeSetIds: ["matrix-rolled-back"] },
+  ];
+  for (const candidate of filters) {
+    const selected = selectEvidenceForAudit(
+      await memory.validations(),
+      await memory.changeSets(),
+      candidate.filters
+    );
+    assert.deepEqual(
+      selected.validations.map((record) => record.validationId),
+      candidate.validationIds,
+      candidate.name
+    );
+    assert.deepEqual(
+      selected.changeSets.map((record) => record.changeSetId),
+      candidate.changeSetIds,
+      candidate.name
+    );
+  }
+
+  const beforeCleanup = await memory.changeSets();
+  const cleanup = await memory.pruneEvidence({
+    maxValidations: 1,
+    maxChangeSets: 1,
+    removeRolledBack: true,
+  });
+  assert.equal(cleanup.changeSetsRemoved, 1);
+  assert.equal(cleanup.protectedChangeSets, 1);
+  assert.deepEqual(
+    (await memory.changeSets()).map((record) => record.changeSetId),
+    [active.changeSetId]
+  );
+  assert.equal((await memory.changeSets())[0]?.state, "applied");
+  assert.equal(beforeCleanup[0]?.state, "applied");
+
+  const audit = createEvidenceAuditExport(
+    "session-memory",
+    await memory.validations(),
+    await memory.changeSets(),
+    await memory.evidenceSummary(),
+    { generatedAt: "2026-09-13T00:12:00.000Z" }
+  );
+  assert.deepEqual(audit.changeSets.map((record) => record.changeSetId), [active.changeSetId]);
+  assert.equal(audit.changeSets[0]?.state, "applied");
+  assert.equal(audit.summary.protectedChangeSets, 1);
+});
+
+test("metadata audit projection reads a legacy memory with no evidence fields", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "legacy-audit.json");
+    writeFileSync(filePath, JSON.stringify({ version: 1, entries: [] }), "utf8");
+    const memory = new FileMemory({ filePath });
+    const audit = createEvidenceAuditExport(
+      "legacy",
+      await memory.validations(),
+      await memory.changeSets(),
+      await memory.evidenceSummary(),
+      { generatedAt: "2026-09-13T00:13:00.000Z" }
+    );
+    assert.equal(audit.schemaVersion, 1);
+    assert.deepEqual(audit.validations, []);
+    assert.deepEqual(audit.changeSets, []);
+    assert.equal(audit.summary.validations, 0);
+    assert.equal(audit.summary.changeSets, 0);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
