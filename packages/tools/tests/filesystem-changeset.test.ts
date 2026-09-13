@@ -180,3 +180,133 @@ test("a change set may list files before the directories they need", async () =>
     assert.equal(await readFile(nestedFile, "utf8"), "hello\n");
   });
 });
+
+
+test("an applied change-set guard verifies the postimage without changing files", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const tool: any = new FilesystemTool();
+    const prepared = await tool.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(tool, prepared, context);
+
+    const observed = await tool.withAppliedChangeSet(
+      prepared.review.changeSetId,
+      async (review) => ({ changeSetId: review.changeSetId, path: review.files[0].path })
+    );
+
+    assert.deepEqual(observed, { changeSetId: prepared.review.changeSetId, path });
+    assert.equal(await readFile(path, "utf8"), "after\n");
+  });
+});
+
+test("an applied change-set guard rejects unknown, prepared, and rolled-back sets", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const tool: any = new FilesystemTool();
+    const prepared = await tool.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+
+    await assert.rejects(
+      () => tool.withAppliedChangeSet("missing", async () => undefined),
+      /unknown or expired/
+    );
+    await assert.rejects(
+      () => tool.withAppliedChangeSet(prepared.review.changeSetId, async () => undefined),
+      /cannot be used because it is prepared/
+    );
+
+    await applyPrepared(tool, prepared, context);
+    await tool.rollbackChangeSet(prepared.review.changeSetId);
+    await assert.rejects(
+      () => tool.withAppliedChangeSet(prepared.review.changeSetId, async () => undefined),
+      /cannot be used because it is rolled-back/
+    );
+  });
+});
+
+test("an applied change-set guard rejects a postimage conflict before validation starts", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const tool: any = new FilesystemTool();
+    const prepared = await tool.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(tool, prepared, context);
+    await writeFile(path, "changed-by-user\n", "utf8");
+    let called = false;
+
+    await assert.rejects(
+      () => tool.withAppliedChangeSet(prepared.review.changeSetId, async () => {
+        called = true;
+      }),
+      /postimage|hash conflict/
+    );
+    assert.equal(called, false);
+    assert.equal(await readFile(path, "utf8"), "changed-by-user\n");
+  });
+});
+
+test("an applied change-set guard catches a workspace change during validation", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const tool: any = new FilesystemTool();
+    const prepared = await tool.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(tool, prepared, context);
+
+    await assert.rejects(
+      () => tool.withAppliedChangeSet(prepared.review.changeSetId, async () => {
+        await writeFile(path, "changed-during-validation\n", "utf8");
+        return "must not escape";
+      }),
+      /postimage|hash conflict/
+    );
+    assert.equal(await readFile(path, "utf8"), "changed-during-validation\n");
+  });
+});
+
+test("rollback cannot race an active applied change-set guard", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const tool: any = new FilesystemTool();
+    const prepared = await tool.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(tool, prepared, context);
+
+    let enteredResolve: (() => void) | undefined;
+    const entered = new Promise<void>((resolve) => {
+      enteredResolve = resolve;
+    });
+    let releaseResolve: (() => void) | undefined;
+    const release = new Promise<void>((resolve) => {
+      releaseResolve = resolve;
+    });
+    const running = tool.withAppliedChangeSet(prepared.review.changeSetId, async () => {
+      enteredResolve?.();
+      await release;
+    });
+    await entered;
+
+    await assert.rejects(
+      () => tool.rollbackChangeSet(prepared.review.changeSetId),
+      /already in flight/
+    );
+    releaseResolve?.();
+    await running;
+  });
+});

@@ -251,6 +251,33 @@ export class FilesystemTool implements Tool {
     };
   }
 
+  /**
+   * Runs a read-only operation against an applied change set while holding the
+   * same per-change-set lock used by apply and rollback. The postimage is
+   * checked both before and after the callback so validation cannot silently
+   * cross a user edit or race an Undo operation.
+   */
+  async withAppliedChangeSet<T>(
+    changeSetId: string,
+    callback: (review: ChangeSetReview) => Promise<T> | T
+  ): Promise<T> {
+    const record = this.requireChangeSet(changeSetId);
+    if (record.state !== "applied") {
+      throw new Error(
+        `filesystem change set ${changeSetId} cannot be used because it is ${record.state}`
+      );
+    }
+    this.beginChangeSet(changeSetId);
+    try {
+      await preflightRollback(record);
+      const result = await callback(record.review);
+      await preflightRollback(record);
+      return result;
+    } finally {
+      this.endChangeSet(changeSetId);
+    }
+  }
+
   async rollbackChangeSet(changeSetId: string): Promise<ChangeSetApplyResult> {
     const record = this.requireChangeSet(changeSetId);
     if (record.state !== "applied") {

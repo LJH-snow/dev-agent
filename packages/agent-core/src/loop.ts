@@ -5,9 +5,8 @@ import { createMemoryEntry, type AgentMemory, type MemoryEntry } from "./memory.
 import type { ChatMessage, ModelProvider, ToolCall, ToolSchema } from "@dev-agent/model";
 import type { ChatUsage } from "@dev-agent/model";
 import {
-  createValidationId,
+  runValidationAttempt,
   type ValidationAdapter,
-  type ValidationPlan,
   type ValidationResult,
 } from "./validation.js";
 import { addUsage } from "./usage.js";
@@ -391,53 +390,7 @@ export class AgentLoop {
     if (!this.validation || !review || !isPreparedApply(preparation.executeInput, review) || !isSuccessfulApply(toolResult, review)) {
       return undefined;
     }
-    const startedAt = Date.now();
-    if (signal?.aborted) {
-      return blockedValidation(
-        review.changeSetId,
-        startedAt,
-        "validation aborted before checks started"
-      );
-    }
-
-    let plan: ValidationPlan;
-    try {
-      plan = await this.validation.prepare(review, context);
-    } catch (error) {
-      return blockedValidation(
-        review.changeSetId,
-        startedAt,
-        `validation preparation failed: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-
-    try {
-      const result = await this.validation.run(plan, { signal });
-      if (signal?.aborted && result.status !== "blocked") {
-        return blockedValidation(
-          review.changeSetId,
-          startedAt,
-          "validation aborted while the checks were running",
-          plan
-        );
-      }
-      return result;
-    } catch (error) {
-      if (signal?.aborted) {
-        return blockedValidation(
-          review.changeSetId,
-          startedAt,
-          "validation aborted while the checks were running",
-          plan
-        );
-      }
-      return blockedValidation(
-        review.changeSetId,
-        startedAt,
-        `validation runner failed: ${error instanceof Error ? error.message : String(error)}`,
-        plan
-      );
-    }
+    return runValidationAttempt(this.validation, review, context, { signal });
   }
 
   private async runToolSafely(
@@ -590,22 +543,6 @@ function isSuccessfulApply(
   }
 }
 
-function blockedValidation(
-  changeSetId: string,
-  startedAt: number,
-  reason: string,
-  plan?: ValidationPlan
-): ValidationResult {
-  return {
-    validationId: plan?.validationId ?? createValidationId(changeSetId),
-    changeSetId,
-    status: "blocked",
-    checks: [],
-    durationMs: Math.max(0, Date.now() - startedAt),
-    summary: "validation is blocked",
-    reason,
-  };
-}
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {

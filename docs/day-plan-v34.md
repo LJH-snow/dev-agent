@@ -169,7 +169,7 @@ git diff --check
 - [x] **Step 3: 统计测试和人工 review。** 已确认命令派生不可注入、验证失败不自动回滚、abort 通过共享取消链路收敛、MCP 无交互行为安全、v33 Undo guard 不回归。
 - [x] **Step 4: Commit and push。**
 
-**Task 6 verification record (2026-09-14):**
+**Task 6 verification record (2026-09-13):**
 
 - `node scripts/check.mjs`: 13 directories and 34 expected files verified.
 - `pnpm build` and `pnpm typecheck`: passed.

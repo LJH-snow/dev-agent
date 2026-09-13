@@ -289,8 +289,167 @@ test("Desktop UI includes a validation card without removing the Undo action", a
     assert.match(html, /data\.validations/);
     assert.match(html, /case "validation":/);
     assert.match(html, /data-undo/);
+    assert.match(html, /data-rerun/);
+    assert.match(html, /\/api\/changesets\/validate/);
     assert.match(html, /Undo/);
   } finally {
+    await close(server);
+  }
+});
+
+test("ChatSession reruns trusted validation with a fresh attempt id and preserves evidence", async () => {
+  const workspace = await createGitWorkspace();
+  const provider = await startStubProvider("changed\n");
+  const memoryFile = join(workspace.directory, "session.json");
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: memoryFile,
+  });
+  const session = new ChatSession({
+    sessionId: "default",
+    workingDirectory: workspace.directory,
+    approvalMode: "review-writes",
+  });
+  let changeSetId = "";
+  try {
+    await session.run("change and verify", (event) => {
+      const data = event.data as any;
+      if (event.type === "approval" && data.review?.changeSetId) {
+        changeSetId = data.review.changeSetId;
+      }
+    }, { requestApproval: async () => "allow" });
+
+    const savedBefore = JSON.parse(await readFile(memoryFile, "utf8"));
+    assert.equal(savedBefore.validations.length, 1);
+    const firstId = savedBefore.validations[0].validationId;
+
+    const rerun = await session.rerunValidation(changeSetId);
+
+    assert.equal(rerun.status, "passed");
+    assert.match(rerun.validationId, new RegExp(`^validation:${changeSetId}:`));
+    assert.notEqual(rerun.validationId, firstId);
+    assert.equal(rerun.changeSetId, changeSetId);
+    assert.equal(await readFile(workspace.target, "utf8"), "changed\n");
+    const savedAfter = JSON.parse(await readFile(memoryFile, "utf8"));
+    assert.equal(savedAfter.validations.length, 2);
+    assert.equal(savedAfter.validations[1].validationId, rerun.validationId);
+  } finally {
+    await session.close();
+    await provider.close();
+    restoreEnv();
+    await rm(workspace.directory, { recursive: true, force: true });
+  }
+});
+
+test("ChatSession turns a rerun postimage conflict into blocked evidence without undoing user bytes", async () => {
+  const workspace = await createGitWorkspace();
+  const provider = await startStubProvider("changed\n");
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(workspace.directory, "session.json"),
+  });
+  const session = new ChatSession({
+    sessionId: "default",
+    workingDirectory: workspace.directory,
+    approvalMode: "review-writes",
+  });
+  let changeSetId = "";
+  try {
+    await session.run("change and verify", (event) => {
+      const data = event.data as any;
+      if (event.type === "approval" && data.review?.changeSetId) {
+        changeSetId = data.review.changeSetId;
+      }
+    }, { requestApproval: async () => "allow" });
+    await writeFile(workspace.target, "user-edit\n", "utf8");
+
+    const rerun = await session.rerunValidation(changeSetId);
+
+    assert.equal(rerun.status, "blocked");
+    assert.match(rerun.reason ?? "", /postimage|hash conflict/i);
+    assert.equal(await readFile(workspace.target, "utf8"), "user-edit\n");
+  } finally {
+    await session.close();
+    await provider.close();
+    restoreEnv();
+    await rm(workspace.directory, { recursive: true, force: true });
+  }
+});
+
+test("Desktop validation endpoint returns isolated rerun results and rejects same-session overlap", async () => {
+  let release: (() => void) | undefined;
+  const releasePromise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let reruns = 0;
+  const makeSession = (id: string) => ({
+    id,
+    async run() {},
+    async rerunValidation(changeSetId: string, options: { signal?: AbortSignal } = {}) {
+      reruns += 1;
+      if (id === "alpha" && reruns === 1) {
+        await releasePromise;
+      }
+      return {
+        validationId: `validation:${changeSetId}:attempt-${id}`,
+        changeSetId,
+        status: options.signal?.aborted ? "blocked" as const : "passed" as const,
+        checks: [],
+        durationMs: 1,
+        summary: `validation ${id}`,
+      };
+    },
+  });
+  const server = createDesktopServer({
+    session: makeSession("default"),
+    createSession: (id) => makeSession(id),
+  });
+  const base = await start(server);
+  try {
+    for (const sessionId of ["alpha", "beta"]) {
+      const chat = await fetch(`${base}/api/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "open", sessionId }),
+      });
+      assert.equal(chat.status, 200);
+      await chat.text();
+    }
+
+    const first = fetch(`${base}/api/changesets/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "alpha", changeSetId: "cs-alpha" }),
+    });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const overlap = await fetch(`${base}/api/changesets/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "alpha", changeSetId: "cs-alpha-2" }),
+    });
+    assert.equal(overlap.status, 409);
+    release?.();
+    const firstResponse = await first;
+    assert.equal(firstResponse.status, 200);
+    const firstBody = (await firstResponse.json()) as any;
+    assert.equal(firstBody.sessionId, "alpha");
+    assert.equal(firstBody.changeSetId, "cs-alpha");
+
+    const second = await fetch(`${base}/api/changesets/validate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "beta", changeSetId: "cs-beta" }),
+    });
+    assert.equal(second.status, 200);
+    const secondBody = (await second.json()) as any;
+    assert.equal(secondBody.sessionId, "beta");
+    assert.equal(secondBody.changeSetId, "cs-beta");
+  } finally {
+    release?.();
     await close(server);
   }
 });

@@ -63,6 +63,14 @@ export interface ValidationRunOptions {
   readonly signal?: AbortSignal;
 }
 
+/** Optional identity supplied when a validation is explicitly rerun. */
+export interface ValidationPrepareOptions {
+  readonly validationId?: string;
+}
+
+/** Options shared by the trusted planner and runner for one validation attempt. */
+export interface ValidationAttemptOptions extends ValidationRunOptions, ValidationPrepareOptions {}
+
 /** Runs only the structured commands supplied by a validation planner. */
 export interface ValidationRunner {
   run(plan: ValidationPlan, options?: ValidationRunOptions): Promise<ValidationResult>;
@@ -75,7 +83,8 @@ export interface ValidationRunner {
 export interface ValidationAdapter {
   prepare(
     review: ChangeSetReview,
-    context: AgentContext
+    context: AgentContext,
+    options?: ValidationPrepareOptions
   ): Promise<ValidationPlan> | ValidationPlan;
   run(plan: ValidationPlan, options?: ValidationRunOptions): Promise<ValidationResult>;
 }
@@ -88,4 +97,113 @@ export function createValidationId(changeSetId: string): string {
 /** Explicitly opt into a fresh id when a caller needs multiple runs per set. */
 export function createValidationAttemptId(changeSetId: string): string {
   return `validation:${changeSetId}:${randomUUID()}`;
+}
+
+/**
+ * Runs one validation attempt with the same abort and blocked semantics used by
+ * the agent loop. Callers may provide a fresh validation id for an explicit
+ * rerun; the planner and runner must preserve both identities.
+ */
+export async function runValidationAttempt(
+  adapter: ValidationAdapter,
+  review: ChangeSetReview,
+  context: AgentContext,
+  options: ValidationAttemptOptions = {}
+): Promise<ValidationResult> {
+  const startedAt = Date.now();
+  const validationId = options.validationId ?? createValidationId(review.changeSetId);
+  if (options.signal?.aborted) {
+    return createBlockedValidationResult(
+      review.changeSetId,
+      validationId,
+      "validation aborted before checks started",
+      startedAt
+    );
+  }
+
+  let plan: ValidationPlan;
+  try {
+    plan = await adapter.prepare(
+      review,
+      context,
+      options.validationId === undefined ? undefined : { validationId }
+    );
+  } catch (error) {
+    return createBlockedValidationResult(
+      review.changeSetId,
+      validationId,
+      `validation preparation failed: ${error instanceof Error ? error.message : String(error)}`,
+      startedAt
+    );
+  }
+
+  if (plan.changeSetId !== review.changeSetId || plan.validationId !== validationId) {
+    return createBlockedValidationResult(
+      review.changeSetId,
+      validationId,
+      "validation plan has an invalid change-set identity",
+      startedAt,
+      plan
+    );
+  }
+
+  try {
+    const result = await adapter.run(plan, { signal: options.signal });
+    if (options.signal?.aborted && result.status !== "blocked") {
+      return createBlockedValidationResult(
+        review.changeSetId,
+        validationId,
+        "validation aborted while the checks were running",
+        startedAt,
+        plan
+      );
+    }
+    if (result.changeSetId !== review.changeSetId || result.validationId !== validationId) {
+      return createBlockedValidationResult(
+        review.changeSetId,
+        validationId,
+        "validation result has an invalid change-set identity",
+        startedAt,
+        plan
+      );
+    }
+    return result;
+  } catch (error) {
+    if (options.signal?.aborted) {
+      return createBlockedValidationResult(
+        review.changeSetId,
+        validationId,
+        "validation aborted while the checks were running",
+        startedAt,
+        plan
+      );
+    }
+    return createBlockedValidationResult(
+      review.changeSetId,
+      validationId,
+      `validation runner failed: ${error instanceof Error ? error.message : String(error)}`,
+      startedAt,
+      plan
+    );
+  }
+}
+
+/** Creates a blocked result without running or undoing any filesystem change. */
+export function createBlockedValidationResult(
+  changeSetId: string,
+  validationId: string,
+  reason: string,
+  startedAt = Date.now(),
+  plan?: ValidationPlan
+): ValidationResult {
+  return {
+    validationId,
+    changeSetId,
+    status: "blocked",
+    checks: [],
+    durationMs: Math.max(0, Date.now() - startedAt),
+    summary: "validation is blocked",
+    reason,
+    ...(plan?.status === "blocked" && plan.reason ? { reason: `${reason}; ${plan.reason}` } : {}),
+  };
 }

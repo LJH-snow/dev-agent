@@ -6,6 +6,8 @@ import {
   AgentToolRegistry,
   InMemoryMemory,
   createAgentContext,
+  createValidationAttemptId,
+  runValidationAttempt,
   type ApprovalPolicy,
   type ValidationAdapter,
   type ValidationPlan,
@@ -272,4 +274,63 @@ test("validation receives the outer abort signal", async () => {
     signal: controller.signal,
   });
   assert.strictEqual(receivedSignal, controller.signal);
+});
+
+
+test("an explicit validation attempt gets a fresh id while staying linked to the change set", async () => {
+  const context = createAgentContext("rerun", new InMemoryMemory(), {
+    sessionId: "rerun",
+    workingDirectory: "/workspace",
+  });
+  const attemptId = createValidationAttemptId(review.changeSetId);
+  let receivedId: string | undefined;
+  const validation: ValidationAdapter = {
+    prepare(receivedReview, _context, options) {
+      assert.equal(receivedReview.changeSetId, review.changeSetId);
+      receivedId = options?.validationId;
+      return { ...plan, validationId: options?.validationId ?? plan.validationId };
+    },
+    async run(receivedPlan) {
+      return { ...result("passed"), validationId: receivedPlan.validationId };
+    },
+  };
+
+  const rerun = await runValidationAttempt(validation, review, context, {
+    validationId: attemptId,
+  });
+
+  assert.equal(receivedId, attemptId);
+  assert.equal(rerun.validationId, attemptId);
+  assert.equal(rerun.changeSetId, review.changeSetId);
+  assert.notEqual(rerun.validationId, plan.validationId);
+});
+
+test("a validation attempt becomes blocked when a runner loses the change-set identity", async () => {
+  const context = createAgentContext("rerun-identity", new InMemoryMemory(), {
+    sessionId: "rerun-identity",
+    workingDirectory: "/workspace",
+  });
+  const attemptId = createValidationAttemptId(review.changeSetId);
+  const validation: ValidationAdapter = {
+    prepare: (_review, _context, options) => ({
+      ...plan,
+      validationId: options?.validationId ?? plan.validationId,
+    }),
+    async run(receivedPlan) {
+      return {
+        ...result("passed"),
+        validationId: receivedPlan.validationId,
+        changeSetId: "different-change-set",
+      };
+    },
+  };
+
+  const rerun = await runValidationAttempt(validation, review, context, {
+    validationId: attemptId,
+  });
+
+  assert.equal(rerun.status, "blocked");
+  assert.equal(rerun.validationId, attemptId);
+  assert.equal(rerun.changeSetId, review.changeSetId);
+  assert.match(rerun.reason ?? "", /change-set identity/i);
 });

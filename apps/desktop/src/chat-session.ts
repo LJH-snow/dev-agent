@@ -8,11 +8,14 @@ import {
   compileApprovalConfig,
   normalizeApprovalKey,
   createAgentContext,
+  createBlockedValidationResult,
+  createValidationAttemptId,
   denyDangerousPolicy,
   reviewWritesPolicy,
   FileMemory,
   type AgentContext,
   type ApprovalPolicy,
+  runValidationAttempt,
   type ValidationAdapter,
   type ValidationResult,
   type ApprovalRequest,
@@ -111,10 +114,11 @@ export class ChatSession {
     this.executor = createExecutor({ rustBinaryPath });
     const validationRunner = createValidationRunner(this.executor);
     this.validation = {
-      prepare: (review, context) =>
+      prepare: (review, context, options) =>
         deriveValidationPlan(review, {
           workingDirectory: context.workingDirectory,
           isGitRepository: existsSync(join(context.workingDirectory, ".git")),
+          validationId: options?.validationId,
         }),
       run: (plan, runOptions) => validationRunner.run(plan, runOptions),
     };
@@ -249,6 +253,43 @@ export class ChatSession {
     return this.filesystem.rollbackChangeSet(changeSetId);
   }
 
+  /** Reruns trusted checks for an applied change set without changing files. */
+  async rerunValidation(
+    changeSetId: string,
+    options: { readonly signal?: AbortSignal } = {}
+  ): Promise<ValidationResult> {
+    const startedAt = Date.now();
+    const validationId = createValidationAttemptId(changeSetId);
+    let result: ValidationResult;
+    try {
+      result = await this.filesystem.withAppliedChangeSet(changeSetId, (review) =>
+        runValidationAttempt(this.validation, review, this.context, {
+          signal: options.signal,
+          validationId,
+        })
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!isPostimageConflict(message)) {
+        throw error;
+      }
+      result = createBlockedValidationResult(
+        changeSetId,
+        validationId,
+        `validation rerun blocked: ${message}`,
+        startedAt
+      );
+    }
+
+    try {
+      await this.memory.recordValidation?.(result);
+    } catch {
+      // Evidence persistence is best-effort; never turn a safe rerun into a
+      // filesystem error or an implicit rollback.
+    }
+    return result;
+  }
+
   private async ensureMcpTools(signal?: AbortSignal): Promise<void> {
     if (this.mcpServers.length === 0) {
       return;
@@ -328,6 +369,10 @@ export class ChatSession {
   estimateCost(usage: ChatUsage): number | undefined {
     return estimateUsageCost(usage, this.model.model, this.pricing);
   }
+}
+
+function isPostimageConflict(message: string): boolean {
+  return /postimage|hash conflict|cannot rollback non-empty directory/i.test(message);
 }
 
 function emitValidation(

@@ -9,6 +9,16 @@ import { spawn } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import {
+  createAgentContext,
+  createValidationId,
+  InMemoryMemory,
+  type ValidationAdapter,
+  type ValidationPlan,
+} from "@dev-agent/agent-core";
+import { FilesystemTool } from "@dev-agent/tools";
+import { runExplicitValidation } from "../dist/index.js";
+
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
@@ -233,6 +243,98 @@ test("CLI keeps a non-git workspace safe by returning a skipped validation", asy
     assert.match(payload.validations[0].reason, /safe validation/i);
   } finally {
     await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("CLI explicit validation rerun uses a fresh attempt id and persists the result", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-validation-rerun-"));
+  const target = join(dir, "target.txt");
+  await writeFile(target, "before\n", "utf8");
+  const filesystem = new FilesystemTool();
+  const prepared = await filesystem.prepareChangeSet(
+    { action: "write", path: "target.txt", content: "after\n" },
+    { sessionId: "cli-rerun", workingDirectory: dir }
+  );
+  await filesystem.execute(prepared.executeInput, { sessionId: "cli-rerun", workingDirectory: dir });
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("cli-rerun", memory, {
+    sessionId: "cli-rerun",
+    workingDirectory: dir,
+  });
+  const validation: ValidationAdapter = {
+    prepare(review, _context, options): ValidationPlan {
+      return {
+        validationId: options?.validationId ?? createValidationId(review.changeSetId),
+        changeSetId: review.changeSetId,
+        status: "skipped",
+        checks: [],
+        summary: "no checks",
+      };
+    },
+    async run(plan) {
+      return {
+        validationId: plan.validationId,
+        changeSetId: plan.changeSetId,
+        status: "skipped",
+        checks: [],
+        durationMs: 1,
+        summary: "validation skipped",
+      };
+    },
+  };
+  try {
+    const result = await runExplicitValidation(
+      filesystem,
+      validation,
+      context,
+      prepared.review.changeSetId
+    );
+    assert.equal(result.status, "skipped");
+    assert.match(result.validationId, new RegExp(`^validation:${prepared.review.changeSetId}:`));
+    assert.equal(result.changeSetId, prepared.review.changeSetId);
+    assert.equal((await memory.validations()).length, 1);
+    assert.equal(await readFile(target, "utf8"), "after\n");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI explicit validation rerun returns blocked on a postimage conflict and keeps user bytes", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-validation-rerun-conflict-"));
+  const target = join(dir, "target.txt");
+  await writeFile(target, "before\n", "utf8");
+  const filesystem = new FilesystemTool();
+  const prepared = await filesystem.prepareChangeSet(
+    { action: "write", path: "target.txt", content: "after\n" },
+    { sessionId: "cli-rerun", workingDirectory: dir }
+  );
+  await filesystem.execute(prepared.executeInput, { sessionId: "cli-rerun", workingDirectory: dir });
+  await writeFile(target, "user-edit\n", "utf8");
+  const context = createAgentContext("cli-rerun-conflict", new InMemoryMemory(), {
+    sessionId: "cli-rerun-conflict",
+    workingDirectory: dir,
+  });
+  const validation: ValidationAdapter = {
+    prepare: () => {
+      throw new Error("must not run after a postimage conflict");
+    },
+    run: async () => {
+      throw new Error("must not run");
+    },
+  };
+  try {
+    const result = await runExplicitValidation(
+      filesystem,
+      validation,
+      context,
+      prepared.review.changeSetId
+    );
+    assert.equal(result.status, "blocked");
+    assert.match(result.reason ?? "", /postimage|hash conflict/i);
+    assert.equal(await readFile(target, "utf8"), "user-edit\n");
+  } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });

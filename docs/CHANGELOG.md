@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-09-14 (Day plan v34: change-set validation)
+## 2026-09-13 (Day plan v34: change-set validation)
 
 Executed `docs/day-plan-v34.md`. After v33 made filesystem changes reviewable
 and reversible, the next gap was knowing whether an approved change still

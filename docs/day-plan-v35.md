@@ -21,7 +21,7 @@
 
 ---
 
-## Task 0：定义 validation record contract 并建立兼容基线（当前）
+## Task 0：定义 validation record contract 并建立兼容基线（已完成）
 
 **Files:**
 - Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/validation.ts`
@@ -56,9 +56,9 @@ Expected: 编译或测试失败，因为 `ValidationRecord`、`recordValidation`
 - [x] **Step 3: 写最小实现。** 为 in-memory/file memory 添加可选 validation records；保持 memory 文件 `version: 1`，将 `validations` 作为可选数组校验和持久化，并确保 append、compact、summary、usage 写入都会保留已有 records。
 - [x] **Step 4: 接入 AgentLoop 持久化。** validation callback 发送后调用 `context.memory.recordValidation?.(validation)`；记录失败不得把已经成功的 apply 伪装成失败，也不得触发 rollback。
 - [x] **Step 5: 运行 focused test 确认通过。**
-- [ ] **Step 6: Commit。**
+- [x] **Step 6: Commit。**
 
-**Task 0 verification record (2026-09-14):**
+**Task 0 verification record (2026-09-13):**
 
 - RED：新增 memory/lifecycle tests 首次运行时因 `ValidationRecord`、`recordValidation` 和 `validations` 不存在而编译失败。
 - GREEN：agent-core build 与全套测试通过，**90/90**；覆盖 in-memory/file memory evidence、跨实例持久化、append/usage/summary 保留、clear 清理、旧 session 缺少 `validations` 字段兼容，以及 approved apply 自动记录完整 validation DTO。
@@ -82,7 +82,7 @@ Expected: 编译或测试失败，因为 `ValidationRecord`、`recordValidation`
 - [x] **Step 4: 运行 Desktop/CLI focused tests 和 typecheck。**
 - [x] **Step 5: Commit。**
 
-**Task 1 verification record (2026-09-14):**
+**Task 1 verification record (2026-09-13):**
 
 - RED：Desktop history response initially had no `validations`, export omitted the evidence section, CLI second-run JSON returned an empty array, and the browser history loader ignored persisted validations.
 - GREEN：agent-core build/tests **90/90**、Desktop build/tests **65/65**、CLI build/tests **106/106** all pass；Desktop inline script `node --check` remains passing.

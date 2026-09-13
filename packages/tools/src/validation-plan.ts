@@ -6,6 +6,7 @@ import {
   type ValidationCommand,
   type ValidationPlan,
   type ValidationPlanStatus,
+  type ValidationPrepareOptions,
 } from "@dev-agent/agent-core";
 import type { ChangeSetReview } from "./change-set.js";
 
@@ -26,6 +27,8 @@ export interface ValidationPlanContext {
   /** Set false when the workspace is not a Git checkout. */
   readonly isGitRepository?: boolean;
   readonly timeouts?: ValidationPlanTimeouts;
+  /** Optional fresh identity for an explicit validation rerun. */
+  readonly validationId?: ValidationPrepareOptions["validationId"];
 }
 
 interface PackageScope {
@@ -54,7 +57,7 @@ export function deriveValidationPlan(
 ): ValidationPlan {
   const root = resolve(context.workingDirectory);
   const normalized = normalizeReviewFiles(review, root);
-  const validationId = createValidationId(review.changeSetId);
+  const validationId = context.validationId ?? createValidationId(review.changeSetId);
 
   if (normalized.status !== "ready") {
     return planWithoutChecks(

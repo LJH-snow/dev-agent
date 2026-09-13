@@ -88,6 +88,7 @@
     .msg.validation .validation-check-line { display: flex; justify-content: space-between; gap: 12px; }
     .msg.validation .validation-check-status { color: var(--muted); white-space: nowrap; }
     .msg.validation .validation-command { color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
+    .msg.validation .validation-actions { margin-top: 10px; align-items: center; }
     .composer {
       border-top: 1px solid var(--border);
       padding: 12px 16px;
@@ -694,6 +695,48 @@
         reason.className = "validation-reason";
         reason.textContent = result.reason;
         div.appendChild(reason);
+      }
+
+      if (typeof result.changeSetId === "string" && result.changeSetId) {
+        const actions = document.createElement("div");
+        actions.className = "actions validation-actions";
+        const rerun = document.createElement("button");
+        rerun.type = "button";
+        rerun.textContent = "Rerun validation";
+        rerun.setAttribute("data-rerun", result.changeSetId);
+        const rerunStatus = document.createElement("span");
+        rerunStatus.className = "undo-status rerun-status";
+        const sessionId = currentSessionId;
+        rerun.disabled = !sessionId;
+        rerun.addEventListener("click", async () => {
+          if (!sessionId) return;
+          rerun.disabled = true;
+          try {
+            const response = await fetch("/api/changesets/validate", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ sessionId, changeSetId: result.changeSetId }),
+            });
+            const payload = await response.json().catch(() => null);
+            if (response.ok && payload) {
+              rerunStatus.textContent = "Rerun recorded";
+              appendValidation(payload);
+            } else if (response.status === 409) {
+              rerun.disabled = false;
+              rerunStatus.textContent = "Rerun blocked — the file or session is busy";
+            } else if (response.status === 404) {
+              rerunStatus.textContent = "Change set is no longer available";
+            } else {
+              rerun.disabled = false;
+              rerunStatus.textContent = "Rerun failed";
+            }
+          } catch {
+            rerun.disabled = false;
+            rerunStatus.textContent = "Rerun failed";
+          }
+        });
+        actions.append(rerun, rerunStatus);
+        div.appendChild(actions);
       }
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;

@@ -158,3 +158,17 @@ test("planner never copies diff text into a shell command", () => {
     assert.equal(check.command.args.join(" ").includes("rm -rf"), false);
   }
 });
+
+test("an explicit validation id is preserved for a trusted rerun", () => {
+  const input = review("cs-rerun", [
+    { path: "packages/tools/src/filesystem.ts", before: "a", after: "b" },
+  ]);
+  const plan = deriveValidationPlan(input, {
+    ...context,
+    validationId: "validation:cs-rerun:attempt-1",
+  });
+
+  assert.equal(plan.status, "ready");
+  assert.equal(plan.validationId, "validation:cs-rerun:attempt-1");
+  assert.equal(plan.changeSetId, "cs-rerun");
+});

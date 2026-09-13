@@ -11,6 +11,7 @@ import {
   type MemoryEntry,
   type SessionMetadata,
   type ValidationRecord,
+  type ValidationResult,
 } from "@dev-agent/agent-core";
 import type { ChatUsage } from "@dev-agent/model";
 
@@ -37,6 +38,11 @@ export interface DesktopChatSession {
   ): Promise<void>;
   /** Applies a guarded rollback for a change set prepared by this session. */
   rollbackChangeSet?(changeSetId: string): Promise<unknown>;
+  /** Reruns trusted validation for an applied change set without changing files. */
+  rerunValidation?(
+    changeSetId: string,
+    options?: { readonly signal?: AbortSignal }
+  ): Promise<ValidationResult>;
   close?(): Promise<void>;
 }
 
@@ -341,6 +347,70 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         return;
       }
 
+      if (req.method === "POST" && url.pathname === "/api/changesets/validate") {
+        const body = await readBody(req);
+        let parsed: { sessionId?: unknown; changeSetId?: unknown };
+        try {
+          parsed = JSON.parse(body) as { sessionId?: unknown; changeSetId?: unknown };
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          return;
+        }
+
+        const changeSetId =
+          typeof parsed.changeSetId === "string" ? parsed.changeSetId.trim() : "";
+        if (!changeSetId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "changeSetId is required" }));
+          return;
+        }
+
+        const sessionId = normalizeSessionId(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : defaultSessionId
+        );
+        if (inFlight.has(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({ error: "a chat or validation request is already running in this session" })
+          );
+          return;
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        if (!session.rerunValidation) {
+          res.writeHead(501, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "validation rerun is unavailable" }));
+          return;
+        }
+
+        const controller = new AbortController();
+        inFlight.add(sessionId);
+        runControllers.set(sessionId, controller);
+        try {
+          const result = await session.rerunValidation(changeSetId, {
+            signal: controller.signal,
+          });
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ sessionId, ...result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          res.writeHead(validationErrorStatus(message), { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: message }));
+        } finally {
+          inFlight.delete(sessionId);
+          if (runControllers.get(sessionId) === controller) {
+            runControllers.delete(sessionId);
+          }
+        }
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/api/changesets/rollback") {
         const body = await readBody(req);
         let parsed: { sessionId?: unknown; changeSetId?: unknown };
@@ -565,6 +635,16 @@ function approvalTimeoutMs(): number {
 function sseMaxBytes(): number {
   const parsed = Number.parseInt(process.env.DEV_AGENT_SSE_MAX_BYTES ?? "", 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 32 * 1024 * 1024;
+}
+
+function validationErrorStatus(message: string): 404 | 409 | 500 {
+  if (/unknown|expired/i.test(message)) {
+    return 404;
+  }
+  if (/conflict|cannot be used|already in flight|prepared|rolled-back/i.test(message)) {
+    return 409;
+  }
+  return 500;
 }
 
 function rollbackErrorStatus(message: string): 404 | 409 | 500 {

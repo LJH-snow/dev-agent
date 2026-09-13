@@ -4,6 +4,7 @@ import { createInterface } from "node:readline/promises";
 import { readdir, rename, rm, stat } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   AgentLoop,
@@ -11,9 +12,12 @@ import {
   compileApprovalConfig,
   normalizeApprovalKey,
   createAgentContext,
+  createBlockedValidationResult,
+  createValidationAttemptId,
   denyDangerousPolicy,
   reviewWritesPolicy,
   FileMemory,
+  runValidationAttempt,
   type AgentContext,
   type AgentMemory,
   type ApprovalPolicy,
@@ -365,6 +369,7 @@ export async function main(argv: string[]): Promise<void> {
       tools.register(tool);
     }
     const filesystem = tools.get("filesystem");
+    const validation = createCliValidationAdapter(executor);
     const approval = buildApprovalPolicy(
       approvalMode,
       questionBox,
@@ -467,6 +472,11 @@ export async function main(argv: string[]): Promise<void> {
       workingDirectory,
       metadata: { cliVersion: version, provider: provider.id },
     });
+    const rerunValidation =
+      filesystem instanceof FilesystemTool
+        ? (changeSetId: string, signal?: AbortSignal) =>
+            runExplicitValidation(filesystem, validation, context, changeSetId, signal)
+        : undefined;
     // Token streaming would interleave with the JSON document.
     const streaming = new StreamingRun({ enabled: !noStream && !jsonOutput });
     const reviews: ReviewRecord[] = [];
@@ -503,7 +513,7 @@ export async function main(argv: string[]): Promise<void> {
           printValidationResult(result);
         }
       },
-      validation: createCliValidationAdapter(executor),
+      validation,
       onTurn: (turn) => {
         if (!jsonOutput) {
           process.stdout.write(`[turn ${turn}]\n`);
@@ -531,7 +541,7 @@ export async function main(argv: string[]): Promise<void> {
     await interactive(loop, context, streaming, questionBox, jsonOutput, {
       model: provider.model,
       pricing: config.pricing,
-    }, reviews, validations);
+    }, reviews, validations, rerunValidation);
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
   }
@@ -1038,7 +1048,8 @@ async function interactive(
   jsonOutput = false,
   cost?: UsageCostOptions,
   reviews: readonly ReviewRecord[] = [],
-  validations: readonly ValidationResult[] = []
+  validations: ValidationResult[] = [],
+  rerunValidation?: ValidationRerunner
 ): Promise<void> {
   const rl = createInterface({
     input: process.stdin,
@@ -1048,7 +1059,7 @@ async function interactive(
   // on the same stdin.
   questionBox.ask = (prompt) => rl.question(prompt);
 
-  console.log("dev-agent CLI. Type 'exit' or 'quit' to stop.");
+  console.log("dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':validate <changeSetId>' to rerun trusted checks.");
   let interrupted = false;
   let abort: AbortController | undefined;
   // Closing the readline interface does not settle a pending `question()` --
@@ -1088,6 +1099,40 @@ async function interactive(
         break;
       }
       if (!prompt) {
+        continue;
+      }
+
+      if (prompt === ":validate" || prompt.startsWith(":validate ")) {
+        const changeSetId = prompt.slice(":validate".length).trim();
+        if (!changeSetId) {
+          console.error("Usage: :validate <changeSetId>");
+          continue;
+        }
+        if (!rerunValidation) {
+          console.error("Validation rerun is unavailable because the filesystem tool is unavailable.");
+          continue;
+        }
+        const controller = new AbortController();
+        abort = controller;
+        try {
+          const validation = await rerunValidation(changeSetId, controller.signal);
+          validations.push(validation);
+          if (jsonOutput) {
+            console.log(JSON.stringify({ validation }, null, 2));
+          } else {
+            printValidationResult(validation);
+          }
+        } catch (error) {
+          if (!interrupted) {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`Validation rerun failed: ${message}`);
+          }
+        } finally {
+          abort = undefined;
+        }
+        if (interrupted) {
+          break;
+        }
         continue;
       }
 
@@ -1131,13 +1176,59 @@ interface UsageCostOptions {
 function createCliValidationAdapter(executor: ReturnType<typeof createExecutor>): ValidationAdapter {
   const runner = createValidationRunner(executor);
   return {
-    prepare: (review, context) =>
+    prepare: (review, context, options) =>
       deriveValidationPlan(review, {
         workingDirectory: context.workingDirectory,
         isGitRepository: existsSync(join(context.workingDirectory, ".git")),
+        validationId: options?.validationId,
       }),
     run: (plan, options) => runner.run(plan, options),
   };
+}
+
+type ValidationRerunner = (
+  changeSetId: string,
+  signal?: AbortSignal
+) => Promise<ValidationResult>;
+
+/** Runs an explicit, guarded validation attempt from the interactive CLI. */
+export async function runExplicitValidation(
+  filesystem: FilesystemTool,
+  validation: ValidationAdapter,
+  context: AgentContext,
+  changeSetId: string,
+  signal?: AbortSignal
+): Promise<ValidationResult> {
+  const startedAt = Date.now();
+  const validationId = createValidationAttemptId(changeSetId);
+  let result: ValidationResult;
+  try {
+    result = await filesystem.withAppliedChangeSet(changeSetId, (review) =>
+      runValidationAttempt(validation, review, context, {
+        signal,
+        validationId,
+      })
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!/postimage|hash conflict|cannot rollback non-empty directory/i.test(message)) {
+      throw error;
+    }
+    result = createBlockedValidationResult(
+      changeSetId,
+      validationId,
+      `validation rerun blocked: ${message}`,
+      startedAt
+    );
+  }
+
+  try {
+    await context.memory.recordValidation?.(result);
+  } catch {
+    // Evidence persistence is best-effort; rerunning checks must never mutate
+    // or roll back the applied files because recording failed.
+  }
+  return result;
 }
 
 function printValidationResult(result: ValidationResult): void {
@@ -1601,7 +1692,9 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
-main(process.argv).catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main(process.argv).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}
