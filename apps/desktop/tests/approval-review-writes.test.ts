@@ -141,3 +141,48 @@ test("review-writes without a requester denies a filesystem mutation", async () 
     assert.match(denial.data.reason, /interactive review/);
   });
 });
+
+test("review-writes can rollback an approved change set", async () => {
+  await withSession(async ({ target, session }) => {
+    let changeSetId;
+    await session.run(
+      "change and then undo the file",
+      () => {},
+      {
+        requestApproval: async (prompt) => {
+          changeSetId = prompt.review.changeSetId;
+          return "allow";
+        },
+      }
+    );
+
+    assert.equal(await readFile(target, "utf8"), "changed\n");
+    const result = await session.rollbackChangeSet(changeSetId);
+    assert.equal(result.ok, true);
+    assert.equal(result.changeSetId, changeSetId);
+    assert.equal(await readFile(target, "utf8"), "keep\n");
+  });
+});
+
+test("review-writes refuses rollback after the applied bytes changed", async () => {
+  await withSession(async ({ target, session }) => {
+    let changeSetId;
+    await session.run(
+      "change the file",
+      () => {},
+      {
+        requestApproval: async (prompt) => {
+          changeSetId = prompt.review.changeSetId;
+          return "allow";
+        },
+      }
+    );
+
+    await writeFile(target, "external change\n", "utf8");
+    await assert.rejects(
+      () => session.rollbackChangeSet(changeSetId),
+      /postimage.*conflict|postimage.*hash conflict/
+    );
+    assert.equal(await readFile(target, "utf8"), "external change\n");
+  });
+});

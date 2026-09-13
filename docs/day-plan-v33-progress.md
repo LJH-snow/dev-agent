@@ -4,8 +4,8 @@
 
 ## 当前状态
 
-- 当前阶段：Task 6，Desktop 审批 UI、回滚 endpoint 和 SSE 事件
-- 已完成阶段：Task 0、Task 1、Task 2、Task 3、Task 4、Task 5；v32 已完成并推送到 `origin/main`
+- 当前阶段：Task 7，文档、全量回归与发布
+- 已完成阶段：Task 0、Task 1、Task 2、Task 3、Task 4、Task 5、Task 6；v32 已完成并推送到 `origin/main`
 - 工作区基线：`bd05586 docs: record v32 release verification`
 - 最近一次 v32 验证：TypeScript 477/477、Rust 46/46、真实运行时集成 10/10 通过
 
@@ -37,7 +37,8 @@
 | Task 2 | 已完成 | preview/apply/rollback 红测与目录依赖边界红测后，tools 全套 90/90 通过 | `83e15db feat(filesystem): preview atomically apply and rollback changes` |
 | Task 3 | 已完成 | 首次测试因 ApprovalPolicy 不含 prepare、ApprovalRequest 不含 review 而编译失败；随后 agent-core 全套 76/76 通过 | `8a325ec feat(agent): prepare reviewed tool changes before approval` |
 | Task 4 | 已完成 | mode/policy 初次编译红测；MCP review-writes 初次因复用 deny-dangerous 而返回 workspace 越界理由；修正后 agent-core 79/79、CLI 99/99、Desktop 55/55 通过 | `aa646ab feat: add review-writes approval mode` |
-| Task 5 | 已完成 | CLI E2E 首次因 JSON 缺少 `reviews` 失败；随后 CLI build 与全套 **101/101** 通过，JSON 只输出一个对象且记录 allow review | `feat(cli): show and record reviewed diffs`（待提交） |
+| Task 5 | 已完成 | CLI E2E 首次因 JSON 缺少 `reviews` 失败；随后 CLI build 与全套 **101/101** 通过，JSON 只输出一个对象且记录 allow review | `d546dd8 feat(cli): show and record reviewed diffs` |
+| Task 6 | 已完成 | Desktop rollback 方法、SSE review payload、endpoint 与 UI 初次红测后，Desktop 全套 **61/61** 通过；UI 脚本 `node --check` 通过 | `feat(desktop): review diffs and rollback change sets`（待提交） |
 
 ### Task 1：建立 change-set 数据模型、哈希和统一 diff（已完成）
 
@@ -79,7 +80,15 @@
 - GREEN：`pnpm --filter @dev-agent/cli build` 与 `pnpm --filter @dev-agent/cli test` 通过，CLI **101/101**。
 - 覆盖：人类模式显示 change-set id、文件路径、增删统计和 unified diff；拒绝保持原文件字节不变；批准后执行 apply；`--json` stdout 保持单个 JSON 对象并追加结构化 `reviews` 数组。
 - 实现：CLI 在 `AgentLoop.onApproval` 收集 review DTO、decision、文件增删统计和真实 diff；`runPrompt` 将累计 review 写入 JSON，交互模式跨 prompt 保持同一 session 的 review 记录。
-- 提交：待账本同步后提交 `feat(cli): show and record reviewed diffs`。
+- 提交：`d546dd8 feat(cli): show and record reviewed diffs`。
+
+### Task 6：Desktop 审批 UI、回滚 endpoint 和 SSE 事件（已完成）
+
+- RED：新增 ChatSession rollback、SSE review、rollback route、并发冲突和 UI 静态检查后，首次因 `rollbackChangeSet`、route 和 UI 入口尚不存在而失败；中途修正测试等待逻辑，并保留 ask 模式的 “Always allow”。
+- GREEN：`pnpm --filter @dev-agent/desktop test` 通过，Desktop **61/61**；从 HTML `<script>` 抽出的浏览器脚本通过 `node --check`。
+- 覆盖：approval-request 携带完整 review；批准后顺序为 approval → tool-result；rollback 成功返回 apply result；postimage 冲突映射 409 且不覆盖外部修改；运行中 rollback 返回 409；review UI 使用 `textContent`/`<pre>` 展示 diff，review request 隐藏 Always allow，批准后提供 Undo。
+- 实现：`ChatSession.rollbackChangeSet` 委托同一 filesystem change-set store；Desktop server 增加 guarded rollback route、未知/冲突状态码和 review SSE payload；浏览器端维护 review card、Undo 状态和 session 绑定。
+- 提交：待账本同步后提交 `feat(desktop): review diffs and rollback change sets`。
 
 ## 错误与卡点
 

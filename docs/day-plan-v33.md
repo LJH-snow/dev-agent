@@ -272,8 +272,8 @@ git commit -m "feat(cli): show and record reviewed diffs"
 - 新增 `POST /api/changesets/rollback`，body `{ sessionId, changeSetId }`；成功返回 apply result，运行中返回 409，未知/冲突 change set 返回 404/409。
 - `DesktopChatSession.rollbackChangeSet?(changeSetId): Promise<unknown>` 为可选接口，fake sessions 不受影响。
 
-- [ ] **Step 1: 写 Desktop 失败测试。** 使用 deterministic provider 触发 safe filesystem write：SSE 必须按 `approval-request(review)` → 用户 deny/allow → `approval` → `tool-result` 顺序；deny 和 approval timeout 后 hash 不变；allow 后 apply 写入并返回 changeSetId；rollback endpoint 恢复原始 bytes，postimage 被外部修改时返回冲突且不覆盖。
-- [ ] **Step 2: 运行 focused test 确认失败。**
+- [x] **Step 1: 写 Desktop 失败测试。** 使用 deterministic provider 触发 safe filesystem write：SSE 必须按 `approval-request(review)` → 用户 deny/allow → `approval` → `tool-result` 顺序；deny 和 approval timeout 后 hash 不变；allow 后 apply 写入并返回 changeSetId；rollback endpoint 恢复原始 bytes，postimage 被外部修改时返回冲突且不覆盖。
+- [x] **Step 2: 运行 focused test 确认失败。**
 
 ```bash
 pnpm --filter @dev-agent/desktop test -- --test-name-pattern="review-writes|rollback"
@@ -281,9 +281,9 @@ pnpm --filter @dev-agent/desktop test -- --test-name-pattern="review-writes|roll
 
 Expected: FAIL，因为 review payload、rollback route 和 UI 尚不存在。
 
-- [ ] **Step 3: 实现 SSE payload 和 endpoint。** `waitForApproval` 把 review 放入 approval-request；审批结果在 approval frame 保持旧字段并补 changeSetId；rollback route 按 session 查找 changeSet，拒绝并发 run，再调用 `rollbackChangeSet`。
-- [ ] **Step 4: 实现浏览器 diff UI。** 用 `textContent` 和 `<pre>` 渲染真实 diff，按文件显示增删统计；review request 显示 Allow/Deny，不为每个 change set 提供“Always allow”；批准后显示 Undo 按钮，调用 rollback endpoint 并展示成功/冲突状态。未知 SSE event 继续忽略。
-- [ ] **Step 5: 运行 Desktop 全套测试。**
+- [x] **Step 3: 实现 SSE payload 和 endpoint。** `waitForApproval` 把 review 放入 approval-request；审批结果在 approval frame 保持旧字段并补 changeSetId；rollback route 按 session 查找 changeSet，拒绝并发 run，再调用 `rollbackChangeSet`。
+- [x] **Step 4: 实现浏览器 diff UI。** 用 `textContent` 和 `<pre>` 渲染真实 diff，按文件显示增删统计；review request 显示 Allow/Deny，不为每个 change set 提供“Always allow”；批准后显示 Undo 按钮，调用 rollback endpoint 并展示成功/冲突状态。未知 SSE event 继续忽略。
+- [x] **Step 5: 运行 Desktop 全套测试。**
 
 ```bash
 pnpm --filter @dev-agent/desktop test
@@ -291,7 +291,7 @@ pnpm --filter @dev-agent/desktop test
 
 Expected: 新增 review/rollback 测试和原有 52 个测试全部通过。
 
-- [ ] **Step 6: Commit。**
+- [x] **Step 6: Commit。**
 
 ```bash
 git add apps/desktop/src/chat-session.ts apps/desktop/src/server.ts apps/desktop/public/index.html apps/desktop/tests/approval-review-writes.test.ts apps/desktop/tests/server.test.ts

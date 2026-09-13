@@ -72,6 +72,11 @@
     .msg.denied { align-self: center; background: var(--error-bg); color: var(--error-fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 6px 10px; border-radius: 8px; }
     .msg.approval { align-self: flex-start; background: var(--tool-bg); color: var(--tool-fg); font-size: 13px; padding: 10px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; max-width: 760px; width: 100%; }
     .msg.approval .actions { display: flex; gap: 8px; }
+    .msg.approval .review-summary { font-weight: 600; }
+    .msg.approval .review-file { border-top: 1px solid var(--border); padding-top: 8px; }
+    .msg.approval .review-file-label { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
+    .msg.approval pre { margin: 6px 0 0; padding: 8px; border-radius: 8px; background: var(--bg); color: var(--fg); overflow: auto; max-height: 240px; white-space: pre; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .msg.approval .undo-status { color: var(--muted); font-size: 12px; }
     .composer {
       border-top: 1px solid var(--border);
       padding: 12px 16px;
@@ -153,6 +158,7 @@
     let hasCost = false;
     let currentSessionId = null;
     let sessionSummaries = new Map();
+    const approvalMessages = new Map();
 
     function setStatus(text) { status.textContent = text; }
 
@@ -262,6 +268,7 @@
       div.className = "msg approval";
       const label = document.createElement("div");
       label.textContent = "Approve " + request.tool + (request.reason ? ": " + request.reason : "");
+      const requestSessionId = currentSessionId;
       const actions = document.createElement("div");
       actions.className = "actions";
       const allow = document.createElement("button");
@@ -270,14 +277,44 @@
       const deny = document.createElement("button");
       deny.type = "button";
       deny.textContent = "Deny";
-      const allowAlways = document.createElement("button");
-      allowAlways.type = "button";
-      allowAlways.textContent = "Always allow";
+      let allowAlways = null;
+      if (!request.review) {
+        allowAlways = document.createElement("button");
+        allowAlways.type = "button";
+        allowAlways.textContent = "Always allow";
+      }
+
+      if (request.review) {
+        const review = document.createElement("div");
+        const summary = document.createElement("div");
+        summary.className = "review-summary";
+        summary.textContent =
+          "Change set " + request.review.changeSetId + ": " +
+          request.review.files.length + " file(s), +" + request.review.additions + "/-" + request.review.deletions;
+        review.appendChild(summary);
+        for (const file of request.review.files ?? []) {
+          const filePanel = document.createElement("div");
+          filePanel.className = "review-file";
+          const fileLabel = document.createElement("div");
+          fileLabel.className = "review-file-label";
+          fileLabel.textContent =
+            file.path + " (+" + file.additions + "/-" + file.deletions + ")";
+          const diff = document.createElement("pre");
+          diff.textContent = file.diff || "(no textual changes; existence and hashes are still checked)";
+          filePanel.append(fileLabel, diff);
+          review.appendChild(filePanel);
+        }
+        div.appendChild(review);
+        approvalMessages.set(request.review.changeSetId, {
+          element: div,
+          sessionId: requestSessionId,
+        });
+      }
 
       const decide = async (decision) => {
         allow.disabled = true;
         deny.disabled = true;
-        allowAlways.disabled = true;
+        if (allowAlways) allowAlways.disabled = true;
         label.textContent = label.textContent + " — " + decision;
         try {
           await fetch("/api/approval", {
@@ -292,11 +329,54 @@
 
       allow.addEventListener("click", () => decide("allow"));
       deny.addEventListener("click", () => decide("deny"));
-      allowAlways.addEventListener("click", () => decide("allow-always"));
-      actions.append(allow, deny, allowAlways);
+      if (allowAlways) {
+        allowAlways.addEventListener("click", () => decide("allow-always"));
+        actions.append(allow, deny, allowAlways);
+      } else {
+        actions.append(allow, deny);
+      }
       div.append(label, actions);
       messages.appendChild(div);
       messages.scrollTop = messages.scrollHeight;
+    }
+
+    function appendUndo(changeSetId, approvalEntry) {
+      const approvalMessage = approvalEntry?.element;
+      if (!approvalMessage || approvalMessage.querySelector("[data-undo]")) return;
+      const actions = approvalMessage.querySelector(".actions");
+      if (!actions) return;
+      const undo = document.createElement("button");
+      undo.type = "button";
+      undo.textContent = "Undo";
+      undo.dataset.undo = changeSetId;
+      const undoStatus = document.createElement("span");
+      undoStatus.className = "undo-status";
+      const sessionId = approvalEntry.sessionId;
+      undo.addEventListener("click", async () => {
+        undo.disabled = true;
+        try {
+          const res = await fetch("/api/changesets/rollback", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ sessionId, changeSetId }),
+          });
+          if (res.ok) {
+            undoStatus.textContent = "Undone";
+          } else if (res.status === 409) {
+            undo.disabled = false;
+            undoStatus.textContent = "Undo conflict — the file changed";
+          } else if (res.status === 404) {
+            undoStatus.textContent = "Change set is no longer available";
+          } else {
+            undo.disabled = false;
+            undoStatus.textContent = "Undo failed";
+          }
+        } catch {
+          undo.disabled = false;
+          undoStatus.textContent = "Undo failed";
+        }
+      });
+      actions.append(undo, undoStatus);
     }
 
     sessionSelect.addEventListener("change", async () => {
@@ -515,6 +595,12 @@
           renderUsage();
           break;
         case "approval":
+          if (parsed.decision === "allow" && parsed.review?.changeSetId) {
+            appendUndo(
+              parsed.review.changeSetId,
+              approvalMessages.get(parsed.review.changeSetId)
+            );
+          }
           if (parsed.decision === "deny") {
             appendMessage(
               "denied",

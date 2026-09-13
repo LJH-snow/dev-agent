@@ -222,6 +222,11 @@ export class ChatSession {
     }
   }
 
+  /** Rolls back the most recently prepared change set when its postimage still matches. */
+  async rollbackChangeSet(changeSetId: string): Promise<unknown> {
+    return this.filesystem.rollbackChangeSet(changeSetId);
+  }
+
   private async ensureMcpTools(signal?: AbortSignal): Promise<void> {
     if (this.mcpServers.length === 0) {
       return;

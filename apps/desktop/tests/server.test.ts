@@ -32,6 +32,58 @@ function fakeSession() {
   };
 }
 
+const review = {
+  changeSetId: "change-set-server-1",
+  files: [
+    {
+      path: "/workspace/example.txt",
+      kind: "file",
+      beforeHash: "before",
+      afterHash: "after",
+      diff: "--- a/example.txt\n+++ b/example.txt\n@@\n-old\n+new\n",
+      additions: 1,
+      deletions: 1,
+      beforeExists: true,
+      afterExists: true,
+    },
+  ],
+  additions: 1,
+  deletions: 1,
+  createdAt: "2026-09-13T00:00:00.000Z",
+};
+
+function parseSseBlock(block) {
+  let type = "message";
+  let data = "";
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event: ")) type = line.slice(7).trim();
+    else if (line.startsWith("data: ")) data += line.slice(6);
+  }
+  return data ? { type, data: JSON.parse(data) } : undefined;
+}
+
+async function readSse(response, onEvent) {
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const events = [];
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let index;
+    while ((index = buffer.indexOf("\n\n")) >= 0) {
+      const event = parseSseBlock(buffer.slice(0, index));
+      buffer = buffer.slice(index + 2);
+      if (event) {
+        events.push(event);
+        await onEvent?.(event);
+      }
+    }
+  }
+  return events;
+}
+
 test("GET /health returns ok", async () => {
   const server = createDesktopServer();
   const base = await start(server);
@@ -56,8 +108,155 @@ test("GET / serves the chat UI", async () => {
     const html = await res.text();
     assert.match(html, /dev-agent/);
     assert.match(html, /tool-progress/);
+    assert.match(html, /changesets\/rollback/);
+    assert.match(html, /createElement\("pre"\)/);
   } finally {
     await close(server);
+  }
+});
+
+test("review approval SSE includes the change-set review", async () => {
+  let rollbackCalls = [];
+  const session = {
+    async run(_message, emit, options) {
+      const decision = await options.requestApproval({
+        tool: "filesystem",
+        input: { action: "write", path: review.files[0].path, content: "new\n" },
+        review,
+      });
+      emit({ type: "approval", data: { tool: "filesystem", decision, review } });
+      emit({ type: "tool-result", data: { name: "filesystem", output: { ok: true } } });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+    async rollbackChangeSet(changeSetId) {
+      rollbackCalls.push(changeSetId);
+      return { ok: true, changeSetId, files: [], additions: 0, deletions: 0 };
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "review this change" }),
+    });
+    const events = await readSse(response, async (event) => {
+      if (event.type !== "approval-request") return;
+      assert.deepEqual(event.data.review, review);
+      const approval = await fetch(`${base}/api/approval`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: event.data.id, decision: "allow" }),
+      });
+      assert.equal(approval.status, 200);
+    });
+
+    const requestIndex = events.findIndex((event) => event.type === "approval-request");
+    const approvalIndex = events.findIndex((event) => event.type === "approval");
+    const resultIndex = events.findIndex((event) => event.type === "tool-result");
+    assert.ok(requestIndex >= 0);
+    assert.ok(approvalIndex > requestIndex);
+    assert.ok(resultIndex > approvalIndex);
+    assert.deepEqual(events[approvalIndex].data.review, review);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("POST /api/changesets/rollback delegates to the session", async () => {
+  const calls = [];
+  const session = {
+    async run() {},
+    async rollbackChangeSet(changeSetId) {
+      calls.push(changeSetId);
+      return { ok: true, changeSetId, files: [], additions: 0, deletions: 0 };
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/changesets/rollback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ changeSetId: review.changeSetId }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      ok: true,
+      changeSetId: review.changeSetId,
+      files: [],
+      additions: 0,
+      deletions: 0,
+    });
+    assert.deepEqual(calls, [review.changeSetId]);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("POST /api/changesets/rollback maps a postimage conflict to 409", async () => {
+  const session = {
+    async run() {},
+    async rollbackChangeSet(changeSetId) {
+      throw new Error(`filesystem change set ${changeSetId} postimage hash conflict at /workspace/example.txt`);
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/changesets/rollback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ changeSetId: review.changeSetId }),
+    });
+    assert.equal(response.status, 409);
+    const body: any = await response.json();
+    assert.match(body.error, /postimage hash conflict/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("POST /api/changesets/rollback returns 409 while the session is running", async () => {
+  let release;
+  let started;
+  const running = new Promise((resolve) => {
+    started = resolve;
+  });
+  const session = {
+    async run(_message, emit) {
+      emit({ type: "turn", data: { turn: 1 } });
+      started();
+      await new Promise((resolve) => {
+        release = resolve;
+      });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+    async rollbackChangeSet() {
+      throw new Error("rollback should not run while chat is active");
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const chat = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "keep running" }),
+    });
+    await running;
+    const response = await fetch(`${base}/api/changesets/rollback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ changeSetId: review.changeSetId }),
+    });
+    assert.equal(response.status, 409);
+    release();
+    await chat.text();
+  } finally {
+    release?.();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 });
 

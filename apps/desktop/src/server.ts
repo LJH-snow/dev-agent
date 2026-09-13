@@ -30,6 +30,8 @@ export interface DesktopChatSession {
       readonly requestApproval?: ApprovalRequester;
     }
   ): Promise<void>;
+  /** Applies a guarded rollback for a change set prepared by this session. */
+  rollbackChangeSet?(changeSetId: string): Promise<unknown>;
   close?(): Promise<void>;
 }
 
@@ -332,6 +334,61 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         return;
       }
 
+      if (req.method === "POST" && url.pathname === "/api/changesets/rollback") {
+        const body = await readBody(req);
+        let parsed: { sessionId?: unknown; changeSetId?: unknown };
+        try {
+          parsed = JSON.parse(body) as { sessionId?: unknown; changeSetId?: unknown };
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          return;
+        }
+
+        const changeSetId =
+          typeof parsed.changeSetId === "string" ? parsed.changeSetId.trim() : "";
+        if (!changeSetId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "changeSetId is required" }));
+          return;
+        }
+
+        const sessionId = normalizeSessionId(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : defaultSessionId
+        );
+        if (inFlight.has(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({ error: "a chat request is already running in this session" })
+          );
+          return;
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        if (!session.rollbackChangeSet) {
+          res.writeHead(501, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "change-set rollback is unavailable" }));
+          return;
+        }
+
+        try {
+          const result = await session.rollbackChangeSet(changeSetId);
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const status = rollbackErrorStatus(message);
+          res.writeHead(status, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: message }));
+        }
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/api/approval") {
         const body = await readBody(req);
         let parsed: { id?: unknown; decision?: unknown };
@@ -503,6 +560,16 @@ function sseMaxBytes(): number {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 32 * 1024 * 1024;
 }
 
+function rollbackErrorStatus(message: string): 404 | 409 | 500 {
+  if (/unknown|expired/i.test(message)) {
+    return 404;
+  }
+  if (/conflict|cannot be rolled back|already rolled back/i.test(message)) {
+    return 409;
+  }
+  return 500;
+}
+
 /** Asks the client for a decision, denying when nothing comes back in time. */
 function waitForApproval(
   approvals: Map<string, (decision: ApprovalDecision) => void>,
@@ -513,7 +580,13 @@ function waitForApproval(
   const id = randomUUID();
   emit({
     type: "approval-request",
-    data: { id, tool: prompt.tool, reason: prompt.reason, input: prompt.input },
+    data: {
+      id,
+      tool: prompt.tool,
+      reason: prompt.reason,
+      input: prompt.input,
+      ...(prompt.review === undefined ? {} : { review: prompt.review }),
+    },
   });
 
   return new Promise((resolve) => {
