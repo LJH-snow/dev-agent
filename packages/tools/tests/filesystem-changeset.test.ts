@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { lstat, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -310,3 +310,173 @@ test("rollback cannot race an active applied change-set guard", async () => {
     await running;
   });
 });
+
+test("a fresh filesystem tool restores applied evidence for a read-only guard", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const original: any = new FilesystemTool();
+    const prepared = await original.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(original, prepared, context);
+
+    const restored: any = new FilesystemTool();
+    await restored.restoreAppliedChangeSet(toEvidence(prepared.review, directory, context.sessionId), context);
+
+    const observed = await restored.withAppliedChangeSet(
+      prepared.review.changeSetId,
+      async (review) => ({ changeSetId: review.changeSetId, path: review.files[0].path })
+    );
+    assert.deepEqual(observed, { changeSetId: prepared.review.changeSetId, path });
+    assert.equal(await readFile(path, "utf8"), "after\n");
+  });
+});
+
+test("restoring applied evidence enforces session, working-directory, and relative-path binding", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const original: any = new FilesystemTool();
+    const prepared = await original.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(original, prepared, context);
+    const record = toEvidence(prepared.review, directory, context.sessionId);
+
+    await assert.rejects(
+      () => new (FilesystemTool as any)().restoreAppliedChangeSet({ ...record, sessionId: "other-session" }, context),
+      /session/
+    );
+    await assert.rejects(
+      () => new (FilesystemTool as any)().restoreAppliedChangeSet({ ...record, workingDirectory: join(directory, "alias") }, context),
+      /working directory/
+    );
+    await assert.rejects(
+      () => new (FilesystemTool as any)().restoreAppliedChangeSet({
+        ...record,
+        files: [{ ...record.files[0], path: "../outside.txt" }],
+      }, context),
+      /relative|outside|path/
+    );
+    await assert.rejects(
+      () => new (FilesystemTool as any)().restoreAppliedChangeSet({
+        ...record,
+        files: [{ ...record.files[0], path }],
+      }, context),
+      /relative|outside|path/
+    );
+  });
+});
+
+test("restoring applied evidence rejects duplicate paths and ancestor symlink escapes", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const original: any = new FilesystemTool();
+    const prepared = await original.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(original, prepared, context);
+    const record = toEvidence(prepared.review, directory, context.sessionId);
+
+    await assert.rejects(
+      () => new (FilesystemTool as any)().restoreAppliedChangeSet({
+        ...record,
+        files: [...record.files, record.files[0]],
+      }, context),
+      /duplicate|persisted evidence|path/
+    );
+
+    const outside = await mkdtemp(join(tmpdir(), "dev-agent-restore-outside-"));
+    try {
+      const link = join(directory, "linked");
+      await symlink(outside, link, "dir");
+      const outsidePath = join(outside, "sample.txt");
+      await writeFile(outsidePath, "outside\n", "utf8");
+      await assert.rejects(
+        () => new (FilesystemTool as any)().restoreAppliedChangeSet({
+          ...record,
+          files: [{ ...record.files[0], path: "linked/sample.txt" }],
+        }, context),
+        /symbolic link|symlink|outside|path/
+      );
+      assert.equal(await readFile(outsidePath, "utf8"), "outside\n");
+    } finally {
+      await rm(outside, { recursive: true, force: true });
+    }
+  });
+});
+
+test("restored evidence rechecks the postimage and cannot be rolled back", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const original: any = new FilesystemTool();
+    const prepared = await original.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(original, prepared, context);
+    const record = toEvidence(prepared.review, directory, context.sessionId);
+
+    const restored: any = new FilesystemTool();
+    await restored.restoreAppliedChangeSet(record, context);
+    await assert.rejects(
+      () => restored.rollbackChangeSet(prepared.review.changeSetId),
+      /before-image unavailable|before image unavailable|cross-process/i
+    );
+    await writeFile(path, "changed-by-user\n", "utf8");
+    await assert.rejects(
+      () => restored.withAppliedChangeSet(prepared.review.changeSetId, async () => undefined),
+      /postimage|hash conflict/
+    );
+    assert.equal(await readFile(path, "utf8"), "changed-by-user\n");
+  });
+});
+
+test("batch restore reports blocked records without restoring them", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "sample.txt");
+    await writeFile(path, "before\n", "utf8");
+    const original: any = new FilesystemTool();
+    const prepared = await original.prepareChangeSet(
+      { action: "write", path: "sample.txt", content: "after\n" },
+      context
+    );
+    await applyPrepared(original, prepared, context);
+    const valid = toEvidence(prepared.review, directory, context.sessionId);
+    const wrongSession = { ...valid, changeSetId: "cs-wrong-session", sessionId: "other-session" };
+
+    const restored: any = new FilesystemTool();
+    const results = await restored.restoreAppliedChangeSets([valid, wrongSession], context);
+
+    assert.deepEqual(results.map((result) => result.status), ["restored", "blocked"]);
+    assert.match(results[1].reason, /session/);
+    await assert.rejects(
+      () => restored.withAppliedChangeSet(wrongSession.changeSetId, async () => undefined),
+      /unknown or expired/
+    );
+  });
+});
+
+function toEvidence(review: any, directory: string, sessionId: string): any {
+  return {
+    changeSetId: review.changeSetId,
+    sessionId,
+    workingDirectory: directory,
+    files: review.files.map((file: any) => ({
+      ...file,
+      path: file.path.slice(directory.length + 1),
+      diff: undefined,
+    })),
+    additions: review.additions,
+    deletions: review.deletions,
+    createdAt: review.createdAt,
+    recordedAt: "2026-09-13T00:00:01.000Z",
+    state: "applied",
+  };
+}

@@ -6,13 +6,16 @@ import {
   open,
   readFile,
   readdir,
+  realpath,
   rename,
   rmdir,
   stat,
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { basename, dirname, resolve } from "node:path";
+import { basename, dirname, isAbsolute, relative, resolve, win32 } from "node:path";
+
+import type { AppliedChangeSetRecord, ChangeSetEvidenceFile } from "@dev-agent/agent-core";
 
 import {
   createChangeSetFileReview,
@@ -77,6 +80,12 @@ export interface PreparedChangeSet {
   readonly executeInput: { readonly action: "apply"; readonly changeSetId: string };
 }
 
+export interface ChangeSetRestoreResult {
+  readonly changeSetId: string;
+  readonly status: "restored" | "blocked";
+  readonly reason?: string;
+}
+
 interface FileSnapshot {
   readonly exists: boolean;
   readonly kind?: "file" | "directory";
@@ -102,6 +111,7 @@ interface StoredChangeSet {
   readonly review: ChangeSetReview;
   readonly mutations: readonly PreparedMutation[];
   state: "prepared" | "applied" | "rolled-back";
+  readonly restored?: boolean;
 }
 
 export class FilesystemTool implements Tool {
@@ -269,13 +279,110 @@ export class FilesystemTool implements Tool {
     }
     this.beginChangeSet(changeSetId);
     try {
-      await preflightRollback(record);
+      await preflightForValidation(record);
       const result = await callback(record.review);
-      await preflightRollback(record);
+      await preflightForValidation(record);
       return result;
     } finally {
       this.endChangeSet(changeSetId);
     }
+  }
+
+  /**
+   * Rehydrates a previously applied change set from non-executable evidence.
+   * The record is accepted only when it belongs to this session/workspace and
+   * every recorded postimage still matches. Restored records intentionally do
+   * not contain before-images and therefore cannot be rolled back.
+   */
+  async restoreAppliedChangeSet(
+    record: AppliedChangeSetRecord,
+    context: Pick<ToolExecutionContext, "sessionId" | "workingDirectory">
+  ): Promise<void> {
+    assertAppliedChangeSetRecord(record);
+    if (record.state !== "applied") {
+      throw new Error(
+        `filesystem change set ${record.changeSetId} cannot be restored because it is ${record.state}`
+      );
+    }
+    if (record.sessionId !== context.sessionId) {
+      throw new Error(
+        `filesystem change set ${record.changeSetId} belongs to session ${record.sessionId}, not ${context.sessionId}`
+      );
+    }
+
+    const currentWorkingDirectory = resolve(context.workingDirectory);
+    const currentCanonicalWorkingDirectory = await canonicalWorkingDirectory(currentWorkingDirectory);
+    const recordedWorkingDirectory = resolve(record.workingDirectory);
+    const recordedCanonicalWorkingDirectory = await canonicalWorkingDirectory(recordedWorkingDirectory);
+    if (currentCanonicalWorkingDirectory !== recordedCanonicalWorkingDirectory) {
+      throw new Error(
+        `filesystem change set ${record.changeSetId} working directory mismatch: expected ${recordedCanonicalWorkingDirectory}, got ${currentCanonicalWorkingDirectory}`
+      );
+    }
+
+    const existing = this.changeSets.get(record.changeSetId);
+    if (existing?.state === "applied" && !existing.restored) {
+      await preflightPostimage(existing);
+      return;
+    }
+
+    const files = await Promise.all(
+      record.files.map((file) => restoreEvidenceFile(record.changeSetId, file, currentWorkingDirectory))
+    );
+    const paths = new Set<string>();
+    for (const file of files) {
+      if (paths.has(file.path)) {
+        throw new Error(
+          `filesystem change set ${record.changeSetId} persisted evidence contains a duplicate path: ${file.path}`
+        );
+      }
+      paths.add(file.path);
+    }
+    const review: ChangeSetReview = {
+      changeSetId: record.changeSetId,
+      files,
+      additions: record.additions,
+      deletions: record.deletions,
+      createdAt: record.createdAt,
+    };
+    const mutations: PreparedMutation[] = files.map((file) => ({
+      action: file.kind === "directory" ? "mkdir" : "write",
+      path: file.path,
+      kind: file.kind,
+      review: file,
+      beforeExists: file.beforeExists,
+      afterExists: file.afterExists,
+      createdDirs: [],
+    }));
+    const restored: StoredChangeSet = {
+      review,
+      mutations,
+      state: "applied",
+      restored: true,
+    };
+    await preflightPostimage(restored);
+    this.rememberChangeSet(restored);
+  }
+
+  /** Restores all records and returns an explicit result for every blocked one. */
+  async restoreAppliedChangeSets(
+    records: readonly AppliedChangeSetRecord[],
+    context: Pick<ToolExecutionContext, "sessionId" | "workingDirectory">
+  ): Promise<readonly ChangeSetRestoreResult[]> {
+    const results: ChangeSetRestoreResult[] = [];
+    for (const record of records) {
+      try {
+        await this.restoreAppliedChangeSet(record, context);
+        results.push({ changeSetId: record.changeSetId, status: "restored" });
+      } catch (error) {
+        results.push({
+          changeSetId: record.changeSetId,
+          status: "blocked",
+          reason: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+    return results;
   }
 
   async rollbackChangeSet(changeSetId: string): Promise<ChangeSetApplyResult> {
@@ -283,6 +390,11 @@ export class FilesystemTool implements Tool {
     if (record.state !== "applied") {
       throw new Error(
         `filesystem change set ${changeSetId} cannot be rolled back because it is ${record.state}`
+      );
+    }
+    if (record.restored) {
+      throw new Error(
+        `filesystem change set ${changeSetId} cannot be rolled back because its before-image is unavailable after cross-process restore`
       );
     }
     this.beginChangeSet(changeSetId);
@@ -703,6 +815,38 @@ async function preflightApply(record: StoredChangeSet): Promise<void> {
   }
 }
 
+async function preflightForValidation(record: StoredChangeSet): Promise<void> {
+  if (record.restored) {
+    await preflightPostimage(record);
+    return;
+  }
+  await preflightRollback(record);
+}
+
+async function preflightPostimage(record: StoredChangeSet): Promise<void> {
+  for (const mutation of record.mutations) {
+    const current = await readSnapshot(mutation.path);
+    if (mutation.kind === "file") {
+      assertExpectedFile(
+        record.review.changeSetId,
+        mutation.path,
+        current,
+        mutation.afterExists,
+        mutation.review.afterHash,
+        "postimage"
+      );
+    } else {
+      assertExpectedDirectory(
+        record.review.changeSetId,
+        mutation.path,
+        current,
+        mutation.afterExists,
+        "postimage"
+      );
+    }
+  }
+}
+
 async function preflightRollback(record: StoredChangeSet): Promise<void> {
   for (const mutation of record.mutations) {
     const current = await readSnapshot(mutation.path);
@@ -751,6 +895,145 @@ async function preflightRollback(record: StoredChangeSet): Promise<void> {
       );
     }
   }
+}
+
+function assertAppliedChangeSetRecord(record: AppliedChangeSetRecord): void {
+  if (
+    typeof record !== "object" ||
+    record === null ||
+    typeof record.changeSetId !== "string" ||
+    record.changeSetId.length === 0 ||
+    typeof record.sessionId !== "string" ||
+    record.sessionId.length === 0 ||
+    typeof record.workingDirectory !== "string" ||
+    (!isAbsolute(record.workingDirectory) && !win32.isAbsolute(record.workingDirectory)) ||
+    record.state !== "applied" ||
+    !Number.isInteger(record.additions) ||
+    record.additions < 0 ||
+    !Number.isInteger(record.deletions) ||
+    record.deletions < 0 ||
+    typeof record.createdAt !== "string" ||
+    record.createdAt.length === 0 ||
+    typeof record.recordedAt !== "string" ||
+    record.recordedAt.length === 0 ||
+    !Array.isArray(record.files) ||
+    record.files.length === 0
+  ) {
+    throw new Error(`filesystem change set ${String(record?.changeSetId ?? "unknown")} has invalid persisted evidence`);
+  }
+  for (const file of record.files) {
+    if (
+      typeof file !== "object" ||
+      file === null ||
+      typeof file.path !== "string" ||
+      !isSafeRestorePath(file.path) ||
+      (file.kind !== "file" && file.kind !== "directory") ||
+      !isSha256(file.afterHash) ||
+      (file.beforeHash !== undefined && !isSha256(file.beforeHash)) ||
+      !Number.isInteger(file.additions) ||
+      file.additions < 0 ||
+      !Number.isInteger(file.deletions) ||
+      file.deletions < 0 ||
+      typeof file.beforeExists !== "boolean" ||
+      typeof file.afterExists !== "boolean"
+    ) {
+      throw new Error(
+        `filesystem change set ${record.changeSetId} has invalid persisted evidence for path ${String(file?.path ?? "unknown")}`
+      );
+    }
+  }
+}
+
+async function canonicalWorkingDirectory(path: string): Promise<string> {
+  try {
+    return await realpath(resolve(path));
+  } catch (error) {
+    throw new Error(
+      `filesystem working directory cannot be resolved: ${path} (${error instanceof Error ? error.message : String(error)})`
+    );
+  }
+}
+
+async function restoreEvidenceFile(
+  changeSetId: string,
+  file: ChangeSetEvidenceFile,
+  workingDirectory: string
+): Promise<ChangeSetFileReview> {
+  const path = await resolveRestoredPath(changeSetId, file.path, workingDirectory);
+  return {
+    path,
+    kind: file.kind,
+    beforeHash: file.beforeHash,
+    afterHash: file.afterHash,
+    diff: "",
+    additions: file.additions,
+    deletions: file.deletions,
+    beforeExists: file.beforeExists,
+    afterExists: file.afterExists,
+  };
+}
+
+async function resolveRestoredPath(
+  changeSetId: string,
+  path: string,
+  workingDirectory: string
+): Promise<string> {
+  if (!isSafeRestorePath(path)) {
+    throw new Error(
+      `filesystem change set ${changeSetId} persisted path must be relative and remain inside the working directory: ${path}`
+    );
+  }
+  const target = resolve(workingDirectory, path);
+  const targetRelative = relative(workingDirectory, target);
+  if (
+    targetRelative.length === 0 ||
+    targetRelative.startsWith(".." + "/") ||
+    targetRelative === ".." ||
+    isAbsolute(targetRelative)
+  ) {
+    throw new Error(
+      `filesystem change set ${changeSetId} persisted path escapes the working directory: ${path}`
+    );
+  }
+
+  let cursor = dirname(target);
+  while (cursor !== workingDirectory) {
+    try {
+      const current = await lstat(cursor);
+      if (current.isSymbolicLink()) {
+        throw new Error(
+          `filesystem change set ${changeSetId} persisted path crosses a symbolic link: ${path}`
+        );
+      }
+      if (!current.isDirectory()) {
+        throw new Error(
+          `filesystem change set ${changeSetId} persisted path has a non-directory parent: ${path}`
+        );
+      }
+    } catch (error) {
+      if (!isMissingPathError(error)) {
+        throw error;
+      }
+    }
+    const parent = dirname(cursor);
+    if (parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+  return target;
+}
+
+function isSafeRestorePath(path: string): boolean {
+  if (path.length === 0 || path.includes("\0") || isAbsolute(path) || win32.isAbsolute(path)) {
+    return false;
+  }
+  const normalized = path.replaceAll("\\", "/");
+  return normalized !== "." && normalized !== ".." && !normalized.split("/").includes("..");
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
 }
 
 function assertExpectedFile(

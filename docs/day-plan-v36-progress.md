@@ -29,14 +29,18 @@ v36 计划已建立，目标是解决 v35 明确留下的限制：change-set 状
 - [x] `InMemoryMemory`、`FileMemory` 支持记录、读取、幂等替换和 clear。
 - [x] 旧 `version: 1` 文件（没有 `changeSets` 字段）保持兼容；非法绝对路径、路径穿越、缺失字段、非法 state 或非 SHA-256 evidence 会被拒绝。
 - [x] 聚焦回归：agent-core **97/97**，typecheck 和 `git diff --check` 通过。
-- [x] 已完成提交：待 Task 0 提交。
-
-## 进行中
+- [x] 已完成提交：`2324ed4`。
 
 ### Task 1：FilesystemTool restore guard
 
-- [ ] 增加恢复入口和 postimage-only guard。
-- [ ] 覆盖 session/workdir/path/hash/type/rollback 边界。
+- [x] 增加 `restoreAppliedChangeSet()` / `restoreAppliedChangeSets()`；只恢复 non-executable review/postimage 元数据。
+- [x] 恢复前重新校验 session、canonical working directory、相对路径、重复路径、文件类型、存在性和 SHA-256 postimage；拒绝祖先 symlink escape。
+- [x] 恢复记录使用 postimage-only validation guard，跨进程记录没有 before-image 时明确禁止 rollback；同进程 rollback 不变。
+- [x] 批量恢复返回每条记录的 `restored` / `blocked` 结果和原因。
+- [x] 聚焦回归：tools **120/120**，typecheck 和 `git diff --check` 通过。
+- [x] 已完成提交：待 Task 1 提交。
+
+## 进行中
 
 ### Task 2：AgentLoop、CLI、Desktop 生命周期
 

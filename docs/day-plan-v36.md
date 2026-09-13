@@ -57,22 +57,22 @@
 
 **Produces:** `restoreAppliedChangeSet()` / `restoreAppliedChangeSets()`；恢复记录只能被 `withAppliedChangeSet()` 使用，不能被 `rollbackChangeSet()` 使用。
 
-- [ ] **Step 1: 写失败测试。**
+- [x] **Step 1: 写失败测试。**
   - 用一个新 `FilesystemTool` 实例和持久化记录恢复已应用 change set，postimage 匹配时 `withAppliedChangeSet()` 能执行只读回调。
   - session id 或 resolved working directory 不匹配时恢复失败。
   - 记录中包含绝对路径、路径穿越、重复路径、非法 kind/state 或伪造 hash 时恢复失败。
   - 文件被用户改动、删除、替换成目录，或目录被替换成文件时，恢复/guard 被阻断；任何失败都不写文件。
   - 恢复的 change set 调用 rollback 明确失败；本进程原有完整记录的 rollback 行为不变。
   - 批量恢复只保留合法且 postimage 仍匹配的记录，并返回每条记录的结构化结果/原因，不吞掉 session 隔离错误。
-- [ ] **Step 2: 运行聚焦测试确认 RED。**
-- [ ] **Step 3: 写最小实现。**
+- [x] **Step 2: 运行聚焦测试确认 RED。**
+- [x] **Step 3: 写最小实现。**
   - 恢复前 canonicalize 当前工作目录，检查 record 的 session/workdir 绑定。
   - 只接受相对、规范化后仍位于工作目录内的路径；不跟随历史 evidence 中的命令或 diff。
   - 为恢复记录构造只含 review/postimage 的内存记录；guard 使用独立 postimage 检查，不调用要求 before-image 的 rollback preflight。
   - 将恢复记录标记为 `restored`，rollback 返回明确的 “before-image unavailable” 错误。
   - 批量恢复遵守现有数量上限，不让恢复的 applied 记录淘汰本进程正在使用的记录。
-- [ ] **Step 4: 运行聚焦测试确认 GREEN。**
-- [ ] **Step 5: 提交。**
+- [x] **Step 4: 运行聚焦测试确认 GREEN。**
+- [x] **Step 5: 提交。**
 
 ## Task 2：AgentLoop 记录成功 apply，接通 CLI/Desktop 生命周期
 
