@@ -4,10 +4,10 @@
 
 ## 当前状态
 
-- 当前阶段：阶段 3（文档、全量回归与发布）
-- 已完成阶段：阶段 0、阶段 1、阶段 2；文档和全量验证已完成，待提交发布
+- 当前阶段：阶段 3 已完成，v32 已发布到 `origin/main`
+- 已完成阶段：阶段 0、阶段 1、阶段 2、阶段 3
 - 最近一次运行：2026-09-13，结构检查、构建、类型检查通过；TypeScript 477/477、Rust 46/46、真实运行时集成 10/10 通过
-- 工作区：阶段 2 已提交（`0c08df6`），阶段 3 文档与测试修正尚未提交；准备最终 commit/push
+- 工作区：v32 实现提交 `8b90b7d` 已推送；本账本更新提交随后推送
 
 ## 阶段目标
 
@@ -29,6 +29,8 @@
 2026-09-13：完整验证完成；`node scripts/check.mjs`、`pnpm build`、`pnpm typecheck` 通过；`pnpm test` 汇总为 TypeScript 477/477；`pnpm --filter @dev-agent/executor test:integration` 为 10/10；`cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 和 `cargo test` 通过，Rust 单元/doc 测试 46/46。`git diff --check` 通过，Git 未跟踪 `dist/`、`tests-dist/` 或临时取消 fixture 输出。
 
 2026-09-13：最后人工 review 确认 MCP 请求的 timer、abort listener、pending map 和 progress route 都在 terminal path 清理；桌面 MCP 子进程在 session/server close 时关闭，取消后的 late result 不再进入 SSE。
+
+2026-09-13：v32 实现以 `8b90b7d` 提交并推送到 `origin/main`；计划勾选完成，后续进入 v33 Diff Review。
 
 ## 后续计划（v32 完成后）
 

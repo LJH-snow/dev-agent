@@ -356,7 +356,7 @@ cargo test
 - [x] **Step 4:** 验证 `git diff --check`，确认没有 `dist/`、`tests-dist/` 或临时 fixture 输出被加入 Git。
 - [x] **Step 5:** 记录完整测试数量；以全量命令实际输出为准，不手写旧基线数字。
 - [x] **Step 6:** 完成最后一次人工 review：确认没有 signal listener、timer、pending map 或 progress route 泄漏。
-- [ ] **Step 7: Commit and push the completed v32 plan implementation.**
+- [x] **Step 7: Commit and push the completed v32 plan implementation.**
 
 ```bash
 git add packages/mcp packages/agent-core apps/cli apps/desktop README.md docs/CHANGELOG.md docs/day-plan-v32-progress.md
