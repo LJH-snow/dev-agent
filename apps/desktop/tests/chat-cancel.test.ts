@@ -125,6 +125,34 @@ test("a cancelled session accepts the next request right away", async () => {
   }
 });
 
+
+test("chat SSE preserves tool progress ordering and optional totals", async () => {
+  const session = {
+    id: "default",
+    async run(_message, emit) {
+      emit({ type: "tool", data: { name: "mcp:download", input: {} } });
+      emit({ type: "tool-progress", data: { name: "mcp:download", progress: 4, total: 10 } });
+      emit({ type: "tool-progress", data: { name: "mcp:download", progress: 5 } });
+      emit({ type: "tool-result", data: { name: "mcp:download", output: "done" } });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const response = await chat(base);
+    const text = await response.text();
+    const toolIndex = text.indexOf("event: tool\n");
+    const progressIndex = text.indexOf("event: tool-progress\n");
+    const resultIndex = text.indexOf("event: tool-result\n");
+    assert.ok(toolIndex < progressIndex && progressIndex < resultIndex);
+    assert.match(text, /data: {"name":"mcp:download","progress":4,"total":10}/);
+    assert.match(text, /data: {"name":"mcp:download","progress":5}/);
+  } finally {
+    await close(server);
+  }
+});
+
 test("POST /api/chat/cancel rejects an invalid body", async () => {
   const server = createDesktopServer({ session: cancellableSession() });
   const base = await start(server);

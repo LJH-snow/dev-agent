@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import { ChatSession } from "../dist/chat-session.js";
@@ -18,8 +19,15 @@ const ENV_KEYS = [
   "DEV_AGENT_SUMMARY_MAX_CHARS",
   "DEV_AGENT_APPROVAL",
   "DEV_AGENT_RUST_BINARY",
+  "DEV_AGENT_MCP_SERVERS",
+  "MCP_CANCEL_MARKER",
+  "MCP_RESPONSE_DELAY_MS",
   "HOME",
 ];
+
+const mcpFixture = fileURLToPath(
+  new URL("../../../packages/mcp/tests/cancelable-mcp-server.mjs", import.meta.url)
+);
 
 function applyEnv(values) {
   const saved = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
@@ -94,6 +102,67 @@ async function waitFor(predicate, timeoutMs = 3000) {
   return false;
 }
 
+function mcpToolCall(name: string) {
+  return {
+    choices: [
+      {
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              id: "mcp-call-1",
+              type: "function",
+              function: { name, arguments: "{}" },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+async function readSseUntil(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  expected: string,
+  timeoutMs = 3000
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let text = "";
+  const deadline = Date.now() + timeoutMs;
+  while (!text.includes(expected)) {
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      throw new Error(`did not observe ${JSON.stringify(expected)} within ${timeoutMs}ms`);
+    }
+    const result = await Promise.race([
+      reader.read(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`timed out waiting for ${JSON.stringify(expected)}`)), remaining)
+      ),
+    ]);
+    if (result.done) {
+      throw new Error(`SSE stream ended before ${JSON.stringify(expected)}`);
+    }
+    text += decoder.decode(result.value, { stream: true });
+  }
+  return text;
+}
+
+async function readSseToEnd(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  initialText: string
+): Promise<string> {
+  const decoder = new TextDecoder();
+  let text = initialText;
+  for (;;) {
+    const result = await reader.read();
+    if (result.done) {
+      return text + decoder.decode();
+    }
+    text += decoder.decode(result.value, { stream: true });
+  }
+}
+
 function shellToolCall(command) {
   return {
     choices: [
@@ -154,6 +223,120 @@ test("disconnecting the client cancels the running tool command", async () => {
     assert.equal(await exists(finishedMarker), false, "the command should have been cancelled");
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("the desktop stream emits MCP progress between tool and tool-result", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-mcp-progress-"));
+  const provider = await startStubProvider((_parsed, count) =>
+    count === 1
+      ? [mcpToolCall("cancelable:progressive")]
+      : [{ choices: [{ delta: { content: "done" } }] }]
+  );
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MCP_SERVERS: JSON.stringify([
+      { name: "cancelable", command: process.execPath, args: [mcpFixture] },
+    ]),
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+
+  const session = new ChatSession({ sessionId: "default", workingDirectory: dir });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
+  try {
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "run the progressive tool" }),
+    });
+    const text = await response.text();
+
+    assert.equal(response.status, 200);
+    const toolIndex = text.indexOf("event: tool\n");
+    const progressIndex = text.indexOf("event: tool-progress\n");
+    const resultIndex = text.indexOf("event: tool-result\n");
+    assert.ok(toolIndex >= 0, "the MCP tool event should be present");
+    assert.ok(progressIndex > toolIndex, "progress should follow the tool event");
+    assert.ok(resultIndex > progressIndex, "the result should follow progress");
+    assert.match(text, /data: {"name":"cancelable:progressive","progress":1,"total":3}/);
+    assert.match(text, /data: {"name":"cancelable:progressive","progress":2,"total":3}/);
+    assert.match(text, /data: {"name":"cancelable:progressive","progress":3,"total":3}/);
+    assert.match(text, /event: done/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await session.close();
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("desktop cancel aborts MCP and emits aborted done without a late result", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-mcp-cancel-"));
+  const marker = join(dir, "cancel.jsonl");
+  const provider = await startStubProvider((_parsed, count) =>
+    count === 1
+      ? [mcpToolCall("cancelable:progressive")]
+      : [{ choices: [{ delta: { content: "unexpected second turn" } }] }]
+  );
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MCP_SERVERS: JSON.stringify([
+      { name: "cancelable", command: process.execPath, args: [mcpFixture] },
+    ]),
+    MCP_CANCEL_MARKER: marker,
+    MCP_RESPONSE_DELAY_MS: "500",
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+
+  const session = new ChatSession({ sessionId: "default", workingDirectory: dir });
+  const server = await startServer({ session, host: "127.0.0.1", port: 0 });
+  try {
+    const base = `http://127.0.0.1:${(server.address() as any).port}`;
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "cancel the progressive tool" }),
+    });
+    assert.equal(response.status, 200);
+    const reader = response.body?.getReader();
+    assert.ok(reader, "the chat response should have a body");
+    const partial = await readSseUntil(
+      reader,
+      '"name":"cancelable:progressive","progress":1'
+    );
+
+    const cancelled = await fetch(`${base}/api/chat/cancel`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "default" }),
+    });
+    assert.equal(cancelled.status, 200);
+    assert.deepEqual(await cancelled.json(), { sessionId: "default", cancelled: true });
+
+    const text = await readSseToEnd(reader, partial);
+    assert.match(text, /event: done/);
+    assert.match(text, /"status":"aborted"/);
+    assert.doesNotMatch(text, /event: tool-result/);
+    assert.ok(await waitFor(() => exists(marker)), "the MCP fixture should receive cancellation");
+    assert.match(await readFile(marker, "utf8"), /"reason":"request aborted"/);
+
+    // The fixture deliberately sends its response after cancellation; the
+    // removed pending entry must keep that late response out of the SSE stream.
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    assert.doesNotMatch(text, /progressive complete/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await session.close();
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });

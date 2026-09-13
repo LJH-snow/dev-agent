@@ -25,11 +25,13 @@ import {
   type ModelProvider,
 } from "@dev-agent/model";
 import { createDefaultTools } from "@dev-agent/tools";
+import { McpStdioClient, type McpClientConfig } from "@dev-agent/mcp";
 
 export interface StreamEvent {
   readonly type:
     | "token"
     | "tool"
+    | "tool-progress"
     | "tool-result"
     | "turn"
     | "usage"
@@ -64,6 +66,8 @@ export interface ChatSessionOptions {
   readonly rustBinaryPath?: string;
   /** Overrides where the session history is stored. */
   readonly memoryFilePath?: string;
+  /** Optional MCP stdio servers; defaults to DEV_AGENT_MCP_SERVERS/config.json. */
+  readonly mcpServers?: readonly McpClientConfig[];
 }
 
 export class ChatSession {
@@ -79,6 +83,9 @@ export class ChatSession {
   private readonly approvalMode: DesktopApprovalMode;
   private readonly compiledApproval: { patterns: readonly RegExp[]; allowlist: readonly string[] };
   private readonly pricing?: PriceTable;
+  private readonly mcpServers: readonly McpClientConfig[];
+  private readonly mcpClients: McpStdioClient[] = [];
+  private mcpToolsReady?: Promise<void>;
   private context: AgentContext;
   private readonly sessionId: string;
 
@@ -108,6 +115,7 @@ export class ChatSession {
     const config = loadConfigFile();
     this.compiledApproval = compileApprovalConfig(config.approval);
     this.pricing = config.pricing;
+    this.mcpServers = options.mcpServers ?? loadMcpServers(config.mcpServers);
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -148,6 +156,15 @@ export class ChatSession {
       },
       onToken: (token) => emit({ type: "token", data: { token } }),
       onToolCall: (call) => emit({ type: "tool", data: { name: call.name, input: call.input } }),
+      onToolProgress: (progress) =>
+        emit({
+          type: "tool-progress",
+          data: {
+            name: progress.name,
+            progress: progress.progress,
+            ...(progress.total === undefined ? {} : { total: progress.total }),
+          },
+        }),
       onToolResult: (result) => emit({ type: "tool-result", data: { name: result.name, output: result.output } }),
       onUsage: (usage) => {
         const cost = estimateUsageCost(usage, this.model.model, this.pricing);
@@ -174,6 +191,7 @@ export class ChatSession {
     });
 
     try {
+      await this.ensureMcpTools(options.signal);
       const result = await loop.run(this.context, message, { signal: options.signal });
       this.context = result;
       emit({
@@ -189,6 +207,77 @@ export class ChatSession {
       }
       throw error;
     }
+  }
+
+  private async ensureMcpTools(signal?: AbortSignal): Promise<void> {
+    if (this.mcpServers.length === 0) {
+      return;
+    }
+    if (signal?.aborted) {
+      throw signal.reason ?? new Error("The operation was aborted");
+    }
+    if (!this.mcpToolsReady) {
+      const ready = this.connectMcpTools();
+      this.mcpToolsReady = ready.catch((error) => {
+        this.mcpToolsReady = undefined;
+        throw error;
+      });
+    }
+    await this.mcpToolsReady;
+    if (signal?.aborted) {
+      throw signal.reason ?? new Error("The operation was aborted");
+    }
+  }
+
+  private async connectMcpTools(): Promise<void> {
+    const prefixes = assignMcpPrefixes(this.mcpServers.map((server) => server.name));
+    try {
+      for (const [index, serverConfig] of this.mcpServers.entries()) {
+        const prefix = prefixes[index] ?? "mcp";
+        const client = new McpStdioClient();
+        this.mcpClients.push(client);
+        await client.connect({
+          ...serverConfig,
+          name: prefix,
+          rootDirectory: this.workingDirectory,
+          env: {
+            DEV_AGENT_SESSION_ID: this.sessionId,
+            DEV_AGENT_WORKING_DIRECTORY: this.workingDirectory,
+            ...(serverConfig.env ?? {}),
+          },
+        });
+        const tools = await client.listTools();
+        for (const tool of tools) {
+          this.tools.register({
+            name: `${prefix}:${tool.name}`,
+            description: tool.description,
+            parameters: tool.parameters,
+            async execute(input, context) {
+              return tool.execute(input, {
+                signal: context?.signal,
+                onProgress: context?.onProgress,
+              });
+            },
+          });
+        }
+      }
+    } catch (error) {
+      await this.closeMcpClients();
+      throw error;
+    }
+  }
+
+  private async closeMcpClients(): Promise<void> {
+    const clients = this.mcpClients.splice(0);
+    await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
+  }
+
+  /** Closes any configured MCP stdio children owned by this session. */
+  async close(): Promise<void> {
+    await this.mcpToolsReady?.catch(() => undefined);
+    const clients = this.mcpClients.splice(0);
+    this.mcpToolsReady = undefined;
+    await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
   }
 
   get id(): string {
@@ -288,6 +377,69 @@ function buildApprovalPolicy(
 interface DesktopConfigFile {
   readonly approval?: { readonly allow?: readonly string[]; readonly deny?: readonly string[] };
   readonly pricing?: PriceTable;
+  readonly mcpServers?: readonly McpClientConfig[];
+}
+
+function loadMcpServers(fromConfig: readonly McpClientConfig[] | undefined): McpClientConfig[] {
+  const raw = process.env.DEV_AGENT_MCP_SERVERS;
+  if (!raw) {
+    return (fromConfig ?? []).map(normalizeMcpServer);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("DEV_AGENT_MCP_SERVERS must be valid JSON");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("DEV_AGENT_MCP_SERVERS must be a JSON array");
+  }
+  return parsed.map(normalizeMcpServer);
+}
+
+function normalizeMcpServer(entry: unknown): McpClientConfig {
+  if (typeof entry !== "object" || entry === null) {
+    throw new Error("Each MCP server entry must be an object with a string command");
+  }
+  const config = entry as Record<string, unknown>;
+  if (typeof config.command !== "string" || config.command.trim() === "") {
+    throw new Error("Each MCP server entry must be an object with a string command");
+  }
+  return {
+    name: typeof config.name === "string" ? config.name : undefined,
+    command: config.command,
+    args: Array.isArray(config.args) ? config.args.map((arg) => String(arg)) : undefined,
+    env:
+      typeof config.env === "object" && config.env !== null
+        ? Object.fromEntries(
+            Object.entries(config.env as Record<string, unknown>).map(([key, value]) => [
+              key,
+              String(value),
+            ])
+          )
+        : undefined,
+    timeoutMs:
+      typeof config.timeoutMs === "number" && Number.isInteger(config.timeoutMs) && config.timeoutMs > 0
+        ? config.timeoutMs
+        : undefined,
+  };
+}
+
+function assignMcpPrefixes(names: readonly (string | undefined)[]): readonly string[] {
+  const unnamed = names.filter((name) => name === undefined || name.trim() === "").length;
+  const used = new Set<string>();
+  return names.map((name, index) => {
+    const base = name?.trim() || (unnamed > 1 ? `mcp-${index + 1}` : "mcp");
+    let candidate = base;
+    let suffix = 2;
+    while (used.has(candidate)) {
+      candidate = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    used.add(candidate);
+    return candidate;
+  });
 }
 
 /** Reads the shared sections of ~/.dev-agent/config.json. */

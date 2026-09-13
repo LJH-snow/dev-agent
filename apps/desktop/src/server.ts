@@ -30,6 +30,7 @@ export interface DesktopChatSession {
       readonly requestApproval?: ApprovalRequester;
     }
   ): Promise<void>;
+  close?(): Promise<void>;
 }
 
 export interface DesktopServerOptions {
@@ -378,6 +379,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
   server.on("error", (error) => {
     console.error(`[desktop] server error: ${error.message}`);
+  });
+
+  server.once("close", () => {
+    void Promise.all(
+      [...sessions.values()].map((session) => session.close?.())
+    ).catch(() => undefined);
   });
 
   return server;

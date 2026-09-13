@@ -32,8 +32,9 @@ v31 完成后的基线：
 - `AgentLoop` 已把 `AbortSignal` 传给内置工具，`LocalExecutor` 和 `RustExecutor` 可以停止正在运行的命令。
 - `McpStdioClient.request()` 当前没有取消参数；`createMcpTool()` 和 CLI 的 MCP 工具适配器也没有转发 `ToolExecutionContext.signal`。
 - MCP progress notification 目前只通过全局 `onNotification()` 暴露，无法关联到正在执行的工具，也不会显示在 CLI 或桌面端。
+- 桌面端目前只注册内置工具，没有像 CLI 一样加载 `DEV_AGENT_MCP_SERVERS`；阶段 2 需要补上最小的 MCP tool adapter，才能让桌面取消真正抵达外部 stdio 工具。
 
-因此 v32 只解决 MCP 外部工具边界，不重做 AgentLoop、模型 provider 或 Rust sandbox。
+因此 v32 只解决 MCP 外部工具边界，不重做 AgentLoop、模型 provider 或 Rust sandbox；桌面端的 MCP adapter 是覆盖验收标准所必需的最小补充。
 
 ## 设计约定
 
@@ -139,7 +140,7 @@ AgentLoop 为每个工具调用创建的 context 必须把 progress callback 绑
 
 ### 桌面端
 
-- Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/chat-session.ts` — 将 `onToolProgress` 转成 `tool-progress` SSE。
+- Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/chat-session.ts` — 加载可选 MCP 工具并将 `onToolProgress` 转成 `tool-progress` SSE。
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/server.ts` — 保证事件类型、流关闭和取消路径兼容。
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/public/index.html` — 渲染进度状态且兼容旧事件。
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/chat-cancel.test.ts` — 验证取消 MCP 调用会结束当前流并触发下游取消。
@@ -277,6 +278,8 @@ git commit -m "feat(agent): propagate MCP cancellation and progress"
 
 #### Task 2.1：把工具进度接入 chat-session 和 SSE
 
+**发现的必要补充：**当前桌面 `ChatSession` 尚未注册 `DEV_AGENT_MCP_SERVERS`，仅增加 SSE 回调无法覆盖“桌面取消外部 MCP 调用”的验收标准。因此本 Task 同时增加可选 MCP 配置加载、连接生命周期和工具 adapter；无 MCP 配置时保持现有启动与运行行为不变。
+
 **Files:**
 
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/src/chat-session.ts`
@@ -285,11 +288,12 @@ git commit -m "feat(agent): propagate MCP cancellation and progress"
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/chat-cancel.test.ts`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/tests/chat-session-e2e.test.ts`
 
-- [ ] **Step 1:** Add `onToolProgress` to the desktop AgentLoop callbacks and emit the exact `tool-progress` SSE shape from the design contract.
-- [ ] **Step 2:** Keep event ordering per stream: `tool` → zero or more `tool-progress` → `tool-result`; tokens from other model turns remain in their existing order.
-- [ ] **Step 3:** On `/api/chat/cancel`, ensure the run's existing controller aborts the MCP call, the stream still ends with its existing `done { "status": "aborted" }`, and no later MCP result is emitted.
-- [ ] **Step 4:** Update the browser handler to render the latest progress without assuming `total` exists; unknown event types remain ignored.
-- [ ] **Step 5:** Run the desktop tests.
+- [x] **Step 0:** Load optional `mcpServers`/`DEV_AGENT_MCP_SERVERS` entries in `ChatSession`, connect before the first run, register namespaced MCP tools, forward `signal`/`onProgress`, and close clients with the desktop session.
+- [x] **Step 1:** Add `onToolProgress` to the desktop AgentLoop callbacks and emit the exact `tool-progress` SSE shape from the design contract.
+- [x] **Step 2:** Keep event ordering per stream: `tool` → zero or more `tool-progress` → `tool-result`; tokens from other model turns remain in their existing order.
+- [x] **Step 3:** On `/api/chat/cancel`, ensure the run's existing controller aborts the MCP call, the stream still ends with its existing `done { "status": "aborted" }`, and no later MCP result is emitted.
+- [x] **Step 4:** Update the browser handler to render the latest progress without assuming `total` exists; unknown event types remain ignored.
+- [x] **Step 5:** Run the desktop tests.
 
 ```bash
 pnpm --filter @dev-agent/desktop test

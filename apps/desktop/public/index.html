@@ -67,6 +67,7 @@
     .msg.user { align-self: flex-end; background: var(--user-bg); color: var(--user-fg); padding: 10px 14px; border-radius: 16px; font-size: 14px; }
     .msg.assistant { align-self: flex-start; background: var(--assistant-bg); padding: 10px 14px; border-radius: 16px; font-size: 14px; }
     .msg.tool { align-self: flex-start; background: var(--tool-bg); color: var(--tool-fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 8px 12px; border-radius: 10px; }
+    .msg.tool-progress { align-self: flex-start; color: var(--muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 0 12px; }
     .msg.error { align-self: center; background: var(--error-bg); color: var(--error-fg); font-size: 13px; padding: 8px 12px; border-radius: 10px; }
     .msg.denied { align-self: center; background: var(--error-bg); color: var(--error-fg); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; padding: 6px 10px; border-radius: 8px; }
     .msg.approval { align-self: flex-start; background: var(--tool-bg); color: var(--tool-fg); font-size: 13px; padding: 10px 12px; border-radius: 10px; display: flex; flex-direction: column; gap: 8px; max-width: 760px; width: 100%; }
@@ -143,6 +144,7 @@
     const stopButton = document.getElementById("stop");
 
     let currentAssistant = null;
+    let currentToolProgress = null;
     // Set by the `done` frame so the finally block can keep an honest status
     // ("aborted" after Stop) instead of always snapping back to "idle".
     let finalStatus = null;
@@ -425,6 +427,7 @@
       stopButton.disabled = false;
       setStatus("streaming");
       currentAssistant = null;
+      currentToolProgress = null;
       finalStatus = null;
 
       try {
@@ -481,9 +484,23 @@
           messages.scrollTop = messages.scrollHeight;
           break;
         case "tool":
+          currentToolProgress = null;
           appendMessage("tool", "▶ " + parsed.name + (parsed.input != null ? " " + JSON.stringify(parsed.input) : ""));
           break;
+        case "tool-progress": {
+          if (!currentToolProgress || currentToolProgress.dataset.toolName !== parsed.name) {
+            currentToolProgress = appendMessage("tool-progress", "");
+            currentToolProgress.dataset.toolName = parsed.name || "";
+          }
+          const total = typeof parsed.total === "number" && Number.isFinite(parsed.total)
+            ? "/" + parsed.total
+            : "";
+          currentToolProgress.textContent = "↗ " + (parsed.name || "tool") + ": " + parsed.progress + total;
+          messages.scrollTop = messages.scrollHeight;
+          break;
+        }
         case "tool-result":
+          currentToolProgress = null;
           appendMessage("tool", "◀ " + parsed.name + ": " + summarize(parsed.output));
           break;
         case "turn":
