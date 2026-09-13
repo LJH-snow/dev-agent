@@ -21,13 +21,17 @@ v36 计划已建立，目标是解决 v35 明确留下的限制：change-set 状
 - [x] 新建 `docs/day-plan-v36.md`，记录目标、架构、文件边界、TDD 步骤、验收清单和完成后的 v37 路线。
 - [x] 新建本进度文件，后续每个任务完成后同步更新。
 
-## 进行中
+## 已完成
 
 ### Task 0：evidence contract 与 memory 持久化
 
-- [ ] 定义 `AppliedChangeSetRecord` 和文件级 evidence 类型。
-- [ ] 为 `InMemoryMemory`、`FileMemory` 增加记录/读取/clear。
-- [ ] 补齐旧 memory 兼容和非法记录测试。
+- [x] 定义 `AppliedChangeSetRecord` 和文件级 evidence 类型；只保存路径、类型、存在性、统计值和哈希，不保存命令、diff 或文件字节。
+- [x] `InMemoryMemory`、`FileMemory` 支持记录、读取、幂等替换和 clear。
+- [x] 旧 `version: 1` 文件（没有 `changeSets` 字段）保持兼容；非法绝对路径、路径穿越、缺失字段、非法 state 或非 SHA-256 evidence 会被拒绝。
+- [x] 聚焦回归：agent-core **97/97**，typecheck 和 `git diff --check` 通过。
+- [x] 已完成提交：待 Task 0 提交。
+
+## 进行中
 
 ### Task 1：FilesystemTool restore guard
 

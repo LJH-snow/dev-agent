@@ -40,18 +40,18 @@
 
 **Produces:** `AppliedChangeSetRecord`、`recordChangeSet()`、`changeSets()`，并保持 v35 memory 行为兼容。
 
-- [ ] **Step 1: 写失败测试。**
+- [x] **Step 1: 写失败测试。**
   - `InMemoryMemory` 可以记录并按顺序读取 applied evidence。
   - `FileMemory` 写入后重新实例化仍可读，`clear()` 会移除 evidence。
   - 旧的 `version: 1` JSON 没有 `changeSets` 字段时仍可读取。
   - 非法 evidence（空 id、绝对路径、无效 state、文件字段缺失）在读取时被拒绝，且未知顶层字段仍不影响兼容性。
-- [ ] **Step 2: 运行聚焦测试确认 RED。**
-- [ ] **Step 3: 写最小实现。**
+- [x] **Step 2: 运行聚焦测试确认 RED。**
+- [x] **Step 3: 写最小实现。**
   - 只定义文件级元数据和哈希；不依赖 `@dev-agent/tools`，避免 agent-core 反向依赖。
   - `recordChangeSet` 采用 change-set id 幂等替换，避免重复事件无限增长。
   - `persist()` 在 append、summary、usage、validation、change-set 写入时保留所有既有结构化字段。
-- [ ] **Step 4: 运行聚焦测试确认 GREEN。**
-- [ ] **Step 5: 提交。**
+- [x] **Step 4: 运行聚焦测试确认 GREEN。**
+- [x] **Step 5: 提交。**
 
 ## Task 1：FilesystemTool 恢复 postimage guard
 

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, isAbsolute, win32 } from "node:path";
 
 import type { ChatMessage, ChatUsage, ToolCall } from "@dev-agent/model";
 import type {
@@ -21,6 +21,30 @@ export interface MemoryEntryOptions {
   readonly toolCalls?: readonly ToolCall[];
 }
 
+export interface ChangeSetEvidenceFile {
+  readonly path: string;
+  readonly kind: "file" | "directory";
+  readonly beforeHash?: string;
+  readonly afterHash: string;
+  readonly additions: number;
+  readonly deletions: number;
+  readonly beforeExists: boolean;
+  readonly afterExists: boolean;
+}
+
+/** Minimal, non-executable evidence for a change set that was applied locally. */
+export interface AppliedChangeSetRecord {
+  readonly changeSetId: string;
+  readonly sessionId: string;
+  readonly workingDirectory: string;
+  readonly files: readonly ChangeSetEvidenceFile[];
+  readonly additions: number;
+  readonly deletions: number;
+  readonly createdAt: string;
+  readonly recordedAt: string;
+  readonly state: "applied" | "rolled-back";
+}
+
 export interface AgentMemory {
   append(entry: MemoryEntry): Promise<void>;
   entries(): Promise<readonly MemoryEntry[]>;
@@ -36,6 +60,10 @@ export interface AgentMemory {
   recordValidation?(result: ValidationResult): Promise<void>;
   /** Returns structured validation evidence in recording order. */
   validations?(): Promise<readonly ValidationRecord[]>;
+  /** Persists non-executable evidence for a successfully applied change set. */
+  recordChangeSet?(record: AppliedChangeSetRecord): Promise<void>;
+  /** Returns change-set evidence in recording order. */
+  changeSets?(): Promise<readonly AppliedChangeSetRecord[]>;
 }
 
 export interface ContextSummary {
@@ -51,6 +79,7 @@ export class InMemoryMemory implements AgentMemory {
   private summary?: ContextSummary;
   private usage?: ChatUsage;
   private readonly validationRecords: ValidationRecord[] = [];
+  private readonly changeSetRecords: AppliedChangeSetRecord[] = [];
   private readonly createdAt = new Date().toISOString();
   private lastActiveAt = this.createdAt;
 
@@ -68,6 +97,7 @@ export class InMemoryMemory implements AgentMemory {
     this.summary = undefined;
     this.usage = undefined;
     this.validationRecords.length = 0;
+    this.changeSetRecords.length = 0;
     this.lastActiveAt = new Date().toISOString();
   }
 
@@ -105,6 +135,22 @@ export class InMemoryMemory implements AgentMemory {
   async validations(): Promise<readonly ValidationRecord[]> {
     return [...this.validationRecords];
   }
+
+  async recordChangeSet(record: AppliedChangeSetRecord): Promise<void> {
+    const index = this.changeSetRecords.findIndex(
+      (candidate) => candidate.changeSetId === record.changeSetId
+    );
+    if (index >= 0) {
+      this.changeSetRecords[index] = record;
+    } else {
+      this.changeSetRecords.push(record);
+    }
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async changeSets(): Promise<readonly AppliedChangeSetRecord[]> {
+    return [...this.changeSetRecords];
+  }
 }
 
 export interface FileMemoryOptions {
@@ -126,6 +172,7 @@ interface MemoryFile {
   readonly entries: MemoryEntry[];
   readonly summary?: ContextSummary;
   readonly validations?: ValidationRecord[];
+  readonly changeSets?: AppliedChangeSetRecord[];
 }
 
 export class FileMemory implements AgentMemory {
@@ -228,6 +275,42 @@ export class FileMemory implements AgentMemory {
     });
   }
 
+  recordChangeSet(record: AppliedChangeSetRecord): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const changeSets = [
+        ...(existing?.changeSets ?? []).filter(
+          (candidate) => candidate.changeSetId !== record.changeSetId
+        ),
+        record,
+      ];
+      await this.persist(entries, undefined, undefined, undefined, changeSets);
+    });
+  }
+
+  changeSets(): Promise<readonly AppliedChangeSetRecord[]> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return [...(file.changeSets ?? [])];
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return [];
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error(`Invalid memory file: ${this.filePath}`);
+      }
+    });
+  }
+
   recordUsage(usage: ChatUsage): Promise<void> {
     return this.enqueue(async () => {
       const entries = await this.readEntries();
@@ -271,7 +354,8 @@ export class FileMemory implements AgentMemory {
     entries: readonly MemoryEntry[],
     summary?: ContextSummary,
     usage?: ChatUsage,
-    validations?: readonly ValidationRecord[]
+    validations?: readonly ValidationRecord[],
+    changeSets?: readonly AppliedChangeSetRecord[]
   ): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     const existing = await this.readMemoryFile().catch(() => undefined);
@@ -290,6 +374,7 @@ export class FileMemory implements AgentMemory {
       // Keep an existing digest unless this write replaces it.
       summary: summary ?? existing?.summary,
       validations: validations === undefined ? existing?.validations : [...validations],
+      changeSets: changeSets === undefined ? existing?.changeSets : [...changeSets],
     };
     await writeFile(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   }
@@ -336,7 +421,9 @@ function isMemoryFile(value: unknown): value is MemoryFile {
     (candidate.summary === undefined || isContextSummary(candidate.summary)) &&
     (candidate.metadata === undefined || isSessionMetadataValue(candidate.metadata)) &&
     (candidate.validations === undefined ||
-      (Array.isArray(candidate.validations) && candidate.validations.every(isValidationRecord)))
+      (Array.isArray(candidate.validations) && candidate.validations.every(isValidationRecord))) &&
+    (candidate.changeSets === undefined ||
+      (Array.isArray(candidate.changeSets) && candidate.changeSets.every(isAppliedChangeSetRecord)))
   );
 }
 
@@ -357,6 +444,65 @@ function isChatUsage(value: unknown): value is ChatUsage {
     typeof (value as Record<string, unknown>).completionTokens === "number" &&
     typeof (value as Record<string, unknown>).totalTokens === "number"
   );
+}
+
+function isAppliedChangeSetRecord(value: unknown): value is AppliedChangeSetRecord {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.changeSetId === "string" &&
+    candidate.changeSetId.length > 0 &&
+    typeof candidate.sessionId === "string" &&
+    candidate.sessionId.length > 0 &&
+    typeof candidate.workingDirectory === "string" &&
+    (isAbsolute(candidate.workingDirectory) || win32.isAbsolute(candidate.workingDirectory)) &&
+    Array.isArray(candidate.files) &&
+    candidate.files.length > 0 &&
+    candidate.files.every(isChangeSetEvidenceFile) &&
+    isNonNegativeInteger(candidate.additions) &&
+    isNonNegativeInteger(candidate.deletions) &&
+    typeof candidate.createdAt === "string" &&
+    candidate.createdAt.length > 0 &&
+    typeof candidate.recordedAt === "string" &&
+    candidate.recordedAt.length > 0 &&
+    (candidate.state === "applied" || candidate.state === "rolled-back")
+  );
+}
+
+function isChangeSetEvidenceFile(value: unknown): value is ChangeSetEvidenceFile {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.path === "string" &&
+    isSafeRelativePath(candidate.path) &&
+    (candidate.kind === "file" || candidate.kind === "directory") &&
+    isSha256(candidate.afterHash) &&
+    (candidate.beforeHash === undefined || isSha256(candidate.beforeHash)) &&
+    isNonNegativeInteger(candidate.additions) &&
+    isNonNegativeInteger(candidate.deletions) &&
+    typeof candidate.beforeExists === "boolean" &&
+    typeof candidate.afterExists === "boolean"
+  );
+}
+
+function isSafeRelativePath(value: string): boolean {
+  if (value.length === 0 || value.includes("\0") || isAbsolute(value) || win32.isAbsolute(value)) {
+    return false;
+  }
+  const normalized = value.replaceAll("\\", "/");
+  return normalized !== "." && normalized !== ".." && !normalized.startsWith("../");
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
 function isValidationRecord(value: unknown): value is ValidationRecord {

@@ -230,3 +230,150 @@ function makeValidationResult(status: "passed" | "failed" | "skipped" | "blocked
     ...(status === "failed" ? { reason: "test failed" } : {}),
   };
 }
+
+test("in-memory memory records applied change-set evidence idempotently", async () => {
+  const memory = new InMemoryMemory();
+  const first = makeChangeSetRecord({ recordedAt: "2026-09-13T00:00:00.000Z" });
+  const replacement = makeChangeSetRecord({ recordedAt: "2026-09-13T00:01:00.000Z" });
+
+  await memory.recordChangeSet(first);
+  await memory.recordChangeSet(replacement);
+
+  assert.deepEqual(await memory.changeSets(), [replacement]);
+});
+
+test("file memory persists applied change-set evidence across instances and writes", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "sessions", "change-sets.json");
+    const first = new FileMemory({ filePath });
+    const record = makeChangeSetRecord();
+
+    await first.append(createMemoryEntry("user", "apply and verify"));
+    await first.recordChangeSet(record);
+    await first.recordUsage({ promptTokens: 4, completionTokens: 2, totalTokens: 6 });
+    await first.setSummary({
+      lastEntryId: "entry-1",
+      entriesCovered: 1,
+      text: "apply and verify",
+    });
+
+    const reopened = new FileMemory({ filePath });
+    assert.deepEqual(await reopened.changeSets(), [record]);
+    assert.equal((await reopened.entries()).length, 1);
+    assert.deepEqual((await reopened.getMetadata())?.usage, {
+      promptTokens: 4,
+      completionTokens: 2,
+      totalTokens: 6,
+    });
+    assert.equal((await reopened.getSummary())?.text, "apply and verify");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("file memory treats a missing changeSets field as an empty evidence list", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "legacy-change-sets.json");
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        entries: [createMemoryEntry("user", "legacy")],
+      }),
+      "utf8"
+    );
+
+    const memory = new FileMemory({ filePath });
+    assert.deepEqual(await memory.changeSets(), []);
+    assert.equal((await memory.entries())[0]?.content, "legacy");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("file memory rejects unsafe persisted change-set evidence", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "unsafe-change-sets.json");
+    writeFileSync(
+      filePath,
+      JSON.stringify({
+        version: 1,
+        entries: [],
+        changeSets: [
+          {
+            changeSetId: "cs-unsafe",
+            sessionId: "session-1",
+            workingDirectory: dir,
+            files: [
+              {
+                path: "/outside/workspace.txt",
+                kind: "file",
+                afterHash: "hash",
+                additions: 1,
+                deletions: 0,
+                beforeExists: false,
+                afterExists: true,
+              },
+            ],
+            additions: 1,
+            deletions: 0,
+            createdAt: "2026-09-13T00:00:00.000Z",
+            recordedAt: "2026-09-13T00:00:00.000Z",
+            state: "applied",
+          },
+        ],
+      }),
+      "utf8"
+    );
+
+    const memory = new FileMemory({ filePath });
+    await assert.rejects(() => memory.changeSets(), /Invalid memory file/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function makeChangeSetRecord(
+  overrides: Partial<import("../dist/index.js").AppliedChangeSetRecord> = {}
+) {
+  return {
+    changeSetId: "cs-memory",
+    sessionId: "session-memory",
+    workingDirectory: "/workspace",
+    files: [
+      {
+        path: "src/example.ts",
+        kind: "file" as const,
+        beforeHash: "b".repeat(64),
+        afterHash: "a".repeat(64),
+        additions: 2,
+        deletions: 1,
+        beforeExists: true,
+        afterExists: true,
+      },
+    ],
+    additions: 2,
+    deletions: 1,
+    createdAt: "2026-09-13T00:00:00.000Z",
+    recordedAt: "2026-09-13T00:00:01.000Z",
+    state: "applied" as const,
+    ...overrides,
+  };
+}
+
+test("clearing memory removes applied change-set evidence", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "clear-change-sets.json");
+    const memory = new FileMemory({ filePath });
+    await memory.recordChangeSet(makeChangeSetRecord());
+    await memory.clear();
+
+    assert.deepEqual(await memory.changeSets(), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
