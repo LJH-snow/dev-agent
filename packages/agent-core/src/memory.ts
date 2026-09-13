@@ -45,6 +45,33 @@ export interface AppliedChangeSetRecord {
   readonly state: "applied" | "rolled-back";
 }
 
+export interface EvidenceRetentionOptions {
+  /** Maximum validation attempts retained automatically. */
+  readonly maxValidations?: number;
+  /** Soft maximum for change-set records; applied records are always protected. */
+  readonly maxChangeSets?: number;
+}
+
+export interface EvidencePruneOptions extends EvidenceRetentionOptions {
+  /** Explicitly remove every non-active (rolled-back) change-set record. */
+  readonly removeRolledBack?: boolean;
+}
+
+export interface EvidencePruneResult {
+  readonly validationsRemoved: number;
+  readonly changeSetsRemoved: number;
+  readonly protectedChangeSets: number;
+  readonly remainingValidations: number;
+  readonly remainingChangeSets: number;
+}
+
+export const DEFAULT_EVIDENCE_RETENTION = {
+  maxValidations: 100,
+  maxChangeSets: 100,
+} as const;
+
+const MAX_EVIDENCE_RECORDS = 10_000;
+
 export interface AgentMemory {
   append(entry: MemoryEntry): Promise<void>;
   entries(): Promise<readonly MemoryEntry[]>;
@@ -64,6 +91,10 @@ export interface AgentMemory {
   recordChangeSet?(record: AppliedChangeSetRecord): Promise<void>;
   /** Returns change-set evidence in recording order. */
   changeSets?(): Promise<readonly AppliedChangeSetRecord[]>;
+  /** Marks a successfully rolled-back change set without reviving its before-image. */
+  markChangeSetRolledBack?(changeSetId: string): Promise<boolean>;
+  /** Prunes metadata-only evidence without touching the working directory. */
+  pruneEvidence?(options?: EvidencePruneOptions): Promise<EvidencePruneResult>;
 }
 
 export interface ContextSummary {
@@ -80,8 +111,13 @@ export class InMemoryMemory implements AgentMemory {
   private usage?: ChatUsage;
   private readonly validationRecords: ValidationRecord[] = [];
   private readonly changeSetRecords: AppliedChangeSetRecord[] = [];
+  private readonly evidenceRetention: Required<EvidenceRetentionOptions>;
   private readonly createdAt = new Date().toISOString();
   private lastActiveAt = this.createdAt;
+
+  constructor(options: { readonly evidenceRetention?: EvidenceRetentionOptions } = {}) {
+    this.evidenceRetention = normalizeEvidenceRetention(options.evidenceRetention);
+  }
 
   async append(entry: MemoryEntry): Promise<void> {
     this.items.push(entry);
@@ -129,6 +165,7 @@ export class InMemoryMemory implements AgentMemory {
       ...result,
       recordedAt: new Date().toISOString(),
     });
+    trimValidationRecordsInPlace(this.validationRecords, this.evidenceRetention.maxValidations);
     this.lastActiveAt = new Date().toISOString();
   }
 
@@ -141,20 +178,64 @@ export class InMemoryMemory implements AgentMemory {
       (candidate) => candidate.changeSetId === record.changeSetId
     );
     if (index >= 0) {
+      assertChangeSetStateTransition(this.changeSetRecords[index], record);
       this.changeSetRecords[index] = record;
     } else {
       this.changeSetRecords.push(record);
     }
+    trimChangeSetRecordsInPlace(this.changeSetRecords, this.evidenceRetention.maxChangeSets);
     this.lastActiveAt = new Date().toISOString();
   }
 
   async changeSets(): Promise<readonly AppliedChangeSetRecord[]> {
     return [...this.changeSetRecords];
   }
+
+  async markChangeSetRolledBack(changeSetId: string): Promise<boolean> {
+    const index = this.changeSetRecords.findIndex(
+      (candidate) => candidate.changeSetId === changeSetId
+    );
+    if (index < 0 || this.changeSetRecords[index]?.state !== "applied") {
+      return false;
+    }
+    this.changeSetRecords[index] = { ...this.changeSetRecords[index], state: "rolled-back" };
+    trimChangeSetRecordsInPlace(this.changeSetRecords, this.evidenceRetention.maxChangeSets);
+    this.lastActiveAt = new Date().toISOString();
+    return true;
+  }
+
+  async pruneEvidence(options: EvidencePruneOptions = {}): Promise<EvidencePruneResult> {
+    const retention = normalizeEvidenceRetention(options, this.evidenceRetention);
+    const validationCount = this.validationRecords.length;
+    const changeSetCount = this.changeSetRecords.length;
+    const protectedChangeSets = this.changeSetRecords.filter(
+      (record) => record.state === "applied"
+    ).length;
+    const validationsRemoved = trimValidationRecordsInPlace(
+      this.validationRecords,
+      retention.maxValidations
+    );
+    const changeSetsRemoved = trimChangeSetRecordsInPlace(
+      this.changeSetRecords,
+      retention.maxChangeSets,
+      options.removeRolledBack === true
+    );
+    if (validationsRemoved > 0 || changeSetsRemoved > 0) {
+      this.lastActiveAt = new Date().toISOString();
+    }
+    return {
+      validationsRemoved,
+      changeSetsRemoved,
+      protectedChangeSets,
+      remainingValidations: validationCount - validationsRemoved,
+      remainingChangeSets: changeSetCount - changeSetsRemoved,
+    };
+  }
 }
 
 export interface FileMemoryOptions {
   readonly filePath: string;
+  readonly evidenceRetention?: EvidenceRetentionOptions;
 }
 
 export interface SessionMetadata {
@@ -177,10 +258,12 @@ interface MemoryFile {
 
 export class FileMemory implements AgentMemory {
   private readonly filePath: string;
+  private readonly evidenceRetention: Required<EvidenceRetentionOptions>;
   private chain: Promise<void> = Promise.resolve();
 
   constructor(options: FileMemoryOptions) {
     this.filePath = options.filePath;
+    this.evidenceRetention = normalizeEvidenceRetention(options.evidenceRetention);
   }
 
   async getMetadata(): Promise<SessionMetadata | undefined> {
@@ -254,6 +337,7 @@ export class FileMemory implements AgentMemory {
           recordedAt: new Date().toISOString(),
         },
       ];
+      trimValidationRecordsInPlace(validations, this.evidenceRetention.maxValidations);
       await this.persist(entries, undefined, undefined, validations);
     });
   }
@@ -290,6 +374,11 @@ export class FileMemory implements AgentMemory {
         ),
         record,
       ];
+      const previous = existing?.changeSets?.find(
+        (candidate) => candidate.changeSetId === record.changeSetId
+      );
+      assertChangeSetStateTransition(previous, record);
+      trimChangeSetRecordsInPlace(changeSets, this.evidenceRetention.maxChangeSets);
       await this.persist(entries, undefined, undefined, undefined, changeSets);
     });
   }
@@ -308,6 +397,66 @@ export class FileMemory implements AgentMemory {
         }
         throw new Error(`Invalid memory file: ${this.filePath}`);
       }
+    });
+  }
+
+  markChangeSetRolledBack(changeSetId: string): Promise<boolean> {
+    return this.enqueue(async () => {
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const records = [...(existing?.changeSets ?? [])];
+      const index = records.findIndex((record) => record.changeSetId === changeSetId);
+      if (index < 0 || records[index]?.state !== "applied") {
+        return false;
+      }
+      records[index] = { ...records[index], state: "rolled-back" };
+      trimChangeSetRecordsInPlace(records, this.evidenceRetention.maxChangeSets);
+      await this.persist(existing?.entries ?? [], undefined, undefined, undefined, records);
+      return true;
+    });
+  }
+
+  pruneEvidence(options: EvidencePruneOptions = {}): Promise<EvidencePruneResult> {
+    return this.enqueue(async () => {
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      if (!existing) {
+        return emptyEvidencePruneResult();
+      }
+
+      const retention = normalizeEvidenceRetention(options, this.evidenceRetention);
+      const validations = [...(existing.validations ?? [])];
+      const changeSets = [...(existing.changeSets ?? [])];
+      const protectedChangeSets = changeSets.filter(
+        (record) => record.state === "applied"
+      ).length;
+      const validationsRemoved = trimValidationRecordsInPlace(
+        validations,
+        retention.maxValidations
+      );
+      const changeSetsRemoved = trimChangeSetRecordsInPlace(
+        changeSets,
+        retention.maxChangeSets,
+        options.removeRolledBack === true
+      );
+      if (validationsRemoved > 0 || changeSetsRemoved > 0) {
+        await this.persist(existing.entries, undefined, undefined, validations, changeSets);
+      }
+      return {
+        validationsRemoved,
+        changeSetsRemoved,
+        protectedChangeSets,
+        remainingValidations: validations.length,
+        remainingChangeSets: changeSets.length,
+      };
     });
   }
 
@@ -403,6 +552,84 @@ export function createMemoryEntry(
     toolName: options.toolName,
     toolCalls: options.toolCalls,
   };
+}
+
+function normalizeEvidenceRetention(
+  options: EvidenceRetentionOptions | undefined,
+  fallback: Required<EvidenceRetentionOptions> = DEFAULT_EVIDENCE_RETENTION
+): Required<EvidenceRetentionOptions> {
+  const maxValidations = options?.maxValidations ?? fallback.maxValidations;
+  const maxChangeSets = options?.maxChangeSets ?? fallback.maxChangeSets;
+  for (const [name, value] of [
+    ["maxValidations", maxValidations],
+    ["maxChangeSets", maxChangeSets],
+  ] as const) {
+    if (
+      !Number.isSafeInteger(value) ||
+      value <= 0 ||
+      value > MAX_EVIDENCE_RECORDS
+    ) {
+      throw new Error(`${name} must be a positive integer no greater than ${MAX_EVIDENCE_RECORDS}`);
+    }
+  }
+  return { maxValidations, maxChangeSets };
+}
+
+function trimValidationRecordsInPlace(
+  records: ValidationRecord[],
+  maxValidations: number
+): number {
+  const removed = Math.max(0, records.length - maxValidations);
+  if (removed > 0) {
+    records.splice(0, removed);
+  }
+  return removed;
+}
+
+function trimChangeSetRecordsInPlace(
+  records: AppliedChangeSetRecord[],
+  maxChangeSets: number,
+  removeRolledBack = false
+): number {
+  let removed = 0;
+  if (removeRolledBack) {
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      if (records[index]?.state !== "applied") {
+        records.splice(index, 1);
+        removed += 1;
+      }
+    }
+  }
+  while (records.length > maxChangeSets) {
+    const removableIndex = records.findIndex((record) => record.state !== "applied");
+    if (removableIndex < 0) {
+      break;
+    }
+    records.splice(removableIndex, 1);
+    removed += 1;
+  }
+  return removed;
+}
+
+function emptyEvidencePruneResult(): EvidencePruneResult {
+  return {
+    validationsRemoved: 0,
+    changeSetsRemoved: 0,
+    protectedChangeSets: 0,
+    remainingValidations: 0,
+    remainingChangeSets: 0,
+  };
+}
+
+function assertChangeSetStateTransition(
+  previous: AppliedChangeSetRecord | undefined,
+  next: AppliedChangeSetRecord
+): void {
+  if (previous?.state === "rolled-back" && next.state === "applied") {
+    throw new Error(
+      `cannot reactivate rolled-back change set evidence: ${next.changeSetId}`
+    );
+  }
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

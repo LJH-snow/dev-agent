@@ -50,18 +50,18 @@
 
 **Produces:** 有界 validation history、受保护的 applied change-set evidence，以及幂等的元数据清理 API。
 
-- [ ] **Step 1: 写失败测试。**
+- [x] **Step 1: 写失败测试。**
   - `recordValidation()` 超过上限时只淘汰最旧的 validation attempt，不删除关联的 applied change-set evidence。
   - `pruneEvidence()` 只能淘汰 rolled-back/non-active records；所有 applied records 保留并返回 protected 数量。
   - InMemory/FileMemory 的结果和排序一致；旧 memory 文件没有 retention 字段时继续读取。
   - 并发 append/record/prune 通过同一串行写入链，不丢 entries、validations 或 changeSets。
-- [ ] **Step 2: 运行聚焦测试确认 RED。**
-- [ ] **Step 3: 写最小实现。**
+- [x] **Step 2: 运行聚焦测试确认 RED。** 当前 memory 类型缺少 retention 配置和 `pruneEvidence()` 时，聚焦测试按预期在类型编译阶段失败。
+- [x] **Step 3: 写最小实现。**
   - retention 默认值由代码定义，配置字段只接受正整数上限。
   - 清理只改 memory JSON，不读取或写入 working directory。
   - 清理失败 best-effort 时不能把成功的 apply/validation 变成失败。
-- [ ] **Step 4: 运行聚焦测试确认 GREEN。**
-- [ ] **Step 5: 提交。**
+- [x] **Step 4: 运行聚焦测试确认 GREEN。**
+- [x] **Step 5: 提交。**
 
 ## Task 2：Undo 状态和显式 cleanup 生命周期
 

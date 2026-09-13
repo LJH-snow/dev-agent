@@ -377,3 +377,137 @@ test("clearing memory removes applied change-set evidence", async () => {
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("memory retention bounds validation history but protects applied change sets", async () => {
+  const memory = new InMemoryMemory({
+    evidenceRetention: { maxValidations: 2, maxChangeSets: 1 },
+  });
+
+  for (let index = 1; index <= 3; index += 1) {
+    await memory.recordValidation({
+      ...makeValidationResult("passed"),
+      validationId: `validation:${index}`,
+      changeSetId: `cs-${index}`,
+    });
+  }
+  assert.deepEqual(
+    (await memory.validations()).map((record) => record.validationId),
+    ["validation:2", "validation:3"]
+  );
+
+  await memory.recordChangeSet(makeChangeSetRecord({ changeSetId: "active-a" }));
+  await memory.recordChangeSet(makeChangeSetRecord({ changeSetId: "active-b" }));
+  assert.deepEqual(
+    (await memory.changeSets()).map((record) => record.changeSetId),
+    ["active-a", "active-b"]
+  );
+
+  const pruned = await memory.pruneEvidence({ maxChangeSets: 1 });
+  assert.equal(pruned.changeSetsRemoved, 0);
+  assert.equal(pruned.protectedChangeSets, 2);
+});
+
+test("file memory explicitly removes only rolled-back evidence and persists the result", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "retention.json");
+    const memory = new FileMemory({
+      filePath,
+      evidenceRetention: { maxValidations: 10, maxChangeSets: 10 },
+    });
+    await memory.recordChangeSet(makeChangeSetRecord({ changeSetId: "active" }));
+    await memory.recordChangeSet(
+      makeChangeSetRecord({ changeSetId: "rolled-back", state: "rolled-back" })
+    );
+
+    const pruned = await memory.pruneEvidence({ removeRolledBack: true });
+    assert.equal(pruned.changeSetsRemoved, 1);
+    assert.equal(pruned.protectedChangeSets, 1);
+
+    const reopened = new FileMemory({ filePath });
+    assert.deepEqual(
+      (await reopened.changeSets()).map((record) => record.changeSetId),
+      ["active"]
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("memory marks an applied change set rolled-back without allowing it to reactivate", async () => {
+  const memory = new InMemoryMemory({
+    evidenceRetention: { maxValidations: 10, maxChangeSets: 10 },
+  });
+  await memory.recordChangeSet(makeChangeSetRecord({ changeSetId: "stateful" }));
+
+  assert.equal(await memory.markChangeSetRolledBack("stateful"), true);
+  assert.equal((await memory.changeSets())[0]?.state, "rolled-back");
+  assert.equal(await memory.markChangeSetRolledBack("stateful"), false);
+  await assert.rejects(
+    () => memory.recordChangeSet(makeChangeSetRecord({ changeSetId: "stateful" })),
+    /reactivate|rolled-back/
+  );
+  assert.equal((await memory.changeSets())[0]?.state, "rolled-back");
+});
+
+test("file memory persists a rolled-back transition and rejects reactivation", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "rolled-back-state.json");
+    const memory = new FileMemory({ filePath });
+    await memory.recordChangeSet(makeChangeSetRecord({ changeSetId: "stateful-file" }));
+
+    assert.equal(await memory.markChangeSetRolledBack("stateful-file"), true);
+    await assert.rejects(
+      () => memory.recordChangeSet(makeChangeSetRecord({ changeSetId: "stateful-file" })),
+      /reactivate|rolled-back/
+    );
+
+    const reopened = new FileMemory({ filePath });
+    assert.equal((await reopened.changeSets())[0]?.state, "rolled-back");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("file memory serializes concurrent evidence writes without losing entries", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "concurrent-retention.json");
+    const memory = new FileMemory({
+      filePath,
+      evidenceRetention: { maxValidations: 10, maxChangeSets: 10 },
+    });
+    await Promise.all(
+      Array.from({ length: 3 }, async (_, index) => {
+        await memory.append(createMemoryEntry("user", `entry-${index}`));
+        await memory.recordValidation({
+          ...makeValidationResult("passed"),
+          validationId: `validation:concurrent:${index}`,
+          changeSetId: `cs-concurrent:${index}`,
+        });
+        await memory.recordChangeSet(
+          makeChangeSetRecord({ changeSetId: `cs-concurrent:${index}` })
+        );
+      })
+    );
+
+    const reopened = new FileMemory({ filePath });
+    assert.equal((await reopened.entries()).length, 3);
+    assert.equal((await reopened.validations()).length, 3);
+    assert.equal((await reopened.changeSets()).length, 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("memory rejects non-positive or non-integer evidence retention limits", () => {
+  assert.throws(
+    () => new InMemoryMemory({ evidenceRetention: { maxValidations: 0 } }),
+    /positive integer/
+  );
+  assert.throws(
+    () => new FileMemory({ filePath: "/tmp/dev-agent-retention.json", evidenceRetention: { maxChangeSets: 1.5 } }),
+    /positive integer/
+  );
+});
