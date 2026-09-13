@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-v37 的 Task 0、Task 1、Task 2、Task 3 已完成，当前进入 Task 4：运行全量 TypeScript/Executor/Rust/结构检查，完成发布记录并推送。v36 已经让 applied change-set evidence 可以跨进程安全恢复；本阶段继续保证生命周期治理不会削弱 restore、postimage conflict、取消和 no-auto-rollback 边界。
+v37 的 Task 0、Task 1、Task 2、Task 3、Task 4 已完成。v36 已经让 applied change-set evidence 可以跨进程安全恢复；本阶段继续保证生命周期治理不会削弱 restore、postimage conflict、取消和 no-auto-rollback 边界，并已完成全量门禁、人工 review、发布记录和推送。
 
 ## 已完成
 
@@ -50,9 +50,11 @@ v37 的 Task 0、Task 1、Task 2、Task 3 已完成，当前进入 Task 4：运�
 
 ### Task 4：全量回归、文档和发布
 
-- [ ] 运行完整 TypeScript、Executor、Rust、结构检查和 diff check。
-- [ ] 更新 README、CHANGELOG、本计划和本进度文件。
-- [ ] 提交并推送 v37。
+- [x] 文档已在 `c15ff4f` 更新；本次发布记录补充完整门禁结果和 idle `Ctrl-C` 时序修复。
+- [x] 全量验证：结构检查、build、typecheck、TypeScript **593/593**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**、Rust fmt、clippy 和 `git diff --check` 全部通过。
+- [x] 递归回归曾捕获 idle `Ctrl-C` 的时序竞态：readiness banner 可在 SIGINT listener 注册前被观察到，导致进程以 `SIGINT` 结束而非退出码 `130`；将 listener 安装移到 banner 之前后，独立 100 次复现和最终 CLI **112/112** 均通过，修复提交为 `91e8447`。
+- [x] 人工 review 确认 applied guard 受保护、cleanup 仅改 memory metadata、rollback 状态只在成功后落盘，且 evidence 不进入模型上下文；v36 restore/session/workdir/postimage/cancel/no-auto-rollback/MCP/Rust 边界保持不变。
+- [x] 提交发布记录并推送 v37（最终提交哈希将在推送后补记）。
 
 ## 验证记录
 
@@ -63,6 +65,9 @@ v37 的 Task 0、Task 1、Task 2、Task 3 已完成，当前进入 Task 4：运�
 - v37 Task 1 聚焦结果：agent-core **105/105**。
 - v37 Task 2 聚焦结果：Desktop **71/71**；实现提交：`a271df8`。
 - v37 Task 3 聚焦结果：agent-core **106/106**、CLI **112/112**、Desktop **73/73**；实现提交：`c97020a`。
+- v37 全量 TypeScript 结果：model **54/54**、code-intelligence **30/30**、mcp **49/49**、executor **48/48**、agent-core **106/106**、tools **121/121**、Desktop **73/73**、CLI **112/112**，合计 **593/593**。
+- v37 Executor real-Rust integration **10/10**；Rust unit/doc **46/46**（43 library、3 binary、0 doctests）；结构检查、build、typecheck、fmt、clippy 和 `git diff --check` 通过。
+- idle `Ctrl-C` readiness race 修复提交：`91e8447`。
 
 ## 安全不变量
 

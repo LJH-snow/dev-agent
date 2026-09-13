@@ -100,8 +100,8 @@
 
 **Produces:** v37 的 evidence lifecycle 可审计、可持续回归，并可安全交付。
 
-- [ ] **Step 1: 更新 README、CLI/Desktop/tools 文档和 CHANGELOG。**
-- [ ] **Step 2: 运行完整验证。**
+- [x] **Step 1: 更新 README、CLI/Desktop/tools 文档和 CHANGELOG。** v37 对外行为、cleanup 边界、summary 字段和 CLI/Desktop 示例已在 `c15ff4f` 中记录；本次发布记录补充全量门禁结果和 idle `Ctrl-C` 回归修复。
+- [x] **Step 2: 运行完整验证。** 结构检查、build、typecheck、TypeScript **593/593**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**、Rust fmt、clippy 和 `git diff --check` 全部通过。
 
 ```bash
 node scripts/check.mjs
@@ -117,17 +117,17 @@ cd ../..
 git diff --check
 ```
 
-- [ ] **Step 3: 人工 review。** 确认 applied guard 未被隐式清理、cleanup 没有文件副作用、Undo 状态只在成功后落盘、历史 JSON 仍不是执行输入、v36 的 restore/cancel/no-auto-rollback/MCP/Rust 边界均保持不变。
-- [ ] **Step 4: Commit and push。**
+- [x] **Step 3: 人工 review。** 确认 applied guard 未被隐式清理、cleanup 没有文件副作用、Undo 状态只在成功后落盘、历史 JSON 仍不是执行输入、v36 的 restore/cancel/no-auto-rollback/MCP/Rust 边界均保持不变。递归回归中发现的 idle `Ctrl-C` 时序问题已定位为“readiness banner 先于 SIGINT listener 发布”，并由 `91e8447` 修复；修复后复现脚本 100/100 通过。
+- [x] **Step 4: Commit and push。** 本轮文档发布记录提交后推送到 `origin/main`。
 
 ## Acceptance Checklist
 
-- [ ] validation history 有明确上限或显式 cleanup，清理结果可审计且幂等。
-- [ ] 仍为 `applied` 的 change-set evidence 永不被隐式淘汰；被保护的数量和原因可见。
-- [ ] 只有受保护 rollback 成功后才可把 evidence 标为 `rolled-back`；冲突/失败/取消不改变状态。
-- [ ] cleanup 不执行命令、不读写工作区、不恢复 before-image，不影响其它 session。
-- [ ] CLI 和 Desktop 的历史/JSON/API 兼容，evidence 不进入模型上下文。
-- [ ] v36 全部回归矩阵与 TypeScript、Executor、Rust、结构检查均通过。
+- [x] validation history 有明确上限或显式 cleanup，清理结果可审计且幂等。
+- [x] 仍为 `applied` 的 change-set evidence 永不被隐式淘汰；被保护的数量和原因可见。
+- [x] 只有受保护 rollback 成功后才可把 evidence 标为 `rolled-back`；冲突/失败/取消不改变状态。
+- [x] cleanup 不执行命令、不读写工作区、不恢复 before-image，不影响其它 session。
+- [x] CLI 和 Desktop 的历史/JSON/API 兼容，evidence 不进入模型上下文。
+- [x] v36 全部回归矩阵与 TypeScript、Executor、Rust、结构检查均通过。
 
 ## v37 完成后的后续路线
 

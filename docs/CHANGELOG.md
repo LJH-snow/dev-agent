@@ -34,10 +34,23 @@ execution input.
 - Existing history fields, old `version: 1` memory files, validation filters,
   restore guards, cancellation, MCP, and Rust boundaries remain compatible.
 
+### Regression hardening
+
+- The interactive CLI now installs its `SIGINT` listener before publishing the
+  readiness banner. This closes the pipe-observation race that could make an
+  idle `Ctrl-C` terminate by signal instead of returning the documented exit
+  status `130`; the fix is covered by the existing idle-interrupt test and a
+  repeated 100-run reproduction.
+
 ### Tests
 
 - Focused suites after the lifecycle changes: agent-core **106/106**, CLI
   **112/112**, and Desktop **73/73**.
+- Full TypeScript workspace tests: **593/593** (model 54, code-intelligence 30,
+  MCP 49, executor 48, agent-core 106, tools 121, Desktop 73, CLI 112).
+- Real Rust-binary integration tests: **10/10**; Rust unit/doc tests: **46/46**
+  (43 library, 3 binary, 0 doctests). Structure check, build, typecheck, Rust
+  fmt/clippy, and `git diff --check` also passed.
 - The v37 regression matrix retains coverage for session/workdir binding,
   postimage conflicts, rolled-back restore rejection, cancellation, no-auto-
   rollback, metadata-only cleanup, and protected applied guards.
