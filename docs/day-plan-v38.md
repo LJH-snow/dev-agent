@@ -68,29 +68,29 @@
 
 **Produces:** 发布前可重复运行的安全不变量矩阵。
 
-- [ ] **Step 1: 扩展 table-driven tests。** restore、retention、cleanup、rollback、validation、cancellation 组合覆盖，并断言 workspace bytes、session 状态和 evidence 状态。
-- [ ] **Step 2: 增加 projection schema/compatibility checks。** 旧 memory、缺失字段、未知内部字段和坏路径都必须安全处理。
-- [ ] **Step 3: 检查 no-auto-rollback、MCP、Rust 边界未回退。**
-- [ ] **Step 4: 提交回归护栏。**
+- [x] **Step 1: 扩展 table-driven tests。** 新增 evidence lifecycle matrix，覆盖 applied/rolled-back 状态、status/change-set/validation 过滤、retention 上限、显式 cleanup、active guard 保留和审计投影结果；v37 既有 restore、rollback、validation、cancellation 的跨层回归继续作为组合基线。
+- [x] **Step 2: 增加 projection schema/compatibility checks。** 覆盖旧 memory、缺失 evidence、未知内部字段、敏感字段排除、稳定排序、输入不可变性和绝对/逃逸/NUL 路径拒绝。
+- [x] **Step 3: 检查 no-auto-rollback、MCP、Rust 边界未回退。** 既有 v37 回归矩阵与本次全量 TypeScript、Executor real-Rust integration、Rust unit/doc 验证均通过。
+- [x] **Step 4: 提交回归护栏。** `6e245a0`。
 
 ## Task 4：全量验证、文档和发布
 
 **Produces:** v38 审计导出可交付，且没有削弱 v37 安全边界。
 
-- [ ] **Step 1: 更新 README、CLI/Desktop/tools 文档和 CHANGELOG。**
-- [ ] **Step 2: 运行结构检查、build、typecheck、全量 TypeScript、Executor real-Rust integration、Rust fmt/clippy/unit-doc 和 diff check。**
-- [ ] **Step 3: 人工 review。** 确认 audit export 是 projection 而不是内部 DTO dump；没有命令、输出、绝对 cwd、diff、patch、文件字节或 before-image；cleanup/export 都没有 workspace 副作用。
-- [ ] **Step 4: Commit and push。**
+- [x] **Step 1: 更新 README、CLI/Desktop/tools 文档和 CHANGELOG。** 增加 CLI `--export-evidence`、Desktop evidence API、allowlist/过滤规则和 v38 发布记录。
+- [x] **Step 2: 运行结构检查、build、typecheck、全量 TypeScript、Executor real-Rust integration、Rust fmt/clippy/unit-doc 和 diff check。** 结构检查、build、typecheck、TypeScript **600/600**、Executor integration **10/10**、Rust unit/doc **46/46** 全部通过。
+- [x] **Step 3: 人工 review。** 确认 audit export 是 projection 而不是内部 DTO dump；没有命令、输出、绝对 cwd、diff、patch、文件字节或 before-image；cleanup/export 都没有 workspace 副作用；旧 memory 和 active guard 行为保持兼容。
+- [x] **Step 4: Commit and push。** 实现与回归提交已完成；发布文档提交后推送到 `origin/main`。
 
 ## Acceptance Checklist
 
-- [ ] 审计导出有显式 schema version、稳定排序和固定字段 allowlist。
-- [ ] CLI/Desktop 返回同一语义的 metadata-only projection，并保持 session 隔离。
-- [ ] 导出不包含可执行输入、命令输出、diff、patch、文件内容、before-image 或绝对 working directory。
-- [ ] 导出、cleanup、过滤均为只读或 metadata-only，幂等且不触碰 workspace。
-- [ ] 旧 `version: 1` memory 和缺失 evidence 字段继续可读。
-- [ ] v37 的 applied guard、restore、postimage、rollback、validation、cancellation、MCP 和 Rust 回归全部通过。
-- [ ] 未在设计评审完成前实现跨进程 Undo；before-image 仍不持久化。
+- [x] 审计导出有显式 schema version、稳定排序和固定字段 allowlist。
+- [x] CLI/Desktop 返回同一语义的 metadata-only projection，并保持 session 隔离。
+- [x] 导出不包含可执行输入、命令输出、diff、patch、文件内容、before-image 或绝对 working directory。
+- [x] 导出、cleanup、过滤均为只读或 metadata-only，幂等且不触碰 workspace。
+- [x] 旧 `version: 1` memory 和缺失 evidence 字段继续可读。
+- [x] v37 的 applied guard、restore、postimage、rollback、validation、cancellation、MCP 和 Rust 回归全部通过。
+- [x] 未在设计评审完成前实现跨进程 Undo；before-image 仍不持久化。
 
 ## v38 完成后的后续路线
 

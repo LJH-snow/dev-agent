@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task 0、Task 1、Task 2 已完成，当前进入 Task 3：把 restore、retention、cleanup、rollback、validation、cancellation 和 audit projection 固化为长期回归矩阵；跨进程 Undo 暂不实现。
+v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task 0、Task 1、Task 2、Task 3 已完成，当前进入 Task 4：运行发布门禁、完成人工边界 review 并记录 v38 发布；跨进程 Undo 暂不实现。
 
 ## 已完成
 
@@ -34,7 +34,7 @@ v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task
 
 - [x] RED 测试覆盖稳定排序、相对路径校验、敏感字段排除、legacy 空 evidence 和输入不可变性。
 - [x] 新增版本化 `EvidenceAuditExport` projection，显式排除 command、args、cwd、output、error、reason、workingDirectory、diff、patch 和 before-image。
-- [x] 聚焦回归：agent-core **109/109** 通过；projection 代码不读取或写入 working directory。
+- [x] 聚焦回归：首轮 agent-core **109/109** 通过；projection 代码不读取或写入 working directory。
 - [x] 实现提交：`9e3beac`。
 
 ### Task 2：CLI/Desktop 只读导出入口
@@ -44,17 +44,22 @@ v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task
 - [x] 聚焦回归：agent-core **109/109**、CLI **114/114**、Desktop **73/73**。
 - [x] 实现提交：`2439d09`；README、CLI/Desktop/tools 文档已同步更新。
 
-## 进行中
-
 ### Task 3：长期 evidence 回归矩阵
 
-- [ ] 扩展 restore、retention、cleanup、rollback、validation、cancellation 与 audit projection 的 table-driven 组合覆盖。
+- [x] 新增 table-driven lifecycle matrix，验证 applied guard 在过滤、retention 和显式 cleanup 后仍保留，rolled-back evidence 可清理且不会重新激活。
+- [x] 增加 legacy memory、缺失 evidence、未知内部字段、坏路径、敏感字段排除、排序和输入不可变性检查。
+- [x] v37 的 restore、postimage conflict、no-auto-rollback、cancellation、MCP denial 和 Rust sandbox 边界继续通过；本轮 agent-core **111/111**、tools **121/121**、CLI **114/114**、Desktop **73/73** 聚焦/相关回归通过。
+- [x] 回归提交：`6e245a0`。
+
+### Task 4：全量验证、文档和发布
+
+- [ ] 运行发布门禁、完成人工 review，并将 v38 文档推送到 `origin/main`。
 
 ## 后续任务
 
 - [x] Task 1：Agent-core metadata-only audit projection。
 - [x] Task 2：CLI/Desktop 只读导出入口。
-- [ ] Task 3：长期 evidence 回归矩阵。
+- [x] Task 3：长期 evidence 回归矩阵。
 - [ ] Task 4：全量验证、文档和发布。
 
 ## 设计原则

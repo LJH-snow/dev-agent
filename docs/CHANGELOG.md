@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-09-13 (Day plan v38: metadata-only audit export and lifecycle regression guard)
+
+Executed `docs/day-plan-v38.md`. v38 turns persisted evidence into a versioned,
+read-only audit projection for CLI and Desktop, then adds a long-term lifecycle
+matrix without making evidence executable input or introducing cross-process
+Undo.
+
+### Added: metadata-only audit projection
+
+- `@dev-agent/agent-core` now exposes a versioned `EvidenceAuditExport` built by
+  an explicit allowlist. It includes stable identities, statuses, timings,
+  hashes, counts, and safe relative paths; validation internals, commands,
+  arguments, working directories, output, errors, reasons, diffs, patches,
+  before-images, and file bytes remain excluded.
+- Projection results are cloned and stably sorted. Relative paths normalize
+  separators and reject NUL bytes, absolute paths, Windows drive paths, and
+  parent traversal. Legacy `version: 1` memory without evidence remains
+  readable and produces an empty versioned snapshot.
+
+### Added: read-only CLI/Desktop surfaces
+
+- CLI adds explicit `--export-evidence` with change-set, validation, and status
+  filters. The path reads memory only, prints one JSON snapshot, and does not
+  initialize a provider/MCP or touch the working directory.
+- Desktop adds `GET /api/sessions/<id>/evidence` with the same session-scoped
+  filters and projection. Unknown sessions and invalid statuses are explicit
+  errors; the endpoint is read-only and bypasses the chat queue.
+
+### Regression hardening
+
+- The lifecycle matrix covers applied and rolled-back evidence through
+  filtering, retention, explicit cleanup, and audit projection. Applied guards
+  remain protected, rolled-back records cannot reactivate, and the existing
+  v37 restore, postimage, cancellation, no-auto-rollback, MCP, and Rust
+  boundaries remain in the release gate.
+- Cross-process Undo remains intentionally out of scope until a separate
+  before-image design review covers integrity, capacity, sensitive data,
+  confirmation, failure recovery, lifecycle/concurrency, and compatibility.
+
+### Tests
+
+- Full TypeScript workspace tests: **600/600** (model 54, code-intelligence
+  30, MCP 49, executor 48, agent-core 111, tools 121, Desktop 73, CLI 114).
+- Real Rust-binary integration tests: **10/10**; Rust unit/doc tests: **46/46**
+  (43 library, 3 binary, 0 doctests). Structure check, build, typecheck, Rust
+  fmt/clippy, and `git diff --check` also passed.
+
 ## 2026-09-13 (Day plan v37: evidence lifecycle and continuous regression guard)
 
 Executed `docs/day-plan-v37.md`. v36 made applied change-set evidence safe to
