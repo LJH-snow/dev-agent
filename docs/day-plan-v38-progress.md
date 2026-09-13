@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task 0、Task 1、Task 2、Task 3 已完成，当前进入 Task 4：运行发布门禁、完成人工边界 review 并记录 v38 发布；跨进程 Undo 暂不实现。
+v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task 0、Task 1、Task 2、Task 3、Task 4 已完成，并已推送到 `origin/main`；下一步进入 v39 的 before-image 可行性闸门与发布门禁自动化设计；跨进程 Undo 暂不实现。
 
 ## 已完成
 
@@ -53,14 +53,17 @@ v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task
 
 ### Task 4：全量验证、文档和发布
 
-- [ ] 运行发布门禁、完成人工 review，并将 v38 文档推送到 `origin/main`。
+- [x] README、CLI/Desktop/tools 文档、`docs/CHANGELOG.md`、v38 计划和进度已同步。
+- [x] 发布门禁通过：结构检查、build、typecheck、TypeScript **600/600**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**、Rust fmt/clippy 和 `git diff --check`。
+- [x] 人工边界 review 完成：projection 为固定 allowlist；导出与 cleanup 不触碰 workspace；绝对路径、命令、输出、diff、patch、before-image 和文件字节不进入导出；legacy memory 和 active guard 保持兼容。
+- [x] 发布提交：`9084db1`，已推送到 `origin/main`。
 
 ## 后续任务
 
 - [x] Task 1：Agent-core metadata-only audit projection。
 - [x] Task 2：CLI/Desktop 只读导出入口。
 - [x] Task 3：长期 evidence 回归矩阵。
-- [ ] Task 4：全量验证、文档和发布。
+- [x] Task 4：全量验证、文档和发布。
 
 ## 设计原则
 
@@ -69,3 +72,9 @@ v37 已在 `d7b68a1` 完成全量验证并推送到 `origin/main`。v38 的 Task
 - 导出只读；cleanup 仍只改 memory metadata；两者都不能执行历史输入或触碰 working directory。
 - `applied` guard 继续受保护，rolled-back evidence 不能重新激活，也不能因为导出而获得 Undo 能力。
 - 不在 before-image 设计评审完成前实现跨进程 Undo。
+
+## v38 交付结论
+
+- [x] v38 验收清单全部完成；审计导出和 evidence 生命周期矩阵已成为可重复的发布前护栏。
+- [x] 暂不实现跨进程 Undo；任何 before-image 能力必须先通过独立安全设计评审。
+- [ ] 下一步：按 `docs/day-plan-v39.md` 评估 before-image 可行性闸门，并将 evidence 回归矩阵接入发布脚本。
