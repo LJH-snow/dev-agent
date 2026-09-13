@@ -78,19 +78,19 @@
 
 **Produces:** restart-like 场景中，成功 apply 后关闭并重新创建 session，再显式 rerun 时仍能走 trusted validation；记录失败不影响用户文件和 apply 成功状态。
 
-- [ ] **Step 1: 写失败测试。**
+- [x] **Step 1: 写失败测试。**
   - AgentLoop 在 review-backed apply 成功后记录一条 evidence；普通 write、denied apply、失败 apply 不记录。
   - FileMemory 写入 evidence 后，用同一 memory 文件创建新 CLI/Desktop session，显式 rerun 可以恢复并执行 validation。
   - 新 session 使用不同 session id 或不同工作目录时不能借用旧 evidence。
   - evidence 写入失败时 apply 仍成功，且不触发 rollback 或伪造 validation failure。
   - Desktop/CLI rerun 在恢复冲突时返回 blocked evidence 或稳定的结构化错误，不执行检查前的文件修复。
-- [ ] **Step 2: 运行聚焦测试确认 RED。**
-- [ ] **Step 3: 写最小实现。**
+- [x] **Step 2: 运行聚焦测试确认 RED。**
+- [x] **Step 3: 写最小实现。**
   - AgentLoop 从本地 review 和成功 apply identity 构造 `AppliedChangeSetRecord`，只调用 `memory.recordChangeSet?.()`。
   - CLI/ChatSession 在显式 rerun 前确保从 memory 加载并恢复 records；恢复动作可重复调用且幂等。
   - Desktop 继续保持 UI/HTTP 的现有 validation event 形状，只补充 restart/blocked 状态。
-- [ ] **Step 4: 运行聚焦测试确认 GREEN。**
-- [ ] **Step 5: 提交。**
+- [x] **Step 4: 运行聚焦测试确认 GREEN。**
+- [x] **Step 5: 提交。**
 
 ## Task 3：详情、筛选和兼容性收口
 

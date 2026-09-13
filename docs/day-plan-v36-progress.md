@@ -38,15 +38,18 @@ v36 计划已建立，目标是解决 v35 明确留下的限制：change-set 状
 - [x] 恢复记录使用 postimage-only validation guard，跨进程记录没有 before-image 时明确禁止 rollback；同进程 rollback 不变。
 - [x] 批量恢复返回每条记录的 `restored` / `blocked` 结果和原因。
 - [x] 聚焦回归：tools **120/120**，typecheck 和 `git diff --check` 通过。
-- [x] 已完成提交：待 Task 1 提交。
-
-## 进行中
+- [x] 已完成提交：`1766743`。
 
 ### Task 2：AgentLoop、CLI、Desktop 生命周期
 
-- [ ] 成功 apply 后写 evidence。
-- [ ] 新进程/新 session 实例加载 evidence。
-- [ ] 显式 rerun 在恢复成功和恢复冲突时都保持安全行为。
+- [x] AgentLoop 只在 review-backed apply 成功后写入最小 evidence；普通 write、denied、failed apply 不记录，evidence 写入失败不影响 apply。
+- [x] CLI 和 Desktop 在 session 启动、显式 rerun 前恢复 persisted evidence；恢复动作幂等且不把 evidence 放进模型上下文。
+- [x] 新进程/新 session 可在 postimage 仍匹配时执行 trusted validation；session 或 working directory 不匹配时返回 blocked，且不修改用户文件。
+- [x] CLI 交互输入改为按输出条件推进，避免验证完成前提前写入 `exit` 导致测试丢失输入或空读循环。
+- [x] 聚焦回归：agent-core **99/99**、tools **120/120**、CLI **110/110**、Desktop **70/70**；typecheck 和 `git diff --check` 通过。
+- [x] 已完成提交：`3dc2d1c`.
+
+## 进行中
 
 ### Task 3：详情、筛选和兼容性
 
@@ -64,7 +67,7 @@ v36 计划已建立，目标是解决 v35 明确留下的限制：change-set 状
 - 计划建立日期：2026-09-13。
 - 当前分支起点：v35 release commit `9b33aac`。
 - 当前全量基线：TypeScript **565/565**、Executor real-Rust integration **10/10**、Rust unit/doc **46/46**。
-- v36 新增测试和实现完成后，在这里追加聚焦测试、完整回归和发布提交。
+- v36 Task 0–2 新增测试和实现已完成；Task 0–1 的提交分别为 `2324ed4`、`1766743`，Task 2 提交为 `3dc2d1c`.
 
 ## 后续路线
 
