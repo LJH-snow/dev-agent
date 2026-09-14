@@ -50,6 +50,9 @@
   failing unit assertion，加入 uid/gid 0 和同步的 hosted probe。run `34840884768` 继续证明
   Ubuntu runner 的 AppArmor unprivileged-userns gate 仍在阻止 loopback，因而加入 CI-only
   sysctl prerequisite 配置，等待下一次 hosted evidence。
+- 修复后的 run `34841473962` 已通过全部 CI jobs：Linux `bwrap` real integration **10/10、0 skipped**，
+  macOS real integration **10/10、0 skipped**，TypeScript/Rust/release/documentation contracts
+  同步通过；v62 acceptance 完成，未修改 release target 或公开 API。
 
 ## 2026-09-14（后续路线图：v62+）
 

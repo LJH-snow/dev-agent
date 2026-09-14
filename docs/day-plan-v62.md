@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：进行中；先建立 RED contract，再接入 Ubuntu hosted live evidence。**
+**当前状态：已完成；Ubuntu hosted live evidence 已通过，v62 acceptance 全部满足。**
 
 > v61 完成了 Windows restricted execution 的 feasibility review，结论是保持
 > macOS `sandbox-exec`、Linux `bwrap`，其他平台 fail-closed `Unsupported`。v62 不扩大
@@ -55,30 +55,29 @@ child-process 边界；能力缺失必须让 job 失败，不能被测试 skip �
   refused”伪造 network isolation evidence。
 - [x] 保留并验证 Starlark deny/allow、readonly/write、network disabled/loopback、timeout、
   output quota、cancel 和 runtime concurrency 的真实路径。
-- [ ] 通过 GitHub-hosted Ubuntu job 获取真实 Linux evidence，并确认无 skipped integration。
+- [x] 通过 GitHub-hosted Ubuntu job 获取真实 Linux evidence，并确认 10/10 passed、0 skipped。
 
 ## Task 3：验证与记录
 
 - [x] 更新 CI/release contract、README、architecture、runtime README 和 CHANGELOG，准确
   区分 macOS 与 Linux live evidence。
 - [x] 本地 macOS fixed gate 保持通过。
-- [ ] hosted Linux integration 成功后，将 run URL、测试数量和 capability evidence 写入
-  `docs/day-plan-v62-progress.md`。
-- [ ] 不修改 release target matrix，不创建 release tag。
+- [x] hosted Linux integration 成功后，将 run `34841473962`、10/10 测试数量和 capability
+  evidence 写入 `docs/day-plan-v62-progress.md`。
+- [x] 不修改 release target matrix，不创建 release tag。
 
 ## Acceptance checklist
 
-- [ ] Linux hosted integration job 运行在 Ubuntu，显式安装并检查 `bubblewrap`。
-- [ ] CI-only user namespace/AppArmor setup、user namespace / network namespace / Python /
+- [x] Linux hosted integration job 运行在 Ubuntu，显式安装并检查 `bubblewrap`。
+- [x] CI-only user namespace/AppArmor setup、user namespace / network namespace / Python /
   Rust binary / executor dist 缺失会让 job 独立失败。
-- [ ] Linux integration 没有静默 skip，所有预期测试明确通过。
-- [ ] macOS integration 继续为 10/10，且 TypeScript、Rust、release 和 documentation
+- [x] Linux integration 没有静默 skip，10/10 预期测试明确通过。
+- [x] macOS integration 继续为 10/10，且 TypeScript、Rust、release 和 documentation
   contracts 全部通过。
-- [ ] 真实 network fixture 证明 disabled 与 loopback 行为，不依赖固定平台错误文案。
-- [ ] 无新的公开 API、protobuf 字段、无沙箱 fallback、Windows backend 或 release target。
+- [x] 真实 network fixture 证明 disabled 与 loopback 行为，不依赖固定平台错误文案。
+- [x] 无新的公开 API、protobuf 字段、无沙箱 fallback、Windows backend 或 release target。
 
-## 下一步
+## 最终决策
 
-实现 `.github/workflows/ci.yml` 的 `linux-integration` job，推送后等待 hosted evidence；
-如果 runner 暴露 bwrap 参数或 namespace 的真实问题，先写 failing test/contract，再修正
-backend，不用 skip 或放宽断言掩盖问题。
+**v62 完成。** Linux `bwrap` hosted live evidence 已在 run `34841473962` 中以 10/10 passed、
+0 skipped 通过；继续保持当前公开 surface 和 Windows NO-GO，不自动启动 v63/v64/v65。

@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-**In progress / RED contract established / Linux hosted evidence pending.**
+**Completed / Linux hosted evidence verified / Preserve current public surface.**
 
 v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubuntu hosted evidence，
 不扩大公开 API、protobuf、release target 或 Windows 支持范围。
@@ -28,8 +28,9 @@ v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubunt
   capability detection 改为 macOS/Linux platformized detection。
 - [x] 运行本地 macOS fixed gate，Rust 43/43、TypeScript release gate 和 real-Rust
   integration 10/10 均通过。
-- [ ] 推送修复后的版本并核对 GitHub-hosted Ubuntu run 的真实结果，记录 skipped 数量和
-  capability evidence。
+- [x] 推送修复后的版本并核对 GitHub-hosted Ubuntu run 的真实结果：`bubblewrap` 安装、
+  CI-only namespace/AppArmor setup、Rust binary、executor dist 和 real integration 均通过；
+  Linux integration 明确为 10 passed / 0 skipped。
 
 ## 首次 hosted run 发现
 
@@ -44,7 +45,8 @@ v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubunt
 - [x] 第三次 hosted run `34840884768` 证明 uid/gid 0 仍不足，Linux runner 的 AppArmor
   unprivileged-userns gate 仍阻止 loopback 配置；已把 `kernel.unprivileged_userns_clone` 与
   `kernel.apparmor_restrict_unprivileged_userns` 的 CI-only sysctl 配置加入 prerequisite 阶段。
-- [ ] 带 hosted namespace 配置修复的 run 仍待获取；不能把前三次失败当作 Linux evidence 通过。
+- [x] 修复后的 hosted run `34841473962` 成功：Linux integration 10/10、skipped 0；同一 run
+  的 macOS integration 10/10、skipped 0，TypeScript 与 Rust jobs 也全部通过。
 
 ## 当前阻塞/风险
 
@@ -59,10 +61,22 @@ v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubunt
 | --- | --- | --- |
 | macOS real-Rust integration | 现有 hosted gate 10/10 | 已有 |
 | Linux `bwrap` argument builder | Rust unit tests | 已有但非 live |
-| Linux hosted live integration | `34839400282` nested bind 失败；`34840227357` loopback 权限失败；uid/gid 修复后待重跑 | 待完成 |
-| TypeScript/Rust/release/docs gates | v61/v62 focused checks | 待本轮最终复核 |
+| Linux hosted live integration | run `34841473962`: 10 passed / 0 skipped | 已有 |
+| macOS hosted live integration | run `34841473962`: 10 passed / 0 skipped | 已有 |
+| TypeScript/Rust/release/docs gates | run `34841473962` 全部成功；本地 focused checks 也通过 | 已有 |
 
-## 下一步
+## Acceptance 结果
 
-已实现 RED contract 对应的 Linux job；下一步推送 nested bind 修复并重新获取 Ubuntu hosted run，
-然后把成功且无 skipped 的结果作为 v62 最终 acceptance evidence。
+- [x] Linux hosted integration 在 Ubuntu 上显式安装并检查 `bubblewrap`。
+- [x] CI-only user namespace/AppArmor setup、user namespace / network namespace / Python /
+  Rust binary / executor dist 缺失会让 job 在 integration 前失败。
+- [x] Linux integration 10/10 通过，0 skipped；macOS integration 10/10 通过，0 skipped。
+- [x] TypeScript、Rust、release workflow、documentation contracts 均通过。
+- [x] 真实 host listener 验证 network disabled，sandbox 内 loopback 验证 loopback policy。
+- [x] 未增加公开 API、protobuf 字段、无沙箱 fallback、Windows backend 或 release target。
+
+## 最终决策
+
+**完成 v62；保留当前 runtime/public surface，不启动 v63/v64/v65。** Linux `bwrap` hosted
+live evidence 已补齐，后续只有在出现真实用户需求或正式发布触发条件时，才按
+`docs/next-roadmap-plans-v62-plus.md` 进入下一阶段。
