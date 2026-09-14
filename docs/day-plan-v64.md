@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：进行中；只验证 release workflow，不创建 tag、不发布 GitHub Release。**
+**当前状态：已完成；已验证 release workflow，不创建 tag、不发布 GitHub Release。**
 
 > v62 已经补齐 macOS 与 Linux 的 hosted sandbox live evidence；v64 不再扩大 runtime、
 > protobuf、公开 schema 或平台支持范围，而是把正式发布前最容易被误读的 release 边界
@@ -57,34 +57,33 @@
 
 ## Task 3：四平台 hosted validation
 
-- [ ] 将当前 commit 推送到远端后，通过 `workflow_dispatch` 运行 Release workflow。
-- [ ] 四个 build jobs 全部成功：
-  - [ ] `aarch64-apple-darwin`
-  - [ ] `x86_64-apple-darwin`
-  - [ ] `x86_64-unknown-linux-gnu`
-  - [ ] `aarch64-unknown-linux-gnu`
-- [ ] 下载并逐一检查四组 `.tar.gz` 与 `.sha256`，确认 artifact 名称包含对应 target。
-- [ ] 确认 release/publish job 为 `skipped`，且远端没有新增 GitHub Release。
+- [x] 将当前 commit 推送到远端后，通过 `workflow_dispatch` 运行 Release workflow。
+- [x] 四个 build jobs 全部成功：
+  - [x] `aarch64-apple-darwin`
+  - [x] `x86_64-apple-darwin`
+  - [x] `x86_64-unknown-linux-gnu`
+  - [x] `aarch64-unknown-linux-gnu`
+- [x] 下载并逐一检查四组 `.tar.gz` 与 `.sha256`，确认 artifact 名称包含对应 target。
+- [x] 确认 release/publish job 为 `skipped`，且远端没有新增 GitHub Release。
 
 ## Task 4：审计记录与决策
 
-- [ ] 把 hosted run URL、commit SHA、job 状态、artifact 名称和 release skipped 结果写入 progress。
-- [ ] 更新 CHANGELOG 与文档导航，确保审计文档成为当前 source of truth。
-- [ ] 运行本地 fixed gate、workflow YAML parse、documentation contract、`git diff --check`。
-- [ ] 明确结论为“可进入正式发布准备”或记录阻塞项；本计划本身不授权正式发布。
+- [x] 把 hosted run URL、commit SHA、job 状态、artifact 名称和 release skipped 结果写入 progress。
+- [x] 更新 CHANGELOG 与文档导航，确保审计文档成为当前 source of truth。
+- [x] 运行本地 fixed gate、workflow YAML parse、documentation contract、`git diff --check`。
+- [x] 明确结论为“可进入正式发布准备”或记录阻塞项；本计划本身不授权正式发布。
 
 ## Acceptance checklist
 
-- [ ] 静态 release-workflow contract 全部通过。
-- [ ] 四个平台 build job 同一次 hosted `workflow_dispatch` 全部成功。
-- [ ] 每个 archive 的 binary、README、executable bit 和 checksum 都有 workflow 检查并通过。
-- [ ] 四个 artifact 名称与 target 一致，未混入 Windows 或其他未审计 target。
-- [ ] manual dispatch 的 publish job 明确 skipped；没有 tag、GitHub Release 或 release asset 被创建。
-- [ ] README、docs index、CHANGELOG、day-plan/progress 的边界一致。
+- [x] 静态 release-workflow contract 全部通过。
+- [x] 四个平台 build job 同一次 hosted `workflow_dispatch` 全部成功。
+- [x] 每个 archive 的 binary、README、executable bit 和 checksum 都有 workflow 检查并通过。
+- [x] 四个 artifact 名称与 target 一致，未混入 Windows 或其他未审计 target。
+- [x] manual dispatch 的 publish job 明确 skipped；没有 tag、GitHub Release 或 release asset 被创建。
+- [x] README、docs index、CHANGELOG、day-plan/progress 的边界一致。
 
 ## Decision boundary
 
-如果四平台 build 或 package verification 任何一项失败，保持“不可发布”，记录具体
-proof gap，不以单平台成功替代整体证据。如果全部通过，结论只能是 **Release Candidate
-readiness evidence available / formal release still deferred**；真正的 tag、签名、发布说明
-和回滚演练需要另一个明确授权的发布步骤。
+四平台 build 与 package verification 均已通过，结论为 **Release Candidate readiness
+evidence available / formal release still deferred**。真正的 tag、签名、发布说明和回滚演练
+仍需要另一个明确授权的发布步骤；本次审计没有创建 tag 或 GitHub Release。

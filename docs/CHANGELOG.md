@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-09-14（v64：发布前 Release Candidate 审计开始）
+## 2026-09-14（v64：发布前 Release Candidate 审计完成）
 
 - 建立 `docs/day-plan-v64.md` 与 `docs/day-plan-v64-progress.md`，把 v64 限定为四个既有
   release target 的 hosted manual build、artifact 内容、checksum 和 publish boundary 审计；
@@ -9,8 +9,13 @@
   publish job，以及 package 上传前缺少 executable/README/archive/checksum 验证的缺口。
 - 将 publish 条件收紧为 `push` 事件且 ref 为 `refs/tags/*`；在四平台 artifact 上传前加入
   binary executable bit、README、archive entries 和 checksum 的 fail-closed 检查。
-- 本地 release-workflow contract 已从 RED 的 **2/4** 变为 **4/4**；四平台 hosted evidence
-  和 publish job skipped 记录在同一 commit 推送后补充。
+- 本地 release-workflow contract 已从 RED 的 **2/4** 变为 **4/4**；同一 commit
+  `972a229a50171805ad85bd45d53e1b06c01ebb9d` 的 hosted run
+  [34844424584](https://github.com/LJH-snow/dev-agent/actions/runs/34844424584) 四个平台 build
+  全部成功，四个 artifact 的 checksum、archive 内容、README 和 executable bit 全部通过。
+- 同一 run 的 `Publish release` job 为 **skipped**；run 后没有 `v*` tag、GitHub Release 或
+  release asset。结论为 **Release Candidate readiness evidence available / formal release still
+  deferred**。
 
 ## 2026-09-14（v60：roadmap 编号与文档 source of truth）
 
