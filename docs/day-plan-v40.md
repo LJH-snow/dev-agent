@@ -41,12 +41,12 @@
 - Modify: `/Users/Admin/Desktop/dev-agent/package.json`
 - Modify: `/Users/Admin/Desktop/dev-agent/.gitignore`
 
-- [ ] **Step 1: 写 RED 测试。** 覆盖 report schema 的 allowlist、默认关闭、`--report` 选择、失败阶段、耗时/退出码、`.dev-agent` 固定输出位置和禁止任意路径。
-- [ ] **Step 2: 运行测试确认 RED。** 运行 `node --test tests/release-gate.test.mjs`，预期新 report API 尚不存在而失败。
-- [ ] **Step 3: 写最小实现。** 新增固定报告路径和版本化 DTO；`runGatePlan` 收集阶段结果；请求 `--report` 时在成功或失败后写入原子 JSON，不写命令/输出/cwd。
-- [ ] **Step 4: 运行聚焦回归。** 运行 `node --test tests/release-gate.test.mjs`、`node scripts/release-gate.mjs --help` 和一个分阶段 `--report` smoke run。
-- [ ] **Step 5: 接入文档。** README 和 `docs/README.md` 说明报告开关、固定路径、字段 allowlist 和失败时仍可读取的结果。
-- [ ] **Step 6: 提交。** 提交报告实现和契约测试。
+- [x] **Step 1: 写 RED 测试。** 覆盖 report schema 的 allowlist、默认关闭、`--report` 选择、失败阶段、耗时/退出码、`.dev-agent` 固定输出位置和禁止任意路径。
+- [x] **Step 2: 运行测试确认 RED。** `node --test tests/release-gate.test.mjs` 首轮因 report API 尚不存在而按预期失败。
+- [x] **Step 3: 写最小实现。** 新增固定报告路径和版本化 DTO；`runGatePlan` 收集阶段结果；请求 `--report` 时在成功或失败后写入原子 JSON，不写命令/输出/cwd。
+- [x] **Step 4: 运行聚焦回归。** 契约测试 **9/9**、`--help` 和 `--typescript --report` smoke run 通过；报告检查确认固定字段、固定路径和成功阶段结果。
+- [x] **Step 5: 接入文档。** README 和 `docs/README.md` 已说明报告开关、固定路径、字段 allowlist 和失败时仍可读取的结果。
+- [x] **Step 6: 提交。** 报告实现和契约测试提交为 `40cc4b0`。
 
 ## Task 2：audit export 版本/大小边界设计
 

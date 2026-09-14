@@ -65,7 +65,19 @@ pnpm verify:rust            # the Rust CI job
 
 Each gate uses repository-defined commands and working directories, stops at the
 first failed phase, and does not use model output or historical evidence as
-execution input.
+execution input. Add `--report` when a machine-readable, metadata-only result is
+needed:
+
+```bash
+pnpm verify:typescript -- --report
+```
+
+The report is written atomically to the fixed, ignored path
+`.dev-agent/release-gate-report.json`. It contains only the schema version,
+selected modes, phase status, timings, exit codes, and failed phase; it never
+contains commands, arguments, working directories, output, environment values,
+session evidence, or file contents. Without `--report`, the gate does not create
+or update that report.
 
 `pnpm build` must run before `pnpm typecheck`/`pnpm test` on a fresh checkout:
 workspace packages resolve each other through their published `dist/*.d.ts`,

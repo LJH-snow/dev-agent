@@ -21,16 +21,24 @@ v39 已在 `fc6d8a0` 完成固定 release gate、CI 复用和 before-image NO-GO
 - [x] 新建 `docs/day-plan-v40.md`，定义 report schema、固定输出路径、audit limits 设计和 v41 路线。
 - [x] 明确 report 与 session evidence 分离；不持久化 before-image，不实现跨进程 Undo。
 
-## 进行中
+## 已完成
 
 ### Task 1：固定 gate report
 
-- [ ] 写 RED 测试并确认 report API 尚不存在。
-- [ ] 实现固定报告路径、allowlist DTO、成功/失败写入和根脚本入口。
+- [x] 先写 RED 测试并确认 report API 尚不存在。
+- [x] 新增 `GATE_REPORT_SCHEMA_VERSION`、固定 `.dev-agent/release-gate-report.json`、allowlist DTO、成功/失败阶段记录、原子写入和 `--report` 入口；`.gitignore` 已覆盖 `.dev-agent/`。
+- [x] 契约测试 **9/9**、`--help` 和 TypeScript `--report` smoke run 通过；报告不含 command/args/cwd/stdout/stderr/env/session evidence。
+- [x] 实现提交：`40cc4b0`。
+
+## 进行中
+
+### Task 2：audit export 版本/大小边界设计
+
+- [ ] 定义 record/file/byte 上限与分页的 fail-closed 语义，并写兼容性矩阵。
 
 ## 后续任务
 
-- [ ] Task 1：固定 gate report。
+- [x] Task 1：固定 gate report。
 - [ ] Task 2：audit export 版本/大小边界设计。
 - [ ] Task 3：全量验证、发布和下一阶段计划。
 

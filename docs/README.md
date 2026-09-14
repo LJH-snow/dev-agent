@@ -75,3 +75,16 @@ a shell, and stops at the first failed phase. The integration phase is separate
 so it can be run after the Rust test phase has built the debug runtime. Gate
 selection does not accept arbitrary commands, model output, or persisted evidence
 as execution input.
+
+When CI or a local pre-push check needs a machine-readable result, append
+`--report` to a phase entry point:
+
+```bash
+pnpm verify:typescript -- --report
+```
+
+This writes only the fixed ignored file `.dev-agent/release-gate-report.json`.
+The report is an allowlisted metadata snapshot of selected modes, phase ids,
+status, timings, exit codes, and the failed phase. It does not contain commands,
+args, cwd, stdout, stderr, environment values, session evidence, or file bytes;
+without `--report`, no report file is created or updated.
