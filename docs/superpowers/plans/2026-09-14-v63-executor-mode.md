@@ -35,29 +35,29 @@
 - Produces `ExecutorMode`, `resolveExecutorMode`, and optional `Executor.mode` metadata.
 - Keeps all existing executor method signatures unchanged.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
   - Assert `LocalExecutor.mode === "local"`.
   - Assert `RustExecutor.mode` resolves to the host backend without starting a child process.
   - Assert `resolveExecutorMode` returns `unknown` for an injected executor without metadata and `unsupported` for an unsupported platform configuration.
 
-- [ ] **Step 2: Run the focused executor tests and verify RED**
+- [x] **Step 2: Run the focused executor tests and verify RED**
 
   Run: `pnpm --filter @dev-agent/executor test`
 
   Expected: FAIL only because the mode type/property/helper does not exist yet.
 
-- [ ] **Step 3: Implement the minimal metadata surface**
+- [x] **Step 3: Implement the minimal metadata surface**
   - Add the mode union and platform resolver in `packages/executor/src/index.ts`.
   - Add `readonly mode` to the concrete local and Rust executors.
   - Keep `Executor.mode` optional so existing test doubles and consumers remain source-compatible.
 
-- [ ] **Step 4: Run the focused executor tests and verify GREEN**
+- [x] **Step 4: Run the focused executor tests and verify GREEN**
 
   Run: `pnpm --filter @dev-agent/executor test`
 
   Expected: all executor tests pass with the new mode assertions.
 
-- [ ] **Step 5: Commit the bounded executor metadata change**
+- [x] **Step 5: Commit the bounded executor metadata change**
 
   Run: `git add packages/executor/src packages/executor/tests && git commit -m "feat: expose executor mode metadata"`
 
@@ -73,29 +73,29 @@
 - Consumes `resolveExecutorMode` from `@dev-agent/executor`.
 - Produces `DoctorReport.executorMode` as metadata; existing checks and exit-code rules remain unchanged.
 
-- [ ] **Step 1: Write failing doctor contract tests**
+- [x] **Step 1: Write failing doctor contract tests**
   - No Rust path reports `executorMode: "local"` and keeps the existing warning.
   - A configured Rust path on macOS/Linux reports the corresponding sandboxed mode even when the path health check fails; the health check remains the source of availability truth.
   - JSON output includes the field without paths or command output beyond the existing check detail.
 
-- [ ] **Step 2: Run doctor tests and verify RED**
+- [x] **Step 2: Run doctor tests and verify RED**
 
   Run: `pnpm --filter @dev-agent/cli test`
 
   Expected: FAIL because `DoctorReport.executorMode` is absent.
 
-- [ ] **Step 3: Implement the minimal report field**
+- [x] **Step 3: Implement the minimal report field**
   - Derive mode from the same Rust path selection already passed to `runDoctor`.
   - Add a concise human-readable `executor mode` line without changing check names or summary counts.
   - Keep the current Rust runtime warning/error detail intact.
 
-- [ ] **Step 4: Run doctor tests and verify GREEN**
+- [x] **Step 4: Run doctor tests and verify GREEN**
 
   Run: `pnpm --filter @dev-agent/cli test`
 
   Expected: all CLI tests pass, including existing JSON and exit-code assertions.
 
-- [ ] **Step 5: Commit the CLI metadata change**
+- [x] **Step 5: Commit the CLI metadata change**
 
   Run: `git add apps/cli/src/doctor.ts apps/cli/tests/doctor.test.ts && git commit -m "feat: show executor mode in doctor"`
 
