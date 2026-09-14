@@ -184,6 +184,7 @@ test("CLI reports the first-token timing for streamed responses", async () => {
     );
     assert.match(result.stdout, /\[timing\] first-token=\d+ms total=\d+ms/);
     assert.match(result.stdout, /streamed/);
+    assert.doesNotMatch(result.stdout, /streamed\[turn 1\]/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });

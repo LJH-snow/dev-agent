@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { performance } from "node:perf_hooks";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { readdir, rename, rm, stat } from "node:fs/promises";
@@ -665,6 +666,16 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
 
+    const streamingEnabled =
+      !noStream && !jsonOutput && typeof provider.streamChat === "function";
+    if (!jsonOutput) {
+      console.log(
+        `[runtime] provider=${provider.id} model=${provider.model} streaming=${
+          streamingEnabled ? "enabled" : "disabled"
+        }`
+      );
+    }
+
     const memory = createMemory(normalizedSessionId);
     if (resetMemory) {
       await memory.clear();
@@ -683,7 +694,7 @@ export async function main(argv: string[]): Promise<void> {
             runExplicitValidation(filesystem, validation, context, changeSetId, signal)
         : undefined;
     // Token streaming would interleave with the JSON document.
-    const streaming = new StreamingRun({ enabled: !noStream && !jsonOutput });
+    const streaming = new StreamingRun({ enabled: streamingEnabled });
     const reviews: ReviewRecord[] = [];
     const validations: ValidationResult[] = [];
     const loop = new AgentLoop({
@@ -721,6 +732,9 @@ export async function main(argv: string[]): Promise<void> {
       validation,
       onTurn: (turn) => {
         if (!jsonOutput) {
+          if (streaming.isEnabled() && streaming.hasStreamed()) {
+            process.stdout.write("\n");
+          }
           process.stdout.write(`[turn ${turn}]\n`);
         }
       },
@@ -1729,7 +1743,9 @@ async function runPrompt(
   validations: readonly ValidationResult[] = [],
   signal?: AbortSignal
 ): Promise<AgentContext> {
+  streaming.begin();
   const result = await loop.run(context, prompt, signal ? { signal } : undefined);
+  const timing = streaming.finish();
   const entries = await result.memory.entries();
   const persistedValidations = await result.memory.validations?.();
   const persistedChangeSets = await result.memory.changeSets?.();
@@ -1774,7 +1790,16 @@ async function runPrompt(
       `[usage] prompt=${result.usage.promptTokens} completion=${result.usage.completionTokens} total=${result.usage.totalTokens}${suffix}`
     );
   }
+  console.log(
+    `[timing] first-token=${formatTimingMs(timing.firstTokenMs)} total=${formatTimingMs(
+      timing.totalMs
+    )}`
+  );
   return result;
+}
+
+function formatTimingMs(value: number | undefined): string {
+  return value === undefined ? "n/a" : `${Math.max(0, Math.round(value))}ms`;
 }
 
 /** Trims trailing zeros so small estimates stay readable. */
@@ -1792,9 +1817,16 @@ interface StreamingCallbacks {
   onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
 }
 
+interface RunTiming {
+  readonly firstTokenMs?: number;
+  readonly totalMs: number;
+}
+
 class StreamingRun {
   private readonly enabled: boolean;
   private streamed = false;
+  private startedAt?: number;
+  private firstTokenAt?: number;
 
   constructor(options: { enabled: boolean }) {
     this.enabled = options.enabled;
@@ -1808,12 +1840,31 @@ class StreamingRun {
     return this.streamed;
   }
 
+  begin(): void {
+    this.streamed = false;
+    this.startedAt = performance.now();
+    this.firstTokenAt = undefined;
+  }
+
+  finish(): RunTiming {
+    const finishedAt = performance.now();
+    const startedAt = this.startedAt ?? finishedAt;
+    return {
+      firstTokenMs:
+        this.firstTokenAt === undefined
+          ? undefined
+          : Math.max(0, this.firstTokenAt - startedAt),
+      totalMs: Math.max(0, finishedAt - startedAt),
+    };
+  }
+
   callbacks(): StreamingCallbacks {
     if (!this.enabled) {
       return {};
     }
     return {
       onToken: (token) => {
+        this.firstTokenAt ??= performance.now();
         this.streamed = true;
         process.stdout.write(token);
       },
