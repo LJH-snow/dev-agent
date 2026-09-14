@@ -54,7 +54,7 @@
       align-items: center;
     }
     header .status { font-weight: 400; font-size: 12px; color: var(--muted); }
-    header .header-status { display: flex; align-items: center; gap: 12px; }
+    header .header-status { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; }
     #messages {
       flex: 1;
       overflow-y: auto;
@@ -122,9 +122,25 @@
     button:disabled { opacity: 0.5; cursor: default; }
     select { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 6px; border-radius: 6px; max-width: 170px; }
     #new-session { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+    #preview-evidence { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+    #preview-evidence[aria-expanded="true"] { border-color: var(--accent); }
     #stop { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
     #stop:disabled { opacity: 0.5; cursor: default; }
+    .evidence-preview { border-bottom: 1px solid var(--border); padding: 12px 16px; background: var(--assistant-bg); }
+    .evidence-preview-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; max-width: 760px; }
+    .evidence-preview-title { font-size: 13px; font-weight: 600; }
+    .evidence-preview-status { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .evidence-preview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; max-width: 760px; }
+    .evidence-preview-item { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
+    .evidence-preview-label { display: block; color: var(--muted); font-size: 11px; }
+    .evidence-preview-value { display: block; margin-top: 3px; font-size: 15px; }
+    .evidence-preview-refresh { margin-top: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 5px 9px; border-radius: 7px; }
     .empty { color: var(--muted); font-size: 14px; align-self: center; margin-top: 40px; }
+    @media (max-width: 720px) {
+      header { align-items: flex-start; gap: 8px; }
+      header .header-status { gap: 6px 8px; }
+      .evidence-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
   </style>
 </head>
 <body>
@@ -136,11 +152,39 @@
       <button type="button" id="rename-session" title="Rename session">Rename</button>
       <button type="button" id="delete-session" title="Delete session">Delete</button>
       <button type="button" id="export-session" title="Download transcript">Download</button>
+      <button type="button" id="preview-evidence" title="Preview evidence summary" aria-expanded="false">Evidence</button>
       <button type="button" id="stop" title="Stop the running request" disabled>Stop</button>
       <span class="status" id="usage"></span>
       <span class="status" id="status">idle</span>
     </div>
   </header>
+  <section id="evidence-preview" class="evidence-preview" hidden aria-labelledby="evidence-preview-title" aria-live="polite">
+    <div class="evidence-preview-header">
+      <div>
+        <div id="evidence-preview-title" class="evidence-preview-title">Evidence summary</div>
+        <div id="evidence-preview-status" class="evidence-preview-status" role="status">Choose Evidence to load a metadata-only summary.</div>
+      </div>
+    </div>
+    <div class="evidence-preview-grid">
+      <div class="evidence-preview-item">
+        <span class="evidence-preview-label">Validations</span>
+        <strong id="evidence-preview-validations" class="evidence-preview-value">—</strong>
+      </div>
+      <div class="evidence-preview-item">
+        <span class="evidence-preview-label">Change sets</span>
+        <strong id="evidence-preview-change-sets" class="evidence-preview-value">—</strong>
+      </div>
+      <div class="evidence-preview-item">
+        <span class="evidence-preview-label">Files</span>
+        <strong id="evidence-preview-files" class="evidence-preview-value">—</strong>
+      </div>
+      <div class="evidence-preview-item">
+        <span class="evidence-preview-label">Estimated export size</span>
+        <strong id="evidence-preview-bytes" class="evidence-preview-value">—</strong>
+      </div>
+    </div>
+    <button type="button" id="evidence-preview-refresh" class="evidence-preview-refresh">Refresh</button>
+  </section>
   <div id="messages"><div class="empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
   <form class="composer" id="form">
     <textarea id="input" rows="1" placeholder="Type a message — Enter to send, Shift+Enter for a new line"></textarea>
@@ -158,6 +202,14 @@
     const renameSessionButton = document.getElementById("rename-session");
     const deleteSessionButton = document.getElementById("delete-session");
     const exportSessionButton = document.getElementById("export-session");
+    const previewEvidenceButton = document.getElementById("preview-evidence");
+    const evidencePreviewPanel = document.getElementById("evidence-preview");
+    const evidencePreviewStatus = document.getElementById("evidence-preview-status");
+    const evidencePreviewValidations = document.getElementById("evidence-preview-validations");
+    const evidencePreviewChangeSets = document.getElementById("evidence-preview-change-sets");
+    const evidencePreviewFiles = document.getElementById("evidence-preview-files");
+    const evidencePreviewBytes = document.getElementById("evidence-preview-bytes");
+    const evidencePreviewRefreshButton = document.getElementById("evidence-preview-refresh");
     const stopButton = document.getElementById("stop");
 
     let currentAssistant = null;
@@ -171,6 +223,9 @@
     let currentSessionId = null;
     let sessionSummaries = new Map();
     const approvalMessages = new Map();
+    let evidencePreviewRequestId = 0;
+    let evidencePreviewController = null;
+    let evidencePreviewDataRevision = 0;
 
     function setStatus(text) { status.textContent = text; }
 
@@ -196,6 +251,102 @@
         hasCost = false;
       }
       renderUsage();
+    }
+
+    function formatEvidencePreviewBytes(value) {
+      if (!Number.isSafeInteger(value) || value < 0) return "—";
+      if (value < 1024) return value + " B";
+      const units = ["KB", "MB", "GB"];
+      let amount = value;
+      let unitIndex = -1;
+      while (amount >= 1024 && unitIndex < units.length - 1) {
+        amount /= 1024;
+        unitIndex += 1;
+      }
+      const digits = amount >= 100 ? 0 : amount >= 10 ? 1 : 2;
+      return amount.toFixed(digits).replace(/\.0+$/, "") + " " + units[unitIndex];
+    }
+
+    function setEvidencePreviewValues(preview) {
+      evidencePreviewValidations.textContent = Number.isSafeInteger(preview?.validationCount)
+        ? String(preview.validationCount)
+        : "—";
+      evidencePreviewChangeSets.textContent = Number.isSafeInteger(preview?.changeSetCount)
+        ? String(preview.changeSetCount)
+        : "—";
+      evidencePreviewFiles.textContent = Number.isSafeInteger(preview?.fileCount)
+        ? String(preview.fileCount)
+        : "—";
+      evidencePreviewBytes.textContent = formatEvidencePreviewBytes(preview?.serializedBytes);
+    }
+
+    function isEvidencePreviewPayload(payload, sessionId) {
+      return payload && payload.schemaVersion === 1 && payload.sessionId === sessionId
+        && ["validationCount", "changeSetCount", "fileCount", "serializedBytes"].every((key) => (
+          Number.isSafeInteger(payload[key]) && payload[key] >= 0
+        ));
+    }
+
+    function resetEvidencePreview() {
+      evidencePreviewRequestId += 1;
+      evidencePreviewDataRevision += 1;
+      evidencePreviewController?.abort();
+      evidencePreviewController = null;
+      evidencePreviewPanel.hidden = true;
+      previewEvidenceButton.setAttribute("aria-expanded", "false");
+      previewEvidenceButton.disabled = false;
+      evidencePreviewRefreshButton.disabled = false;
+      evidencePreviewStatus.textContent = "Choose Evidence to load a metadata-only summary.";
+      setEvidencePreviewValues(null);
+    }
+
+    function markEvidencePreviewStale() {
+      evidencePreviewDataRevision += 1;
+      if (evidencePreviewPanel.hidden) return;
+      evidencePreviewStatus.textContent = "Session evidence changed — refresh to update.";
+    }
+
+    async function loadEvidencePreview(sessionId) {
+      if (!sessionId) return;
+      const requestId = ++evidencePreviewRequestId;
+      const dataRevision = evidencePreviewDataRevision;
+      evidencePreviewController?.abort();
+      const controller = new AbortController();
+      evidencePreviewController = controller;
+      evidencePreviewPanel.hidden = false;
+      previewEvidenceButton.setAttribute("aria-expanded", "true");
+      previewEvidenceButton.disabled = true;
+      evidencePreviewRefreshButton.disabled = true;
+      evidencePreviewStatus.textContent = "Loading evidence summary…";
+      setEvidencePreviewValues(null);
+
+      try {
+        const response = await fetch(
+          "/api/sessions/" + encodeURIComponent(sessionId) + "/evidence/preview",
+          { signal: controller.signal }
+        );
+        if (!response.ok) throw new Error("evidence preview request failed");
+        const payload = await response.json();
+        if (requestId !== evidencePreviewRequestId || sessionId !== currentSessionId) return;
+        if (dataRevision !== evidencePreviewDataRevision) {
+          evidencePreviewStatus.textContent = "Session evidence changed — refresh to update.";
+          return;
+        }
+        if (!isEvidencePreviewPayload(payload, sessionId)) throw new Error("invalid evidence preview response");
+        setEvidencePreviewValues(payload);
+        evidencePreviewStatus.textContent = "Metadata only — no file contents or paths are shown.";
+      } catch (error) {
+        if (controller.signal.aborted || error?.name === "AbortError"
+          || requestId !== evidencePreviewRequestId || sessionId !== currentSessionId) return;
+        evidencePreviewStatus.textContent = "Evidence preview unavailable.";
+        setEvidencePreviewValues(null);
+      } finally {
+        if (requestId === evidencePreviewRequestId) {
+          evidencePreviewController = null;
+          previewEvidenceButton.disabled = false;
+          evidencePreviewRefreshButton.disabled = false;
+        }
+      }
     }
 
     function ensureSessionOption(sessionId) {
@@ -376,6 +527,7 @@
           });
           if (res.ok) {
             undoStatus.textContent = "Undone";
+            markEvidencePreviewStale();
           } else if (res.status === 409) {
             undo.disabled = false;
             undoStatus.textContent = "Undo conflict — the file changed";
@@ -394,13 +546,25 @@
     }
 
     sessionSelect.addEventListener("change", async () => {
+      resetEvidencePreview();
       currentSessionId = sessionSelect.value;
       applySessionUsage(sessionSummaries.get(currentSessionId));
       await loadHistory(currentSessionId);
       setStatus("session " + currentSessionId);
     });
 
+    previewEvidenceButton.addEventListener("click", () => {
+      if (currentSessionId === null) return;
+      loadEvidencePreview(currentSessionId);
+    });
+
+    evidencePreviewRefreshButton.addEventListener("click", () => {
+      if (currentSessionId === null) return;
+      loadEvidencePreview(currentSessionId);
+    });
+
     newSessionButton.addEventListener("click", async () => {
+      resetEvidencePreview();
       currentSessionId = "session-" + Date.now().toString(36);
       ensureSessionOption(currentSessionId);
       totalTokens = 0;
@@ -427,6 +591,7 @@
         return;
       }
       currentSessionId = null;
+      resetEvidencePreview();
       totalTokens = 0;
       totalCost = 0;
       hasCost = false;
@@ -470,6 +635,7 @@
       }
 
       currentSessionId = renamed;
+      resetEvidencePreview();
       await loadSessions();
       ensureSessionOption(renamed);
       await loadHistory(renamed);
@@ -628,6 +794,7 @@
         case "validation":
           if (parsed.sessionId && currentSessionId !== null && parsed.sessionId !== currentSessionId) break;
           appendValidation(parsed);
+          markEvidencePreviewStale();
           break;
         case "error":
           appendMessage("error", parsed.message || "unknown error");
@@ -720,6 +887,7 @@
             const payload = await response.json().catch(() => null);
             if (response.ok && payload) {
               rerunStatus.textContent = "Rerun recorded";
+              markEvidencePreviewStale();
               appendValidation(payload);
             } else if (response.status === 409) {
               rerun.disabled = false;

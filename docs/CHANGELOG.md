@@ -1,5 +1,47 @@
 # Changelog
 
+## 2026-09-14 (Day plan v49: Desktop evidence preview 可发现性与只读 UX)
+
+Executed `docs/day-plan-v49.md`. v49 closes the Desktop discoverability gap for the existing
+metadata-only evidence preview without changing the preview API, v1 export, session memory, or
+release-gate contract.
+
+### Added: read-only Evidence summary panel
+
+- `apps/desktop/public/index.html` now places an `Evidence` control beside transcript `Download`.
+  The panel is hidden by default and loads only after an explicit click or `Refresh`.
+- The UI accepts only the v1 preview schema's session-bound numeric metadata and renders
+  Validations, Change sets, Files, and a human-readable estimated export size. It never renders
+  raw evidence records, commands, paths, output/error text, diffs, patches, or file bytes.
+- `AbortController`, request identity, current-session checks, and a data revision guard prevent
+  an old or concurrently stale response from being presented as the current session's summary.
+  Generic errors remain retryable and do not expose server details.
+- Session switching, new/rename/delete actions clear the panel; validation/rerun/Undo changes mark
+  a visible panel stale until the user refreshes it. No response is persisted in localStorage or
+  session memory.
+
+### Decision: no separate Desktop audit JSON download
+
+Task 2 is **NO-GO** without usage evidence. The existing Download remains a Markdown transcript;
+metadata-only v1 JSON continues to be available through the established CLI/API surfaces and their
+explicit rejection-only limits. Preview bytes are not treated as download, execution, restore,
+validation, rollback, or Undo authority.
+
+### Tests and release validation
+
+- Added a RED-to-GREEN served-HTML UI contract in `apps/desktop/tests/server.test.ts`; focused
+  Desktop suite passed **75/75**.
+- In-app browser smoke covered hidden initial state, successful `1/1/1` fixture rendering with
+  `924 B`, generic unknown-session error, session switch cleanup, keyboard activation, screenshot
+  layout, and an empty warn/error console log check.
+- Inline UI JavaScript passed `node --check`; decision matrix and boundaries are recorded in
+  `docs/evidence-preview-ui-v49.md`.
+
+### Next boundary
+
+After the full release verification and push, v50 will focus on accessibility/interaction coverage
+for the Desktop shell rather than expanding preview or integrity fields without a concrete user need.
+
 ## 2026-09-14 (Day plan v48: preview contract gate coverage)
 
 Executed `docs/day-plan-v48.md`. v48 wires the lightweight v45/v46 preview contract suites

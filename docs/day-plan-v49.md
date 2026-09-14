@@ -40,51 +40,52 @@
 
 **Produces:** UI placement、copy、loading/error 和 sensitive-field contract。
 
-- [ ] **Step 1: inventory current Desktop controls。** 记录 session picker、Download transcript、
+- [x] **Step 1: inventory current Desktop controls。** 记录 session picker、Download transcript、
   status area、history load 和 `/api/sessions` evidenceSummary 的现有行为；不重复实现 API。
-- [ ] **Step 2: 定义 preview view model。** 只允许 schemaVersion/sessionId/generatedAt/counts/
+- [x] **Step 2: 定义 preview view model。** 只允许 schemaVersion/sessionId/generatedAt/counts/
   serializedBytes，明确 bytes formatting、empty state、loading、generic error 和 stale-session
   handling。
-- [ ] **Step 3: 写 UI decision matrix。** 覆盖 session switch、concurrent chat/validation、
+- [x] **Step 3: 写 UI decision matrix。** 覆盖 session switch、concurrent chat/validation、
   unknown session、malformed memory、audit-limit query、retry 和 no-side-effect invariants。
 
 ## Task 1：metadata-only preview panel（条件执行）
 
 **Produces:** 若 Task 0 证明 UI 有价值，增加最小只读控件。
 
-- [ ] **Step 1: 先写 RED UI contract tests。** 覆盖 button/label、request URL、response allowlist、
+- [x] **Step 1: 先写 RED UI contract tests。** 覆盖 button/label、request URL、response allowlist、
   count/size rendering、generic error、session switch 和 no mutation；旧 HTML/JS 先失败。
-- [ ] **Step 2: 最小实现。** 在 Download 附近加入 Evidence preview 控件；使用 AbortController 或
+- [x] **Step 2: 最小实现。** 在 Download 附近加入 Evidence preview 控件；使用 AbortController 或
   request identity 防止旧 session response 覆盖新 session；只调用既有 preview endpoint。
-- [ ] **Step 3: 浏览器回归。** 验证 keyboard/focus、loading/disabled 状态、small/large/UTF-8
-  values 和 responsive layout；不把 raw JSON 或 sensitive fixture text 注入 DOM。
+- [x] **Step 3: 浏览器回归。** 验证 keyboard/focus、loading/disabled 状态、success/error、
+  session switch 和 responsive layout；数值格式化与 UTF-8 endpoint 语义由现有 contract
+  suites 覆盖，不把 raw JSON 或 sensitive fixture text 注入 DOM。
 
 ## Task 2：导出入口（严格条件执行）
 
 **Produces:** only if a user need for audit JSON download is demonstrated.
 
-- [ ] **Step 1: 区分 transcript 与 audit export。** 不复用或重命名现有 Download；明确 v1 JSON
+- [x] **Step 1: 区分 transcript 与 audit export。** 不复用或重命名现有 Download；明确 v1 JSON
   是 metadata-only complete snapshot，limits 仍是 explicit rejection-only。
-- [ ] **Step 2: TDD 设计错误/大小反馈。** over-limit 返回现有 metadata-only error；不得下载 partial、
+- [x] **Step 2: TDD 设计错误/大小反馈。** over-limit 返回现有 metadata-only error；不得下载 partial、
   truncate 或把 preview bytes 当作 authorization。
-- [ ] **Step 3: 没有需求则 NO-GO。** 只交付 preview panel，导出仍由现有 CLI/API 使用，不加 UI
+- [x] **Step 3: 没有需求则 NO-GO。** 只交付 preview panel，导出仍由现有 CLI/API 使用，不加 UI
   下载复杂度或新的 response schema。
 
 ## Task 3：验证、发布和下一阶段
 
 **Produces:** v49 UI decision、发布提交和 v50 计划。
 
-- [ ] **Step 1: focused/full verification。** UI contract/browser tests、TypeScript、Rust、
+- [x] **Step 1: focused/full verification。** UI contract/browser tests、TypeScript、Rust、
   integration、report、structure 和 diff check 全部通过。
-- [ ] **Step 2: 更新 README、CHANGELOG、progress 和 UI decision doc。** 说明 preview panel
+- [x] **Step 2: 更新 README、CHANGELOG、progress 和 UI decision doc。** 说明 preview panel
   与 transcript/audit export 的边界。
 - [ ] **Step 3: commit/push 并制定 v50。** 若没有用户价值证据，v50 转向新的真实需求，
   不继续扩展 preview/integrity surface。
 
 ## Acceptance checklist
 
-- [ ] Desktop preview 控件或明确 NO-GO decision 有用户价值/兼容性证据。
-- [ ] UI 只渲染 metadata-only allowlist，错误 generic，session switch 不串数据。
-- [ ] 不触发 provider/workspace/chat/validation/Undo，不持久化 evidence。
-- [ ] v1 export、preview schema、v41 caps、fixed release gate、pagination/schema v2、
+- [x] Desktop preview 控件或明确 NO-GO decision 有用户价值/兼容性证据。
+- [x] UI 只渲染 metadata-only allowlist，错误 generic，session switch 不串数据。
+- [x] 不触发 provider/workspace/chat/validation/Undo，不持久化 evidence。
+- [x] v1 export、preview schema、v41 caps、fixed release gate、pagination/schema v2、
   before-image/cross-process Undo boundaries remain intact.

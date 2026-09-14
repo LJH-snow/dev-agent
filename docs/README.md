@@ -47,7 +47,9 @@ dev-agent/
 - **apps/desktop**: `ChatSession` builds the `AgentLoop` with default tools and model
   provider, bridging streaming callbacks to SSE events. `server.ts` serves a static chat UI
   with `POST /api/chat` (Server-Sent Events) and `GET /health`. Single-page dark/light UI
-  in `public/index.html`.
+  in `public/index.html`; the header's Evidence control calls the existing metadata-only
+  `GET /api/sessions/<id>/evidence/preview` endpoint and renders only counts plus estimated
+  canonical export size. It does not replace transcript Download or add audit-export authority.
 
 ## Policy Language: Starlark
 

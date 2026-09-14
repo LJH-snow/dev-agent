@@ -281,6 +281,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   export limits remain exclusive to the full `/evidence` export, and preview never
   returns commands, paths, output/errors, file contents, before-images, partial/cursor
   fields, or execution/recovery authorization.
+- v49 makes that preflight discoverable in Desktop with a hidden-by-default, read-only
+  **Evidence** summary panel beside transcript **Download**. It renders only the three
+  counts and human-readable estimated export size, cancels stale session requests, marks
+  evidence changes for refresh, and does not add a second audit JSON download authority.
 - CLI human output and `--json.validations` expose the same check ids, structured
   commands, durations, bounded output, and failure reasons; Desktop emits a
   `validation` SSE frame and renders a card without hiding the guarded Undo

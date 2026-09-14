@@ -115,6 +115,35 @@ test("GET / serves the chat UI", async () => {
   }
 });
 
+test("GET / exposes a metadata-only evidence preview control", async () => {
+  const server = createDesktopServer();
+  const base = await start(server);
+  try {
+    const res = await fetch(`${base}/`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.match(html, /id="preview-evidence"/);
+    assert.match(html, /title="Preview evidence summary"/);
+    assert.match(html, /id="evidence-preview"/);
+    assert.match(html, /id="evidence-preview-status"/);
+    assert.match(html, /id="evidence-preview-validations"/);
+    assert.match(html, /id="evidence-preview-change-sets"/);
+    assert.match(html, /id="evidence-preview-files"/);
+    assert.match(html, /id="evidence-preview-bytes"/);
+    assert.match(html, /\/evidence\/preview/);
+    assert.match(html, /new AbortController\(\)/);
+    assert.match(html, /Session evidence changed — refresh to update\./);
+    assert.match(html, /validationCount/);
+    assert.match(html, /changeSetCount/);
+    assert.match(html, /fileCount/);
+    assert.match(html, /serializedBytes/);
+    assert.match(html, /Evidence summary/);
+    assert.match(html, /Estimated export size/);
+  } finally {
+    await close(server);
+  }
+});
+
 test("review approval SSE includes the change-set review", async () => {
   let rollbackCalls = [];
   const session = {
