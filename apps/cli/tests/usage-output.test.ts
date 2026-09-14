@@ -51,6 +51,11 @@ test("CLI prints the token usage the provider reported", async () => {
     });
 
     assert.equal(result.code, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /\[runtime\] provider=openai model=gpt-4o-mini streaming=disabled/
+    );
+    assert.match(result.stdout, /\[timing\] first-token=n\/a total=\d+ms/);
     assert.match(result.stdout, /\[usage\] prompt=21 completion=8 total=29/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -113,6 +118,72 @@ test("CLI appends the estimated cost when the config has prices", async () => {
       result.stdout,
       /\[usage\] prompt=21 completion=8 total=29 cost=\$0\.00000795/
     );
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("CLI reports the first-token timing for streamed responses", async () => {
+  const server = createServer((req, res) => {
+    req.on("data", () => {});
+    req.on("end", () => {
+      res.writeHead(200, {
+        "content-type": "text/event-stream",
+        "cache-control": "no-cache",
+        connection: "keep-alive",
+      });
+      res.write(
+        `data: ${JSON.stringify({ choices: [{ delta: { content: "streamed" } }] })}\n\n`
+      );
+      setTimeout(() => {
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [{ delta: {} }],
+            usage: { prompt_tokens: 21, completion_tokens: 8, total_tokens: 29 },
+          })}\n\n`
+        );
+        res.write("data: [DONE]\n\n");
+        res.end();
+      }, 10);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-stream-timing-"));
+
+  try {
+    const result: any = await new Promise((resolve) => {
+      const child = spawn("node", [cliPath, "--once", "hello"], {
+        env: {
+          ...process.env,
+          DEV_AGENT_MODEL_PROVIDER: "openai",
+          DEV_AGENT_MODEL: "",
+          OPENAI_API_KEY: "test-key",
+          OPENAI_BASE_URL: `http://127.0.0.1:${port}/v1`,
+          DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      child.on("close", (code) => resolve({ code, stdout, stderr }));
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(
+      result.stdout,
+      /\[runtime\] provider=openai model=gpt-4o-mini streaming=enabled/
+    );
+    assert.match(result.stdout, /\[timing\] first-token=\d+ms total=\d+ms/);
+    assert.match(result.stdout, /streamed/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
     await rm(dir, { recursive: true, force: true });
