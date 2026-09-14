@@ -2240,3 +2240,14 @@ that answered `--check-rust` with runtime version `0.1.0` and capabilities
 - 更新 README、`docs/README.md` 和 architecture 的 artifact 前置条件与 Linux bwrap 状态。
 - 决策：**Preserve / NO-GO** 自动把 artifact preparation 复制进固定 gate；macOS hosted job
   继续作为 live sandbox evidence 的权威入口。
+
+
+## 2026-09-14（v58：release workflow packaging contract）
+
+- 新增 `tests/release-workflow.test.mjs`，覆盖 release workflow 的四 target matrix、Rust
+  target/cross linker、release binary build、tar.gz/SHA-256 packaging、artifact upload 与
+  tag-only publish 边界。
+- 将 release workflow contract 作为 fixed TypeScript gate 的独立 step；focused contract 为
+  **2/2**，既有 release-gate contract 为 **12/12**。
+- 没有创建 tag、上传 release artifact 或发布 GitHub Release；静态 contract 不替代真实四平台
+  release run。
