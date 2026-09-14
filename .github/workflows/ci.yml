@@ -113,6 +113,21 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq bubblewrap protobuf-compiler
 
+      # Ubuntu 24.04 may restrict unprivileged user namespaces through AppArmor.
+      # This runner is ephemeral; make the CI-only capability explicit instead of
+      # allowing bwrap live tests to fail or silently skip later.
+      - name: Configure hosted user namespace prerequisites
+        run: |
+          set -euo pipefail
+          userns_clone="$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || true)"
+          if [[ -n "$userns_clone" && "$userns_clone" != "1" ]]; then
+            sudo sysctl -w kernel.unprivileged_userns_clone=1
+          fi
+          apparmor_userns="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true)"
+          if [[ -n "$apparmor_userns" && "$apparmor_userns" != "0" ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 

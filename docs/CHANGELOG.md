@@ -47,7 +47,9 @@
 - hosted run `34839400282` 在 Linux Rust gate 暴露 `/root` 等不可读 nested bind 导致
   `bwrap` live echo 失败；先以 failing Rust unit assertion 固化问题，再改为单一只读 root
   bind。随后 run `34840227357` 暴露 loopback 配置缺少 namespace 内 uid/gid 0；再次先写
-  failing unit assertion，加入 uid/gid 0 和同步的 hosted probe，等待第三次 hosted evidence。
+  failing unit assertion，加入 uid/gid 0 和同步的 hosted probe。run `34840884768` 继续证明
+  Ubuntu runner 的 AppArmor unprivileged-userns gate 仍在阻止 loopback，因而加入 CI-only
+  sysctl prerequisite 配置，等待下一次 hosted evidence。
 
 ## 2026-09-14（后续路线图：v62+）
 

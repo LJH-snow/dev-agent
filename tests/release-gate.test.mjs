@@ -371,6 +371,9 @@ test("CI runs live Rust integration on a dedicated Linux bwrap job", () => {
   assert.match(job, /runs-on: ubuntu-latest/);
   assert.match(job, /env:\n(?:\s+#.*\n)*\s+DEV_AGENT_REQUIRE_LIVE_SANDBOX: "1"/);
   assert.match(job, /sudo apt-get install -y -qq bubblewrap protobuf-compiler/);
+  assert.match(job, /- name: Configure hosted user namespace prerequisites/);
+  assert.match(job, /kernel\.unprivileged_userns_clone/);
+  assert.match(job, /kernel\.apparmor_restrict_unprivileged_userns/);
   assert.match(job, /pnpm verify:rust/);
   assert.match(job, /- name: Build debug Rust runtime\n\s+run: cargo build --bin dev-agent-executor\n\s+working-directory: runtime\/rust/);
   assert.match(job, /- name: Check Rust binary prerequisite\n\s+run: test -x runtime\/rust\/target\/debug\/dev-agent-executor/);

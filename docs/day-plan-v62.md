@@ -40,8 +40,9 @@ child-process 边界；能力缺失必须让 job 失败，不能被测试 skip �
 ## Task 1：RED contract
 
 - [x] 在 `tests/release-gate.test.mjs` 增加 Linux integration job contract。
-- [x] contract 锁定 Ubuntu runner、bubblewrap 安装、独立 prerequisite checks、显式 Rust
-  build、executor build、`DEV_AGENT_REQUIRE_LIVE_SANDBOX=1` 和固定 gate 顺序。
+- [x] contract 锁定 Ubuntu runner、bubblewrap 安装、CI-only user namespace setup、独立
+  prerequisite checks、显式 Rust build、executor build、`DEV_AGENT_REQUIRE_LIVE_SANDBOX=1`
+  和固定 gate 顺序。
 - [x] 先在没有 Linux job 的基线上观察 contract 失败，再实现 workflow。
 
 ## Task 2：platformized real integration
@@ -68,8 +69,8 @@ child-process 边界；能力缺失必须让 job 失败，不能被测试 skip �
 ## Acceptance checklist
 
 - [ ] Linux hosted integration job 运行在 Ubuntu，显式安装并检查 `bubblewrap`。
-- [ ] user namespace / network namespace / Python / Rust binary / executor dist 缺失会让
-  job 独立失败。
+- [ ] CI-only user namespace/AppArmor setup、user namespace / network namespace / Python /
+  Rust binary / executor dist 缺失会让 job 独立失败。
 - [ ] Linux integration 没有静默 skip，所有预期测试明确通过。
 - [ ] macOS integration 继续为 10/10，且 TypeScript、Rust、release 和 documentation
   contracts 全部通过。

@@ -41,7 +41,10 @@ v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubunt
 - [x] 第二次 hosted run `34840227357` 证明 nested bind 已修复，但暴露 `bwrap: loopback: Failed
   RTM_NEWADDR: Operation not permitted`；先添加 failing unit assertion，再让 user namespace
   内以 uid/gid 0 配置 loopback，并同步到 hosted prerequisite probe。
-- [ ] 带 uid/gid 修复的 hosted run 仍待获取；不能把前两次失败当作 Linux evidence 通过。
+- [x] 第三次 hosted run `34840884768` 证明 uid/gid 0 仍不足，Linux runner 的 AppArmor
+  unprivileged-userns gate 仍阻止 loopback 配置；已把 `kernel.unprivileged_userns_clone` 与
+  `kernel.apparmor_restrict_unprivileged_userns` 的 CI-only sysctl 配置加入 prerequisite 阶段。
+- [ ] 带 hosted namespace 配置修复的 run 仍待获取；不能把前三次失败当作 Linux evidence 通过。
 
 ## 当前阻塞/风险
 
