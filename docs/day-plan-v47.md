@@ -2,6 +2,8 @@
 
 **建立日期：2026-09-14**
 
+**状态：v47 design-only 完成；没有真实 consumer，deterministic digest 与 signature 均 NO-GO。**
+
 > 本计划承接 `docs/day-plan-v46.md`。v46 通过了 core/CLI/Desktop preview parity，并
 > 保留 Desktop 的兼容 query 语义。v47 只评估 v43 提出的 canonical metadata digest
 > 方向：先确认真实消费场景、算法和信任边界，再决定是否有必要改公开 schema；没有
@@ -43,56 +45,67 @@
 
 **Produces:** digest 是否有必要的证据，以及不可接受的误用场景。
 
-- [ ] **Step 1: 收集真实 consumer 需求。** 从现有 CLI/Desktop/CI/release gate 使用方式
-  区分 content identity、cache key、audit correlation 和 authenticity，不把理论便利
-  当作需求。
-- [ ] **Step 2: 固化输入与字段边界。** 证明 digest 只能建立在完整 v1 canonical serializer
-  bytes 上，输入 filter/session/schema 的绑定关系明确，敏感字段永不进入 projection。
-- [ ] **Step 3: 写 abuse/compatibility matrix。** 覆盖 replay、cross-session mix-up、
+- [x] **Step 1: 收集真实 consumer 需求。** inventory 现有 CLI/Desktop/CI/release gate
+  使用方式；没有发现 cache、同步、审计关联或 authenticity consumer，`serializedBytes`
+  已满足当前 export-limit selection。
+- [x] **Step 2: 固化输入与字段边界。** 记录 digest 只能建立在完整 v1 canonical serializer
+  UTF-8 bytes 上；session/filter/schema binding 与敏感字段边界见
+  `docs/evidence-digest-review-v47.md`。
+- [x] **Step 3: 写 abuse/compatibility matrix。** 覆盖 replay、cross-session mix-up、
   stale digest、algorithm migration、unknown/old client、logging correlation 和误当
-  recovery authority 的风险。
+  recovery authority 的风险；没有 consumer 前不扩大公开 surface。
 
 ## Task 1：deterministic digest contract（条件执行）
 
 **Produces:** 最小、可实现、可验证的 hash contract；默认不改变公开 response。
 
-- [ ] **Step 1: 评估算法与 domain separation。** 比较 Node/Rust/CI 可用的 SHA-256 语义，
-  明确文本前缀、NUL/长度边界、lowercase hex/base64url 编码、schema version 和 algorithm
-  label；不依赖运行时对象枚举偶然顺序。
-- [ ] **Step 2: 证明 parity。** 同一 fixture 在 agent-core、CLI、Desktop（以及需要时 Rust）
-  产生相同 digest；reordered input、UTF-8、filtered projection 和 empty snapshot 均
-  有固定 vectors。
-- [ ] **Step 3: 决定 surface。** 若无真实 consumer，保持 internal/test utility 或 NO-GO；
-  若有明确 consumer，先单独写公开 schema/CLI flag 兼容方案，不直接修改 v1 preview。
+- [x] **Step 1: 评估算法与 domain separation。** 确认 SHA-256 + 明确 domain separation 是
+  可行候选，但算法便利不构成需求，也不能解决 authenticity/key lifecycle。
+- [x] **Step 2: 证明 parity。** v45/v46 已证明同一 canonical serializer bytes 在 core/CLI/Desktop
+  一致；没有真实 digest consumer，因此不新增 vectors 或 runtime utility。
+- [x] **Step 3: 决定 surface。** 结论为 **NO-GO / design-only**；不增加公开 digest 字段、
+  CLI flag、Desktop query、MCP resource 或 v1 schema 变化。
 
 ## Task 2：公开 surface 或签名（严格条件执行）
 
 **Produces:** only if Task 0--1 prove a product need and trust model.
 
-- [ ] **Step 1: TDD implement only the approved surface.** 优先独立、只读、metadata-only
-  surface；不把 digest 自动注入 v1 response，除非明确 versioning/compatibility 已获证据。
-- [ ] **Step 2: Verify misuse resistance.** 错误只返回稳定 metadata；digest mismatch、旧
-  algorithm、unknown schema 和跨 session 绑定不能触发执行或恢复动作。
-- [ ] **Step 3: Signature gate.** 只有明确 key ownership、rotation、verification、revocation
-  和 failure semantics 才能另开签名实现；否则 deterministic hash 保持非认证属性。
+- [x] **Step 1: 未触发 TDD runtime implementation。** 没有 approved surface 或真实 consumer，
+  不自动注入 v1 preview/export。
+- [x] **Step 2: 固化 misuse resistance。** review 记录 digest 不得触发执行/恢复；未来 mismatch、
+  旧 algorithm、unknown schema 必须明确失败，不能静默降级。
+- [x] **Step 3: Signature gate。** 当前没有 key ownership、rotation、verification、revocation
+  或 trust anchor，signature **NO-GO**；deterministic hash 也不公开。
 
 ## Task 3：验证、发布和下一阶段
 
 **Produces:** v47 decision record and a bounded next plan.
 
-- [ ] **Step 1: focused/full verification。** 如无 runtime 改动，至少跑 digest vectors、
-  parity、sensitive-field、structure、diff check 和现有 full gates。
-- [ ] **Step 2: 更新 README、CHANGELOG、progress 和 digest review。** 清楚区分 hash、signature、
+- [x] **Step 1: focused/full verification。** design-only review 后的现有 full gates、structure、
+  report smoke 和 diff check 均通过；没有新增 runtime test surface。
+- [x] **Step 2: 更新 README、CHANGELOG、progress 和 digest review。** 明确区分 hash、signature、
   preview/export schema 与 authority boundaries。
-- [ ] **Step 3: commit/push 并制定 v48。** 若没有真实 consumer，结束为 design-only/NO-GO，
-  不继续堆 speculative integrity fields。
+- [x] **Step 3: commit/push 并制定 v48。** v48 改为把既有 root preview contract tests 接入固定
+  TypeScript release gate，不继续堆 speculative integrity fields。
+
+## Artifacts
+
+- `docs/evidence-digest-review-v47.md`
+- `docs/day-plan-v47-progress.md`
 
 ## Acceptance checklist
 
-- [ ] digest 是否必要有真实 consumer 证据，而非单纯理论需求。
-- [ ] canonical input、algorithm、encoding、schema/filter/session binding 和 migration
-  语义可复现。
-- [ ] digest 不泄露 evidence，不成为执行/恢复授权；signature 只有在 key trust model
-  完整时才可提议。
-- [ ] v1 export、preview allowlist、v41 caps、pagination/schema v2、before-image/cross-process
+- [x] inventory 证明当前没有真实 digest consumer；不因理论便利扩大 runtime。
+- [x] canonical input、候选 algorithm、encoding、schema/filter/session binding 和 migration
+  风险已记录。
+- [x] digest 不泄露 evidence，不成为执行/恢复授权；signature 因 trust model 缺失保持 NO-GO。
+- [x] v1 export、preview allowlist、v41 caps、pagination/schema v2、before-image/cross-process
   Undo boundaries remain intact.
+
+
+## v47 decision summary
+
+- metadata digest：**NO-GO / design-only**；当前没有真实 consumer，继续使用 `serializedBytes`。
+- signature：**NO-GO**；没有 key ownership、rotation、verification、revocation 或 trust anchor。
+- runtime：**未改变**；v48 转向将既有 preview contract tests 纳入固定 TypeScript gate。
+- 详细 review：见 `docs/evidence-digest-review-v47.md`。

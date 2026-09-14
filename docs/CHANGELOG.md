@@ -1,5 +1,36 @@
 # Changelog
 
+## 2026-09-14 (Day plan v47: canonical metadata digest review)
+
+Executed `docs/day-plan-v47.md` as a design-only review. The repository inventory found no
+real digest consumer: `serializedBytes` already serves the only identified preview use case,
+choosing an explicit v41 export limit.
+
+### Decision: no public digest or signature
+
+- No cache key, remote sync, audit-correlation, signature-verification, or authenticity consumer
+  exists in the current CLI/Desktop/CI/session-memory surfaces. A deterministic SHA-256 hash is
+  technically feasible, but algorithm availability alone is not a product requirement.
+- A future hash would have to cover exactly the full v1 canonical UTF-8 serializer bytes with
+  explicit algorithm/domain/schema/session/filter binding; it must remain content identity only,
+  not execution, validation, restore, rollback, or Undo authority.
+- There is no key ownership, rotation, verification, revocation, or trust anchor for a signature,
+  so signature work is **NO-GO**. v47 adds no digest field, CLI flag, Desktop query, MCP resource,
+  persisted record, Rust protocol, or schema version.
+
+### Review and validation
+
+- Inventory, abuse/compatibility matrix, and boundaries are recorded in
+  `docs/evidence-digest-review-v47.md`.
+- Existing full TypeScript/Rust/integration gates, report allowlist smoke, structure check, and
+  `git diff --check` passed; no runtime behavior changed.
+
+### Next boundary
+
+v48 is documented in `docs/day-plan-v48.md` to include the already-created v45/v46 root preview
+contract tests in the fixed TypeScript release gate. The full 100,000-file benchmark remains an
+explicit development command rather than a default CI phase.
+
 ## 2026-09-14 (Day plan v46: preview cross-surface parity)
 
 Executed `docs/day-plan-v46.md`. v46 adds a cross-surface regression harness for the same
