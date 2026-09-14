@@ -2,7 +2,8 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：已完成；roadmap 已归一化，bounded 文档 contract 已进入 fixed TypeScript gate。**
+**当前状态：已完成；roadmap 已归一化，bounded 文档 contract 已进入 fixed TypeScript gate，
+hosted CI 已复核通过。**
 
 > 本计划承接 `docs/day-plan-v59.md`。v59 已完成 release artifact 的单 target 手工 smoke，并
 > 对永久自动化作 Preserve/NO-GO。v60 的 inventory 发现根 README 的 Roadmap 原本在第 63 项
@@ -63,7 +64,15 @@ contract 和 packaging smoke decision 均保留原有 source-of-truth。
 - [x] 运行完整 `pnpm verify`、structure/check 脚本、workflow YAML parse 和 `git diff --check`。
 - [x] 本地验证通过后准备提交并推送；只触发普通 CI，不创建 tag、不上传 artifact、不发布
   GitHub Release。
-- [ ] 记录 hosted CI run，并决定 v61 是否只建立在新的、具体的证据或需求上。
+- [x] 记录 hosted CI run，并决定 v61 只建立在新的、具体的证据或需求上；已建立
+  `docs/day-plan-v61.md`，默认先评估 Windows restricted execution，不承诺实现。
+
+**Hosted evidence：** commit `2c19173` 对应的普通 CI run
+[34812211033](https://github.com/LJH-snow/dev-agent/actions/runs/34812211033) 最终成功，Rust、
+macOS integration 和 TypeScript jobs 全部通过。第一次 TypeScript 尝试在 `packages/tools`
+build 阶段触发 15 分钟 job timeout；没有出现测试失败输出，重跑该失败 job 后 TypeScript
+release gate 正常完成，documentation contract **2/2**、release-workflow contract **2/2**、
+release-gate contract **12/12**，macOS real integration 保持 **10/10、0 skipped**。
 
 ## Acceptance checklist
 
@@ -72,7 +81,8 @@ contract 和 packaging smoke decision 均保留原有 source-of-truth。
 - [x] 历史事实、NO-GO/deferred 边界和 release authority 未被删除或改变。
 - [x] 没有无证据增加 runtime、workflow、依赖或自动化复杂度。
 - [x] 本地 fixed gate 与 structure/YAML/diff checks 均通过。
-- [ ] 普通 hosted CI 通过并完成远端 evidence 记录。
+- [x] 普通 hosted CI 通过并完成远端 evidence 记录；初次 runner timeout 通过同一 commit 的
+  failed-job rerun 复核，不改变代码或 workflow。
 
 ## Decision boundary
 

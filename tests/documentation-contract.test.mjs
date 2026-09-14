@@ -34,6 +34,8 @@ test("documentation index points to the current source-of-truth documents", () =
     "docs/CHANGELOG.md",
     "docs/day-plan-v60.md",
     "docs/day-plan-v60-progress.md",
+    "docs/day-plan-v61.md",
+    "docs/day-plan-v61-progress.md",
   ]) {
     assert.ok(readme.includes(link), `README should link to ${link}`);
   }
@@ -44,6 +46,8 @@ test("documentation index points to the current source-of-truth documents", () =
     "CHANGELOG.md",
     "day-plan-v60.md",
     "day-plan-v60-progress.md",
+    "day-plan-v61.md",
+    "day-plan-v61-progress.md",
   ]) {
     assert.ok(docsReadme.includes(`](${link})`), `docs/README.md should link to ${link}`);
   }

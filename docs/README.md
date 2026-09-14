@@ -10,9 +10,11 @@ Architecture, design decisions, and module documentation.
   reference for system responsibilities and runtime boundaries.
 - **Chronological decisions and evidence:** [CHANGELOG.md](CHANGELOG.md) preserves
   dated implementation notes, validation evidence, and Preserve/NO-GO decisions.
-- **Current execution plan:** [day-plan-v60.md](day-plan-v60.md) defines the bounded
-  documentation scope, while [day-plan-v60-progress.md](day-plan-v60-progress.md)
-  records the inventory, decisions, and verification results.
+- **Current execution plan:** [day-plan-v61.md](day-plan-v61.md) defines the bounded
+  Windows feasibility scope, while [day-plan-v61-progress.md](day-plan-v61-progress.md)
+  records its status. The completed [v60 plan](day-plan-v60.md) and
+  [v60 progress](day-plan-v60-progress.md) remain the source for the roadmap/documentation
+  normalization decision.
 - **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
   fixed contract tests remain authoritative for CI and release behavior; prose here
   is navigation and explanation, not a replacement for those checks.

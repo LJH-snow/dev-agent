@@ -13,7 +13,16 @@
   **46/46**、real-Rust integration **10/10**。structure check、脚本语法、CI workflow YAML
   parse 和 `git diff --check` 也通过。
 - 本轮没有改变 Rust/TypeScript runtime、公开 schema、release workflow 或发布权限；不创建 tag、
-  不上传 artifact、不发布 GitHub Release。hosted CI evidence 在推送后补记。
+  不上传 artifact、不发布 GitHub Release。
+- commit `2c19173` 的普通 CI run
+  [34812211033](https://github.com/LJH-snow/dev-agent/actions/runs/34812211033) 最终成功，Rust、
+  TypeScript 和 macOS integration jobs 全部通过。第一次 TypeScript job 在 `packages/tools`
+  build 阶段触发 15 分钟 timeout；同一 commit 的 failed-job rerun 后 gate 完成，documentation
+  contract **2/2**、release-workflow contract **2/2**、release-gate contract **12/12**，macOS
+  real integration **10/10、0 skipped**。
+- v60 完成后建立 `docs/day-plan-v61.md`：下一阶段只评估 Windows restricted execution 的
+  安全原语、runner、负向测试和发布边界；在证据不足前保持当前 Unsupported/NO-GO，不新增
+  无沙箱 fallback 或 Windows release target。
 
 ## 2026-09-14（v56：首个 hosted macOS CI run 的失败证据与最小修复）
 
