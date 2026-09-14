@@ -38,7 +38,10 @@ v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubunt
   bind 后又尝试 bind `/root` 等 hosted runner 上存在但 workflow 用户不可读的 nested path。
 - [x] 先添加 failing Rust unit assertion，确认不应在 `--ro-bind / /` 后重复挂载 nested
   standard paths；再把 backend 改为只读 root 单一 bind，并保留 `/proc`、`/dev`、`/tmp` overlay。
-- [ ] 修复后的 hosted run 仍待获取；不能把第一次失败当作 Linux evidence 通过。
+- [x] 第二次 hosted run `34840227357` 证明 nested bind 已修复，但暴露 `bwrap: loopback: Failed
+  RTM_NEWADDR: Operation not permitted`；先添加 failing unit assertion，再让 user namespace
+  内以 uid/gid 0 配置 loopback，并同步到 hosted prerequisite probe。
+- [ ] 带 uid/gid 修复的 hosted run 仍待获取；不能把前两次失败当作 Linux evidence 通过。
 
 ## 当前阻塞/风险
 
@@ -53,7 +56,7 @@ v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubunt
 | --- | --- | --- |
 | macOS real-Rust integration | 现有 hosted gate 10/10 | 已有 |
 | Linux `bwrap` argument builder | Rust unit tests | 已有但非 live |
-| Linux hosted live integration | `34839400282` 首次 run 暴露 nested bind 问题；修复后待重跑 | 待完成 |
+| Linux hosted live integration | `34839400282` nested bind 失败；`34840227357` loopback 权限失败；uid/gid 修复后待重跑 | 待完成 |
 | TypeScript/Rust/release/docs gates | v61/v62 focused checks | 待本轮最终复核 |
 
 ## 下一步

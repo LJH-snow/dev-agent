@@ -248,6 +248,12 @@ fn build_bwrap_args(
 ) -> Result<Vec<String>, RestrictedError> {
     let mut args: Vec<String> = vec![
         "--unshare-user-try".to_string(),
+        // Become root only inside the user namespace so bwrap can configure
+        // loopback for network-isolated profiles without gaining host root.
+        "--uid".to_string(),
+        "0".to_string(),
+        "--gid".to_string(),
+        "0".to_string(),
         "--unshare-ipc".to_string(),
         "--unshare-pid".to_string(),
         "--unshare-uts".to_string(),
@@ -466,6 +472,10 @@ mod tests {
         assert!(args.contains(&"--unshare-ipc".to_string()));
         assert!(args.contains(&"--unshare-pid".to_string()));
         assert!(args.contains(&"--unshare-uts".to_string()));
+        let uid = args.iter().position(|arg| arg == "--uid").unwrap();
+        assert_eq!(&args[uid + 1], "0");
+        let gid = args.iter().position(|arg| arg == "--gid").unwrap();
+        assert_eq!(&args[gid + 1], "0");
         assert!(args.contains(&"--proc".to_string()));
         assert!(args.contains(&"--dev".to_string()));
         assert!(args.contains(&"--die-with-parent".to_string()));

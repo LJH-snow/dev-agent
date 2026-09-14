@@ -376,6 +376,7 @@ test("CI runs live Rust integration on a dedicated Linux bwrap job", () => {
   assert.match(job, /- name: Check Rust binary prerequisite\n\s+run: test -x runtime\/rust\/target\/debug\/dev-agent-executor/);
   assert.match(job, /- name: Check bwrap prerequisite\n\s+run: command -v bwrap && bwrap --version/);
   assert.match(job, /- name: Check bwrap user namespace prerequisite\n\s+run: \|[\s\S]*--unshare-user[\s\S]*--unshare-net/);
+  assert.match(job, /- name: Check bwrap user namespace prerequisite[\s\S]*--uid[\s\S]*0[\s\S]*--gid[\s\S]*0/);
   assert.match(job, /- name: Check Python network fixture prerequisite\n\s+run: python3 -c "import socket"/);
   assert.match(job, /- name: Build executor package\n\s+run: pnpm --filter @dev-agent\/executor build/);
   assert.match(job, /pnpm verify:integration/);

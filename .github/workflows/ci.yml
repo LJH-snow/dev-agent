@@ -136,6 +136,8 @@ jobs:
           set -euo pipefail
           bwrap \
             --unshare-user \
+            --uid 0 \
+            --gid 0 \
             --unshare-net \
             --unshare-pid \
             --ro-bind / / \
