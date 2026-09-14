@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-09-14（v63：Executor mode metadata 开始）
+## 2026-09-14（v63：Executor mode metadata 完成）
 
 - 建立 `docs/day-plan-v63.md`、`docs/day-plan-v63-progress.md` 和 implementation plan，限定
   v63 只增加 executor mode metadata，不改变执行、审批、policy、protobuf、session schema、

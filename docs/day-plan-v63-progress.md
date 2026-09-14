@@ -2,7 +2,7 @@
 
 > 最后更新：2026-09-14
 >
-> 当前阶段：executor 与 CLI 切片已完成，Desktop health metadata 和最终 hosted CI 待完成。
+> 当前阶段：executor、CLI、Desktop 和本地 fixed gates 已完成；hosted CI 待本次提交推送后确认。
 >
 > 本阶段不改变执行权限、不增加 Windows backend、不创建 release tag。
 
@@ -11,8 +11,8 @@
 - [x] v63 implementation plan 已建立：`docs/superpowers/plans/2026-09-14-v63-executor-mode.md`。
 - [x] `packages/executor` mode metadata 已实现：`local`、平台 sandbox、`unsupported`、`unknown`。
 - [x] CLI doctor 已输出 `executorMode`，human/JSON 两种模式均覆盖。
-- [ ] Desktop `/health` mode metadata 待整合。
-- [ ] 文档导航、最终 gates 和 hosted CI 待完成。
+- [x] Desktop `/health` mode metadata 已整合并通过 focused suite。
+- [ ] hosted CI 待本次提交推送后确认；文档导航和本地 fixed gates 已完成。
 
 ## RED-to-GREEN 记录
 
@@ -33,7 +33,12 @@
 
 ### Task 3：Desktop
 
-- 状态：待实现；范围限定为 `ChatSession` 与 `/health` metadata，不修改 UI 和执行路径。
+- RED：Desktop focused suite 在实现前为 **75 passed / 4 failed**，失败均指向缺失的 mode
+  metadata、fake fallback 或 health response 字段。
+- GREEN：`ChatSession.executorMode`、`DesktopChatSession.executorMode?` 和 `/health` response
+  已实现；Desktop suite 当前 **79 passed / 0 failed / 0 skipped**。
+- Commit：`b9a2de7` (`feat: expose executor mode in desktop health`)。
+- 范围保持 metadata-only；没有修改 `/api/chat`、Evidence、session memory、UI 或执行逻辑。
 
 ## 当前边界证据
 
@@ -48,17 +53,17 @@
 |---|---|
 | executor focused suite | **51/51** |
 | CLI focused suite | **119/119** |
-| Desktop focused suite | 待 Desktop slice |
-| documentation contract | 待 v63 links/docs |
-| `pnpm verify:typescript` | 待最终变更 |
-| `pnpm verify:rust` | 待最终变更 |
-| `pnpm verify:integration` | 待最终变更 |
+| Desktop focused suite | **79/79** |
+| documentation contract | **2/2** |
+| `pnpm verify:typescript` | **通过**：preview 8/8、release-gate 13/13、release-workflow 4/4、documentation 2/2；CLI 119、Desktop 79、executor 51 tests 均通过 |
+| `pnpm verify:rust` | **46/46**：43 library + 3 binary，0 failed |
+| `pnpm verify:integration` | **10/10**，0 skipped |
 | hosted CI | 待最终推送 |
 | release tag / GitHub Release | 不创建 |
 
 ## 当前决策
 
-**GO for metadata-only mode visibility; Preserve execution semantics.** v63 不能因为显示 mode
-而改变 executor selection、policy、approval、Evidence、Undo、session schema 或 release
-matrix。若 Desktop integration 暴露出额外 capability 需求，记录为 v65 trigger，不在本阶段
-扩大实现。
+**GO for metadata-only mode visibility; Preserve execution semantics.** 本地证据已经证明 v63
+没有改变 executor selection、policy、approval、Evidence、Undo、session schema 或 release
+matrix。hosted CI 只需确认这些已有跨平台 gates 在最终 commit 上继续通过；若未来需要额外
+capability UX，记录为 v65 trigger，不在本阶段扩大实现。

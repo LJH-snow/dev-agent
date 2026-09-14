@@ -20,7 +20,7 @@ Architecture, design decisions, and module documentation.
   trigger conditions. The completed [v62 day plan](day-plan-v62.md) and [progress record](day-plan-v62-progress.md)
   track the Linux hosted live integration. The completed [v64 release-candidate audit](day-plan-v64.md)
   and [progress record](day-plan-v64-progress.md) track the four-target manual release workflow
-  validation without authorizing a formal release. The active [v63 plan](day-plan-v63.md) and
+  validation without authorizing a formal release. The completed [v63 plan](day-plan-v63.md) and
   [progress record](day-plan-v63-progress.md) track metadata-only executor mode visibility.
 - **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
   fixed contract tests remain authoritative for CI and release behavior; prose here

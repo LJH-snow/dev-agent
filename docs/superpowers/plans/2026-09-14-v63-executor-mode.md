@@ -113,29 +113,29 @@
 - Consumes the executor mode descriptor from `@dev-agent/executor`.
 - Produces `DesktopChatSession.executorMode?: ExecutorMode` and a `/health` JSON field.
 
-- [ ] **Step 1: Write failing Desktop contract tests**
+- [x] **Step 1: Write failing Desktop contract tests**
   - A real `ChatSession` exposes `local` when no Rust binary is configured.
   - The `/health` endpoint returns `{ status: "ok", executorMode: ... }`.
   - Injected fake sessions without mode metadata still return a valid health response with `executorMode: "unknown"` rather than leaking implementation details.
 
-- [ ] **Step 2: Run the focused Desktop tests and verify RED**
+- [x] **Step 2: Run the focused Desktop tests and verify RED**
 
   Run: `pnpm --filter @dev-agent/desktop test`
 
   Expected: FAIL because the session/server mode contract is absent.
 
-- [ ] **Step 3: Implement the minimal health metadata path**
+- [x] **Step 3: Implement the minimal health metadata path**
   - Add an optional mode property to the server-facing session interface.
   - Add a read-only mode accessor to `ChatSession`.
   - Include only the resolved mode in `/health`; do not change `/api/chat`, evidence, session memory, or UI rendering.
 
-- [ ] **Step 4: Run the focused Desktop tests and verify GREEN**
+- [x] **Step 4: Run the focused Desktop tests and verify GREEN**
 
   Run: `pnpm --filter @dev-agent/desktop test`
 
   Expected: all Desktop tests pass and existing health behavior remains `status: "ok"`.
 
-- [ ] **Step 5: Commit the Desktop metadata change**
+- [x] **Step 5: Commit the Desktop metadata change**
 
   Run: `git add apps/desktop/src apps/desktop/tests && git commit -m "feat: expose executor mode in desktop health"`
 
@@ -155,21 +155,21 @@
 - Documents the metadata-only boundary and the explicit `unknown`/`unsupported` states.
 - Does not change runtime public behavior beyond the bounded metadata fields.
 
-- [ ] **Step 1: Write documentation-contract expectations**
+- [x] **Step 1: Write documentation-contract expectations**
   - Add v63 plan/progress links to the existing documentation contract before creating the files.
 
-- [ ] **Step 2: Run the documentation contract and verify RED**
+- [x] **Step 2: Run the documentation contract and verify RED**
 
   Run: `node --test tests/documentation-contract.test.mjs`
 
   Expected: FAIL because the v63 documents and links do not exist yet.
 
-- [ ] **Step 3: Create the plan/progress docs and update navigation**
+- [x] **Step 3: Create the plan/progress docs and update navigation**
   - Record the trigger, mode vocabulary, no-fallback boundary, RED/GREEN evidence, and deferred UI scope.
   - Link the documents from the README and docs index.
   - Add a dated changelog entry with exact local gate counts.
 
-- [ ] **Step 4: Run all fixed verification gates**
+- [x] **Step 4: Run all fixed verification gates**
 
   Run:
   - `pnpm verify:typescript`
@@ -181,7 +181,7 @@
 
   Expected: zero failures, no skipped real integration tests, and documentation contract green.
 
-- [ ] **Step 5: Inspect the final diff and commit the documentation**
+- [x] **Step 5: Inspect the final diff and commit the documentation**
 
   Run: `git status --short --branch && git diff --stat && git commit -m "docs: record v63 executor mode"`
 

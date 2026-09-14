@@ -168,7 +168,7 @@ integration work and later conditional options. The active [v62 day plan](docs/d
 and [progress record](docs/day-plan-v62-progress.md) track the hosted integration evidence. The
 [completed v64 release-candidate audit](docs/day-plan-v64.md) and [progress record](docs/day-plan-v64-progress.md)
 track the four-target manual release workflow validation; they do not authorize a formal release. The
-[active v63 plan](docs/day-plan-v63.md) and [progress record](docs/day-plan-v63-progress.md) track
+[completed v63 plan](docs/day-plan-v63.md) and [progress record](docs/day-plan-v63-progress.md) track
 metadata-only executor mode visibility without changing execution semantics.
 
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup

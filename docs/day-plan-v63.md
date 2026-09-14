@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：进行中；只增加 metadata，不改变执行语义。**
+**当前状态：已完成；只增加 metadata，不改变执行语义。**
 
 > v62 已经补齐 macOS/Linux sandbox live evidence，v64 已经完成四平台 release candidate
 > audit。v63 处理另一个容易误解的边界：用户需要知道当前工具到底走的是本地执行器、哪种
@@ -68,9 +68,9 @@
 
 ## Task 3：Desktop health metadata
 
-- [ ] `ChatSession` 暴露 mode metadata，server-facing fake session 保持 `unknown` fallback。
-- [ ] `GET /health` 返回 `status` 和 `executorMode`。
-- [ ] Desktop focused suite 通过，且 `/api/chat`、Evidence、session memory 和 UI 不变。
+- [x] `ChatSession` 暴露 mode metadata，server-facing fake session 保持 `unknown` fallback。
+- [x] `GET /health` 返回 `status` 和 `executorMode`。
+- [x] Desktop focused suite **79/79** 通过，且 `/api/chat`、Evidence、session memory 和 UI 不变。
 
 ## Task 4：文档与验证
 
@@ -81,14 +81,14 @@
 
 ## Acceptance checklist
 
-- [ ] mode metadata 对 LocalExecutor/RustExecutor 正确；未知注入实现不被误标。
-- [ ] CLI doctor JSON 与 human output 都能看到 mode，health 状态仍独立。
-- [ ] Desktop `/health` 只暴露 mode，不泄露路径、命令、环境或原始 runtime 输出。
-- [ ] unsupported platform 仍 fail-closed，没有 Windows backend 或 release target。
+- [x] mode metadata 对 LocalExecutor/RustExecutor 正确；未知注入实现不被误标。
+- [x] CLI doctor JSON 与 human output 都能看到 mode，health 状态仍独立。
+- [x] Desktop `/health` 只暴露 mode，不泄露路径、命令、环境或原始 runtime 输出。
+- [x] unsupported platform 仍 fail-closed，没有 Windows backend 或 release target。
 - [ ] 所有 fixed gates 和 hosted CI 通过；没有修改执行权限语义。
 
 ## Decision boundary
 
-如果 mode metadata 不能在不触碰执行语义的情况下稳定表达，就保持 `unknown` 并记录
-proof gap，不把猜测结果展示给用户。如果全部验收通过，v63 只代表状态可见性改善；更丰富
-的 Desktop UX 和 capability readiness 继续留给 v65 的真实反馈触发条件。
+本地 fixed gates 已通过，mode metadata 也已在 executor、CLI doctor 和 Desktop `/health`
+中稳定表达；v63 只代表状态可见性改善，不改变执行权限。更丰富的 Desktop UX 和 capability
+readiness 继续留给 v65 的真实反馈触发条件；hosted CI 完成后才关闭最后一项验收。
