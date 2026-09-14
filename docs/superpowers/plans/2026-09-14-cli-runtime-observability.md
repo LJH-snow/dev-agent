@@ -161,7 +161,7 @@ git commit -m "docs: explain cli runtime observability"
 - No source changes expected.
 - Review: all files changed by Tasks 1–3.
 
-- [ ] **Step 1: Run the repository TypeScript gate**
+- [x] **Step 1: Run the repository TypeScript gate**
 
 ```bash
 pnpm verify:typescript
@@ -169,7 +169,7 @@ pnpm verify:typescript
 
 Expected: the fixed TypeScript/release/documentation contracts and package tests pass.
 
-- [ ] **Step 2: Check repository state**
+- [x] **Step 2: Check repository state**
 
 ```bash
 git diff --check
@@ -179,6 +179,6 @@ git log -3 --oneline
 
 Expected: no unstaged changes, no whitespace errors, and commits are on the current branch.
 
-- [ ] **Step 3: Report evidence**
+- [x] **Step 3: Report evidence**
 
 Summarize the exact runtime output behavior, tests run, and the fact that no release tag was created.

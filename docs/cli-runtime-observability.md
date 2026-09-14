@@ -47,7 +47,7 @@
 ## 实现证据
 
 - CLI suite：**120/120** 通过，包含非流式与流式 runtime/timing contract。
-- CLI build、structure check 和 documentation contract **2/2** 通过。
+- CLI build、structure check 和 documentation contract **2/2** 通过；`pnpm verify:typescript` 的全部选定 gate 通过。
 - 人类模式输出不会把流式回答与 `[turn N]` 标记粘在同一行。
 - JSON 模式继续只输出单个 JSON 文档。
 - 本阶段不创建 release tag 或 GitHub Release。
