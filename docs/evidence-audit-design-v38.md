@@ -81,3 +81,7 @@
 ## 5. 后续实现门槛
 
 Task 1 只能实现上述 projection 和纯函数测试。Task 2 才能增加 CLI/Desktop 只读入口。任何 before-image 代码、磁盘快照、恢复 API 或自动 rollback 都不属于 v38，除非先重新通过完整设计评审。
+
+## 6. v39 before-image 闸门
+
+下一阶段的完整 go/no-go 要求记录在 [`docs/before-image-gate-v39.md`](before-image-gate-v39.md)。在七项闸门全部具备可重复证据前，v38 的 postimage-only、metadata-only 和 no-auto-rollback 边界继续有效；该文件不改变当前运行时行为。

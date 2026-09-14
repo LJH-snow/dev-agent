@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-v38 已在 `9084db1` 完成全量验证并推送到 `origin/main`。当前开始 v39：先把固定 release gate runner 的契约写成 RED 测试，再接入根脚本和 CI；before-image 仍不进入运行时实现。
+v38 已在 `9084db1` 完成全量验证并推送到 `origin/main`。当前进入 v39 Task 4：运行完整门禁并发布；Task 1–3 已完成，before-image 仍不进入运行时实现。
 
 ## 已完成
 
@@ -28,20 +28,32 @@ v38 已在 `9084db1` 完成全量验证并推送到 `origin/main`。当前开始
 - [x] 先写 RED 测试并确认缺少 runner 时按预期失败。
 - [x] 新增 `scripts/release-gate.mjs`：固定 argv、固定 cwd、无 shell、canonical phase order、fail-fast 和明确退出码。
 - [x] 新增 `verify`、`verify:typescript`、`verify:rust` 根脚本；TypeScript gate 也会运行 release-gate 契约测试；聚焦契约测试 **5/5** 通过，`--help` 和未知参数行为通过。
-- [x] 固定 runner 提交：`d212cb0`。
+- [x] 固定 runner 提交：`d212cb0`；TypeScript gate 契约步提交：`ab1b957`。
 
 ### Task 2：CI 复用固定门禁
 
 - [x] CI TypeScript job 切换到 `pnpm verify:typescript`，Rust job 切换到 `pnpm verify:rust`。
 - [x] README 和 `docs/README.md` 已记录完整/分阶段门禁、固定 cwd、fail-fast 和无 shell 输入边界。
 - [x] workflow 文本检查通过：CI 不再重复维护门禁命令。
-- [ ] 提交 CI 与文档同步。
+- [x] CI 与文档同步提交：`ab1b957`，待与本轮设计文档一起推送到 `origin/main`。
+
+### Task 3：before-image 可行性闸门记录
+
+- [x] 新建 `docs/before-image-gate-v39.md`，将完整性、容量、敏感数据、确认、原子失败、生命周期/并发和兼容性设为七项 NO-GO/GO 闸门。
+- [x] 更新 `docs/evidence-audit-design-v38.md` 链接到 v39 闸门；文档不改变运行时行为。
+- [ ] 提交设计记录。
+
+## 进行中
+
+### Task 4：全量验证、发布和下一阶段计划
+
+- [ ] 运行完整 `pnpm verify`，单独复跑 TypeScript/Rust 门禁，并记录结果。
 
 ## 后续任务
 
 - [x] Task 1：固定 release gate runner。
-- [ ] Task 2：CI 复用固定门禁。
-- [ ] Task 3：before-image 可行性闸门记录。
+- [x] Task 2：CI 复用固定门禁。
+- [x] Task 3：before-image 可行性闸门记录。
 - [ ] Task 4：全量验证、发布和下一阶段计划。
 
 ## 设计原则

@@ -46,7 +46,7 @@
 - [x] **Step 3: 写最小实现。** 导出纯函数供测试使用；运行器使用 `spawn` 和固定 argv，阶段失败立即停止并保留失败退出码；默认完整门禁按固定顺序执行。
 - [x] **Step 4: 运行聚焦回归。** `node --test tests/release-gate.test.mjs` **5/5** 和 `node scripts/release-gate.mjs --help` 通过；未知参数返回退出码 2。
 - [x] **Step 5: 接入根脚本。** 添加 `verify`、`verify:typescript`、`verify:rust`，未改变现有 `build`、`typecheck`、`test` 入口。
-- [ ] **Step 6: 提交。** 提交固定 release gate runner 和契约测试。
+- [x] **Step 6: 提交。** 固定 release gate runner 提交为 `d212cb0`；TypeScript gate 契约步提交为 `ab1b957`。
 
 ## Task 2：CI 复用固定门禁
 
@@ -61,7 +61,7 @@
 - [x] **Step 1: 更新 CI。** TypeScript job 使用 `pnpm verify:typescript`；Rust job 使用 `pnpm verify:rust`，并保留各自运行所需的依赖安装、工作目录和工具链配置。
 - [x] **Step 2: 更新使用文档。** README 和 `docs/README.md` 已说明完整门禁、按 job 门禁、失败阶段和不触碰用户工作目录的边界。
 - [x] **Step 3: 运行 workflow 文本检查。** 确认 CI 不再重复维护相同的结构/build/typecheck/test/fmt/clippy/cargo test 命令。
-- [ ] **Step 4: 提交。** 提交 CI 与文档同步。
+- [x] **Step 4: 提交。** CI 与文档同步提交为 `ab1b957`。
 
 ## Task 3：before-image 可行性闸门记录
 
@@ -73,9 +73,9 @@
 - Create: `/Users/Admin/Desktop/dev-agent/docs/before-image-gate-v39.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/day-plan-v39-progress.md`
 
-- [ ] **Step 1: 写 gate 表。** 为完整性绑定、容量上限、敏感信息、用户确认、原子/可恢复失败、生命周期/并发、版本兼容定义输入、必须证明的断言和否决条件。
-- [ ] **Step 2: 写 go/no-go 规则。** 任一 gate 未完成时，只允许 postimage-only validation 和 metadata-only audit；禁止保存或消费 before-image。
-- [ ] **Step 3: 写未来实验边界。** 未来若研究 before-image，只能使用隔离、显式确认和可删除的测试夹具，不得接入 production memory schema 或 Undo 路径。
+- [x] **Step 1: 写 gate 表。** `docs/before-image-gate-v39.md` 为完整性绑定、容量上限、敏感信息、用户确认、原子/可恢复失败、生命周期/并发、版本兼容定义输入、必须证明的断言和否决条件。
+- [x] **Step 2: 写 go/no-go 规则。** 七项闸门任一未完成时，只允许 postimage-only validation 和 metadata-only audit；禁止保存或消费 before-image。
+- [x] **Step 3: 写未来实验边界。** 未来若研究 before-image，只能使用隔离、显式确认和可删除的测试夹具，不得接入 production memory schema 或 Undo 路径。
 - [ ] **Step 4: 提交设计记录。** 设计文档本身不改变运行时行为。
 
 ## Task 4：全量验证、发布和下一阶段计划
