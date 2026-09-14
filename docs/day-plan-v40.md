@@ -71,7 +71,7 @@
 - [x] **Step 2: 检查报告文件副作用。** 默认运行未创建报告，`--report` 只写 `.dev-agent/release-gate-report.json`，未改变 workspace/session memory。
 - [x] **Step 3: 更新 CHANGELOG、v40 进度和使用文档。** 已记录报告 schema 和完整验证结果。
 - [x] **Step 4: Commit and push。** v40 实现和文档提交后推送到 `origin/main`。
-- [ ] **Step 5: 新建 v41 计划。** 优先评估 audit export 上限/版本协商和 before-image 独立安全评审，不默认承诺跨进程 Undo。
+- [x] **Step 5: 新建 v41 计划。** 已建立 `docs/day-plan-v41.md` 和 `docs/day-plan-v41-progress.md`，先实现 rejection-only audit limits，再评估分页/schema v2 和 before-image 独立安全评审，不默认承诺跨进程 Undo。
 
 ## Acceptance Checklist
 

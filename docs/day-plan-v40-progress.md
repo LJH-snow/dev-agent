@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-v39 已在 `fc6d8a0` 完成固定 release gate、CI 复用和 before-image NO-GO 设计并推送到 `origin/main`。当前进入 v40 Task 1：先为固定 gate 写 metadata-only report 的 RED 契约；默认运行不产生报告文件。
+v39 已在 `fc6d8a0` 完成固定 release gate、CI 复用和 before-image NO-GO 设计并推送到 `origin/main`。v40 已完成并推送到 `origin/main`；下一步进入 v41 的 rejection-only audit limits 实现；默认 report-off、metadata-only 和 before-image NO-GO 边界保持不变。
 
 ## 已完成
 
@@ -20,6 +20,7 @@ v39 已在 `fc6d8a0` 完成固定 release gate、CI 复用和 before-image NO-GO
 
 - [x] 新建 `docs/day-plan-v40.md`，定义 report schema、固定输出路径、audit limits 设计和 v41 路线。
 - [x] 明确 report 与 session evidence 分离；不持久化 before-image，不实现跨进程 Undo。
+- [x] 新建 `docs/day-plan-v41.md` 和 `docs/day-plan-v41-progress.md`，确定下一阶段先做 rejection-only limits。
 
 ## 已完成
 
