@@ -61,6 +61,7 @@ test("runDoctor reports a healthy environment as ok", async () => {
       report.checks.map((check) => check.name),
       CHECK_NAMES
     );
+    assert.equal(report.executorMode, "local");
     assert.equal(report.summary.fail, 0);
     assert.equal(report.summary.warn, 1, "the unconfigured rust runtime warns");
     assert.equal(report.summary.ok, 6);
@@ -103,6 +104,13 @@ test("runDoctor fails when the configured rust binary is missing", async () => {
     });
 
     const rust = checkFor(report, "rust runtime");
+    const expectedMode =
+      process.platform === "darwin"
+        ? "sandboxed-macos"
+        : process.platform === "linux"
+          ? "sandboxed-linux"
+          : "unsupported";
+    assert.equal(report.executorMode, expectedMode);
     assert.equal(rust.status, "fail");
     assert.equal(report.summary.fail, 1);
   } finally {
@@ -181,6 +189,22 @@ test("runDoctor warns about a malformed config", async () => {
   }
 });
 
+test("--doctor human output labels the executor mode", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-"));
+  try {
+    const result = await runCli(["--doctor"], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "ollama",
+      DEV_AGENT_SESSION_DIR: dir,
+      DEV_AGENT_RUST_BINARY: "",
+    });
+
+    assert.match(result.stdout, /executor mode:\s+local/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("--doctor --json prints a parseable report and matches the exit code", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-"));
   try {
@@ -200,6 +224,7 @@ test("--doctor --json prints a parseable report and matches the exit code", asyn
     assert.equal(checkFor(report, "node").status, "ok");
     assert.equal(checkFor(report, "ripgrep").status, "ok");
     assert.equal(checkFor(report, "sessions").status, "ok");
+    assert.equal(report.executorMode, "local");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

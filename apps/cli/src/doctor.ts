@@ -4,6 +4,8 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { resolveExecutorMode, type ExecutorMode } from "@dev-agent/executor";
+
 export type DoctorStatus = "ok" | "warn" | "fail";
 
 export interface DoctorCheck {
@@ -13,6 +15,8 @@ export interface DoctorCheck {
 }
 
 export interface DoctorReport {
+  /** The selected executor backend; health checks separately report availability. */
+  readonly executorMode: ExecutorMode;
   readonly checks: readonly DoctorCheck[];
   readonly summary: { readonly ok: number; readonly warn: number; readonly fail: number };
 }
@@ -40,6 +44,7 @@ const MIN_NODE_MAJOR = 20;
 export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   const env = options.env ?? process.env;
   const commandVersion = options.commandVersion ?? defaultCommandVersion;
+  const executorMode = resolveExecutorMode(options.rustBinaryPath);
   const checks: DoctorCheck[] = [];
 
   const nodeVersion = options.nodeVersion ?? process.version;
@@ -87,10 +92,11 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   for (const check of checks) {
     summary[check.status] += 1;
   }
-  return { checks, summary };
+  return { executorMode, checks, summary };
 }
 
 export function printDoctorReport(report: DoctorReport): void {
+  console.log(`executor mode: ${report.executorMode}`);
   for (const check of report.checks) {
     console.log(`${check.status.padEnd(4)} ${check.name.padEnd(13)} ${check.detail}`);
   }
