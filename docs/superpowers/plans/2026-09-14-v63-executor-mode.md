@@ -185,7 +185,7 @@
 
   Run: `git status --short --branch && git diff --stat && git commit -m "docs: record v63 executor mode"`
 
-- [ ] **Step 6: Push and verify hosted CI**
+- [x] **Step 6: Push and verify hosted CI**
   - Push the final v63 commit to `main`.
   - Confirm Rust, TypeScript, macOS integration, and Linux integration jobs succeed.
   - Do not create a release tag or GitHub Release.

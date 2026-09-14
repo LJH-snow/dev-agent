@@ -2,7 +2,7 @@
 
 > 最后更新：2026-09-14
 >
-> 当前阶段：executor、CLI、Desktop 和本地 fixed gates 已完成；hosted CI 待本次提交推送后确认。
+> 当前阶段：v63 已完成 executor、CLI、Desktop、fixed gates 与 hosted CI 验证。
 >
 > 本阶段不改变执行权限、不增加 Windows backend、不创建 release tag。
 
@@ -12,7 +12,7 @@
 - [x] `packages/executor` mode metadata 已实现：`local`、平台 sandbox、`unsupported`、`unknown`。
 - [x] CLI doctor 已输出 `executorMode`，human/JSON 两种模式均覆盖。
 - [x] Desktop `/health` mode metadata 已整合并通过 focused suite。
-- [ ] hosted CI 待本次提交推送后确认；文档导航和本地 fixed gates 已完成。
+- [x] 文档导航、本地 fixed gates 和 hosted CI 均已完成。
 
 ## RED-to-GREEN 记录
 
@@ -58,12 +58,21 @@
 | `pnpm verify:typescript` | **通过**：preview 8/8、release-gate 13/13、release-workflow 4/4、documentation 2/2；CLI 119、Desktop 79、executor 51 tests 均通过 |
 | `pnpm verify:rust` | **46/46**：43 library + 3 binary，0 failed |
 | `pnpm verify:integration` | **10/10**，0 skipped |
-| hosted CI | 待最终推送 |
+| hosted CI | [34856545896](https://github.com/LJH-snow/dev-agent/actions/runs/34856545896)：Rust、TypeScript、macOS integration、Linux integration 全部 success |
 | release tag / GitHub Release | 不创建 |
+
+## Hosted CI evidence
+
+- Commit: `e1f1efb59fa5047a9a51c3f0426786faf6517a45`
+- Run: [34856545896](https://github.com/LJH-snow/dev-agent/actions/runs/34856545896)
+- Event/ref: `push` on `main`
+- Rust：success
+- TypeScript：success（包含 documentation、release-workflow 和 executor/CLI/Desktop tests）
+- macOS integration：success
+- Linux integration：success（live `bwrap` prerequisites 与 real-Rust integration 通过）
 
 ## 当前决策
 
-**GO for metadata-only mode visibility; Preserve execution semantics.** 本地证据已经证明 v63
-没有改变 executor selection、policy、approval、Evidence、Undo、session schema 或 release
-matrix。hosted CI 只需确认这些已有跨平台 gates 在最终 commit 上继续通过；若未来需要额外
-capability UX，记录为 v65 trigger，不在本阶段扩大实现。
+**GO for metadata-only mode visibility; Preserve execution semantics.** 本地与 hosted 证据已经证明
+v63 没有改变 executor selection、policy、approval、Evidence、Undo、session schema 或 release
+matrix。若未来需要额外 capability UX，记录为 v65 trigger，不在本阶段扩大实现。

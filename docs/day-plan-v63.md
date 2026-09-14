@@ -76,7 +76,7 @@
 
 - [ ] 更新 README、docs index、CHANGELOG 和 documentation contract。
 - [ ] 运行 TypeScript、Rust、real-Rust integration、structure、YAML 和 diff checks。
-- [ ] 推送后确认 Rust、TypeScript、macOS integration、Linux integration hosted CI 全部通过。
+- [x] 推送后确认 Rust、TypeScript、macOS integration、Linux integration hosted CI 全部通过。
 - [ ] 不创建 release tag 或 GitHub Release。
 
 ## Acceptance checklist
@@ -85,10 +85,10 @@
 - [x] CLI doctor JSON 与 human output 都能看到 mode，health 状态仍独立。
 - [x] Desktop `/health` 只暴露 mode，不泄露路径、命令、环境或原始 runtime 输出。
 - [x] unsupported platform 仍 fail-closed，没有 Windows backend 或 release target。
-- [ ] 所有 fixed gates 和 hosted CI 通过；没有修改执行权限语义。
+- [x] 所有 fixed gates 和 hosted CI 通过；没有修改执行权限语义。
 
 ## Decision boundary
 
-本地 fixed gates 已通过，mode metadata 也已在 executor、CLI doctor 和 Desktop `/health`
-中稳定表达；v63 只代表状态可见性改善，不改变执行权限。更丰富的 Desktop UX 和 capability
-readiness 继续留给 v65 的真实反馈触发条件；hosted CI 完成后才关闭最后一项验收。
+本地 fixed gates 与 hosted CI 均已通过，mode metadata 已在 executor、CLI doctor 和 Desktop
+`/health` 中稳定表达；v63 只代表状态可见性改善，不改变执行权限。更丰富的 Desktop UX
+和 capability readiness 继续留给 v65 的真实反馈触发条件。
