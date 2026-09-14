@@ -86,7 +86,7 @@
 - [x] **Step 2: 运行结构检查、diff check 和人工 review。** 确认固定 argv、固定 cwd、fail-fast、无 shell 拼接和 before-image 禁止项；结构检查与 `git diff --check` 通过。
 - [x] **Step 3: 更新 `docs/CHANGELOG.md`、v39 进度和 README。** 已记录门禁命令及完整验证结果。
 - [x] **Step 4: Commit and push。** v39 实现、CI 和设计文档已推送到 `origin/main`（`c3c9350` 为本轮设计文档发布提交，前置实现提交为 `d212cb0`、`ab1b957`）。
-- [ ] **Step 5: 新建 v40 计划。** 只在 v39 完成后写入下一阶段；优先评估 audit schema 版本协商、导出大小边界和 before-image 独立评审，不默认承诺跨进程 Undo。
+- [x] **Step 5: 新建 v40 计划。** 已建立 `docs/day-plan-v40.md` 和 `docs/day-plan-v40-progress.md`，优先评估 report、audit schema 版本协商、导出大小边界和 before-image 独立评审，不默认承诺跨进程 Undo。
 
 ## Acceptance Checklist
 

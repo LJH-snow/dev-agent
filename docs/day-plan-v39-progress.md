@@ -48,7 +48,7 @@ v38 已在 `9084db1` 完成全量验证并推送到 `origin/main`。当前进入
 - [x] 完整 `pnpm verify` 通过：TypeScript workspace **600/600**、release-gate contract **5/5**、Rust unit/doc **46/46**、real-Rust integration **10/10**。
 - [x] `pnpm verify:typescript` 和 `pnpm verify:rust` 已单独复跑并通过；结构检查、`git diff --check` 和人工边界 review 通过。
 - [x] v39 文档与 CI 变更已提交并推送；当前工作区干净。
-- [ ] 新建 v40 计划和进度文档。
+- [x] 新建 `docs/day-plan-v40.md` 和 `docs/day-plan-v40-progress.md`，下一步进入 v40 Task 1。
 
 ## 后续任务
 
