@@ -7,9 +7,9 @@
 
 ## 当前状态
 
-v43 已交付独立 `EvidenceAuditPreview`。v44 从 baseline/threat-model 开始，重点
-评估 preview 的输入歧义、完整 projection 的工作量、generic error 和 CLI/Desktop
-语义 parity。
+v43 已交付独立 `EvidenceAuditPreview`。v44 已完成 baseline/threat-model 和
+input decision matrix，确认 CLI operation precedence 是需要 TDD 加固的 proof gap；
+Desktop query 收紧与 bounded-work cap 暂保持 conditional。
 
 ## v43 baseline
 
@@ -22,14 +22,14 @@ v43 已交付独立 `EvidenceAuditPreview`。v44 从 baseline/threat-model 开�
 
 ### Task 0：v43 基线与威胁模型
 
-- [ ] 固化 contract 与信任边界。
-- [ ] 建立输入 decision matrix。
+- [x] 固化 contract 与信任边界，见 `docs/evidence-preview-hardening-review-v44.md`。
+- [x] 建立输入 decision matrix，见 `docs/evidence-preview-input-matrix-v44.md`。
 
 ### Task 1：安全评审与可重复证据
 
 - [ ] 检查 core/CLI/Desktop parity。
 - [ ] 仅为已决定的边界写 RED tests。
-- [ ] 形成 GO / CONDITIONAL / NO-GO 决策。
+- [x] 初步决策已形成：CLI operation isolation 为 GO；Desktop query tightening 与 bounded-work cap 为 CONDITIONAL。
 
 ### Task 2：最小兼容性加固（条件执行）
 

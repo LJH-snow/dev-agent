@@ -40,12 +40,13 @@
 
 **Produces:** v44 的兼容性边界和 review evidence。
 
-- [ ] **Step 1: 固化 v43 contract。** 记录 preview 固定字段、标准 filters、
+- [x] **Step 1: 固化 v43 contract。** 记录 preview 固定字段、标准 filters、
   `/evidence` 独占 audit limits、generic error、no-store 和 session isolation。
-- [ ] **Step 2: 画出输入/信任边界。** 区分 URL/argv、session id、persisted memory、
+- [x] **Step 2: 画出输入/信任边界。** 区分 URL/argv、session id、persisted memory、
   canonical projection、preview response；列出敏感字段和 side effects。
-- [ ] **Step 3: 建立 decision matrix。** 对 unknown query、duplicate value、empty value、
-  malformed memory、oversized projection、组合 flags 给出 preserve/reject/defer 决定。
+- [x] **Step 3: 建立 decision matrix。** 对 unknown query、duplicate value、empty value、
+  malformed memory、oversized projection、组合 flags 给出 preserve/reject/defer 决定；
+  详见 `docs/evidence-preview-input-matrix-v44.md`。
 
 ## Task 1：安全评审与可重复证据
 
