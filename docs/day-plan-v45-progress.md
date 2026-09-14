@@ -8,7 +8,8 @@
 ## 当前状态
 
 v44 已修复 CLI preview operation precedence proof gap，并保持 Desktop query tightening
-与 oversized projection 为 CONDITIONAL。v45 当前进入 baseline/benchmark contract。
+与 oversized projection 为 CONDITIONAL。v45 已完成 baseline/fixture/measurement
+contract，当前进入 benchmark/regression TDD。
 
 ## v44 baseline
 
@@ -22,12 +23,12 @@ v44 已修复 CLI preview operation precedence proof gap，并保持 Desktop que
 
 ### Task 0：冻结基线与 benchmark contract
 
-- [ ] 固化 baseline 与 fixture matrix。
-- [ ] 定义不接触 workspace/provider 的 measurements。
+- [x] 固化 baseline 与 fixture matrix，见 `docs/evidence-preview-benchmark-v45.md`。
+- [x] 定义不接触 workspace/provider 的 measurements，并区分 heap delta 与 peak。
 
 ### Task 1：执行 benchmark 与安全分析
 
-- [ ] benchmark/regression tests。
+- [ ] benchmark/regression tests（先写 RED）。
 - [ ] 受控 fixture matrix 与 decision。
 
 ### Task 2：bounded-work rejection（条件执行）

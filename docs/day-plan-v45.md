@@ -42,13 +42,13 @@ serialization 下的 CPU/memory/latency 工作量，确认 v41 export caps 是�
 
 **Produces:** reproducible fixture matrix and measurement rules.
 
-- [ ] **Step 1: 记录 v44 baseline。** 固化 preview allowlist、operation exclusivity、
+- [x] **Step 1: 记录 v44 baseline。** 固化 preview allowlist、operation exclusivity、
   core serializer、v41 caps 和 current conditional decisions。
-- [ ] **Step 2: 设计 fixture matrix。** 覆盖 empty、small、retention-sized、files-heavy、
+- [x] **Step 2: 设计 fixture matrix。** 覆盖 empty、small、retention-sized、files-heavy、
   UTF-8-heavy 和 malformed inputs；明确不读取 workspace。
-- [ ] **Step 3: 定义 measurements。** 记录 wall time、serialized bytes、record/file counts、
-  heap delta/peak（能稳定测量时）和重复运行规则；不要把 benchmark 输出加入 runtime
-  response。
+- [x] **Step 3: 定义 measurements。** 记录 wall time、serialized bytes、record/file counts、
+  heap delta（不宣称 peak）和重复运行规则；不要把 benchmark 输出加入 runtime
+  response。详见 `docs/evidence-preview-benchmark-v45.md`。
 
 ## Task 1：执行 benchmark 与安全分析
 
