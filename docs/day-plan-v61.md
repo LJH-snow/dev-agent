@@ -49,13 +49,15 @@ fail-closed、不能静默降级到 LocalExecutor”的边界写清楚：
 非 restricted 模式，不是 Windows 上从 restricted path 静默降级。CI/release matrix 和
 README/architecture/runtime README 都只声明 macOS/Linux active，没有 Windows target 或
 live evidence。当前 proof gap 是缺少 Windows runner、OS primitive 评估和 target-specific
-negative tests，进入 Task 1 前不改实现。
+negative tests；Task 1 只完成了初步 threat model，继续 feasibility 验证前不改实现。
 
 ## Task 1：threat model 与 feasibility gate
 
-- [ ] 定义 Windows 方案要保护的资产、信任边界、攻击者能力和不可接受的降级路径。
-- [ ] 评估候选 OS primitive 是否能覆盖 filesystem/network/cwd/resource/timeout/cancel，
-  并能在 CI 中生成可复现的 negative tests；没有证据的能力标记为 proof gap。
+- [x] 初步定义 Windows 方案要保护的资产、信任边界、攻击者能力和不可接受的降级路径，
+  记录在 `docs/windows-sandbox-feasibility-v61.md`。
+- [x] 初步评估候选 OS primitive 对 filesystem/network/cwd/resource/timeout/cancel 的覆盖，
+  并将未证明部分标记为 proof gap；这不是实现授权。
+- [ ] 确认候选原语能在 CI 中生成可复现的 negative tests；没有证据的能力继续标记为 proof gap。
 - [ ] 确认 build toolchain、runner、artifact naming/checksum、签名/发布和用户安装边界，
   不把静态 contract 当作 live sandbox proof。
 

@@ -48,6 +48,7 @@ test("documentation index points to the current source-of-truth documents", () =
     "day-plan-v60-progress.md",
     "day-plan-v61.md",
     "day-plan-v61-progress.md",
+    "windows-sandbox-feasibility-v61.md",
   ]) {
     assert.ok(docsReadme.includes(`](${link})`), `docs/README.md should link to ${link}`);
   }

@@ -2,13 +2,13 @@
 
 > 最后更新：2026-09-14
 
-> v60 已完成并通过 hosted CI。v61 已完成 Task 0 的平台路径 inventory，尚未修改 runtime、
-> 公开 schema、CI 或 release workflow；默认保留 macOS/Linux 支持和其他平台的 Unsupported
-> fail-closed 行为。
+> v60 已完成并通过 hosted CI。v61 已完成 Task 0 inventory，并完成 Task 1 的初步 threat
+> model/primitive feasibility notes；尚未修改 runtime、公开 schema、CI 或 release workflow，
+> 默认保留 macOS/Linux 支持和其他平台的 Unsupported fail-closed 行为。
 
 ## 当前状态
 
-**Task 0 complete / threat model next.** 当前代码已经把 macOS `sandbox-exec`、Linux `bwrap`
+**Task 1 preliminary / release feasibility next.** 当前代码已经把 macOS `sandbox-exec`、Linux `bwrap`
 和其他平台 `Unsupported` 分开；release matrix 只覆盖 macOS/Linux。Windows backend 需要
 先证明安全原语、runner、负向测试和发布边界，不能由“本地命令能运行”推导出 restricted
 execution 已成立。
@@ -29,6 +29,17 @@ execution 已成立。
 - 当前 proof gap：没有 Windows runner、Windows security primitive 选择、target-specific
   negative tests 或 Windows artifact/release 方案。因此本轮只记录边界，不添加兼容 shim。
 
+## Task 1 初步 threat model
+
+- [x] 在 `docs/windows-sandbox-feasibility-v61.md` 固化资产、攻击者能力、信任边界和安全
+  目标。
+- [x] 对 AppContainer、Job Objects、restricted token 和 Windows Sandbox 做候选能力/限制
+  记录；没有把任何单一原语解释为完整 sandbox proof。
+- [x] 列出 filesystem、network、process、resource、timeout/cancel、stdio、Starlark 和
+  Unsupported 的 proof-gap matrix。
+- [x] 暂定 Preserve current macOS/Linux implementation / NO-GO for Windows backend，直到
+  runner、negative tests、端到端 evidence 和 release boundary 齐备。
+
 ## 已完成
 
 - [x] v60 roadmap/documentation slice 完成，作为 v61 的 source-of-truth 前置记录。
@@ -42,13 +53,14 @@ execution 已成立。
 - [x] 盘点 Rust platform branches、错误映射、CI/release matrix 和用户可见支持声明。
 - [x] 证明 unsupported restricted path 不会静默调用 `LocalExecutor`；区分显式 LocalExecutor
   模式与 restricted execution 失败。
-- [ ] 建立 Windows 资产/边界 threat model，列出 filesystem、network、cwd、resource、
+- [x] 建立 Windows 资产/边界 threat model，列出 filesystem、network、cwd、resource、
   timeout/cancel 和可观测性 proof gaps。
 - [ ] 根据证据选择 Preserve/NO-GO，或建立独立的 Windows 实现计划；没有 trigger 时不扩大
   runtime、依赖、schema 或 release authority。
 
 ## 下一步
 
-1. 先完成 Task 0 inventory，不写 Windows compatibility shim。
-2. 只有发现具体 fail-open 或真实用户需求，才进入 RED contract；否则记录 Preserve/NO-GO。
+1. 评估是否能获得 Windows runner、可审计 primitive 和可复现 negative-test fixture，不写
+   Windows compatibility shim。
+2. 只有发现具体 fail-open 或真实用户需求，才进入 RED contract；否则收束为 Preserve/NO-GO。
 3. 保持 v60 的 roadmap/documentation contract 与普通 CI 证据不变。
