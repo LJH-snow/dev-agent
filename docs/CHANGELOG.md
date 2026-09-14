@@ -38,6 +38,13 @@
   [34815029965](https://github.com/LJH-snow/dev-agent/actions/runs/34815029965) 的 Rust、
   TypeScript 和 macOS integration jobs 全部成功；documentation contract **2/2**。
 
+## 2026-09-14（v62：Linux `bwrap` hosted live integration 开始）
+
+- 建立 `docs/day-plan-v62.md` 与 `docs/day-plan-v62-progress.md`，把 v62 限定为 Linux
+  `bwrap` hosted live evidence，不扩大公开 API、protobuf、Windows 支持或 release target。
+- 先锁定 Ubuntu/bubblewrap/user namespace/Python/Rust/dist 的 fail-closed prerequisites，
+  并要求 integration harness 在 hosted job 中不能静默 skip。
+
 ## 2026-09-14（后续路线图：v62+）
 
 - 新增 `docs/next-roadmap-plans-v62-plus.md`，集中记录后续候选方向：优先补齐 Linux

@@ -17,7 +17,8 @@ Architecture, design decisions, and module documentation.
   normalization decision. The supporting [Windows feasibility notes](windows-sandbox-feasibility-v61.md)
   contain the preliminary threat model and proof-gap matrix. The consolidated
   [next-phase plan](next-roadmap-plans-v62-plus.md) records v62–v65 options and their
-  trigger conditions.
+  trigger conditions. The active [v62 day plan](day-plan-v62.md) and [progress record](day-plan-v62-progress.md)
+  track the Linux hosted live integration.
 - **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
   fixed contract tests remain authoritative for CI and release behavior; prose here
   is navigation and explanation, not a replacement for those checks.
@@ -102,7 +103,7 @@ debug `dev-agent-executor` binary and the executor package's `dist` output. On a
 fresh checkout, run `pnpm build`, `cargo build --bin dev-agent-executor` from
 `runtime/rust`, and then the integration entrypoint; the GitHub workflow builds
 both explicitly and checks the live sandbox prerequisites before invoking it.
-Non-macOS workspaces intentionally report macOS-only cases as skipped. Gate
+Local workspaces may skip live sandbox cases when their platform prerequisites are absent; hosted macOS/Linux jobs fail closed on missing prerequisites and require all expected live cases to run. Gate
 selection does not accept arbitrary commands, model output, or persisted evidence
 as execution input. The TypeScript phase also runs the preview, fixed-gate,
 release-workflow, and bounded documentation contracts in a fixed order.

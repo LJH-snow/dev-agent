@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createServer } from "node:net";
 import { existsSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,10 +14,28 @@ const rustBinaryPath = fileURLToPath(
   new URL("../../../runtime/rust/target/debug/dev-agent-executor", import.meta.url)
 );
 const sandboxExecPath = "/usr/bin/sandbox-exec";
-const canRunRust =
-  existsSync(rustBinaryPath) &&
-  process.platform === "darwin" &&
-  existsSync(sandboxExecPath);
+const bwrapCommand = "bwrap";
+
+function commandRuns(command: string, args: readonly string[] = []) {
+  try {
+    execFileSync(command, [...args], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const hasSandboxBackend =
+  (process.platform === "darwin" && existsSync(sandboxExecPath)) ||
+  (process.platform === "linux" && commandRuns(bwrapCommand, ["--version"]));
+const canRunRust = existsSync(rustBinaryPath) && hasSandboxBackend;
+const requireLiveSandbox = process.env.DEV_AGENT_REQUIRE_LIVE_SANDBOX === "1";
+const sandboxSkipReason =
+  process.platform === "darwin"
+    ? "Rust binary or macOS sandbox not available"
+    : process.platform === "linux"
+      ? "Rust binary or Linux bubblewrap backend not available"
+      : "Rust restricted execution backend is not supported on this platform";
 
 /**
  * Returns a python3 that actually starts, or undefined.
@@ -47,9 +66,17 @@ function findPython3() {
 
 const python3 = findPython3();
 
+if (requireLiveSandbox && (!canRunRust || !python3)) {
+  throw new Error(
+    `live sandbox integration prerequisites are missing: platform=${process.platform}, ` +
+      `rustBinary=${existsSync(rustBinaryPath)}, backend=${hasSandboxBackend}, ` +
+      `python=${Boolean(python3)}`
+  );
+}
+
 test(
   "real Rust binary enforces Starlark sandbox policies",
-  { skip: canRunRust ? false : "Rust binary not built" },
+  { skip: canRunRust ? false : sandboxSkipReason },
   async () => {
     const executor = new RustExecutor({ binaryPath: rustBinaryPath });
     try {
@@ -81,7 +108,7 @@ test(
 
 test(
   "real Rust binary rejects writes to readonly paths",
-  { skip: canRunRust ? false : "Rust binary or macOS sandbox not available" },
+  { skip: canRunRust ? false : sandboxSkipReason },
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "dev-agent-sandbox-"));
     const readonlyPath = join(dir, "readonly.txt");
@@ -103,7 +130,7 @@ test(
         }
       );
       assert.notEqual(result.exitCode, 0);
-      assert.match(result.stderr, /Operation not permitted/);
+      assert.match(result.stderr, /Operation not permitted|Read-only file system|Permission denied/);
       assert.equal(await readFile(readonlyPath, "utf8"), "keep\n");
     } finally {
       await executor.dispose();
@@ -115,31 +142,42 @@ test(
 test(
   "real Rust binary blocks network when disabled",
   {
-    skip:
-      canRunRust && python3
-        ? false
-        : "Rust binary, macOS sandbox, or a real python3 not available",
+    skip: canRunRust && python3 ? false : `${sandboxSkipReason} or a real python3 not available`,
   },
   async () => {
+    const server = createServer((socket) => socket.end("host-visible\n"));
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+
     const executor = new RustExecutor({ binaryPath: rustBinaryPath });
     try {
       const script = [
-        "import socket",
+        "import socket, sys",
         "s = socket.socket()",
-        "s.settimeout(1)",
-        "s.connect(('127.0.0.1', 65530))",
+        "s.settimeout(2)",
+        "s.connect(('127.0.0.1', int(sys.argv[1])))",
+        "print(s.recv(64).decode())",
       ].join("; ");
-      const result = await executor.runSandboxed(python3, ["-c", script], {
-        profile: {
-          name: "network-off",
-          network: "disabled",
-          policyScript: "True",
-        },
-      });
+      const result = await executor.runSandboxed(
+        python3,
+        ["-c", script, String(address.port)],
+        {
+          profile: {
+            name: "network-off",
+            network: "disabled",
+            policyScript: "True",
+          },
+        }
+      );
       assert.notEqual(result.exitCode, 0);
-      assert.match(result.stderr, /Operation not permitted/);
+      assert.doesNotMatch(result.stdout, /host-visible/);
     } finally {
       await executor.dispose();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
     }
   }
 );
@@ -147,10 +185,7 @@ test(
 test(
   "real Rust binary allows loopback when configured",
   {
-    skip:
-      canRunRust && python3
-        ? false
-        : "Rust binary, macOS sandbox, or a real python3 not available",
+    skip: canRunRust && python3 ? false : `${sandboxSkipReason} or a real python3 not available`,
   },
   async () => {
     const executor = new RustExecutor({ binaryPath: rustBinaryPath });
@@ -185,7 +220,7 @@ test(
 
 test(
   "real Rust binary allows conforming writes",
-  { skip: canRunRust ? false : "Rust binary or macOS sandbox not available" },
+  { skip: canRunRust ? false : sandboxSkipReason },
   async () => {
     const dir = await mkdtemp(join(tmpdir(), "dev-agent-sandbox-"));
     const outPath = join(dir, "out.txt");
@@ -215,7 +250,7 @@ test(
 
 test(
   "real Rust binary applies profile timeout",
-  { skip: canRunRust ? false : "Rust binary or macOS sandbox not available" },
+  { skip: canRunRust ? false : sandboxSkipReason },
   async () => {
     const executor = new RustExecutor({ binaryPath: rustBinaryPath });
     try {
@@ -237,7 +272,7 @@ test(
 
 test(
   "real Rust binary applies resource limits",
-  { skip: canRunRust ? false : "Rust binary or macOS sandbox not available" },
+  { skip: canRunRust ? false : sandboxSkipReason },
   async () => {
     const executor = new RustExecutor({ binaryPath: rustBinaryPath });
     try {

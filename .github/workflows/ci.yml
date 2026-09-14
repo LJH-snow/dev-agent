@@ -81,6 +81,78 @@ jobs:
       - name: Rust release gate
         run: pnpm verify:rust
 
+  linux-integration:
+    name: Linux integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # A hosted integration job must fail if the real restricted backend is unavailable.
+      DEV_AGENT_REQUIRE_LIVE_SANDBOX: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Linux sandbox prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap protobuf-compiler
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust release gate
+        run: pnpm verify:rust
+
+      - name: Build debug Rust runtime
+        run: cargo build --bin dev-agent-executor
+        working-directory: runtime/rust
+
+      # Keep each capability check independent so a hosted-runner regression
+      # cannot be hidden behind a skipped integration test.
+      - name: Check Rust binary prerequisite
+        run: test -x runtime/rust/target/debug/dev-agent-executor
+
+      - name: Check bwrap prerequisite
+        run: command -v bwrap && bwrap --version
+
+      - name: Check bwrap user namespace prerequisite
+        run: |
+          set -euo pipefail
+          bwrap \
+            --unshare-user \
+            --unshare-net \
+            --unshare-pid \
+            --ro-bind / / \
+            --proc /proc \
+            --dev /dev \
+            --die-with-parent \
+            -- /usr/bin/true
+
+      - name: Check Python network fixture prerequisite
+        run: python3 -c "import socket"
+
+      - name: Build executor package
+        run: pnpm --filter @dev-agent/executor build
+
+      - name: Real Rust integration gate
+        run: pnpm verify:integration
+
   macos-integration:
     name: macOS integration
     # Pin the image while the live tests depend on Apple's sandbox-exec boundary.

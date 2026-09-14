@@ -42,8 +42,8 @@ concurrent requests.
 
 The stdio execution boundary is active, and macOS `sandbox-exec` currently
 enforces the profile. The Linux `bwrap` backend is active, with pure
-argument-builder unit tests on macOS and live `bwrap` tests on Linux when `bwrap`
-is available.
+argument-builder unit tests cross-platform and live `bwrap` tests in the hosted Ubuntu integration job after the `bwrap` namespace
+prerequisites pass.
 
 ## Policy Language: Starlark
 
@@ -124,5 +124,6 @@ The TS side is wired end to end:
 - `SandboxExecutor` no longer passes through to `LocalExecutor`: after Starlark
   returns `Allow`, `runSandboxed` executes through `sandbox-exec` with writable
   path, read-only path, network policy, cwd, timeout, and resource constraints.
-- Real-binary integration tests cover Starlark deny, read-only write rejection,
-  disabled network, allowed writes, profile timeout, and resource limits.
+- Real-binary integration tests cover Starlark deny/allow, read-only write rejection, disabled
+  network, loopback, allowed writes, profile timeout, resource limits, output quota, cancellation,
+  and runtime concurrency.

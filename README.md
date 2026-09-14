@@ -113,6 +113,10 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
   fail-closed checks `/usr/bin/sandbox-exec` and a usable Python socket fixture,
   then runs `pnpm verify:integration`; the hosted gate has recorded 10/10 with
   zero skips.
+- **Linux integration**: the Ubuntu job installs `bubblewrap` and protobuf, checks the real
+  user/network namespace boundary, builds the same Rust and TypeScript artifacts, sets
+  `DEV_AGENT_REQUIRE_LIVE_SANDBOX=1`, and runs the platformized integration suite without
+  allowing missing Linux capabilities to become skipped success.
 
 ## Releases
 
@@ -158,7 +162,8 @@ current [v61 plan](docs/day-plan-v61.md) with its [progress record](docs/day-pla
 The completed [v60 normalization plan](docs/day-plan-v60.md) and [progress record](docs/day-plan-v60-progress.md)
 remain the source for the roadmap/documentation boundary. The consolidated
 [next-phase plan](docs/next-roadmap-plans-v62-plus.md) records the recommended v62 Linux
-integration work and later conditional options.
+integration work and later conditional options. The active [v62 day plan](docs/day-plan-v62.md)
+and [progress record](docs/day-plan-v62-progress.md) track the hosted integration evidence.
 
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup
 - Agent loop, context, and in-memory memory in `@dev-agent/agent-core`
@@ -201,8 +206,8 @@ integration work and later conditional options.
   and resource limits. Linux `bwrap` backend is active: namespace isolation
   (user/ipc/pid/uts/cgroup), read-only root filesystem with writable/read-only path
   bind mounts, network policy (`--unshare-net`), environment injection, resource
-  limits, and cwd enforcement. Pure argument-builder unit tests run on macOS; live
-  `bwrap` tests run on Linux when `bwrap` is available
+  limits, and cwd enforcement. Pure argument-builder unit tests run cross-platform; live
+  `bwrap` tests run in the hosted Ubuntu integration job after namespace prerequisites pass
 - Agent Loop streaming with token-level callbacks (`onToken`, `onToolCall`,
   `onToolProgress`, `onToolResult`)
 - Tool output truncation and timeout protection
@@ -450,8 +455,8 @@ integration work and later conditional options.
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- CI runs the fixed TypeScript/Rust gates plus a pinned macOS integration job; the latter checks
-  the live sandbox prerequisites before running real Rust integration.
+- CI runs the fixed TypeScript/Rust gates plus fail-closed macOS and Linux integration jobs; each
+  checks its live sandbox prerequisites before running the real Rust integration suite.
 - Test suite: the fixed release gate passes the TypeScript workspace, preview-contract,
   release-gate, release-workflow, and documentation contracts, Rust unit/doc, and real-binary
   integration suites; dated validation counts are recorded in the release notes
@@ -464,8 +469,8 @@ integration work and later conditional options.
 - Linux `bwrap` backend: namespace isolation (user/ipc/pid/uts/cgroup), read-only root
   filesystem with per-distro path detection, writable/read-only path bind mounts,
   network policy (`--unshare-net`), environment injection, resource limits, and cwd
-  enforcement. Pure argument-builder unit tests run on macOS; live `bwrap` tests run
-  on Linux when `bwrap` is available
+  enforcement. Pure argument-builder unit tests run cross-platform; live `bwrap` tests run
+  in the hosted integration job after `bwrap` and namespace prerequisites pass
 - `RestrictedExecutor` detects `bwrap` availability for clearer error messages
 
 ## Roadmap

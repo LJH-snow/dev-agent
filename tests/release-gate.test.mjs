@@ -352,3 +352,53 @@ test("CI runs live Rust integration on a dedicated macOS job", () => {
     "executor package build should prepare TypeScript artifacts before integration"
   );
 });
+test("CI runs live Rust integration on a dedicated Linux bwrap job", () => {
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8"
+  );
+  const jobMarker = "\n  linux-integration:\n";
+  const jobStart = workflow.indexOf(jobMarker);
+  assert.ok(jobStart >= 0, "CI should define a Linux integration job");
+  const remainder = workflow.slice(jobStart + jobMarker.length);
+  const nextJobOffset = remainder.search(/\n {2}\S/);
+  const nextJob = nextJobOffset >= 0
+    ? jobStart + jobMarker.length + nextJobOffset
+    : -1;
+  const job = workflow.slice(jobStart, nextJob >= 0 ? nextJob : undefined);
+
+  assert.match(job, /name: Linux integration/);
+  assert.match(job, /runs-on: ubuntu-latest/);
+  assert.match(job, /env:\n(?:\s+#.*\n)*\s+DEV_AGENT_REQUIRE_LIVE_SANDBOX: "1"/);
+  assert.match(job, /sudo apt-get install -y -qq bubblewrap protobuf-compiler/);
+  assert.match(job, /pnpm verify:rust/);
+  assert.match(job, /- name: Build debug Rust runtime\n\s+run: cargo build --bin dev-agent-executor\n\s+working-directory: runtime\/rust/);
+  assert.match(job, /- name: Check Rust binary prerequisite\n\s+run: test -x runtime\/rust\/target\/debug\/dev-agent-executor/);
+  assert.match(job, /- name: Check bwrap prerequisite\n\s+run: command -v bwrap && bwrap --version/);
+  assert.match(job, /- name: Check bwrap user namespace prerequisite\n\s+run: \|[\s\S]*--unshare-user[\s\S]*--unshare-net/);
+  assert.match(job, /- name: Check Python network fixture prerequisite\n\s+run: python3 -c "import socket"/);
+  assert.match(job, /- name: Build executor package\n\s+run: pnpm --filter @dev-agent\/executor build/);
+  assert.match(job, /pnpm verify:integration/);
+
+  const rustGate = job.indexOf("pnpm verify:rust");
+  const buildRuntime = job.indexOf("- name: Build debug Rust runtime");
+  const rustPrerequisite = job.indexOf("- name: Check Rust binary prerequisite");
+  const bwrapPrerequisite = job.indexOf("- name: Check bwrap prerequisite");
+  const namespacePrerequisite = job.indexOf("- name: Check bwrap user namespace prerequisite");
+  const pythonPrerequisite = job.indexOf("- name: Check Python network fixture prerequisite");
+  const buildExecutor = job.indexOf("- name: Build executor package");
+  const integrationGate = job.indexOf("pnpm verify:integration");
+  assert.ok(
+    rustGate < buildRuntime && buildRuntime < rustPrerequisite,
+    "Rust gate should be followed by an explicit binary build before prerequisite checks"
+  );
+  assert.ok(
+    rustPrerequisite < bwrapPrerequisite && bwrapPrerequisite < namespacePrerequisite,
+    "bwrap binary and namespace checks should be independent and ordered"
+  );
+  assert.ok(
+    namespacePrerequisite < pythonPrerequisite && pythonPrerequisite < buildExecutor &&
+      buildExecutor < integrationGate,
+    "all live prerequisites should pass before executor build and integration"
+  );
+});
