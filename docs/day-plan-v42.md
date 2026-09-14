@@ -48,59 +48,48 @@ before-image 七项安全闸门的独立评审，明确哪些证据已经存在�
 
 **Produces:** 可复核的 v1 当前事实和输入清单。
 
-- [ ] **Step 1: 记录 v41 发布基线。** 固定通过计数、错误 allowlist、四类 limits cap
+- [x] **Step 1: 记录 v41 发布基线。** 固定通过计数、错误 allowlist、四类 limits cap
   和 CLI/Desktop 映射。
-- [ ] **Step 2: 生成 v42 评审问题清单。** 区分“必须在 v2 前回答”和“继续 NO-GO”的问题。
+- [x] **Step 2: 生成 v42 评审问题清单。** 区分“必须在 v2 前回答”和“继续 NO-GO”的问题。
 
 ## Task 1：keyset pagination 设计评审（文档 only）
 
 **Produces:** 不可执行的 cursor contract 和失效条件。
 
-- [ ] **Step 1: 固化排序/边界元组。** 评审 validation/change-set 的稳定排序、重复时间戳、
-  同 id 冲突和新增/删除记录对 cursor 的影响。
-- [ ] **Step 2: 评审 cursor 绑定。** 明确 session、filters、schema、sort version 和有效期；
-  确认 cursor 不包含绝对路径、命令、输出、文件内容或秘密。
-- [ ] **Step 3: 写 failure matrix。** 覆盖篡改、过期、跨 session、过滤变化、schema 变化、
-  空页和超出 byte budget；所有不确定情况都 fail closed。
+- [x] **Step 1: 固化排序/边界元组。** 在 `docs/evidence-pagination-review-v42.md` 评审 validation/change-set 的稳定排序、重复时间戳、同 id 冲突和新增/删除记录对 cursor 的影响。
+- [x] **Step 2: 评审 cursor 绑定。** 明确 session、filters、schema、sort version 和有效期；确认 cursor 不包含绝对路径、命令、输出、文件内容或秘密。
+- [x] **Step 3: 写 failure matrix。** 覆盖篡改、过期、跨 session、过滤变化、schema 变化、空页和超出 byte budget；所有不确定情况都 fail closed。
 
 ## Task 2：schema v2 compatibility review（文档 only）
 
 **Produces:** 旧客户端/新客户端的显式 negotiation matrix。
 
-- [ ] **Step 1: 定义版本交集和错误。** 无交集返回确定的 unsupported schema 错误，不隐式降级。
-- [ ] **Step 2: 定义 partial/full 语义。** 只有新版本可以明确区分页与完整快照，summary
-  必须区分全量计数和本页计数；v1 不消费这些字段。
-- [ ] **Step 3: 评审迁移与回滚。** 覆盖未知字段、缺失字段、损坏 JSON、旧 memory、旧 CLI/
-  Desktop 和服务端回滚；没有兼容证据就保持 NO-GO。
+- [x] **Step 1: 定义版本交集和错误。** 在 `docs/evidence-schema-v2-review-v42.md` 明确无交集返回确定的 unsupported schema 错误，不隐式降级。
+- [x] **Step 2: 定义 partial/full 语义。** 只有新版本可以明确区分页与完整快照，summary 必须区分全量计数和本页计数；v1 不消费这些字段。
+- [x] **Step 3: 评审迁移与回滚。** 覆盖未知字段、缺失字段、损坏 JSON、旧 memory、旧 CLI/Desktop 和服务端回滚；没有兼容证据就保持 NO-GO。
 
 ## Task 3：before-image 七闸门复核（文档 only）
 
 **Produces:** 每项闸门的 evidence ledger 和剩余 proof gap。
 
-- [ ] **Step 1: 逐项引用现有测试/设计证据。** 只记录可定位、可重复的事实，不把 postimage
-  guard 当作 before-image integrity 证据。
-- [ ] **Step 2: 明确缺口和最小补证。** 尤其复核敏感数据、原子恢复、容量上限、并发和旧客户端
-  兼容性；缺口保持 NO-GO。
-- [ ] **Step 3: 复核攻击路径。** 确认任何未来恢复输入都不会来自模型输出、历史命令、任意
-  path 或未确认的跨进程状态。
+- [x] **Step 1: 逐项引用现有测试/设计证据。** 在 `docs/before-image-review-v42.md` 只记录可定位、可重复的事实，不把 postimage guard 当作 before-image integrity 证据。
+- [x] **Step 2: 明确缺口和最小补证。** 尤其复核敏感数据、原子恢复、容量上限、并发和旧客户端兼容性；缺口保持 NO-GO。
+- [x] **Step 3: 复核攻击路径。** 确认任何未来恢复输入都不会来自模型输出、历史命令、任意 path 或未确认的跨进程状态。
 
 ## Task 4：决策、发布和下一阶段计划
 
-- [ ] **Step 1: 写 v42 review conclusion。** 对 pagination、schema v2、before-image 分别
-  给出 GO/CONDITIONAL/NO-GO。
-- [ ] **Step 2: 运行文档/结构门禁。** `node scripts/check.mjs`、`git diff --check` 和必要的
-  release gate；确认 v1 runtime 未改变。
-- [ ] **Step 3: 更新 CHANGELOG、v42 progress 和后续计划。** 后续若要实现，只提出独立的
-  小步计划，不自动承诺跨进程 Undo。
-- [ ] **Step 4: Commit and push。** 评审结论和证据清单发布到 `origin/main`。
+- [x] **Step 1: 写 v42 review conclusion。** 在 `docs/evidence-review-conclusion-v42.md` 对 pagination、schema v2、before-image 分别给出 GO/CONDITIONAL/NO-GO。
+- [x] **Step 2: 运行文档/结构门禁。** `node scripts/check.mjs`、`git diff --check` 通过，v1 runtime 未改变。
+- [x] **Step 3: 更新 CHANGELOG、v42 progress 和后续计划。** 后续若要实现，只提出独立的小步计划，不自动承诺跨进程 Undo。
+- [x] **Step 4: Commit and push。** 评审结论和证据清单随 v42 文档提交发布到 `origin/main`。
 
 ## Acceptance Checklist
 
-- [ ] v1 输出字段和 rejection-only limits 保持不变。
-- [ ] cursor contract 明确稳定排序、绑定范围、失效条件和敏感数据禁止项。
-- [ ] schema v2 matrix 明确版本交集、partial/full 语义、损坏输入和旧客户端行为。
-- [ ] before-image 七闸门各有可定位 evidence 或明确 proof gap；未满足者保持 NO-GO。
-- [ ] 评审文档不生成恢复授权、不写 before-image、不访问 workspace 内容。
+- [x] v1 输出字段和 rejection-only limits 保持不变。
+- [x] cursor contract 明确稳定排序、绑定范围、失效条件和敏感数据禁止项。
+- [x] schema v2 matrix 明确版本交集、partial/full 语义、损坏输入和旧客户端行为。
+- [x] before-image 七闸门各有可定位 evidence 或明确 proof gap；未满足者保持 NO-GO。
+- [x] 评审文档不生成恢复授权、不写 before-image、不访问 workspace 内容。
 
 ## 后续路线
 

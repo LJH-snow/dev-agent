@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-09-14 (Day plan v42: pagination/schema v2 and before-image review)
+
+Executed `docs/day-plan-v42.md` as a design-only review. v42 freezes the v1
+metadata-only export contract, evaluates future keyset pagination and schema v2
+compatibility, and independently rechecks the seven before-image safety gates.
+
+### Decisions
+
+- Keyset pagination is **CONDITIONAL**: future work needs snapshot binding, strict
+  cursor validation, deterministic invalidation, page/full distinction, and UTF-8
+  byte-budget proof before any runtime fields or endpoint are added.
+- Schema v2 is **CONDITIONAL**: future work needs explicit supported-version
+  intersection, strict allowlist parsing, old-client rejection, migration/rollback
+  tests, and no implicit downgrade.
+- Before-image and cross-process Undo remain **NO-GO**. Existing postimage guards,
+  same-process rollback, retention, and metadata-only audit tests do not prove the
+  seven required before-image safety gates.
+
+### Review artifacts
+
+- `docs/evidence-pagination-review-v42.md` defines stable tuple ordering, cursor
+  bindings, mutation/expiry/session/schema failure cases, and single-record byte-budget
+  behavior without implementing pagination.
+- `docs/evidence-schema-v2-review-v42.md` defines version negotiation and full/page
+  compatibility expectations without publishing schema v2.
+- `docs/before-image-review-v42.md` records the evidence ledger and proof gaps for all
+  seven gates. `docs/evidence-review-conclusion-v42.md` records the final decisions.
+
+### Boundary
+
+No runtime code, memory schema, v1 field, cursor, partial response, before-image,
+restore API, historical command, or cross-process Undo behavior changed.
+
 ## 2026-09-14 (Day plan v41: rejection-only audit export limits)
 
 Executed `docs/day-plan-v41.md`. v41 keeps the evidence audit export version 1
