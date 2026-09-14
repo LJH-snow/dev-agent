@@ -20,6 +20,7 @@ const DEFAULT_MAX_CONCURRENT = 5;
 const TERMINATION_GRACE_MS = 2000;
 
 export class LocalExecutor implements Executor {
+  readonly mode = "local" as const;
   private readonly history: ExecutorResult[] = [];
   private readonly historyLimit?: number;
   private readonly defaultMaxOutputBytes: number;

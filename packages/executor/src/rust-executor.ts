@@ -7,7 +7,7 @@ type ProtobufModule = typeof protobuf;
 
 import { DEFAULT_MAX_OUTPUT_BYTES } from "./local-executor.js";
 import { ExecutorCancelledError } from "./errors.js";
-import { assertWorkingDirectory } from "./index.js";
+import { assertWorkingDirectory, resolveExecutorMode, type ExecutorMode } from "./index.js";
 
 // protobufjs is CommonJS; Node's ESM loader exposes its API on `default`.
 const protobufImpl: ProtobufModule = (
@@ -114,6 +114,7 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 const RUNTIME_TIMEOUT_GRACE_MS = 5_000;
 
 export class RustExecutor implements SandboxExecutor {
+  readonly mode: ExecutorMode;
   private readonly binaryPath: string;
   private readonly protoPath?: string;
   private readonly maxConcurrentExecutions: number;
@@ -133,6 +134,7 @@ export class RustExecutor implements SandboxExecutor {
       throw new Error("RustExecutor binaryPath must be a non-empty string");
     }
     this.binaryPath = options.binaryPath;
+    this.mode = resolveExecutorMode(options.binaryPath);
     this.protoPath = options.protoPath;
     this.maxConcurrentExecutions = options.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;

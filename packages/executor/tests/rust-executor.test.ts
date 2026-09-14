@@ -6,10 +6,28 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-import { RustExecutor } from "../dist/index.js";
+import { resolveExecutorMode, RustExecutor } from "../dist/index.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const mockBinary = join(here, "..", "tests", "mock-executor-binary.mjs");
+
+test("executor mode resolver keeps local and unsupported states explicit", () => {
+  assert.equal(resolveExecutorMode(), "local");
+  assert.equal(resolveExecutorMode(mockBinary, "darwin"), "sandboxed-macos");
+  assert.equal(resolveExecutorMode(mockBinary, "linux"), "sandboxed-linux");
+  assert.equal(resolveExecutorMode(mockBinary, "win32"), "unsupported");
+});
+
+test("RustExecutor exposes its restricted platform mode without starting", () => {
+  const executor = new RustExecutor({ binaryPath: mockBinary });
+  const expected =
+    process.platform === "darwin"
+      ? "sandboxed-macos"
+      : process.platform === "linux"
+        ? "sandboxed-linux"
+        : "unsupported";
+  assert.equal(executor.mode, expected);
+});
 
 test("RustExecutor encodes a run request the mock binary can decode", async () => {
   const executor = new RustExecutor({ binaryPath: mockBinary });

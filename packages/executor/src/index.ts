@@ -1,5 +1,34 @@
 export type SandboxNetworkPolicy = "enabled" | "disabled" | "loopback";
 
+export type ExecutorMode =
+  | "local"
+  | "sandboxed-macos"
+  | "sandboxed-linux"
+  | "unsupported"
+  | "unknown";
+
+/** Resolves the configured execution backend without starting a child process. */
+export function resolveExecutorMode(
+  rustBinaryPath?: string,
+  platform: NodeJS.Platform = process.platform
+): ExecutorMode {
+  if (!rustBinaryPath?.trim()) {
+    return "local";
+  }
+  if (platform === "darwin") {
+    return "sandboxed-macos";
+  }
+  if (platform === "linux") {
+    return "sandboxed-linux";
+  }
+  return "unsupported";
+}
+
+/** Returns explicit mode metadata while keeping injected executors backward-compatible. */
+export function getExecutorMode(executor: Pick<Executor, "mode">): ExecutorMode {
+  return executor.mode ?? "unknown";
+}
+
 export interface ExecutorResult {
   readonly stdout: string;
   readonly stderr: string;
@@ -60,6 +89,8 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 }
 
 export interface Executor {
+  /** Metadata only; it does not grant or remove execution permissions. */
+  readonly mode?: ExecutorMode;
   run(
     command: string,
     args?: readonly string[],

@@ -4,10 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { LocalExecutor } from "../dist/index.js";
+import { getExecutorMode, LocalExecutor } from "../dist/index.js";
 
 const node = process.execPath;
 const executor = new LocalExecutor();
+
+test("executor mode metadata identifies local and unknown implementations", () => {
+  assert.equal(executor.mode, "local");
+  assert.equal(getExecutorMode(executor), "local");
+  assert.equal(getExecutorMode({}), "unknown");
+});
 
 test("LocalExecutor returns stdout, stderr, and exit code", async () => {
   const output = await executor.run("echo", ["hello"]);
