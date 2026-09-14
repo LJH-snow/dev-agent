@@ -2,9 +2,12 @@
 
 **建立日期：2026-09-14**
 
+**状态：v54 完成；metrics 需求为 Preserve/NO-GO，新的 CI coverage gap 转入 v55。**
+
 > 本计划承接 `docs/day-plan-v53.md`。v53 选择 Preserve/NO-GO：README 当前只描述 suite
-> 类别，精确计数放在带日期的验证记录中。v54 只有在出现明确的 CI、仪表板或维护反馈时，才
-> 设计机器可读测试指标；没有 trigger 时继续 Preserve。
+> 类别，精确计数放在带日期的验证记录中。v54 确认当前没有 CI、仪表板或其他消费者要求
+> machine-readable counts，因此没有实现计数器；inventory 期间发现的 live Rust integration
+> CI 缺口是独立问题，转入 `docs/day-plan-v55.md`。
 
 ## Goal
 
@@ -30,30 +33,39 @@
 
 ## Task 0：确认 trigger 与消费者
 
-- [ ] 记录谁消费 metrics、需要哪些字段、更新频率和失败处理。
-- [ ] 区分当前 docs-only 维护需求与真正的 machine-readable contract 需求。
-- [ ] 若没有消费者，记录 Preserve 并停止 speculative implementation。
+- [x] 检查 `.github/workflows`、scripts、package scripts 和 docs，未发现 metrics 消费者。
+- [x] 区分当前 docs-only 维护需求与真正的 machine-readable contract 需求。
+- [x] 将 inventory 期间发现的 CI live-integration coverage gap 记录为独立 v55 trigger，避免
+  把不同问题混进 metrics 方案。
 
 ## Task 1：契约设计（仅在有 trigger 时）
 
-- [ ] 先写 RED contract，覆盖 suite/package 边界、pass/fail、skip/todo、动态 tests 和空结果。
-- [ ] 定义来源与版本，不允许把 reporter 文本或任意命令输出直接当 authority。
-- [ ] 设计最小 metadata-only artifact，评估是否需要单独文件而非扩展现有 gate report。
+- [x] 没有 metrics consumer，因此不写 RED contract、不扩展 report schema、不添加 reporter。
+- [x] 不实现 stdout parsing、静态 test 扫描或重复 gate wrapper。
+- [x] 保留 metadata-only、fail-fast、固定 cwd/shell=false 和现有 report allowlist。
 
-## Task 2：实现与回归（严格条件执行）
+## Task 2：Preserve / NO-GO 路径
 
-- [ ] 只在契约通过评审后实现 bounded prototype；禁止隐藏重复运行完整 gate。
-- [ ] 验证 fail-fast、取消、并发、失败/空结果和 output/privacy boundary。
-- [ ] 代码变更才运行对应 focused/full gate；docs-only 继续运行 structure/diff checks。
+- [x] `docs/release-summary-source-of-truth-v53.md` 继续作为当前 metrics decision；v54 保持
+  **Preserve / NO-GO**。
+- [x] README 继续使用 suite-category-only 文案，精确计数只写入带日期的验证记录。
+- [x] 下一次明确的 CI coverage 需求已写入 v55，不把它伪装成 metrics 自动化需求。
 
 ## Task 3：发布与下一阶段
 
-- [ ] 更新 source-of-truth decision、CHANGELOG、progress 和后续计划。
-- [ ] 只有 fresh evidence 通过且无 report/authority 回归才 commit/push。
-- [ ] 没有 trigger 时保留 category-only README，并把下一次具体信号写入 v55。
+- [x] v54 docs-only 结论通过 structure/diff 检查；没有 metrics runtime/code 变更。
+- [x] 更新 CHANGELOG、progress 和 v55 plan；现有 release report、gate order 和 Evidence 边界
+  不变。
+- [x] v55 已建立并开始处理 macOS real Rust integration CI coverage。
+
+## Decision
+
+**Preserve / NO-GO for automatic public test-count generation.** v54 没有明确消费者，也没有
+足够稳定的低风险 source-of-truth；继续维护 category-only README。CI live integration 是另一个
+可验证的工程质量问题，不应通过扩展 metrics report 来解决。
 
 ## Acceptance checklist
 
-- [ ] 有明确消费者和字段 contract，或明确 Preserve/NO-GO。
-- [ ] 不泄露 stdout、命令、环境、路径、文件 bytes 或 session evidence。
-- [ ] 不无需求扩展 API、schema、gate order、report allowlist 或 Undo authority。
+- [x] 没有 metrics consumer 时未增加脚本、依赖、report 字段或 gate 行为。
+- [x] 没有把 stdout、命令、环境、路径、文件 bytes 或 session evidence 引入公开 artifact。
+- [x] 已记录 Preserve/NO-GO 和下一阶段的独立触发条件。

@@ -61,6 +61,7 @@ The fixed release gate is the preferred pre-push check:
 pnpm verify                 # TypeScript → Rust → real-Rust integration
 pnpm verify:typescript      # the TypeScript CI job
 pnpm verify:rust            # the Rust CI job
+pnpm verify:integration     # the real-Rust integration phase
 ```
 
 Each gate uses repository-defined commands and working directories, stops at the
@@ -432,6 +433,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
+- CI runs the fixed TypeScript/Rust gates plus a pinned macOS integration job; the latter checks
+  the live sandbox prerequisites before running real Rust integration.
 - Test suite: the fixed release gate passes the TypeScript workspace, preview-contract,
   release-gate contract, Rust unit/doc, and real-binary integration suites; dated validation
   counts are recorded in the release notes

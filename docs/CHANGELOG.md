@@ -64,6 +64,52 @@ v52 is recorded in `docs/day-plan-v52.md` and should start only from a concrete 
 real assistive-technology feedback, reproducible narrow-window interaction issue, or another
 explicit Desktop UX trigger. Otherwise keep the preview/integrity surface frozen.
 
+## 2026-09-14 (Day plan v55: macOS live Rust integration CI)
+
+Completed the local v55 CI coverage slice from `docs/day-plan-v55.md`. The repository now has a
+fixed `pnpm verify:integration` entrypoint and a dedicated macOS job that runs the Rust gate,
+checks live prerequisites, and then executes real Rust integration instead of relying on Ubuntu skips.
+
+### Added: fail-closed macOS integration job
+
+- Added `verify:integration` as the root entrypoint for the fixed `--integration` gate mode.
+- Added a pinned `macos-15` workflow job with Rust/protobuf/dependency setup and the order
+  `verify:rust` → binary/sandbox/Python prerequisite checks → `verify:integration`.
+- Missing `runtime/rust/target/debug/dev-agent-executor`, `/usr/bin/sandbox-exec`, or a usable
+  Python socket fixture now fails the job rather than silently presenting skipped sandbox tests as
+  live coverage.
+- Added a release-gate workflow contract test; no runtime, API, schema, dependency, Evidence,
+  session, Undo, or report-allowlist behavior changed.
+
+### Validation
+
+- RED before implementation: release-gate focused contract **11/12**.
+- GREEN after implementation: release-gate focused contract **12/12** and
+  `pnpm verify:integration` **10/10**.
+- Fresh full `pnpm verify`: TypeScript workspace **614/614**, preview **8/8**, release-gate
+  contract **12/12**, Rust unit/doc **46/46**, real-Rust integration **10/10**.
+- YAML parse, structure check, `git diff --check`, and release-gate syntax checks passed.
+
+### External evidence boundary
+
+The first GitHub-hosted `macos-15` run is intentionally left for v56; local tests prove the workflow
+contract but cannot prove the hosted image's sandbox availability.
+
+## 2026-09-14 (Day plan v54: metrics source-of-truth Preserve)
+
+Completed the v54 metrics inventory and kept automatic public test-count generation at
+**Preserve / NO-GO**. No CI consumer, dashboard, reporter requirement, or stable low-risk count
+contract was found.
+
+- README remains suite-category-only; exact counts live in dated validation documents.
+- No metrics reporter, script, dependency, release-report field, or gate behavior was added.
+- The independent live Rust integration CI gap discovered during the inventory was routed to v55.
+
+### Next boundary
+
+v56 observes the first hosted macOS integration run and records runner compatibility without treating
+local workflow-contract evidence as remote success.
+
 ## 2026-09-14 (Day plan v53: release summary source-of-truth)
 
 Completed the v53 source-of-truth inventory from `docs/day-plan-v53.md`. A fresh gate confirmed

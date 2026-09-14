@@ -292,3 +292,43 @@ test("preview contract failures remain fail-fast and reportable", async () => {
   assert.equal(result.report.failedStepId, "preview-contract");
   assert.deepEqual(result.report.steps.map((step) => step.id), observed);
 });
+
+test("CI runs live Rust integration on a dedicated macOS job", () => {
+  const packageJson = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8")
+  );
+  assert.equal(
+    packageJson.scripts["verify:integration"],
+    "node scripts/release-gate.mjs --integration"
+  );
+
+  const workflow = readFileSync(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8"
+  );
+  const jobMarker = "\n  macos-integration:\n";
+  const jobStart = workflow.indexOf(jobMarker);
+  assert.ok(jobStart >= 0, "CI should define a macOS integration job");
+  const remainder = workflow.slice(jobStart + jobMarker.length);
+  const nextJobOffset = remainder.search(/\n {2}\S/);
+  const nextJob = nextJobOffset >= 0
+    ? jobStart + jobMarker.length + nextJobOffset
+    : -1;
+  const job = workflow.slice(jobStart, nextJob >= 0 ? nextJob : undefined);
+
+  assert.match(job, /name: macOS integration/);
+  assert.match(job, /runs-on: macos-15/);
+  assert.match(job, /pnpm verify:rust/);
+  assert.match(job, /test -x runtime\/rust\/target\/debug\/dev-agent-executor/);
+  assert.match(job, /test -x \/usr\/bin\/sandbox-exec/);
+  assert.match(job, /python3 -c "import socket"/);
+  assert.match(job, /pnpm verify:integration/);
+  assert.ok(
+    job.indexOf("pnpm verify:rust") < job.indexOf("test -x"),
+    "Rust gate should build the binary before prerequisite checks"
+  );
+  assert.ok(
+    job.indexOf("test -x") < job.indexOf("pnpm verify:integration"),
+    "prerequisite checks should run before integration"
+  );
+});
