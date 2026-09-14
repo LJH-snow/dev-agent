@@ -432,6 +432,129 @@ test("CLI exports a metadata-only audit snapshot without initializing a provider
   }
 });
 
+
+test("CLI previews a metadata-only audit snapshot without initializing a provider", async () => {
+  const workspace = await createGitWorkspace();
+  const memoryFile = join(workspace.dir, "audit-preview.json");
+  try {
+    const memory = new FileMemory({ filePath: memoryFile });
+    await memory.recordValidation({
+      validationId: "validation:preview",
+      changeSetId: "preview-change",
+      status: "failed",
+      checks: [
+        {
+          id: "workspace:preview",
+          label: "internal label",
+          command: {
+            executable: "secret-command",
+            args: ["--token", "secret"],
+            cwd: workspace.dir,
+            timeoutMs: 1000,
+          },
+          status: "failed",
+          durationMs: 9,
+          exitCode: 1,
+          output: "secret output",
+          error: "secret error",
+          reason: "secret reason",
+        },
+      ],
+      durationMs: 9,
+      summary: "internal validation summary",
+      reason: "internal validation reason",
+    });
+    await memory.recordChangeSet({
+      changeSetId: "preview-change",
+      sessionId: "preview",
+      workingDirectory: workspace.dir,
+      files: [
+        {
+          path: "target.md",
+          kind: "file",
+          beforeHash: "b".repeat(64),
+          afterHash: "a".repeat(64),
+          additions: 1,
+          deletions: 1,
+          beforeExists: true,
+          afterExists: true,
+        },
+      ],
+      additions: 1,
+      deletions: 1,
+      createdAt: "2026-09-14T00:20:00.000Z",
+      recordedAt: "2026-09-14T00:20:01.000Z",
+      state: "applied",
+    });
+    const before = await readFile(memoryFile);
+    const env = {
+      ...process.env,
+      INIT_CWD: workspace.dir,
+      DEV_AGENT_MODEL_PROVIDER: "provider-that-must-not-be-loaded",
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    };
+
+    const result = await runCli(
+      ["--session", "preview", "--preview-evidence", "--status", "failed"],
+      env,
+      ""
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    const payload = JSON.parse(result.stdout);
+    assert.deepEqual(Object.keys(payload), [
+      "schemaVersion",
+      "sessionId",
+      "generatedAt",
+      "validationCount",
+      "changeSetCount",
+      "fileCount",
+      "serializedBytes",
+    ]);
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.sessionId, "preview");
+    assert.equal(payload.validationCount, 1);
+    assert.equal(payload.changeSetCount, 1);
+    assert.equal(payload.fileCount, 1);
+    assert.equal(Number.isSafeInteger(payload.serializedBytes), true);
+    assert.ok(payload.serializedBytes > 0);
+    for (const forbidden of [
+      "secret-command",
+      "secret output",
+      "secret error",
+      workspace.dir,
+      "workingDirectory",
+      "beforeImage",
+    ]) {
+      assert.equal(result.stdout.includes(forbidden), false, `forbidden preview content leaked: ${forbidden}`);
+    }
+    assert.deepEqual(await readFile(memoryFile), before);
+
+    const unsupportedLimit = await runCli(
+      ["--session", "preview", "--preview-evidence", "--audit-max-bytes", "1"],
+      env,
+      ""
+    );
+    assert.equal(unsupportedLimit.code, 1);
+    assert.equal(unsupportedLimit.stdout, "");
+    assert.match(unsupportedLimit.stderr, /require --export-evidence/);
+    assert.deepEqual(await readFile(memoryFile), before);
+
+    const conflict = await runCli(
+      ["--session", "preview", "--preview-evidence", "--export-evidence"],
+      env,
+      ""
+    );
+    assert.equal(conflict.code, 1);
+    assert.equal(conflict.stdout, "");
+    assert.match(conflict.stderr, /cannot be combined|mutually exclusive/);
+    assert.deepEqual(await readFile(memoryFile), before);
+  } finally {
+    await rm(workspace.dir, { recursive: true, force: true });
+  }
+});
+
 test("CLI rejects an invalid audit status before loading the provider", async () => {
   const result = await runCli(
     ["--export-evidence", "--status", "not-a-status"],

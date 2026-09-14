@@ -99,3 +99,16 @@ are capped at 10,000 each, files at 100,000, and the canonical UTF-8 JSON at
 Desktop evidence endpoint uses matching camel-case query parameters. Invalid
 limits are rejected before export, and a complete snapshot that exceeds a limit
 returns a structured error rather than a truncated or paginated v1 response.
+
+### Audit export preview
+
+The read-only preflight is a separate preview schema, not an extension of the v1
+export. CLI `--preview-evidence` and Desktop
+`GET /api/sessions/<id>/evidence/preview` first build the same complete, stable
+allowlist projection in memory, then return only `schemaVersion`, `sessionId`,
+`generatedAt`, `validationCount`, `changeSetCount`, `fileCount`, and
+`serializedBytes`. The byte count is the canonical projection's UTF-8 JSON byte
+length, so it can guide a later rejection-only limit without truncation. Preview
+accepts the standard evidence filters but not audit limit parameters; it does not
+load a provider, enter the chat queue, access the workspace, expose evidence
+content, or provide pagination, schema negotiation, restore, or Undo authority.

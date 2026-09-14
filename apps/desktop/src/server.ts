@@ -8,6 +8,7 @@ import { dirname, join, extname } from "node:path";
 
 import {
   createEvidenceAuditExport,
+  createEvidenceAuditPreview,
   DEFAULT_EVIDENCE_RETENTION,
   EvidenceAuditLimitError,
   FileMemory,
@@ -97,6 +98,10 @@ type EvidenceCleanupOptionsResult =
   | { readonly error: string };
 
 type EvidenceFilters = EvidenceAuditFilters;
+type EvidenceFilterOptions = {
+  readonly includeAuditLimits?: boolean;
+  readonly rejectAuditLimits?: boolean;
+};
 
 const validationStatuses: readonly ValidationStatus[] = [
   "passed",
@@ -275,6 +280,59 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ from, to, renamed: from !== to }));
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/evidence/preview")
+      ) {
+        const rawId = url.pathname.slice(
+          "/api/sessions/".length,
+          -"/evidence/preview".length
+        );
+        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const filePath = memoryPathFor(sessionId);
+        if (!existsSync(filePath)) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+
+        const filterResult = parseEvidenceFilters(url, { rejectAuditLimits: true });
+        if ("error" in filterResult) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: filterResult.error }));
+          return;
+        }
+
+        const memory = new FileMemory({ filePath });
+        try {
+          const validations = await memory.validations();
+          const changeSets = await memory.changeSets();
+          const evidenceSummary = await memory.evidenceSummary();
+          const evidence = selectEvidenceForAudit(
+            validations,
+            changeSets,
+            filterResult.filters
+          );
+          const preview = createEvidenceAuditPreview(
+            sessionId,
+            evidence.validations,
+            evidence.changeSets,
+            evidenceSummary
+          );
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          res.end(JSON.stringify(preview));
+        } catch {
+          // Keep persisted evidence errors and paths out of this metadata-only surface.
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "evidence preview failed" }));
+        }
         return;
       }
 
@@ -1116,7 +1174,7 @@ function parseOptionalEvidenceLimit(
 
 function parseEvidenceFilters(
   url: URL,
-  options: { readonly includeAuditLimits?: boolean } = {}
+  options: EvidenceFilterOptions = {}
 ): EvidenceFilterResult {
   const changeSetId = nonEmptyQueryValue(url.searchParams.get("changeSetId"));
   const validationId = nonEmptyQueryValue(url.searchParams.get("validationId"));
@@ -1128,6 +1186,9 @@ function parseEvidenceFilters(
     return {
       error: `status must be one of: ${validationStatuses.join(", ")}`,
     };
+  }
+  if (options.rejectAuditLimits && hasEvidenceAuditLimitQuery(url)) {
+    return { error: "audit limit options require /evidence" };
   }
   const limitsResult = options.includeAuditLimits
     ? parseEvidenceAuditLimits(url)
@@ -1143,6 +1204,12 @@ function parseEvidenceFilters(
     },
     ...(limitsResult.limits === undefined ? {} : { limits: limitsResult.limits }),
   };
+}
+
+function hasEvidenceAuditLimitQuery(url: URL): boolean {
+  return ["maxValidations", "maxChangeSets", "maxFiles", "maxBytes"].some((query) =>
+    url.searchParams.has(query)
+  );
 }
 
 function parseEvidenceAuditLimits(

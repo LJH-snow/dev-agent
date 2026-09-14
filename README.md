@@ -274,6 +274,13 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   after stable projection using canonical UTF-8 JSON; invalid requests return `400`,
   an over-limit complete snapshot returns a structured error (`413` on Desktop),
   and v1 never returns a partial snapshot or pagination cursor.
+- v43 adds a separate metadata-only audit preflight: CLI `--preview-evidence` and
+  Desktop `GET /api/sessions/<id>/evidence/preview` report only the preview schema
+  version, session id, generation time, validation/change-set/file counts, and the
+  canonical full v1 projection's UTF-8 `serializedBytes`. Filters are supported,
+  export limits remain exclusive to the full `/evidence` export, and preview never
+  returns commands, paths, output/errors, file contents, before-images, partial/cursor
+  fields, or execution/recovery authorization.
 - CLI human output and `--json.validations` expose the same check ids, structured
   commands, durations, bounded output, and failure reasons; Desktop emits a
   `validation` SSE frame and renders a card without hiding the guarded Undo

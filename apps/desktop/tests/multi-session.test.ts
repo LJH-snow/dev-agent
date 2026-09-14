@@ -258,6 +258,38 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
     });
     assert.deepEqual(await readFile(join(dir, "alpha.json")), memoryBeforeAudit);
 
+    const previewResponse = await fetch(
+      `${base}/api/sessions/alpha/evidence/preview?status=failed`
+    );
+    assert.equal(previewResponse.status, 200);
+    assert.match(previewResponse.headers.get("content-type") ?? "", /application\/json/);
+    const preview: any = await previewResponse.json();
+    assert.deepEqual(Object.keys(preview), [
+      "schemaVersion",
+      "sessionId",
+      "generatedAt",
+      "validationCount",
+      "changeSetCount",
+      "fileCount",
+      "serializedBytes",
+    ]);
+    assert.equal(preview.schemaVersion, 1);
+    assert.equal(preview.sessionId, "alpha");
+    assert.equal(preview.validationCount, 1);
+    assert.equal(preview.changeSetCount, 1);
+    assert.equal(preview.fileCount, 1);
+    assert.equal(Number.isSafeInteger(preview.serializedBytes), true);
+    assert.ok(preview.serializedBytes > 0);
+    assert.equal(JSON.stringify(preview).includes("/workspace"), false);
+    assert.deepEqual(await readFile(join(dir, "alpha.json")), memoryBeforeAudit);
+
+    const unsupportedPreviewLimit = await fetch(
+      `${base}/api/sessions/alpha/evidence/preview?maxBytes=1`
+    );
+    assert.equal(unsupportedPreviewLimit.status, 400);
+    assert.match(await unsupportedPreviewLimit.text(), /require \/evidence/);
+    assert.deepEqual(await readFile(join(dir, "alpha.json")), memoryBeforeAudit);
+
     const exported = await fetch(`${base}/api/sessions/alpha/export`);
     assert.equal(exported.status, 200);
     const transcript = await exported.text();
@@ -530,6 +562,8 @@ test("GET /api/sessions/<id>/export returns 404 for an unknown session", async (
       assert.equal(res.status, 404);
       const audit = await fetch(`${base}/api/sessions/missing/evidence`);
       assert.equal(audit.status, 404);
+      const preview = await fetch(`${base}/api/sessions/missing/evidence/preview`);
+      assert.equal(preview.status, 404);
     } finally {
       await close(server);
     }

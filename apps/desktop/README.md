@@ -141,6 +141,16 @@ are accepted, and validation command fields are deliberately not configurable.
   working directory. The projection excludes command inputs, output/error text,
   diffs, patches, file bytes, before-images, and the absolute working-directory
   path.
+- `GET /api/sessions/<id>/evidence/preview` — returns a separate, fixed
+  metadata-only preflight object with `schemaVersion`, `sessionId`, `generatedAt`,
+  `validationCount`, `changeSetCount`, `fileCount`, and canonical UTF-8
+  `serializedBytes` for the complete v1 projection. It accepts the standard
+  `changeSetId`, `validationId`, and `status` filters, but rejects audit limit
+  query values because limits apply only to the full `/evidence` export. It
+  returns `404` for an unknown session and never initializes a model, enters the
+  chat queue, executes a command, reads/writes the working directory, or exposes
+  evidence content, paths, commands, output/errors, file bytes, before-images,
+  pagination fields, or restore/Undo authority.
 - `POST /api/changesets/validate` — body `{ "sessionId": "...",
   "changeSetId": "..." }`; explicitly reruns trusted validation for the
   applied change set without changing files. A successful response is the full

@@ -70,18 +70,18 @@ rollback 输入。
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/README.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/README.md`
 
-- [ ] **Step 1: 写 RED 测试。** CLI `--preview-evidence` 和 Desktop preview endpoint 返回固定 allowlist，拒绝/忽略不受支持的执行输入，并不加载 provider、进入 chat queue 或读写 workspace。
-- [ ] **Step 2: 写最小实现。** CLI/HTTP 复用 filters、agent-core serializer 和 preview schema；preview 与 export/cleanup 的组合关系明确。
-- [ ] **Step 3: 运行聚焦回归。** agent-core/CLI/Desktop 相关测试通过，v1 export 字段不变，preview byte count 使用 UTF-8 canonical bytes。
-- [ ] **Step 4: 更新使用文档。** 说明 preview 只用于选择 limit，不是完整 evidence，也不提供分页或恢复能力。
-- [ ] **Step 5: 提交。** 提交 CLI/Desktop preview surface。
+- [x] **Step 1: 写 RED 测试。** CLI `--preview-evidence` 和 Desktop preview endpoint 返回固定 allowlist，拒绝/忽略不受支持的执行输入，并不加载 provider、进入 chat queue 或读写 workspace。
+- [x] **Step 2: 写最小实现。** CLI/HTTP 复用 filters、agent-core serializer 和 preview schema；preview 与 export/cleanup 的组合关系明确。
+- [x] **Step 3: 运行聚焦回归。** agent-core/CLI/Desktop 相关测试通过，v1 export 字段不变，preview byte count 使用 UTF-8 canonical bytes；agent-core 118/118、CLI 116/116、Desktop 73/73。
+- [x] **Step 4: 更新使用文档。** 说明 preview 只用于选择 limit，不是完整 evidence，也不提供分页或恢复能力。
+- [x] **Step 5: 提交。** 提交 CLI/Desktop preview surface。
 
 ## Task 3：全量验证、发布和下一阶段计划
 
 **Produces:** v43 preview 可交付，v1/pagination/schema/before-image 边界继续有效。
 
-- [ ] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust gate。** 记录所有通过计数。
-- [ ] **Step 2: 运行 report smoke、结构检查、diff check 和人工边界 review。** 确认 preview 不含敏感字段且不产生 workspace side effect。
+- [x] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust gate。** 记录所有通过计数：TypeScript workspace 609/609，release-gate contract 9/9，Rust unit/doc 46/46，real-Rust integration 10/10。
+- [x] **Step 2: 运行 report smoke、结构检查、diff check 和人工边界 review。** 确认 preview 不含敏感字段且不产生 workspace side effect；report allowlist smoke 通过。
 - [ ] **Step 3: 更新 CHANGELOG、v43 progress 和使用文档。** 记录 preview schema 与 v1 compatibility。
 - [ ] **Step 4: Commit and push。** 发布实现和文档到 `origin/main`。
 - [ ] **Step 5: 新建 v44 计划。** 继续评估安全、可观测性或独立的兼容性小步，不默认进入 pagination/schema v2/before-image。

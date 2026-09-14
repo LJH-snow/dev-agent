@@ -11,6 +11,7 @@ pnpm cli -- --session docs --once "answer in code"
 pnpm cli -- --session docs --reset-memory --once "start over"
 pnpm cli -- --cleanup-evidence --remove-rolled-back --json
 pnpm cli -- --session docs --export-evidence --audit-max-bytes 1048576
+pnpm cli -- --session docs --preview-evidence --status failed
 pnpm cli -- --tools
 DEV_AGENT_MODEL_PROVIDER=ollama pnpm cli
 ```
@@ -46,6 +47,16 @@ Options:
   snapshot. The projection excludes commands, arguments, cwd, output, errors,
   diffs, patches, file bytes, before-images, and absolute working-directory paths;
   `--json` may be combined for scripting consistency
+- `--preview-evidence` - print a separate, metadata-only preflight JSON object
+  without loading a model provider or MCP server. It accepts the same
+  `--change-set-id <id>`, `--validation-id <id>`, and
+  `--status passed|failed|skipped|blocked` filters as `--export-evidence`, and
+  returns only `schemaVersion`, `sessionId`, `generatedAt`,
+  `validationCount`, `changeSetCount`, `fileCount`, and canonical UTF-8
+  `serializedBytes`. It is for choosing a later export limit; it does not return
+  evidence records, commands, paths, output/errors, file bytes, before-images,
+  pagination fields, or recovery/execution authority. It cannot be combined with
+  `--export-evidence`, `--cleanup-evidence`, or `--audit-max-*` options.
 - `--compact <n>` - compact the selected session, keeping the `n` most recent turns
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary

@@ -7,7 +7,7 @@
 ## 当前状态
 
 v42 的 pagination/schema v2 评审结论为 **CONDITIONAL**，before-image 七项闸门为
-**NO-GO**。v43 已完成 agent-core preview contract，当前进入 CLI/Desktop preview surface 的 TDD 阶段；目标是让操作者先
+**NO-GO**。v43 已完成 agent-core、CLI 和 Desktop preview contract，当前进入全量验证与发布阶段；目标是让操作者先
 看到完整 projection 的 metadata 规模，再选择 v41 的 rejection-only limits。
 
 ## v42 基线
@@ -26,14 +26,14 @@ v42 的 pagination/schema v2 评审结论为 **CONDITIONAL**，before-image 七�
 
 ### Task 2：CLI/Desktop preview surface
 
-- [ ] CLI `--preview-evidence`。
-- [ ] Desktop `GET /api/sessions/<id>/evidence/preview`。
-- [ ] 宿主聚焦回归和使用文档。
+- [x] CLI `--preview-evidence`，复用 filters，拒绝 audit limits 与 export/cleanup 组合。
+- [x] Desktop `GET /api/sessions/<id>/evidence/preview`，复用 filters，拒绝 audit limit query。
+- [x] 宿主聚焦回归和使用文档：CLI 116/116、Desktop 73/73。
 
 ### Task 3：全量验证与发布
 
-- [ ] 完整 TypeScript/Rust/integration gate。
-- [ ] report smoke、结构/diff check、敏感字段和 side-effect review。
+- [x] 完整 TypeScript/Rust/integration gate：TypeScript workspace 609/609，release-gate contract 9/9，Rust unit/doc 46/46，real-Rust integration 10/10。
+- [x] report smoke、结构/diff check、敏感字段和 side-effect review；`--typescript --report` 顶层/step allowlist 通过。
 - [ ] CHANGELOG、发布提交和 v44 后续计划。
 
 ## 设计原则

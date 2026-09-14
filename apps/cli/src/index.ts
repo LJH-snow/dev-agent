@@ -14,6 +14,7 @@ import {
   createAgentContext,
   createBlockedValidationResult,
   createEvidenceAuditExport,
+  createEvidenceAuditPreview,
   EVIDENCE_AUDIT_LIMIT_ERROR_CODE,
   EvidenceAuditLimitError,
   validateEvidenceAuditLimits,
@@ -105,6 +106,7 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--session-list": "none",
   "--cleanup-evidence": "none",
   "--export-evidence": "none",
+  "--preview-evidence": "none",
   "--change-set-id": "one",
   "--validation-id": "one",
   "--status": "one",
@@ -211,13 +213,18 @@ export async function main(argv: string[]): Promise<void> {
   const jsonOutput = args.includes("--json");
   const cleanupEvidence = args.includes("--cleanup-evidence");
   const exportEvidence = args.includes("--export-evidence");
+  const previewEvidence = args.includes("--preview-evidence");
   const cleanupOptionsResult = parseCliEvidenceCleanupOptions(args, cleanupEvidence);
   if ("error" in cleanupOptionsResult) {
     console.error(cleanupOptionsResult.error);
     process.exitCode = 1;
     return;
   }
-  const auditOptionsResult = parseCliEvidenceAuditOptions(args, exportEvidence);
+  const auditOptionsResult = parseCliEvidenceAuditOptions(
+    args,
+    exportEvidence || previewEvidence,
+    exportEvidence
+  );
   if ("error" in auditOptionsResult) {
     console.error(auditOptionsResult.error);
     process.exitCode = 1;
@@ -225,6 +232,13 @@ export async function main(argv: string[]): Promise<void> {
   }
   if (cleanupEvidence && exportEvidence) {
     console.error("--cleanup-evidence and --export-evidence cannot be used together");
+    process.exitCode = 1;
+    return;
+  }
+  if (previewEvidence && (cleanupEvidence || exportEvidence)) {
+    console.error(
+      "--preview-evidence cannot be combined with --cleanup-evidence or --export-evidence"
+    );
     process.exitCode = 1;
     return;
   }
@@ -396,6 +410,34 @@ export async function main(argv: string[]): Promise<void> {
         console.log(`Languages: ${languages}`);
       }
       console.log(`Index written to ${report.indexPath}`);
+    }
+    return;
+  }
+
+  if (previewEvidence) {
+    const memory = createMemory(normalizedSessionId);
+    try {
+      const validations = await memory.validations();
+      const changeSets = await memory.changeSets();
+      const evidenceSummary = await memory.evidenceSummary();
+      const evidence = selectEvidenceForAudit(
+        validations,
+        changeSets,
+        auditOptionsResult.filters
+      );
+      const preview = createEvidenceAuditPreview(
+        normalizedSessionId,
+        evidence.validations,
+        evidence.changeSets,
+        evidenceSummary
+      );
+      // Preview is intentionally JSON even without --json so callers can
+      // inspect the fixed metadata contract before selecting export limits.
+      console.log(JSON.stringify(preview, null, 2));
+    } catch {
+      // Do not echo persisted evidence errors, paths, or provider details.
+      console.error("Evidence preview failed");
+      process.exitCode = 1;
     }
     return;
   }
@@ -1460,6 +1502,7 @@ function formatValidationCommand(executable: string, args: readonly string[]): s
 
 function parseCliEvidenceAuditOptions(
   args: readonly string[],
+  auditSurface: boolean,
   exportEvidence: boolean
 ):
   | { readonly filters: EvidenceAuditFilters; readonly limits?: EvidenceAuditLimits }
@@ -1478,8 +1521,8 @@ function parseCliEvidenceAuditOptions(
     changeSetId.value !== undefined ||
     validationId.value !== undefined ||
     status.value !== undefined;
-  if (hasFilter && !exportEvidence) {
-    return { error: "evidence export filters require --export-evidence" };
+  if (hasFilter && !auditSurface) {
+    return { error: "evidence filters require --export-evidence or --preview-evidence" };
   }
   if (status.value !== undefined && !["passed", "failed", "skipped", "blocked"].includes(status.value)) {
     return { error: "status must be one of: passed, failed, skipped, blocked" };
