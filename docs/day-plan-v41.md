@@ -45,7 +45,7 @@
 - [x] **Step 2: 运行聚焦测试确认 RED。** 首轮 `pnpm --filter @dev-agent/agent-core test` 按预期因限额 API 尚不存在而失败。
 - [x] **Step 3: 写最小实现。** 添加有限的正整数 limits、固定错误 code/kind、完整投影后检查 count/file/byte；不返回 partial snapshot，不读写 workspace。
 - [x] **Step 4: 运行聚焦回归。** agent-core 测试 **116/116** 通过，且 limits 失败不会产生副作用。
-- [ ] **Step 5: 提交。** 提交 agent-core rejection-only limit contract。
+- [x] **Step 5: 提交。** agent-core rejection-only limit contract 已包含在 `458e4a1`。
 
 ## Task 2：CLI/Desktop 超限映射
 
@@ -65,26 +65,26 @@
 - [x] **Step 2: 写最小实现。** CLI 增加显式 export limit flags；Desktop evidence API 接受对应 query 参数；两者共享 agent-core 校验与错误字段。
 - [x] **Step 3: 运行聚焦回归。** agent-core **116/116**、CLI **115/115**、Desktop **73/73** 通过，v1 成功响应字段不变，超限只返回 4xx/非零结果。
 - [x] **Step 4: 更新使用文档。** 根 README、`docs/README.md`、CLI 和 Desktop README 已说明完整快照/超限错误差异和 v1 暂不分页。
-- [ ] **Step 5: 提交。** 提交 CLI/Desktop rejection-only limit mapping。
+- [x] **Step 5: 提交。** CLI/Desktop rejection-only limit mapping 已包含在 `458e4a1`。
 
 ## Task 3：全量验证、发布和下一阶段计划
 
 **Produces:** v41 限额实现可交付，分页和 before-image 继续留在文档闸门之后。
 
-- [ ] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust gate。** 记录限额成功/错误路径和所有通过计数。
-- [ ] **Step 2: 运行 report smoke、结构检查、diff check 和人工 review。** 确认报告和错误都不包含敏感字段，默认行为不产生副作用。
-- [ ] **Step 3: 更新 CHANGELOG、v41 进度和使用文档。** 记录限额语义、schema 保持 v1 和验证结果。
-- [ ] **Step 4: Commit and push。** 发布实现和文档到 `origin/main`。
-- [ ] **Step 5: 新建 v42 计划。** 只在 v41 完成后评估 keyset pagination/schema v2 和 before-image 独立评审，不默认承诺跨进程 Undo。
+- [x] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust gate。** 完整门禁和分阶段 gate 均通过；记录限额成功/错误路径和所有通过计数。
+- [x] **Step 2: 运行 report smoke、结构检查、diff check 和人工 review。** 报告和错误均未包含敏感字段，默认行为不产生副作用。
+- [x] **Step 3: 更新 CHANGELOG、v41 进度和使用文档。** 已记录限额语义、schema 保持 v1 和验证结果。
+- [x] **Step 4: Commit and push。** v41 实现和文档已发布到 `origin/main`。
+- [x] **Step 5: 新建 v42 计划。** 仅评估 keyset pagination/schema v2 和 before-image 独立评审，不默认承诺跨进程 Undo。
 
 ## Acceptance Checklist
 
-- [ ] agent-core 对 record/file/byte 超限 fail closed，不返回部分 v1 快照。
-- [ ] UTF-8 byte budget 与 canonical JSON 顺序稳定，多字节内容按字节而非字符计数。
-- [ ] CLI/Desktop 对限额输入和超限错误具有相同语义，保持 session 隔离和无 workspace side effect。
-- [ ] v1 成功响应不增加 partial/pagination/cursor 字段；无显式限额时保持兼容。
-- [ ] 错误不包含命令、args、cwd、stdout、stderr、绝对路径、文件内容、session evidence 或 before-image。
-- [ ] v40 fixed release gate、MCP、no-auto-rollback、active guard 和 Rust sandbox 回归继续通过。
+- [x] agent-core 对 record/file/byte 超限 fail closed，不返回部分 v1 快照。
+- [x] UTF-8 byte budget 与 canonical JSON 顺序稳定，多字节内容按字节而非字符计数。
+- [x] CLI/Desktop 对限额输入和超限错误具有相同语义，保持 session 隔离和无 workspace side effect。
+- [x] v1 成功响应不增加 partial/pagination/cursor 字段；无显式限额时保持兼容。
+- [x] 错误不包含命令、args、cwd、stdout、stderr、绝对路径、文件内容、session evidence 或 before-image。
+- [x] v40 fixed release gate、MCP、no-auto-rollback、active guard 和 Rust sandbox 回归继续通过。
 
 ## v41 完成后的后续路线
 

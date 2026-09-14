@@ -80,7 +80,7 @@ When CI or a local pre-push check needs a machine-readable result, append
 `--report` to a phase entry point:
 
 ```bash
-pnpm verify:typescript -- --report
+node scripts/release-gate.mjs --typescript --report
 ```
 
 This writes only the fixed ignored file `.dev-agent/release-gate-report.json`.

@@ -6,7 +6,7 @@
 
 ## 当前状态
 
-v40 已在 `21fdb8f` 完成 metadata-only verification report、audit export 限额设计和完整门禁并推送到 `origin/main`。当前 v41 的 agent-core 限额契约和 CLI/Desktop 只读映射已完成，正在进入全量验证；分页、schema v2 和 before-image 仍不实现。
+v40 已在 `21fdb8f` 完成 metadata-only verification report、audit export 限额设计和完整门禁并推送到 `origin/main`。v41 的 agent-core 限额契约、CLI/Desktop 只读映射和全量验证均已完成；分页、schema v2 和 before-image 仍不实现。
 
 ## 已完成
 
@@ -37,13 +37,14 @@ v40 已在 `21fdb8f` 完成 metadata-only verification report、audit export 限
 - [x] CLI **115/115**、Desktop **73/73** 聚焦回归通过；无效限额在 provider/session side effect 前拒绝，超限分别返回非零结构化 stderr / HTTP `413`。
 - [x] 根文档、`docs/README.md`、CLI 和 Desktop README 已记录 cap、UTF-8 计量和 v1 fail-closed 语义。
 
-## 进行中
+## 已完成
 
 ### Task 3：全量验证、发布和下一阶段计划
 
-- [ ] 运行完整 `pnpm verify` 和分阶段 gate。
-- [ ] 复跑 report smoke、结构检查、diff check 和人工边界 review。
-- [ ] 更新 CHANGELOG、进度和发布提交。
+- [x] 完整 `pnpm verify` 通过：TypeScript workspace **606/606**、release-gate contract **9/9**、Rust unit/doc **46/46**、real-Rust integration **10/10**。
+- [x] `pnpm verify:typescript`、`pnpm verify:rust` 单独复跑通过；report smoke 验证 5 个 TypeScript 阶段、固定 top-level/step allowlist 和 `typescript` mode。
+- [x] `node scripts/check.mjs`、`git diff --check` 和人工边界 review 通过；报告路径已清理，未修改 workspace/session memory。
+- [x] v41 CHANGELOG、进度和使用文档已更新；v42 评审计划和进度文档已创建；实现提交为 `458e4a1`，本次文档提交随发布一起推送。
 
 ## 设计原则
 

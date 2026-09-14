@@ -1,5 +1,46 @@
 # Changelog
 
+## 2026-09-14 (Day plan v41: rejection-only audit export limits)
+
+Executed `docs/day-plan-v41.md`. v41 keeps the evidence audit export version 1
+metadata-only and adds explicit fail-closed limits without pagination, schema v2,
+before-image persistence, or cross-process Undo.
+
+### Added: agent-core audit limits
+
+- `EvidenceAuditLimits` supports validation count, change-set count, total file count,
+  and canonical UTF-8 byte limits. Code-defined request caps are 10,000 validations,
+  10,000 change sets, 100,000 files, and 10,485,760 bytes.
+- Limits are validated as positive safe integers before projection is returned. The full
+  allowlisted projection is built and stably sorted first; exceeding a limit throws a
+  metadata-only `EvidenceAuditLimitError` with only `code`, `kind`, `limit`, and `actual`.
+  No partial v1 snapshot is returned and source evidence is not mutated.
+
+### Added: CLI/Desktop read-only mapping
+
+- CLI `--export-evidence` accepts `--audit-max-validations`,
+  `--audit-max-change-sets`, `--audit-max-files`, and `--audit-max-bytes`. Invalid
+  values fail before provider initialization; an over-limit export exits non-zero and
+  writes only a structured metadata error to stderr.
+- Desktop `GET /api/sessions/<id>/evidence` accepts matching camel-case query values.
+  Invalid values return `400`; an over-limit complete snapshot returns `413` with the
+  same `code`, `kind`, `limit`, and `actual` fields. Neither surface truncates, paginates,
+  reads the workspace, or enters the chat queue.
+
+### Tests
+
+- Full `pnpm verify` passed: TypeScript workspace **606/606**, release-gate contract
+  **9/9**, Rust unit/doc **46/46**, real-Rust integration **10/10**.
+- Focused regression suites: agent-core **116/116**, CLI **115/115**, Desktop **73/73**.
+- Separate TypeScript/Rust gates, five-step `--report` smoke, structure check, and
+  `git diff --check` passed. The before-image seven-gate decision remains **NO-GO**.
+
+### Boundary
+
+No `partial`, `hasMore`, `nextCursor`, schema v2, before-image, patch, diff, file bytes,
+historical command, or cross-process Undo behavior was added. Future pagination/schema review
+is tracked in `docs/day-plan-v42.md`.
+
 ## 2026-09-14 (Day plan v40: metadata-only verification report and audit limits design)
 
 Executed `docs/day-plan-v40.md`. v40 adds an opt-in, metadata-only report for

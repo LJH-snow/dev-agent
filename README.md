@@ -69,7 +69,7 @@ execution input. Add `--report` when a machine-readable, metadata-only result is
 needed:
 
 ```bash
-pnpm verify:typescript -- --report
+node scripts/release-gate.mjs --typescript --report
 ```
 
 The report is written atomically to the fixed, ignored path
