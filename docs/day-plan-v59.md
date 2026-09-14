@@ -2,12 +2,12 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：已建立；先评估是否需要本地单 target package/checksum smoke，不触发真实发布。**
+**当前状态：已完成；host 单 target smoke 通过，永久 smoke script/fixed gate 维持 Preserve/NO-GO。**
 
 > 本计划承接 `docs/day-plan-v58.md`。v58 已将 release workflow 的静态 matrix/package/tag
 > contract 接入 fixed TypeScript gate，但静态文本检查不能证明 tar.gz 中确实包含目标 binary、
-> README 和可验证的 SHA-256。v59 只研究一个不发布的、低成本的 artifact smoke boundary；若
-> 没有明确 consumer，保持 Preserve/NO-GO，不复制完整 GitHub Release。
+> README 和可验证的 SHA-256。v59 研究了一个不发布的、低成本 artifact smoke boundary；结果
+> 记录为手工 evidence，不复制完整 GitHub Release。
 
 ## Goal
 
@@ -27,28 +27,29 @@
 
 ## Task 0：inventory
 
-- [ ] 对照 `.github/workflows/release.yml` 的 Package step 与当前 Rust/README release instructions。
-- [ ] 确认当前没有可复用的 package/checksum smoke 工具。
-- [ ] 选择 host target 与隔离临时目录策略，不触发 tag workflow。
+- [x] 对照 `.github/workflows/release.yml` 的 Package step 与当前 Rust/README release instructions。
+- [x] 确认当前没有可复用的 package/checksum smoke 工具。
+- [x] 选择 `aarch64-apple-darwin` host target 与隔离临时目录策略，不触发 tag workflow。
 
 ## Task 1：decision contract
 
-- [ ] 如果发现可以复现且有明确维护者 consumer，先写 RED smoke contract。
-- [ ] 如果只有静态 workflow contract 的需求，记录 Preserve/NO-GO，不增加脚本。
+- [x] 评估 single-target smoke 的维护 consumer；没有明确 consumer，不写 permanent script。
+- [x] 记录 Preserve/NO-GO，不增加 wrapper、计数解析或重复 release authority。
 
 ## Task 2：最小实现
 
-- [ ] 仅在 Task 1 通过时实现单 target smoke，并验证 archive/checksum/executable bit。
-- [ ] 保持 workflow 的 `set -euo pipefail`、checksum fallback 和 artifact paths 不变。
+- [x] 执行一次隔离单 target smoke，验证 archive/checksum/executable bit；未改变 tracked
+  workflow 或 runtime。
+- [x] 保持 workflow 的 `set -euo pipefail`、checksum fallback 和 artifact paths 不变。
 
 ## Task 3：验证、文档与下一阶段
 
-- [ ] 运行 focused smoke/contract、固定 TypeScript gate 和 diff checks。
-- [ ] 不触发 Release；若 workflow 变化，只观察普通 CI。
-- [ ] 更新 v59 progress、CHANGELOG，并基于证据决定下一阶段。
+- [x] 完成 focused release contract **2/2**、当前 host packaging smoke 和 diff checks。
+- [x] 不触发 Release；没有创建 tag、上传 artifact 或调用 publish API。
+- [x] 更新 v59 progress、CHANGELOG，并建立 `docs/day-plan-v60.md`。
 
 ## Acceptance checklist
 
-- [ ] 不把单 target smoke 误报为四平台发布成功。
-- [ ] 临时 archive/checksum 不污染 tracked workspace。
-- [ ] 没有无证据增加 release automation 或 publish authority。
+- [x] 没有把单 target smoke 误报为四平台 release 成功。
+- [x] 临时 archive/checksum 未污染 tracked workspace。
+- [x] 没有无证据增加 release automation 或 publish authority。

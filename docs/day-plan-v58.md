@@ -51,7 +51,9 @@
 
 - [x] 运行 focused release contract **2/2**、release-gate contract **12/12**、structure/diff
   checks。
-- [x] 没有修改 release workflow、创建 tag 或触发 release；普通 CI 只需验证新 gate step。
+- [x] 推送后普通 CI run **34810638031** 的 Rust、TypeScript 和 macOS integration jobs 全部
+  成功，hosted TypeScript log 的 release contract 为 **2/2**。
+- [x] 没有修改 release workflow、创建 tag 或触发 release。
 - [x] 更新 v58 progress、CHANGELOG，并建立 `docs/day-plan-v59.md`。
 
 ## Acceptance checklist

@@ -2251,3 +2251,18 @@ that answered `--check-rust` with runtime version `0.1.0` and capabilities
   **2/2**，既有 release-gate contract 为 **12/12**。
 - 没有创建 tag、上传 release artifact 或发布 GitHub Release；静态 contract 不替代真实四平台
   release run。
+
+## 2026-09-14（v58 hosted verification）
+
+- 普通 CI run [34810638031](https://github.com/LJH-snow/dev-agent/actions/runs/34810638031) 的
+  Rust、TypeScript 和 macOS integration jobs 全部成功；hosted TypeScript release gate 的
+  release workflow contract 为 **2/2、0 failures**。
+
+## 2026-09-14（v59：release artifact packaging smoke）
+
+- 按 release workflow 的 Package 规则，在隔离目录对当前 host `aarch64-apple-darwin` 做一次
+  single-target smoke：release binary、README、tar.gz、SHA-256 verification 与 executable bit
+  均通过。
+- 没有创建 tag、上传 artifact 或发布 GitHub Release；单 target smoke 不替代四平台 release。
+- 决策：**Preserve / NO-GO** 永久新增 smoke script 或 fixed gate step，保留静态 contract 与
+  真实 release candidate 的证据边界。

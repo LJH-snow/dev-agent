@@ -2,8 +2,8 @@
 
 > 最后更新：2026-09-14
 
-> v58 已完成并推送。release workflow contract 已接入固定 TypeScript gate；没有创建 tag、上传
-> artifact 或发布 GitHub Release。
+> v58 已完成并推送。普通 CI run **34810638031** 已验证 release workflow contract **2/2**；
+> 没有创建 tag、上传 artifact 或发布 GitHub Release。
 
 ## 最终状态
 
@@ -23,6 +23,8 @@ SHA-256 sidecar、artifact upload 和 tag-only publish。README 也记录了四�
 - [x] 保留 v56 hosted macOS evidence 与 v57 clean/warmed artifact decision，不重新打开已有
   sandbox/runtime 行为。
 - [x] focused contract **2/2**，release-gate plan contract **12/12**。
+- [x] 推送后普通 CI run **34810638031** 的 Rust、TypeScript 和 macOS integration jobs 全部
+  成功；hosted TypeScript log 明确记录 release workflow contract **2/2、0 failures**。
 
 ## 最终决策
 
