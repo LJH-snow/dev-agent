@@ -14,6 +14,9 @@ import {
   createAgentContext,
   createBlockedValidationResult,
   createEvidenceAuditExport,
+  EVIDENCE_AUDIT_LIMIT_ERROR_CODE,
+  EvidenceAuditLimitError,
+  validateEvidenceAuditLimits,
   selectEvidenceForAudit,
   createValidationAttemptId,
   denyDangerousPolicy,
@@ -26,6 +29,7 @@ import {
   type ApprovalRequest,
   type ChangeSetReview,
   type EvidenceAuditFilters,
+  type EvidenceAuditLimits,
   type EvidencePruneOptions,
   type EvidencePruneResult,
   type EvidenceSummary,
@@ -107,6 +111,10 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--remove-rolled-back": "none",
   "--max-validations": "one",
   "--max-change-sets": "one",
+  "--audit-max-validations": "one",
+  "--audit-max-change-sets": "one",
+  "--audit-max-files": "one",
+  "--audit-max-bytes": "one",
   "--doctor": "none",
   "--mcp-server": "none",
   "--reset-memory": "none",
@@ -209,9 +217,9 @@ export async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const auditFiltersResult = parseCliEvidenceAuditFilters(args, exportEvidence);
-  if ("error" in auditFiltersResult) {
-    console.error(auditFiltersResult.error);
+  const auditOptionsResult = parseCliEvidenceAuditOptions(args, exportEvidence);
+  if ("error" in auditOptionsResult) {
+    console.error(auditOptionsResult.error);
     process.exitCode = 1;
     return;
   }
@@ -401,20 +409,35 @@ export async function main(argv: string[]): Promise<void> {
       const evidence = selectEvidenceForAudit(
         validations,
         changeSets,
-        auditFiltersResult.filters
+        auditOptionsResult.filters
       );
       const audit = createEvidenceAuditExport(
         normalizedSessionId,
         evidence.validations,
         evidence.changeSets,
-        evidenceSummary
+        evidenceSummary,
+        auditOptionsResult.limits === undefined
+          ? {}
+          : { limits: auditOptionsResult.limits }
       );
       // This command is intentionally JSON even without --json so callers can
       // redirect it directly to an audit artifact.
       console.log(JSON.stringify(audit, null, 2));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`Evidence export failed: ${message}`);
+      if (error instanceof EvidenceAuditLimitError) {
+        console.error(
+          JSON.stringify({
+            error: "evidence audit limit exceeded",
+            code: EVIDENCE_AUDIT_LIMIT_ERROR_CODE,
+            kind: error.kind,
+            limit: error.limit,
+            actual: error.actual,
+          })
+        );
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`Evidence export failed: ${message}`);
+      }
       process.exitCode = 1;
     }
     return;
@@ -1435,16 +1458,21 @@ function formatValidationCommand(executable: string, args: readonly string[]): s
     .join(" ");
 }
 
-function parseCliEvidenceAuditFilters(
+function parseCliEvidenceAuditOptions(
   args: readonly string[],
   exportEvidence: boolean
-): { readonly filters: EvidenceAuditFilters } | { readonly error: string } {
+):
+  | { readonly filters: EvidenceAuditFilters; readonly limits?: EvidenceAuditLimits }
+  | { readonly error: string } {
   const changeSetId = readCliEvidenceFilterValue(args, "--change-set-id");
   if ("error" in changeSetId) return changeSetId;
   const validationId = readCliEvidenceFilterValue(args, "--validation-id");
   if ("error" in validationId) return validationId;
   const status = readCliEvidenceFilterValue(args, "--status");
   if ("error" in status) return status;
+
+  const limitsResult = parseCliEvidenceAuditLimits(args, exportEvidence);
+  if ("error" in limitsResult) return limitsResult;
 
   const hasFilter =
     changeSetId.value !== undefined ||
@@ -1462,7 +1490,51 @@ function parseCliEvidenceAuditFilters(
       ...(validationId.value === undefined ? {} : { validationId: validationId.value }),
       ...(status.value === undefined ? {} : { status: status.value as EvidenceAuditFilters["status"] }),
     },
+    ...(limitsResult.limits === undefined ? {} : { limits: limitsResult.limits }),
   };
+}
+
+function parseCliEvidenceAuditLimits(
+  args: readonly string[],
+  exportEvidence: boolean
+): { readonly limits?: EvidenceAuditLimits } | { readonly error: string } {
+  const specs: readonly { readonly flag: string; readonly key: keyof EvidenceAuditLimits }[] = [
+    { flag: "--audit-max-validations", key: "maxValidations" },
+    { flag: "--audit-max-change-sets", key: "maxChangeSets" },
+    { flag: "--audit-max-files", key: "maxFiles" },
+    { flag: "--audit-max-bytes", key: "maxBytes" },
+  ];
+  const hasLimit = specs.some(({ flag }) => args.includes(flag));
+  if (hasLimit && !exportEvidence) {
+    return { error: "evidence export limit options require --export-evidence" };
+  }
+
+  const values: Partial<Record<keyof EvidenceAuditLimits, number>> = {};
+  for (const { flag, key } of specs) {
+    const index = args.indexOf(flag);
+    if (index < 0) {
+      continue;
+    }
+    const raw = args[index + 1];
+    const value = raw === undefined ? Number.NaN : Number(raw);
+    if (raw === undefined || raw.startsWith("-") || !Number.isSafeInteger(value) || value <= 0) {
+      return { error: `${flag} must be a positive integer` };
+    }
+    values[key] = value;
+  }
+
+  const limits: EvidenceAuditLimits = {
+    ...(values.maxValidations === undefined ? {} : { maxValidations: values.maxValidations }),
+    ...(values.maxChangeSets === undefined ? {} : { maxChangeSets: values.maxChangeSets }),
+    ...(values.maxFiles === undefined ? {} : { maxFiles: values.maxFiles }),
+    ...(values.maxBytes === undefined ? {} : { maxBytes: values.maxBytes }),
+  };
+  try {
+    validateEvidenceAuditLimits(limits);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  return Object.keys(limits).length === 0 ? {} : { limits };
 }
 
 function readCliEvidenceFilterValue(

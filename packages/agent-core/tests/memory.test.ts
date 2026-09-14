@@ -8,6 +8,8 @@ import {
   addUsage,
   createEvidenceAuditExport,
   createMemoryEntry,
+  EVIDENCE_AUDIT_LIMIT_CAPS,
+  EvidenceAuditLimitError,
   selectEvidenceForAudit,
   FileMemory,
   InMemoryMemory,
@@ -812,4 +814,212 @@ test("metadata audit projection reads a legacy memory with no evidence fields", 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+
+test("metadata audit limits reject validation, change-set, and file counts", () => {
+  const summary = {
+    validations: 2,
+    changeSets: 2,
+    protectedChangeSets: 2,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+  };
+  const validations = [
+    { ...makeValidationResult("passed"), validationId: "validation:a", recordedAt: "2026-09-14T00:00:00.000Z" },
+    { ...makeValidationResult("passed"), validationId: "validation:b", recordedAt: "2026-09-14T00:00:01.000Z" },
+  ];
+  const firstChangeSet = makeChangeSetRecord({
+    changeSetId: "cs:a",
+    files: [
+      makeChangeSetRecord().files[0]!,
+      { ...makeChangeSetRecord().files[0]!, path: "src/second.ts" },
+    ],
+  });
+  const secondChangeSet = makeChangeSetRecord({ changeSetId: "cs:b" });
+
+  const cases = [
+    {
+      limits: { maxValidations: 1 },
+      kind: "validations" as const,
+      limit: 1,
+      actual: 2,
+    },
+    {
+      limits: { maxChangeSets: 1 },
+      kind: "changeSets" as const,
+      limit: 1,
+      actual: 2,
+    },
+    {
+      limits: { maxFiles: 1 },
+      kind: "files" as const,
+      limit: 1,
+      actual: 3,
+    },
+  ];
+
+  for (const candidate of cases) {
+    assert.throws(
+      () =>
+        createEvidenceAuditExport(
+          "session-memory",
+          validations,
+          [firstChangeSet, secondChangeSet],
+          summary,
+          { generatedAt: "2026-09-14T00:00:00.000Z", limits: candidate.limits }
+        ),
+      (error: unknown) => {
+        assert.equal(error instanceof EvidenceAuditLimitError, true);
+        assert.deepEqual(Object.keys(error as object).sort(), [
+          "actual",
+          "code",
+          "kind",
+          "limit",
+        ]);
+        assert.deepEqual(JSON.parse(JSON.stringify(error)), {
+          code: "EVIDENCE_AUDIT_LIMIT_EXCEEDED",
+          kind: candidate.kind,
+          limit: candidate.limit,
+          actual: candidate.actual,
+        });
+        return true;
+      }
+    );
+  }
+});
+
+test("metadata audit byte limits count canonical UTF-8 bytes, not characters", () => {
+  const summary = {
+    validations: 0,
+    changeSets: 1,
+    protectedChangeSets: 1,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+  };
+  const changeSet = makeChangeSetRecord({
+    changeSetId: "变更集:🚀",
+    files: [
+      {
+        ...makeChangeSetRecord().files[0]!,
+        path: "文档/说明-✅.md",
+      },
+    ],
+  });
+  const baseline = createEvidenceAuditExport(
+    "会话:用户",
+    [],
+    [changeSet],
+    summary,
+    { generatedAt: "2026-09-14T00:01:00.000Z" }
+  );
+  const serialized = JSON.stringify(baseline);
+  const characterCount = serialized.length;
+  const byteCount = Buffer.byteLength(serialized, "utf8");
+  assert.ok(byteCount > characterCount);
+  assert.ok(byteCount <= EVIDENCE_AUDIT_LIMIT_CAPS.maxBytes);
+
+  assert.throws(
+    () =>
+      createEvidenceAuditExport(
+        "会话:用户",
+        [],
+        [changeSet],
+        summary,
+        {
+          generatedAt: "2026-09-14T00:01:00.000Z",
+          limits: { maxBytes: characterCount },
+        }
+      ),
+    (error: unknown) => {
+      assert.equal(error instanceof EvidenceAuditLimitError, true);
+      assert.deepEqual(JSON.parse(JSON.stringify(error)), {
+        code: "EVIDENCE_AUDIT_LIMIT_EXCEEDED",
+        kind: "bytes",
+        limit: characterCount,
+        actual: byteCount,
+      });
+      return true;
+    }
+  );
+});
+
+test("metadata audit limits preserve v1 output when omitted or empty", () => {
+  const summary = {
+    validations: 0,
+    changeSets: 0,
+    protectedChangeSets: 0,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+  };
+  const options = { generatedAt: "2026-09-14T00:02:00.000Z" };
+  const withoutLimits = createEvidenceAuditExport("session-memory", [], [], summary, options);
+  const withEmptyLimits = createEvidenceAuditExport("session-memory", [], [], summary, {
+    ...options,
+    limits: {},
+  });
+  assert.deepEqual(withEmptyLimits, withoutLimits);
+});
+
+test("metadata audit limits validate positive integers and code-defined caps", () => {
+  const summary = {
+    validations: 0,
+    changeSets: 0,
+    protectedChangeSets: 0,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+  };
+  const invalidLimits = [
+    { maxValidations: 0 },
+    { maxChangeSets: -1 },
+    { maxFiles: 1.5 },
+    { maxBytes: Number.NaN },
+    { maxBytes: Number.POSITIVE_INFINITY },
+    { maxBytes: EVIDENCE_AUDIT_LIMIT_CAPS.maxBytes + 1 },
+    { maxValidations: EVIDENCE_AUDIT_LIMIT_CAPS.maxValidations + 1 },
+  ];
+  for (const limits of invalidLimits) {
+    assert.throws(
+      () =>
+        createEvidenceAuditExport(
+          "session-memory",
+          [],
+          [],
+          summary,
+          { generatedAt: "2026-09-14T00:03:00.000Z", limits }
+        ),
+      /positive integer|maximum|supported evidence audit limit/
+    );
+  }
+});
+
+test("metadata audit limit rejection does not mutate source evidence", () => {
+  const summary = {
+    validations: 1,
+    changeSets: 1,
+    protectedChangeSets: 1,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+  };
+  const validations = [{ ...makeValidationResult("passed"), recordedAt: "2026-09-14T00:04:00.000Z" }];
+  const changeSets = [makeChangeSetRecord()];
+  const inputSnapshot = structuredClone({ validations, changeSets, summary });
+
+  assert.throws(
+    () =>
+      createEvidenceAuditExport(
+        "session-memory",
+        validations,
+        changeSets,
+        summary,
+        { generatedAt: "2026-09-14T00:04:00.000Z", limits: { maxBytes: 1 } }
+      ),
+    EvidenceAuditLimitError
+  );
+  assert.deepEqual({ validations, changeSets, summary }, inputSnapshot);
 });

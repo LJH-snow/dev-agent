@@ -13,7 +13,7 @@ v39 已在 `fc6d8a0` 完成固定 release gate、CI 复用和 before-image NO-GO
 ### v39 交付基线
 
 - [x] `pnpm verify`、`pnpm verify:typescript`、`pnpm verify:rust` 均通过。
-- [x] TypeScript workspace **600/600**、release-gate contract **5/5**、Rust unit/doc **46/46**、real-Rust integration **10/10** 通过。
+- [x] TypeScript workspace **600/600**、release-gate contract **9/9**、Rust unit/doc **46/46**、real-Rust integration **10/10** 通过。
 - [x] CI 使用固定分阶段入口；before-image 七项闸门保持 **NO-GO**。
 
 ### v40 计划与边界
@@ -42,13 +42,13 @@ v39 已在 `fc6d8a0` 完成固定 release gate、CI 复用和 before-image NO-GO
 - [x] 完整 `pnpm verify` 通过：TypeScript workspace **600/600**、release-gate contract **9/9**、Rust unit/doc **46/46**、real-Rust integration **10/10**。
 - [x] `pnpm verify:typescript` 和 `pnpm verify:rust` 已单独复跑并通过；默认 report-off 与 `--report` smoke、固定路径/allowlist 检查通过。
 - [x] `git diff --check`、结构检查和人工边界 review 通过；未改变 workspace/session memory。
-- [ ] 更新 v40 CHANGELOG/进度并提交推送。
+- [x] 更新 v40 CHANGELOG/进度并提交推送；v40 已由 `21fdb8f` 发布到 `origin/main`。
 
 ## 后续任务
 
 - [x] Task 1：固定 gate report。
 - [x] Task 2：audit export 版本/大小边界设计。
-- [ ] Task 3：全量验证、发布和下一阶段计划。
+- [x] Task 3：全量验证、发布和下一阶段计划。
 
 ## 设计原则
 

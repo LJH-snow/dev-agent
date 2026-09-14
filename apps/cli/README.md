@@ -10,6 +10,7 @@ pnpm cli -- --once "list files in the current directory"
 pnpm cli -- --session docs --once "answer in code"
 pnpm cli -- --session docs --reset-memory --once "start over"
 pnpm cli -- --cleanup-evidence --remove-rolled-back --json
+pnpm cli -- --session docs --export-evidence --audit-max-bytes 1048576
 pnpm cli -- --tools
 DEV_AGENT_MODEL_PROVIDER=ollama pnpm cli
 ```
@@ -35,10 +36,16 @@ Options:
 - `--export-evidence` - print a versioned, read-only metadata-only audit snapshot as
   JSON without loading a model provider or MCP server. Optional
   `--change-set-id <id>`, `--validation-id <id>`, and
-  `--status passed|failed|skipped|blocked` filter the snapshot. The projection
-  excludes commands, arguments, cwd, output, errors, diffs, patches, file bytes,
-  before-images, and absolute working-directory paths; `--json` may be combined
-  for scripting consistency
+  `--status passed|failed|skipped|blocked` filter the snapshot. Optional
+  rejection-only limits are `--audit-max-validations <n>`,
+  `--audit-max-change-sets <n>`, `--audit-max-files <n>`, and
+  `--audit-max-bytes <n>`. The limits must be positive integers within the
+  agent-core caps (10,000 validations, 10,000 change sets, 100,000 files, and
+  10 MiB / 10,485,760 bytes); an over-limit complete snapshot exits non-zero
+  and writes only a structured metadata error to stderr, never a partial JSON
+  snapshot. The projection excludes commands, arguments, cwd, output, errors,
+  diffs, patches, file bytes, before-images, and absolute working-directory paths;
+  `--json` may be combined for scripting consistency
 - `--compact <n>` - compact the selected session, keeping the `n` most recent turns
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary

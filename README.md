@@ -267,6 +267,13 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   `--export-evidence` and Desktop `GET /api/sessions/<id>/evidence` share the
   same allowlisted shape, support bounded filters, and omit commands, output,
   diffs, patches, file bytes, before-images, and absolute working-directory paths
+- v41 adds opt-in rejection-only audit limits on that projection: CLI uses
+  `--audit-max-validations`, `--audit-max-change-sets`, `--audit-max-files`, and
+  `--audit-max-bytes`; Desktop accepts the matching `maxValidations`,
+  `maxChangeSets`, `maxFiles`, and `maxBytes` query values. Limits are checked
+  after stable projection using canonical UTF-8 JSON; invalid requests return `400`,
+  an over-limit complete snapshot returns a structured error (`413` on Desktop),
+  and v1 never returns a partial snapshot or pagination cursor.
 - CLI human output and `--json.validations` expose the same check ids, structured
   commands, durations, bounded output, and failure reasons; Desktop emits a
   `validation` SSE frame and renders a card without hiding the guarded Undo

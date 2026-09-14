@@ -13,6 +13,7 @@
 - `createEvidenceAuditExport()` 接收可选的 `EvidenceAuditLimits`，先完成完整 allowlist projection、过滤和稳定排序，再检查 record count、file count 和 canonical UTF-8 JSON byte budget。
 - 超限抛出可识别的 `EvidenceAuditLimitError`，包含限制类别、上限和实际计数，不包含命令、args、cwd、输出、绝对路径、文件内容或 before-image；没有显式限额时保持 v40 的 v1 完整快照行为。
 - CLI/Desktop 只传递经过正整数/上限校验的限额并把超限映射为确定的非零/HTTP 4xx 结果；v1 不增加 `partial`、`hasMore` 或 cursor 字段。分页和 schema negotiation 仍按 `docs/evidence-audit-limits-v40.md` 另行评审。
+- 当前代码定义的请求上限为 `maxValidations=10,000`、`maxChangeSets=10,000`、`maxFiles=100,000` 和 `maxBytes=10,485,760`（10 MiB）；这些 cap 同时约束核心 API、CLI 和 Desktop。
 
 ## Global Constraints
 
@@ -40,10 +41,10 @@
 - Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/index.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/packages/agent-core/tests/memory.test.ts`
 
-- [ ] **Step 1: 写 RED 测试。** 覆盖 validations/changeSets/files 超限、UTF-8 多字节 byte budget、无显式限额保持兼容、错误 allowlist 和输入不变性。
-- [ ] **Step 2: 运行聚焦测试确认 RED。** 运行 `pnpm --filter @dev-agent/agent-core test`，预期新的限额类型/错误尚不存在而失败。
-- [ ] **Step 3: 写最小实现。** 添加有限的正整数 limits、固定错误 code/kind、完整投影后检查 count/file/byte；不返回 partial snapshot，不读写 workspace。
-- [ ] **Step 4: 运行聚焦回归。** 运行 agent-core 测试并确认 limits 失败不会产生副作用。
+- [x] **Step 1: 写 RED 测试。** 覆盖 validations/changeSets/files 超限、UTF-8 多字节 byte budget、无显式限额保持兼容、错误 allowlist 和输入不变性。
+- [x] **Step 2: 运行聚焦测试确认 RED。** 首轮 `pnpm --filter @dev-agent/agent-core test` 按预期因限额 API 尚不存在而失败。
+- [x] **Step 3: 写最小实现。** 添加有限的正整数 limits、固定错误 code/kind、完整投影后检查 count/file/byte；不返回 partial snapshot，不读写 workspace。
+- [x] **Step 4: 运行聚焦回归。** agent-core 测试 **116/116** 通过，且 limits 失败不会产生副作用。
 - [ ] **Step 5: 提交。** 提交 agent-core rejection-only limit contract。
 
 ## Task 2：CLI/Desktop 超限映射
@@ -60,10 +61,10 @@
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/cli/README.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/apps/desktop/README.md`
 
-- [ ] **Step 1: 写 RED 测试。** CLI/HTTP 接受正整数限额、拒绝 0/负数/非数字/超过代码上限；超限不加载 provider、不进入 chat 队列、不访问 workspace。
-- [ ] **Step 2: 写最小实现。** CLI 增加显式 export limit flags；Desktop evidence API 接受对应 query 参数；两者共享 agent-core 校验与错误字段。
-- [ ] **Step 3: 运行聚焦回归。** agent-core/CLI/Desktop 相关测试通过，v1 成功响应字段不变，超限只返回 4xx/非零结果。
-- [ ] **Step 4: 更新使用文档。** 说明完整快照/超限错误差异和 v1 暂不分页。
+- [x] **Step 1: 写 RED 测试。** CLI/HTTP 接受正整数限额、拒绝 0/负数/非数字/超过代码上限；超限不加载 provider、不进入 chat 队列、不访问 workspace。
+- [x] **Step 2: 写最小实现。** CLI 增加显式 export limit flags；Desktop evidence API 接受对应 query 参数；两者共享 agent-core 校验与错误字段。
+- [x] **Step 3: 运行聚焦回归。** agent-core **116/116**、CLI **115/115**、Desktop **73/73** 通过，v1 成功响应字段不变，超限只返回 4xx/非零结果。
+- [x] **Step 4: 更新使用文档。** 根 README、`docs/README.md`、CLI 和 Desktop README 已说明完整快照/超限错误差异和 v1 暂不分页。
 - [ ] **Step 5: 提交。** 提交 CLI/Desktop rejection-only limit mapping。
 
 ## Task 3：全量验证、发布和下一阶段计划

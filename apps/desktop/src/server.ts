@@ -9,10 +9,13 @@ import { dirname, join, extname } from "node:path";
 import {
   createEvidenceAuditExport,
   DEFAULT_EVIDENCE_RETENTION,
+  EvidenceAuditLimitError,
   FileMemory,
   selectEvidenceForAudit,
+  validateEvidenceAuditLimits,
   type AppliedChangeSetRecord,
   type EvidenceAuditFilters,
+  type EvidenceAuditLimits,
   type EvidencePruneOptions,
   type EvidencePruneResult,
   type EvidenceSummary,
@@ -87,7 +90,7 @@ export interface DesktopHistoryMessage {
 
 type ApprovalDecision = "allow" | "deny" | "allow-always";
 type EvidenceFilterResult =
-  | { readonly filters: EvidenceFilters }
+  | { readonly filters: EvidenceFilters; readonly limits?: EvidenceAuditLimits }
   | { readonly error: string };
 type EvidenceCleanupOptionsResult =
   | { readonly options: EvidencePruneOptions }
@@ -289,7 +292,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const filterResult = parseEvidenceFilters(url);
+        const filterResult = parseEvidenceFilters(url, { includeAuditLimits: true });
         if ("error" in filterResult) {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: filterResult.error }));
@@ -297,25 +300,44 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
 
         const memory = new FileMemory({ filePath });
-        const validations = await memory.validations();
-        const changeSets = await memory.changeSets();
-        const evidenceSummary = await memory.evidenceSummary();
-        const evidence = selectEvidenceForAudit(
-          validations,
-          changeSets,
-          filterResult.filters
-        );
-        const audit = createEvidenceAuditExport(
-          sessionId,
-          evidence.validations,
-          evidence.changeSets,
-          evidenceSummary
-        );
-        res.writeHead(200, {
-          "content-type": "application/json; charset=utf-8",
-          "cache-control": "no-store",
-        });
-        res.end(JSON.stringify(audit));
+        try {
+          const validations = await memory.validations();
+          const changeSets = await memory.changeSets();
+          const evidenceSummary = await memory.evidenceSummary();
+          const evidence = selectEvidenceForAudit(
+            validations,
+            changeSets,
+            filterResult.filters
+          );
+          const audit = createEvidenceAuditExport(
+            sessionId,
+            evidence.validations,
+            evidence.changeSets,
+            evidenceSummary,
+            filterResult.limits === undefined
+              ? {}
+              : { limits: filterResult.limits }
+          );
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          res.end(JSON.stringify(audit));
+        } catch (error) {
+          if (!(error instanceof EvidenceAuditLimitError)) {
+            throw error;
+          }
+          res.writeHead(413, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "evidence audit limit exceeded",
+              code: error.code,
+              kind: error.kind,
+              limit: error.limit,
+              actual: error.actual,
+            })
+          );
+        }
         return;
       }
 
@@ -1092,7 +1114,10 @@ function parseOptionalEvidenceLimit(
   return { value };
 }
 
-function parseEvidenceFilters(url: URL): EvidenceFilterResult {
+function parseEvidenceFilters(
+  url: URL,
+  options: { readonly includeAuditLimits?: boolean } = {}
+): EvidenceFilterResult {
   const changeSetId = nonEmptyQueryValue(url.searchParams.get("changeSetId"));
   const validationId = nonEmptyQueryValue(url.searchParams.get("validationId"));
   const rawStatus = nonEmptyQueryValue(url.searchParams.get("status"));
@@ -1104,13 +1129,57 @@ function parseEvidenceFilters(url: URL): EvidenceFilterResult {
       error: `status must be one of: ${validationStatuses.join(", ")}`,
     };
   }
+  const limitsResult = options.includeAuditLimits
+    ? parseEvidenceAuditLimits(url)
+    : {};
+  if ("error" in limitsResult) {
+    return limitsResult;
+  }
   return {
     filters: {
       ...(changeSetId === undefined ? {} : { changeSetId }),
       ...(validationId === undefined ? {} : { validationId }),
       ...(rawStatus === undefined ? {} : { status: rawStatus as ValidationStatus }),
     },
+    ...(limitsResult.limits === undefined ? {} : { limits: limitsResult.limits }),
   };
+}
+
+function parseEvidenceAuditLimits(
+  url: URL
+): { readonly limits?: EvidenceAuditLimits } | { readonly error: string } {
+  const specs: readonly { readonly query: string; readonly key: keyof EvidenceAuditLimits }[] = [
+    { query: "maxValidations", key: "maxValidations" },
+    { query: "maxChangeSets", key: "maxChangeSets" },
+    { query: "maxFiles", key: "maxFiles" },
+    { query: "maxBytes", key: "maxBytes" },
+  ];
+  const values: Partial<Record<keyof EvidenceAuditLimits, number>> = {};
+  for (const { query, key } of specs) {
+    const raw = url.searchParams.get(query);
+    if (raw === null) {
+      continue;
+    }
+    const normalized = raw.trim();
+    const value = Number(normalized);
+    if (!normalized || !Number.isSafeInteger(value) || value <= 0) {
+      return { error: `${query} must be a positive integer` };
+    }
+    values[key] = value;
+  }
+
+  const limits: EvidenceAuditLimits = {
+    ...(values.maxValidations === undefined ? {} : { maxValidations: values.maxValidations }),
+    ...(values.maxChangeSets === undefined ? {} : { maxChangeSets: values.maxChangeSets }),
+    ...(values.maxFiles === undefined ? {} : { maxFiles: values.maxFiles }),
+    ...(values.maxBytes === undefined ? {} : { maxBytes: values.maxBytes }),
+  };
+  try {
+    validateEvidenceAuditLimits(limits);
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  return Object.keys(limits).length === 0 ? {} : { limits };
 }
 
 function nonEmptyQueryValue(value: string | null): string | undefined {

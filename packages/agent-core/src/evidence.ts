@@ -8,8 +8,52 @@ import type { ValidationRecord, ValidationStatus } from "./validation.js";
 /** Version of the intentionally narrow evidence projection exposed to operators. */
 export const EVIDENCE_AUDIT_SCHEMA_VERSION = 1 as const;
 
+/** Fixed upper bounds for caller-supplied audit export limits. */
+export const EVIDENCE_AUDIT_LIMIT_CAPS = {
+  maxValidations: 10_000,
+  maxChangeSets: 10_000,
+  maxFiles: 100_000,
+  maxBytes: 10 * 1024 * 1024,
+} as const;
+
+export const EVIDENCE_AUDIT_LIMIT_ERROR_CODE =
+  "EVIDENCE_AUDIT_LIMIT_EXCEEDED" as const;
+
+export type EvidenceAuditLimitKind =
+  | "validations"
+  | "changeSets"
+  | "files"
+  | "bytes";
+
+export interface EvidenceAuditLimits {
+  readonly maxValidations?: number;
+  readonly maxChangeSets?: number;
+  readonly maxFiles?: number;
+  readonly maxBytes?: number;
+}
+
+/**
+ * Structured, metadata-only failure returned when a complete v1 snapshot is
+ * larger than an explicitly requested limit. Only the four enumerable fields
+ * below are part of the public error shape.
+ */
+export class EvidenceAuditLimitError extends Error {
+  readonly code = EVIDENCE_AUDIT_LIMIT_ERROR_CODE;
+  readonly kind: EvidenceAuditLimitKind;
+  readonly limit: number;
+  readonly actual: number;
+
+  constructor(kind: EvidenceAuditLimitKind, limit: number, actual: number) {
+    super(`evidence audit ${kind} limit exceeded`);
+    this.kind = kind;
+    this.limit = limit;
+    this.actual = actual;
+  }
+}
+
 export interface EvidenceAuditOptions {
   readonly generatedAt?: string;
+  readonly limits?: EvidenceAuditLimits;
 }
 
 export interface EvidenceAuditFilters {
@@ -133,6 +177,7 @@ export function createEvidenceAuditExport(
   options: EvidenceAuditOptions = {}
 ): EvidenceAuditExport {
   assertNonEmptyString(sessionId, "sessionId");
+  validateEvidenceAuditLimits(options.limits);
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   assertNonEmptyString(generatedAt, "generatedAt");
 
@@ -143,7 +188,7 @@ export function createEvidenceAuditExport(
     .sort(compareChangeSets)
     .map(projectChangeSet);
 
-  return {
+  const audit: EvidenceAuditExport = {
     schemaVersion: EVIDENCE_AUDIT_SCHEMA_VERSION,
     sessionId,
     generatedAt,
@@ -151,6 +196,84 @@ export function createEvidenceAuditExport(
     validations: projectedValidations,
     changeSets: projectedChangeSets,
   };
+  assertEvidenceAuditWithinLimits(audit, options.limits);
+  return audit;
+}
+
+/** Validates caller-supplied limits without reading or changing any evidence. */
+export function validateEvidenceAuditLimits(limits?: EvidenceAuditLimits): void {
+  if (limits === undefined) {
+    return;
+  }
+  if (limits === null || typeof limits !== "object" || Array.isArray(limits)) {
+    throw new TypeError("evidence audit limits must be an object");
+  }
+
+  for (const key of Object.keys(limits)) {
+    if (!isEvidenceAuditLimitKey(key)) {
+      throw new TypeError(`unsupported evidence audit limit: ${key}`);
+    }
+    const value = limits[key];
+    if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+      throw new RangeError(`${key} must be a positive integer`);
+    }
+    if (value > EVIDENCE_AUDIT_LIMIT_CAPS[key]) {
+      throw new RangeError(
+        `${key} must not exceed the maximum ${EVIDENCE_AUDIT_LIMIT_CAPS[key]}`
+      );
+    }
+  }
+}
+
+
+function assertEvidenceAuditWithinLimits(
+  audit: EvidenceAuditExport,
+  limits?: EvidenceAuditLimits
+): void {
+  if (limits === undefined) {
+    return;
+  }
+  if (
+    limits.maxValidations !== undefined &&
+    audit.validations.length > limits.maxValidations
+  ) {
+    throw new EvidenceAuditLimitError(
+      "validations",
+      limits.maxValidations,
+      audit.validations.length
+    );
+  }
+  if (
+    limits.maxChangeSets !== undefined &&
+    audit.changeSets.length > limits.maxChangeSets
+  ) {
+    throw new EvidenceAuditLimitError(
+      "changeSets",
+      limits.maxChangeSets,
+      audit.changeSets.length
+    );
+  }
+
+  const fileCount = audit.changeSets.reduce(
+    (count, changeSet) => count + changeSet.files.length,
+    0
+  );
+  if (limits.maxFiles !== undefined && fileCount > limits.maxFiles) {
+    throw new EvidenceAuditLimitError("files", limits.maxFiles, fileCount);
+  }
+
+  if (limits.maxBytes !== undefined) {
+    const byteCount = Buffer.byteLength(JSON.stringify(audit), "utf8");
+    if (byteCount > limits.maxBytes) {
+      throw new EvidenceAuditLimitError("bytes", limits.maxBytes, byteCount);
+    }
+  }
+}
+
+function isEvidenceAuditLimitKey(
+  value: string
+): value is keyof EvidenceAuditLimits {
+  return Object.prototype.hasOwnProperty.call(EVIDENCE_AUDIT_LIMIT_CAPS, value);
 }
 
 function projectValidation(record: ValidationRecord): EvidenceAuditValidation {

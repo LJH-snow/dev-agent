@@ -12,6 +12,7 @@ import { fileURLToPath } from "node:url";
 import {
   createAgentContext,
   createValidationId,
+  EVIDENCE_AUDIT_LIMIT_CAPS,
   FileMemory,
   InMemoryMemory,
   type ValidationAdapter,
@@ -440,6 +441,80 @@ test("CLI rejects an invalid audit status before loading the provider", async ()
   assert.equal(result.code, 1);
   assert.match(result.stderr, /status must be one of/);
   assert.equal(result.stdout, "");
+});
+
+
+test("CLI validates audit limits and returns a metadata-only over-limit error", async () => {
+  const workspace = await createGitWorkspace();
+  const memoryFile = join(workspace.dir, "audit-limits.json");
+  try {
+    const memory = new FileMemory({ filePath: memoryFile });
+    await memory.recordValidation({
+      validationId: "validation:one",
+      changeSetId: "change-one",
+      status: "passed",
+      checks: [],
+      durationMs: 1,
+      summary: "one",
+    });
+    await memory.recordValidation({
+      validationId: "validation:two",
+      changeSetId: "change-two",
+      status: "passed",
+      checks: [],
+      durationMs: 1,
+      summary: "two",
+    });
+    const before = await readFile(memoryFile);
+    const env = {
+      ...process.env,
+      INIT_CWD: workspace.dir,
+      DEV_AGENT_MODEL_PROVIDER: "provider-that-must-not-be-loaded",
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    };
+
+    for (const rawLimit of [
+      "0",
+      "-1",
+      "not-a-number",
+      String(EVIDENCE_AUDIT_LIMIT_CAPS.maxBytes + 1),
+    ]) {
+      const invalid = await runCli(
+        ["--session", "audit-limits", "--export-evidence", "--audit-max-bytes", rawLimit],
+        env,
+        ""
+      );
+      assert.equal(invalid.code, 1, rawLimit);
+      assert.equal(invalid.stdout, "", rawLimit);
+      assert.match(invalid.stderr, /positive integer|maximum|requires a value/, rawLimit);
+    }
+
+    const limited = await runCli(
+      [
+        "--session",
+        "audit-limits",
+        "--export-evidence",
+        "--audit-max-validations",
+        "1",
+      ],
+      env,
+      ""
+    );
+    assert.equal(limited.code, 1, limited.stderr);
+    assert.equal(limited.stdout, "");
+    const error = JSON.parse(limited.stderr);
+    assert.deepEqual(error, {
+      error: "evidence audit limit exceeded",
+      code: "EVIDENCE_AUDIT_LIMIT_EXCEEDED",
+      kind: "validations",
+      limit: 1,
+      actual: 2,
+    });
+    assert.equal(limited.stderr.includes("provider-that-must-not-be-loaded"), false);
+    assert.deepEqual(await readFile(memoryFile), before);
+  } finally {
+    await rm(workspace.dir, { recursive: true, force: true });
+  }
 });
 
 test("interactive CLI exposes explicit evidence cleanup", async () => {

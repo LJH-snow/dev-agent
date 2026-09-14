@@ -88,3 +88,14 @@ The report is an allowlisted metadata snapshot of selected modes, phase ids,
 status, timings, exit codes, and the failed phase. It does not contain commands,
 args, cwd, stdout, stderr, environment values, session evidence, or file bytes;
 without `--report`, no report file is created or updated.
+
+### Audit export limits
+
+The versioned evidence export is a complete, metadata-only v1 snapshot. Callers
+may request rejection-only limits after projection: validations and change sets
+are capped at 10,000 each, files at 100,000, and the canonical UTF-8 JSON at
+10,485,760 bytes. The CLI flags are `--audit-max-validations`,
+`--audit-max-change-sets`, `--audit-max-files`, and `--audit-max-bytes`; the
+Desktop evidence endpoint uses matching camel-case query parameters. Invalid
+limits are rejected before export, and a complete snapshot that exceeds a limit
+returns a structured error rather than a truncated or paginated v1 response.

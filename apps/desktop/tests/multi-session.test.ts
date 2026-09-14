@@ -237,6 +237,25 @@ test("GET /api/sessions lists stored sessions and their history is readable", as
       `${base}/api/sessions/alpha/evidence?status=not-a-status`
     );
     assert.equal(invalidAuditFilter.status, 400);
+
+    for (const rawLimit of ["0", "-1", "not-a-number", "10485761"]) {
+      const invalidLimit = await fetch(
+        `${base}/api/sessions/alpha/evidence?maxBytes=${encodeURIComponent(rawLimit)}`
+      );
+      assert.equal(invalidLimit.status, 400, rawLimit);
+    }
+
+    const limitedAuditResponse = await fetch(
+      `${base}/api/sessions/alpha/evidence?maxValidations=1`
+    );
+    assert.equal(limitedAuditResponse.status, 413);
+    assert.deepEqual(await limitedAuditResponse.json(), {
+      error: "evidence audit limit exceeded",
+      code: "EVIDENCE_AUDIT_LIMIT_EXCEEDED",
+      kind: "validations",
+      limit: 1,
+      actual: 2,
+    });
     assert.deepEqual(await readFile(join(dir, "alpha.json")), memoryBeforeAudit);
 
     const exported = await fetch(`${base}/api/sessions/alpha/export`);
