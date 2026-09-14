@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：已建立；先做隔离 workspace inventory，再决定是否需要最小 gate/harness 修复。**
+**当前状态：已完成；clean/warmed inventory 已记录，测试路径已修复，gate 自动预备 artifact 维持 Preserve/NO-GO。**
 
 > 本计划承接 `docs/day-plan-v56.md`。v56 已通过最终 hosted run：Ubuntu Rust、TypeScript 和
 > macOS live integration 均成功，macOS integration 为 10/10、0 skipped。前三次失败说明
@@ -38,33 +38,37 @@ workspace 和缺少 artifact 的 workspace 中的行为与文档一致：
 - [x] 记录 v56 最终 hosted run 及 artifact 建立顺序。
 - [x] 对照 `README.md`、`docs/README.md`、`docs/architecture.md`、workflow 和固定 gate，
   修正文档中“Rust gate 会生成 production binary”及 Linux bwrap 状态的过时表述。
-- [ ] 在隔离的 clean checkout 中运行必要的 bounded checks，记录哪些命令需要先安装依赖、
-  构建 executor `dist` 或构建 Rust binary。
-- [ ] 在当前 warmed workspace 复核相同命令，避免把历史 build artifact 当作 clean evidence。
+- [x] 在隔离的 clean checkout 中运行 bounded checks：直接 integration 因 executor `dist`
+  缺失而失败；完整 verify 在 TypeScript build 后会显示 Rust integration **10 skipped**，
+  因 Rust binary 尚未构建。
+- [x] 在当前 warmed workspace 复核相同命令：构建好 Rust binary 后完整 `pnpm verify` 的
+  integration 为 **10/10**。
 
 ## Task 1：RED contract 与决策
 
-- [ ] 若 clean/warmed 行为与文档不一致，先写最小 RED contract，锁定错误/skip 的具体输出。
-- [ ] 评估是否需要 gate preflight；优先选择不改变固定命令 authority 的方案。
-- [ ] 若只需文档即可清楚表达边界，记录 Preserve/NO-GO，不增加 wrapper、计数解析或重复
-  runner。
+- [x] 记录 clean checkout 的 release-gate contract failure：测试硬编码 `/dev-agent` 后缀，
+  在隔离路径下为 11/12。
+- [x] 先写最小 RED 修复并改为从 `import.meta.url` 解析 repository root。
+- [x] 评估 gate preflight：保留 platform-specific skip 和 hosted macOS 专用 authority，
+  对固定 gate 自动预备 artifact 记录 Preserve/NO-GO。
 
-## Task 2：最小实现（仅在 Task 1 有证据时）
+## Task 2：最小实现
 
-- [ ] 实现并测试选定的 preflight、artifact preparation 或文档修复。
-- [ ] 保持 macOS hosted live integration 的显式 build 与 fail-closed checks，不削弱现有
+- [x] 修复 release-gate contract 的路径可移植性，不改变 gate 命令、runtime 或 API。
+- [x] 更新 README、`docs/README.md` 和 architecture 的前置条件/状态描述。
+- [x] 保持 macOS hosted live integration 的显式 build 与 fail-closed checks，不削弱现有
   coverage。
-- [ ] 不把 Ubuntu 的 platform-specific skip 改写成 macOS enforcement 成功。
+- [x] 不把 Ubuntu 的 platform-specific skip 改写成 macOS enforcement 成功。
 
 ## Task 3：验证、文档与下一阶段
 
-- [ ] 运行 focused contract、必要的本地 gate、structure/diff checks。
-- [ ] 如有代码或 workflow 变更，推送并观察真实 CI；否则仅提交文档 decision。
-- [ ] 更新 v57 progress、CHANGELOG 和相关 README；完成后再建立下一个具体计划。
+- [x] 运行 focused contract **12/12**、当前 warmed `pnpm verify`、structure/diff checks。
+- [x] clean/warmed evidence、Preserve/NO-GO decision 和相关文档均已记录并推送。
+- [x] 建立下一阶段计划 `docs/day-plan-v58.md`。
 
 ## Acceptance checklist
 
-- [ ] clean 与 warmed workspace 的 artifact 前置条件有可复现记录。
-- [ ] integration 缺少必要 artifact 时不会被误报为 live coverage。
-- [ ] fixed gate 的命令 authority、fail-fast 和 metadata-only report 边界保持不变。
-- [ ] 没有无证据扩展 runtime/API/schema/CI 复杂度。
+- [x] clean 与 warmed workspace 的 artifact 前置条件有可复现记录。
+- [x] integration 缺少必要 artifact 时的失败/skip 行为已明确记录，不被误报为 live coverage。
+- [x] fixed gate 的命令 authority、fail-fast 和 metadata-only report 边界保持不变。
+- [x] 没有无证据扩展 runtime/API/schema/CI 复杂度。

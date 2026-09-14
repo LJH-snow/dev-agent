@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
@@ -70,9 +72,10 @@ test("gate plans use fixed working directories and never enable a shell", () => 
   const plan = createGatePlan(parseGateArgs([]));
   const repositoryRoot = plan[0].cwd;
   const rustRoot = plan.find((step) => step.id === "rust-test")?.cwd;
+  const expectedRepositoryRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
 
-  assert.ok(repositoryRoot?.endsWith("/dev-agent"));
-  assert.ok(rustRoot?.endsWith("/dev-agent/runtime/rust"));
+  assert.equal(repositoryRoot, expectedRepositoryRoot);
+  assert.equal(rustRoot, resolve(expectedRepositoryRoot, "runtime/rust"));
   assert.notEqual(repositoryRoot, rustRoot);
   for (const step of plan) {
     assert.equal(step.shell, false, step.id);

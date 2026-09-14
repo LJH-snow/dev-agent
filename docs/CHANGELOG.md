@@ -2229,3 +2229,14 @@ that answered `--check-rust` with runtime version `0.1.0` and capabilities
   writable/readonly binds, environment variables.
 
 ## 2026-09-10 (Night Build v2)
+
+## 2026-09-14（v57：fresh-checkout verification artifact contract）
+
+- 在隔离 clean checkout 中验证：直接 `pnpm verify:integration` 需要先生成 executor `dist`；
+  完整 `pnpm verify` 在没有 Rust binary 时会透明报告 macOS integration **10 skipped**，不把
+  它解释为 live coverage；构建 binary 后 warmed workspace 为 **10/10**。
+- 修复 release-gate contract 对 `/dev-agent` 绝对目录后缀的假设，改为从测试文件位置解析
+  repository root，保证隔离 checkout 的 contract suite 仍为 **12/12**。
+- 更新 README、`docs/README.md` 和 architecture 的 artifact 前置条件与 Linux bwrap 状态。
+- 决策：**Preserve / NO-GO** 自动把 artifact preparation 复制进固定 gate；macOS hosted job
+  继续作为 live sandbox evidence 的权威入口。

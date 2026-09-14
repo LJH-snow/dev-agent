@@ -66,8 +66,12 @@ pnpm verify:integration     # the real-Rust integration phase
 
 Each gate uses repository-defined commands and working directories, stops at the
 first failed phase, and does not use model output or historical evidence as
-execution input. Add `--report` when a machine-readable, metadata-only result is
-needed:
+execution input. The standalone integration phase expects the executor package
+`dist` output and the debug `dev-agent-executor` binary; the macOS CI job builds
+and checks both explicitly. On a fresh local checkout, build the TypeScript
+workspace and Rust binary before using `pnpm verify:integration`; non-macOS
+workspaces intentionally report the macOS-only cases as skipped. Add `--report`
+when a machine-readable, metadata-only result is needed:
 
 ```bash
 node scripts/release-gate.mjs --typescript --report

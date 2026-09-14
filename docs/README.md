@@ -78,11 +78,13 @@ pnpm verify:integration     # real Rust integration (after required artifact bui
 The runner uses fixed argument arrays and fixed working directories, never enables
 a shell, and stops at the first failed phase. The integration phase is separate
 from the Rust unit/doc phase and requires two artifacts before it can run: the
-debug `dev-agent-executor` binary and the executor package's `dist` output. The
-GitHub workflow builds both explicitly, then checks the live sandbox prerequisites
-before invoking the standalone `pnpm verify:integration` entrypoint. Gate selection
-does not accept arbitrary commands, model output, or persisted evidence as execution
-input.
+debug `dev-agent-executor` binary and the executor package's `dist` output. On a
+fresh checkout, run `pnpm build`, `cargo build --bin dev-agent-executor` from
+`runtime/rust`, and then the integration entrypoint; the GitHub workflow builds
+both explicitly and checks the live sandbox prerequisites before invoking it.
+Non-macOS workspaces intentionally report macOS-only cases as skipped. Gate
+selection does not accept arbitrary commands, model output, or persisted evidence
+as execution input.
 
 When CI or a local pre-push check needs a machine-readable result, append
 `--report` to a phase entry point:
