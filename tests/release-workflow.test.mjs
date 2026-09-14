@@ -31,6 +31,30 @@ test("release matrix covers every documented runtime target", () => {
   assert.match(workflow, /aarch64-unknown-linux-gnu/);
 });
 
+test("manual dispatch never enters the publish job", () => {
+  const releaseJob = sectionAfter("  release:\n");
+
+  assert.match(
+    releaseJob,
+    /if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/'\)/,
+    "the publish job must require a tag push, not merely a tag-shaped ref"
+  );
+  assert.doesNotMatch(
+    releaseJob,
+    /if: startsWith\(github\.ref, 'refs\/tags\/'\)/,
+    "manual dispatch must never publish, even when a tag ref is selected"
+  );
+});
+
+test("release packaging verifies archive contents, checksum, executable bit, and README", () => {
+  const buildJob = sectionAfter("  build:\n", "  release:\n");
+
+  assert.match(buildJob, /test -x "dist\/\$\{asset\}\/dev-agent-executor"/);
+  assert.match(buildJob, /test -f "dist\/\$\{asset\}\/README\.md"/);
+  assert.match(buildJob, /tar -tzf "dist\/\$\{asset\}\.tar\.gz"/);
+  assert.match(buildJob, /sha256sum -c "\$\{asset\}\.tar\.gz\.sha256"|shasum -a 256 -c/);
+});
+
 test("release packaging and publish boundaries are fail-closed and tag-only", () => {
   const buildJob = sectionAfter("  build:\n", "  release:\n");
   const releaseJob = sectionAfter("  release:\n");
@@ -51,7 +75,7 @@ test("release packaging and publish boundaries are fail-closed and tag-only", ()
   assert.match(buildJob, /if-no-files-found: error/);
 
   assert.match(releaseJob, /needs: build/);
-  assert.match(releaseJob, /if: startsWith\(github\.ref, 'refs\/tags\/'\)/);
+  assert.match(releaseJob, /if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/'\)/);
   assert.match(releaseJob, /uses: actions\/download-artifact@v8/);
   assert.match(releaseJob, /merge-multiple: true/);
   assert.match(releaseJob, /gh release create/);

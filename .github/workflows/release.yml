@@ -84,6 +84,26 @@ jobs:
             cat "${asset}.tar.gz.sha256"
           )
 
+      - name: Verify packaged release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="dev-agent-executor-${{ matrix.target }}"
+          test -x "dist/${asset}/dev-agent-executor"
+          test -f "dist/${asset}/README.md"
+          test -f "dist/${asset}.tar.gz"
+          test -f "dist/${asset}.tar.gz.sha256"
+          tar -tzf "dist/${asset}.tar.gz" | grep -Fx "${asset}/dev-agent-executor"
+          tar -tzf "dist/${asset}.tar.gz" | grep -Fx "${asset}/README.md"
+          (
+            cd dist
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 -c "${asset}.tar.gz.sha256"
+            else
+              sha256sum -c "${asset}.tar.gz.sha256"
+            fi
+          )
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
@@ -97,7 +117,7 @@ jobs:
     name: Publish release
     needs: build
     # Only tag pushes publish; manual runs just verify the builds.
-    if: startsWith(github.ref, 'refs/tags/')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

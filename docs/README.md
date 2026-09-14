@@ -17,8 +17,10 @@ Architecture, design decisions, and module documentation.
   normalization decision. The supporting [Windows feasibility notes](windows-sandbox-feasibility-v61.md)
   contain the preliminary threat model and proof-gap matrix. The consolidated
   [next-phase plan](next-roadmap-plans-v62-plus.md) records v62–v65 options and their
-  trigger conditions. The active [v62 day plan](day-plan-v62.md) and [progress record](day-plan-v62-progress.md)
-  track the Linux hosted live integration.
+  trigger conditions. The completed [v62 day plan](day-plan-v62.md) and [progress record](day-plan-v62-progress.md)
+  track the Linux hosted live integration. The active [v64 release-candidate audit](day-plan-v64.md)
+  and [progress record](day-plan-v64-progress.md) track the four-target manual release workflow
+  validation without authorizing a formal release.
 - **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
   fixed contract tests remain authoritative for CI and release behavior; prose here
   is navigation and explanation, not a replacement for those checks.

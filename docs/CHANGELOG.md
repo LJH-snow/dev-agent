@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-14（v64：发布前 Release Candidate 审计开始）
+
+- 建立 `docs/day-plan-v64.md` 与 `docs/day-plan-v64-progress.md`，把 v64 限定为四个既有
+  release target 的 hosted manual build、artifact 内容、checksum 和 publish boundary 审计；
+  不创建 tag、不发布 GitHub Release。
+- 先写 release-workflow RED contract，复现 manual dispatch 可能仅凭 tag-shaped ref 进入
+  publish job，以及 package 上传前缺少 executable/README/archive/checksum 验证的缺口。
+- 将 publish 条件收紧为 `push` 事件且 ref 为 `refs/tags/*`；在四平台 artifact 上传前加入
+  binary executable bit、README、archive entries 和 checksum 的 fail-closed 检查。
+- 本地 release-workflow contract 已从 RED 的 **2/4** 变为 **4/4**；四平台 hosted evidence
+  和 publish job skipped 记录在同一 commit 推送后补充。
+
 ## 2026-09-14（v60：roadmap 编号与文档 source of truth）
 
 - 盘点根 README Roadmap 共 71 项，确认第 63 项之后原本错误地重复使用 47–54；保留原有
