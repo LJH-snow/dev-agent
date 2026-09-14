@@ -49,7 +49,9 @@ dev-agent/
   with `POST /api/chat` (Server-Sent Events) and `GET /health`. Single-page dark/light UI
   in `public/index.html`; the header's Evidence control calls the existing metadata-only
   `GET /api/sessions/<id>/evidence/preview` endpoint and renders only counts plus estimated
-  canonical export size. It does not replace transcript Download or add audit-export authority.
+  canonical export size. It does not replace transcript Download or add audit-export authority;
+  the shell also exposes explicit labels, focus-visible styling, live status, and preview loading
+  semantics for keyboard and assistive-technology users.
 
 ## Policy Language: Starlark
 

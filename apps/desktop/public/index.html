@@ -109,6 +109,7 @@
       min-height: 40px;
     }
     textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: transparent; }
+    button:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     button {
       border: none;
       border-radius: 12px;
@@ -147,18 +148,18 @@
   <header>
     <span>dev-agent</span>
     <div class="header-status">
-      <select id="session" title="Session"></select>
-      <button type="button" id="new-session" title="New session">+</button>
+      <select id="session" title="Session" aria-label="Session"></select>
+      <button type="button" id="new-session" title="New session" aria-label="New session">+</button>
       <button type="button" id="rename-session" title="Rename session">Rename</button>
       <button type="button" id="delete-session" title="Delete session">Delete</button>
       <button type="button" id="export-session" title="Download transcript">Download</button>
-      <button type="button" id="preview-evidence" title="Preview evidence summary" aria-expanded="false">Evidence</button>
+      <button type="button" id="preview-evidence" title="Preview evidence summary" aria-expanded="false" aria-controls="evidence-preview">Evidence</button>
       <button type="button" id="stop" title="Stop the running request" disabled>Stop</button>
-      <span class="status" id="usage"></span>
-      <span class="status" id="status">idle</span>
+      <span class="status" id="usage" aria-label="Usage"></span>
+      <span class="status" id="status" role="status" aria-live="polite" aria-atomic="true">idle</span>
     </div>
   </header>
-  <section id="evidence-preview" class="evidence-preview" hidden aria-labelledby="evidence-preview-title" aria-live="polite">
+  <section id="evidence-preview" class="evidence-preview" hidden aria-busy="false" aria-labelledby="evidence-preview-title" aria-live="polite">
     <div class="evidence-preview-header">
       <div>
         <div id="evidence-preview-title" class="evidence-preview-title">Evidence summary</div>
@@ -187,7 +188,7 @@
   </section>
   <div id="messages"><div class="empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
   <form class="composer" id="form">
-    <textarea id="input" rows="1" placeholder="Type a message — Enter to send, Shift+Enter for a new line"></textarea>
+    <textarea id="input" rows="1" aria-label="Message" placeholder="Type a message — Enter to send, Shift+Enter for a new line"></textarea>
     <button type="submit" id="send">Send</button>
   </form>
   <script>
@@ -293,6 +294,7 @@
       evidencePreviewController?.abort();
       evidencePreviewController = null;
       evidencePreviewPanel.hidden = true;
+      evidencePreviewPanel.setAttribute("aria-busy", "false");
       previewEvidenceButton.setAttribute("aria-expanded", "false");
       previewEvidenceButton.disabled = false;
       evidencePreviewRefreshButton.disabled = false;
@@ -314,6 +316,7 @@
       const controller = new AbortController();
       evidencePreviewController = controller;
       evidencePreviewPanel.hidden = false;
+      evidencePreviewPanel.setAttribute("aria-busy", "true");
       previewEvidenceButton.setAttribute("aria-expanded", "true");
       previewEvidenceButton.disabled = true;
       evidencePreviewRefreshButton.disabled = true;
@@ -343,6 +346,7 @@
       } finally {
         if (requestId === evidencePreviewRequestId) {
           evidencePreviewController = null;
+          evidencePreviewPanel.setAttribute("aria-busy", "false");
           previewEvidenceButton.disabled = false;
           evidencePreviewRefreshButton.disabled = false;
         }

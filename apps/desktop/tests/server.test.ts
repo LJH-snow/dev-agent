@@ -144,6 +144,30 @@ test("GET / exposes a metadata-only evidence preview control", async () => {
   }
 });
 
+test("GET / exposes keyboard focus and async status semantics", async () => {
+  const server = createDesktopServer();
+  const base = await start(server);
+  try {
+    const res = await fetch(`${base}/`);
+    assert.equal(res.status, 200);
+    const html = await res.text();
+    assert.match(html, /button:focus-visible/);
+    assert.match(html, /select:focus-visible/);
+    assert.match(html, /id="session"[^>]*aria-label="Session"/);
+    assert.match(html, /id="new-session"[^>]*aria-label="New session"/);
+    assert.match(html, /id="usage"[^>]*aria-label="Usage"/);
+    assert.match(html, /id="status"[^>]*role="status"/);
+    assert.match(html, /id="status"[^>]*aria-live="polite"/);
+    assert.match(html, /id="status"[^>]*aria-atomic="true"/);
+    assert.match(html, /id="input"[^>]*aria-label="Message"/);
+    assert.match(html, /id="evidence-preview"[^>]*aria-busy="false"/);
+    assert.match(html, /setAttribute\("aria-busy", "true"\)/);
+    assert.match(html, /setAttribute\("aria-busy", "false"\)/);
+  } finally {
+    await close(server);
+  }
+});
+
 test("review approval SSE includes the change-set review", async () => {
   let rollbackCalls = [];
   const session = {

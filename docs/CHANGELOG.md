@@ -1,5 +1,40 @@
 # Changelog
 
+## 2026-09-14 (Day plan v50: Desktop shell accessibility 与交互稳健性)
+
+Executed the first v50 accessibility hardening slice from `docs/day-plan-v50.md`. The change is
+UI-only and preserves the preview/export/session contracts.
+
+### Added: keyboard focus and async status semantics
+
+- Static Desktop controls now have explicit labels for Session, New session, Usage, and Message;
+  buttons, selects, and the composer share a visible `:focus-visible` outline.
+- The header stream status is now an atomic polite live status. Evidence keeps its existing
+  `aria-expanded` relationship and adds `aria-busy` transitions for loading/settled states.
+- The served-HTML contract test covers the labels, roles, live-region attributes, focus rule, and
+  loading reset. No browser framework dependency was added.
+
+### Boundary
+
+No API/schema/export/limits/session-memory/release-gate behavior changed. Evidence remains a
+metadata-only read path; status, usage, counts, and bytes are not execution, validation, restore,
+rollback, or Undo authority. A real narrow-viewport matrix and deeper screen-reader announcement
+review remain deferred until a stable viewport harness or concrete feedback exists.
+
+### Tests and validation
+
+- v50 RED-to-GREEN Desktop focused suite: **76/76**.
+- In-app browser smoke: native Space activation, initial hidden state, successful 1/1/1 summary,
+  session-switch cleanup, settled `aria-busy=false`, screenshot, and zero warn/error console logs.
+- Inline UI script `node --check` passed; the post-implementation full release verification and
+  report smoke both passed.
+
+### Next boundary
+
+Complete the v50 release push, then use `docs/day-plan-v51.md` to decide whether the remaining
+viewport/screen-reader items have enough evidence for a minimal follow-up or should be recorded as
+Preserve/NO-GO.
+
 ## 2026-09-14 (Day plan v49: Desktop evidence preview 可发现性与只读 UX)
 
 Executed `docs/day-plan-v49.md`. v49 closes the Desktop discoverability gap for the existing
