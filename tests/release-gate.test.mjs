@@ -319,16 +319,24 @@ test("CI runs live Rust integration on a dedicated macOS job", () => {
   assert.match(job, /name: macOS integration/);
   assert.match(job, /runs-on: macos-15/);
   assert.match(job, /pnpm verify:rust/);
-  assert.match(job, /test -x runtime\/rust\/target\/debug\/dev-agent-executor/);
-  assert.match(job, /test -x \/usr\/bin\/sandbox-exec/);
-  assert.match(job, /python3 -c "import socket"/);
+  assert.match(job, /- name: Check Rust binary prerequisite\n\s+run: test -x runtime\/rust\/target\/debug\/dev-agent-executor/);
+  assert.match(job, /- name: Check sandbox-exec prerequisite\n\s+run: test -x \/usr\/bin\/sandbox-exec/);
+  assert.match(job, /- name: Check Python network fixture prerequisite\n\s+run: python3 -c "import socket"/);
   assert.match(job, /pnpm verify:integration/);
+  const rustPrerequisite = job.indexOf("- name: Check Rust binary prerequisite");
+  const sandboxPrerequisite = job.indexOf("- name: Check sandbox-exec prerequisite");
+  const pythonPrerequisite = job.indexOf("- name: Check Python network fixture prerequisite");
+  const integrationGate = job.indexOf("pnpm verify:integration");
   assert.ok(
-    job.indexOf("pnpm verify:rust") < job.indexOf("test -x"),
+    job.indexOf("pnpm verify:rust") < rustPrerequisite,
     "Rust gate should build the binary before prerequisite checks"
   );
   assert.ok(
-    job.indexOf("test -x") < job.indexOf("pnpm verify:integration"),
-    "prerequisite checks should run before integration"
+    rustPrerequisite < sandboxPrerequisite && sandboxPrerequisite < pythonPrerequisite,
+    "prerequisite checks should expose independent failure boundaries in order"
+  );
+  assert.ok(
+    pythonPrerequisite < integrationGate,
+    "all prerequisite checks should run before integration"
   );
 });

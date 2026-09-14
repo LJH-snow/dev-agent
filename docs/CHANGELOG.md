@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-14（v56：首个 hosted macOS CI run 的失败证据与最小修复）
+
+- 观察到首个 GitHub-hosted `macos-15` run：Ubuntu Rust job 暴露 Linux-only 测试缺少
+  `RestrictedExecutor::run` 第三个 `cancel` 参数；本地 macOS gate 原先无法发现该跨 target
+  编译问题。
+- 补齐该测试调用的 `None` cancel 参数，并通过本地 `cargo check --tests --target
+  x86_64-unknown-linux-gnu` 与 target-specific clippy。
+- 将 macOS binary、`sandbox-exec`、Python socket prerequisite 拆成独立 fail-closed steps，
+  让下一次 hosted failure 能定位到具体 capability；release-gate contract 保持 **12/12**。
+- v55 的远端 live integration evidence 暂不关闭；下一阶段只接受 hosted runner 上真实
+  `10/10`、无 unexpected skip 的证据。
+
 ## 2026-09-14 (Day plan v50: Desktop shell accessibility 与交互稳健性)
 
 Executed the first v50 accessibility hardening slice from `docs/day-plan-v50.md`. The change is

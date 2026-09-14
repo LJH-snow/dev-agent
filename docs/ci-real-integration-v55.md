@@ -47,3 +47,30 @@ Evidence、session、Undo、公开 API/schema、Rust policy 或 package dependen
 **GO：补充 macOS live integration CI coverage。** 保持 Linux/Ubuntu Rust unit、macOS live
 sandbox integration 和现有本地 full gate 的职责分层；不把 skipped tests 当作通过的 enforcement
 证据。
+
+## Hosted run evidence（v56 follow-up）
+
+首个 push 后的 GitHub Actions run 为 [34806937694](https://github.com/LJH-snow/dev-agent/actions/runs/34806937694)，
+对应 commit `70081840543f86ce9612599f4093bfed556357fa`。结果不是通过：
+
+- Ubuntu `Rust` job 在 Linux-only 的 `linux_bwrap_runs_echo` 测试编译失败。远端报错表明
+  `RestrictedExecutor::run` 需要第三个 `cancel` 参数，而测试只传了 request 和 profile；这
+  是 macOS 本地编译无法发现的跨 target 调用错误。
+- macOS `macOS integration` job 的 Rust gate 通过，但原先合并 binary、`/usr/bin/sandbox-exec`
+  和 Python socket 检查的 fail-fast step 失败。由于三个命令在同一个多行 step 中，日志不能
+  区分具体缺失的 capability；`pnpm verify:integration` 因前置失败没有执行。
+
+因此，v55 的 hosted live evidence 仍然是 **pending**，不能把该 run 解释为
+`sandbox-exec` 缺失，也不能把未执行的 integration 解释为 skip-free 通过。
+
+## v56 minimum follow-up
+
+- 在 `runtime/rust/src/restricted_executor.rs` 的 Linux-only test call 补齐 `None` cancel 参数，
+  并用 `cargo check --tests --target x86_64-unknown-linux-gnu` 重现前后差异。
+- 将 macOS prerequisite 拆成三个有名字的 steps：Rust binary、`sandbox-exec`、Python socket；
+  保留每个 check 失败即停止的 fail-closed 语义。
+- 用 `tests/release-gate.test.mjs` 锁定 steps 和顺序；本地 focused contract 保持 **12/12**。
+
+下一次 hosted run 必须同时证明 Ubuntu Rust gate 通过、三个 macOS prerequisite steps 通过，
+以及 `pnpm verify:integration` 真实输出 **10/10 且无 unexpected skip**。在此之前不切换
+runner image、不放宽检查、不修改 runtime/API/schema。

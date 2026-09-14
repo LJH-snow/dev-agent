@@ -607,6 +607,7 @@ mod tests {
                     timeout_ms: None,
                     policy_script: None,
                 },
+                None,
             )
             .await
             .unwrap();

@@ -122,11 +122,16 @@ jobs:
         run: pnpm verify:rust
 
       # Do not let missing host capabilities turn live sandbox coverage into skips.
-      - name: Check live integration prerequisites
-        run: |
-          test -x runtime/rust/target/debug/dev-agent-executor
-          test -x /usr/bin/sandbox-exec
-          python3 -c "import socket"
+      # Keep each check in its own step so a hosted-runner failure identifies the
+      # missing capability instead of hiding it behind one fail-fast shell block.
+      - name: Check Rust binary prerequisite
+        run: test -x runtime/rust/target/debug/dev-agent-executor
+
+      - name: Check sandbox-exec prerequisite
+        run: test -x /usr/bin/sandbox-exec
+
+      - name: Check Python network fixture prerequisite
+        run: python3 -c "import socket"
 
       - name: Real Rust integration gate
         run: pnpm verify:integration
