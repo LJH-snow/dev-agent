@@ -7,8 +7,9 @@
 
 ## 当前状态
 
-v47 已完成 canonical digest consumer inventory，结论为 design-only/NO-GO；v48 已建立
-计划，下一步先核对 release gate 的固定 phase 和 root test 运行边界。
+v47 已完成 canonical digest consumer inventory，结论为 design-only/NO-GO；v48 已完成
+Task 0--2 与最终验证。`preview-contract` phase 已进入 TypeScript fixed gate，默认 gate
+不会运行重 benchmark，下一步是提交并进入 v49。
 
 ## v47 baseline
 
@@ -18,29 +19,40 @@ v47 已完成 canonical digest consumer inventory，结论为 design-only/NO-GO�
 - [x] v1 export、preview、v41 caps、pagination/schema v2、before-image/cross-process Undo
   boundaries 未改变。
 
-## 进行中
+## 已完成
 
 ### Task 0：冻结现有 gate 与 root test baseline
 
-- [ ] inventory TypeScript release gate phases、argv/cwd、report 和 fail-fast。
-- [ ] 选择 8 个轻量 preview contract tests 的固定 phase；full benchmark 保持 dev-only。
-- [ ] 写 gate coverage matrix 与稳定 phase id。
+- [x] 固定 TypeScript phases、argv/cwd、report 和 fail-fast 顺序。
+- [x] 选择合并的 `preview-contract` phase；full benchmark 保持 dev-only。
+- [x] gate coverage matrix 与稳定 phase id 已记录于 `docs/preview-contract-gate-v48.md`。
 
 ### Task 1：root preview tests 接入 TypeScript gate
 
-- [ ] 先写 RED gate coverage tests。
-- [ ] 运行 benchmark contract 5 tests 与 parity contract 3 tests。
-- [ ] 保持 report metadata-only、固定命令和固定 cwd。
+- [x] release-gate tests 先 RED，随后 exact phase/command/position/fail-fast/report regression GREEN。
+- [x] `preview-contract` 运行 benchmark contract 5 tests 与 parity contract 3 tests，合计 8/8。
+- [x] report 保持 metadata-only，复用 build 产物和固定 repository cwd。
 
 ### Task 2：边界与性能回归
 
-- [ ] 验证日期、路径、provider、workspace 和 env 隔离。
-- [ ] 确认默认 gate 不运行 100,000-file full benchmark。
-- [ ] 记录 root phase 与 package/Rust/integration counts 分层。
+- [x] root tests 不依赖当前日期、机器路径或外部 provider；临时 fixture 与 env 清理通过。
+- [x] 默认 gate 不运行 100,000-file full benchmark。
+- [x] package/Rust/integration 与 root phase counts 分层记录。
 
 ### Task 3：验证与发布
 
-- [ ] full gates、docs、commit/push 和 v49 计划。
+- [x] `pnpm verify`：TypeScript workspace 612/612、preview contract 8/8、release-gate contract
+  11/11、Rust unit/doc 46/46、real-Rust integration 10/10。
+- [x] 独立 TypeScript/Rust gate、report allowlist smoke、structure check 和 `git diff --check`
+  通过。
+- [x] docs、gate matrix 和 v49 计划已更新。
+- [x] v48 commit/push（最终 diff review 后执行；提交前检查已通过）。
+
+## Evidence
+
+- `pnpm verify:typescript`：workspace 612/612、preview contract 8/8、release-gate contract 11/11。
+- `pnpm verify`：Rust unit/doc 46/46、real-Rust integration 10/10。
+- gate coverage matrix：`docs/preview-contract-gate-v48.md`。
 
 ## 设计原则
 

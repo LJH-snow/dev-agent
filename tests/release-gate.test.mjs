@@ -24,6 +24,7 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
     "build",
     "typecheck",
     "typescript-test",
+    "preview-contract",
     "gate-contract",
     "rust-fmt",
     "rust-clippy",
@@ -37,6 +38,12 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
       ["pnpm", "build"],
       ["pnpm", "typecheck"],
       ["pnpm", "test"],
+      [
+        "node",
+        "--test",
+        "tests/evidence-preview-benchmark.test.mjs",
+        "tests/evidence-preview-parity.test.mjs",
+      ],
       ["node", "--test", "tests/release-gate.test.mjs"],
       ["cargo", "fmt", "--check"],
       ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"],
@@ -232,4 +239,56 @@ test("writeGateReport uses the fixed path and writes the exact metadata snapshot
       await writeFile(RELEASE_GATE_REPORT_PATH, previous);
     }
   }
+});
+
+test("the TypeScript gate includes the lightweight preview contract suite", () => {
+  const plan = createGatePlan(parseGateArgs(["--typescript"]));
+  const previewIndex = plan.findIndex((step) => step.id === "preview-contract");
+  assert.ok(previewIndex >= 0);
+  assert.deepEqual(plan[previewIndex], {
+    id: "preview-contract",
+    label: "preview contract tests",
+    command: "node",
+    args: [
+      "--test",
+      "tests/evidence-preview-benchmark.test.mjs",
+      "tests/evidence-preview-parity.test.mjs",
+    ],
+    cwd: plan[0].cwd,
+    shell: false,
+    mode: "typescript",
+  });
+  assert.equal(plan[previewIndex - 1].id, "typescript-test");
+  assert.equal(plan[previewIndex + 1].id, "gate-contract");
+});
+
+test("preview contract failures remain fail-fast and reportable", async () => {
+  const plan = createGatePlan(parseGateArgs(["--typescript"]));
+  const observed = [];
+  const result = await runGatePlanWithReport(
+    plan,
+    async (step) => {
+      observed.push(step.id);
+      return step.id === "preview-contract" ? 17 : 0;
+    },
+    {
+      generatedAt: "2026-09-14T00:00:00.000Z",
+      now: (() => {
+        let tick = 0;
+        return () => (tick += 5);
+      })(),
+      logger: { log() {}, error() {} },
+    }
+  );
+
+  assert.equal(result.exitCode, 17);
+  assert.deepEqual(observed, [
+    "structure",
+    "build",
+    "typecheck",
+    "typescript-test",
+    "preview-contract",
+  ]);
+  assert.equal(result.report.failedStepId, "preview-contract");
+  assert.deepEqual(result.report.steps.map((step) => step.id), observed);
 });

@@ -27,6 +27,16 @@ const FIXED_STEPS = Object.freeze({
     step("typecheck", "TypeScript typecheck", packageManager, ["typecheck"]),
     step("typescript-test", "TypeScript tests", packageManager, ["test"]),
     step(
+      "preview-contract",
+      "preview contract tests",
+      "node",
+      [
+        "--test",
+        "tests/evidence-preview-benchmark.test.mjs",
+        "tests/evidence-preview-parity.test.mjs",
+      ]
+    ),
+    step(
       "gate-contract",
       "release gate contract tests",
       "node",

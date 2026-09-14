@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-14 (Day plan v48: preview contract gate coverage)
+
+Executed `docs/day-plan-v48.md`. v48 wires the lightweight v45/v46 preview contract suites
+into the fixed TypeScript release gate without adding a preview runtime surface or putting the
+large benchmark matrix into CI.
+
+### Added: fixed `preview-contract` phase
+
+- `scripts/release-gate.mjs` now runs a `preview-contract` phase after the workspace TypeScript
+  tests and before the release-gate contract tests, using the fixed command
+  `node --test tests/evidence-preview-benchmark.test.mjs tests/evidence-preview-parity.test.mjs`.
+- The phase reuses the existing build output and fixed repository cwd with `shell=false`; it runs
+  the 5 benchmark contract tests and 3 cross-surface parity tests, for **8/8** lightweight tests.
+- Release-gate contract tests cover the exact phase command, position, cwd, shell setting, and
+  fail-fast/report behavior. The report still contains only stable phase metadata.
+
+### Boundary
+
+The 100,000-file full benchmark remains explicit via `pnpm benchmark:evidence` and is not run by
+`pnpm verify` or default CI. No digest, pagination, cursor, partial response, schema v2,
+before-image, or Undo authority was added; v1 export and preview contracts remain unchanged.
+
+### Tests and release validation
+
+- `pnpm verify:typescript`: workspace **612/612**, preview contract **8/8**, release-gate
+  contract **11/11**.
+- Full `pnpm verify`: TypeScript workspace **612/612**, preview contract **8/8**, release-gate
+  contract **11/11**, Rust unit/doc **46/46**, real-Rust integration **10/10**.
+- Independent Rust/TypeScript gates, report allowlist smoke, structure check, and
+  `git diff --check` passed.
+
+### Next boundary
+
+v49 is documented in `docs/day-plan-v49.md` to choose the next user-valued capability from
+actual usage signals rather than adding more speculative preview/integrity fields.
+
 ## 2026-09-14 (Day plan v47: canonical metadata digest review)
 
 Executed `docs/day-plan-v47.md` as a design-only review. The repository inventory found no
