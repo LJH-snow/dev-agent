@@ -61,26 +61,26 @@
 - [x] **Step 1: 定义上限语义。** `docs/evidence-audit-limits-v40.md` 区分 record count、file count、serialized byte budget 和 keyset pagination；超限 fail closed，禁止静默截断导致 summary 与内容不一致。
 - [x] **Step 2: 定义 schema negotiation。** 明确旧 CLI/Desktop 客户端遇到新字段、未知版本、部分导出和不支持的格式时的 fail-closed 行为。
 - [x] **Step 3: 写兼容性矩阵。** 覆盖旧 memory、旧 audit client、新 projection、超限、损坏、过滤后的排序/计数和 cursor 失效关系。
-- [ ] **Step 4: 提交设计记录。** 只写安全决策，不直接扩大对外 schema。
+- [x] **Step 4: 提交设计记录。** 限额与版本边界提交为 `b11b513`，只写安全决策，不直接扩大对外 schema。
 
 ## Task 3：全量验证、发布和下一阶段计划
 
 **Produces:** v40 report 可交付，后续边界继续留在文档中。
 
-- [ ] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust gate。** 报告开关在成功和失败路径都可诊断。
-- [ ] **Step 2: 检查报告文件副作用。** 确认默认运行不创建报告，`--report` 只写 `.dev-agent/release-gate-report.json`，不改变 workspace/session memory。
-- [ ] **Step 3: 更新 CHANGELOG、v40 进度和使用文档。** 记录报告 schema 和完整验证结果。
-- [ ] **Step 4: Commit and push。** 发布实现和文档到 `origin/main`。
+- [x] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust gate。** 完整门禁、`pnpm verify:typescript` 和 `pnpm verify:rust` 均通过；报告开关在成功和失败路径都有契约覆盖。
+- [x] **Step 2: 检查报告文件副作用。** 默认运行未创建报告，`--report` 只写 `.dev-agent/release-gate-report.json`，未改变 workspace/session memory。
+- [x] **Step 3: 更新 CHANGELOG、v40 进度和使用文档。** 已记录报告 schema 和完整验证结果。
+- [x] **Step 4: Commit and push。** v40 实现和文档提交后推送到 `origin/main`。
 - [ ] **Step 5: 新建 v41 计划。** 优先评估 audit export 上限/版本协商和 before-image 独立安全评审，不默认承诺跨进程 Undo。
 
 ## Acceptance Checklist
 
-- [ ] 未提供 `--report` 时 gate 行为和文件副作用与 v39 相同。
-- [ ] `--report` 只生成固定 `.dev-agent/release-gate-report.json`，不接受任意路径。
-- [ ] 报告有显式 schema version、稳定阶段顺序、状态、耗时和失败定位。
-- [ ] 报告不包含命令、args、cwd、stdout、stderr、环境变量、文件内容、session evidence 或 before-image。
-- [ ] gate 失败时报告仍写入已完成阶段和失败阶段，且进程保留失败退出码。
-- [ ] v39 audit projection、session 隔离、active guard、no-auto-rollback、MCP 和 Rust sandbox 边界继续通过。
+- [x] 未提供 `--report` 时 gate 行为和文件副作用与 v39 相同。
+- [x] `--report` 只生成固定 `.dev-agent/release-gate-report.json`，不接受任意路径。
+- [x] 报告有显式 schema version、稳定阶段顺序、状态、耗时和失败定位。
+- [x] 报告不包含命令、args、cwd、stdout、stderr、环境变量、文件内容、session evidence 或 before-image。
+- [x] gate 失败时报告仍写入已完成阶段和失败阶段，且进程保留失败退出码；失败结果由契约测试覆盖。
+- [x] v39 audit projection、session 隔离、active guard、no-auto-rollback、MCP 和 Rust sandbox 边界继续通过。
 
 ## v40 完成后的后续路线
 

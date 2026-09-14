@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-14 (Day plan v40: metadata-only verification report and audit limits design)
+
+Executed `docs/day-plan-v40.md`. v40 adds an opt-in, metadata-only report for
+the fixed release gate and records the compatibility/size boundary for future
+audit export work without expanding the runtime evidence schema.
+
+### Added: opt-in gate report
+
+- `scripts/release-gate.mjs --report` writes an atomic report only to the fixed
+  ignored path `.dev-agent/release-gate-report.json`; without the flag, the gate
+  does not create or update a report.
+- The report schema is explicitly allowlisted: schema version, selected modes,
+  phase ids, status, timestamps, durations, exit codes, and failed phase only.
+  Commands, arguments, working directories, output, environment values, session
+  evidence, and file contents are excluded.
+- The report records only completed phases and the first failure, preserving the
+  fixed TypeScript → Rust → real-Rust integration order and fail-fast behavior.
+
+### Added: audit export limits design
+
+- `docs/evidence-audit-limits-v40.md` defines fail-closed record/file/byte limits,
+  canonical UTF-8 serialization, keyset pagination, cursor invalidation, and
+  schema negotiation. v1 must not silently truncate or introduce partial-export
+  fields.
+- Before-image recovery remains **NO-GO** until the seven independent safety
+  gates in `docs/before-image-gate-v39.md` have reproducible evidence.
+
+### Tests
+
+- Full `pnpm verify` passed in fixed order: TypeScript workspace **600/600**,
+  release-gate contract **9/9**, Rust unit/doc **46/46** (43 library, 3 binary,
+  0 doctests), and real-Rust integration **10/10**.
+- `pnpm verify:typescript` and `pnpm verify:rust` also passed independently;
+  structure check, build, typecheck, Rust fmt/clippy, and `git diff --check`
+  passed.
+
 ## 2026-09-14 (Day plan v39: fixed release gate and before-image safety gates)
 
 Executed `docs/day-plan-v39.md`. v39 makes the repository verification path

@@ -34,13 +34,14 @@ v39 已在 `fc6d8a0` 完成固定 release gate、CI 复用和 before-image NO-GO
 
 - [x] 新建 `docs/evidence-audit-limits-v40.md`，定义 record/file/byte limit、canonical serialization、keyset pagination 和超限 fail-closed 语义。
 - [x] 更新 `docs/evidence-audit-design-v38.md`；v1 不增加 partial 字段、不静默截断，旧客户端对未知版本明确拒绝。
-- [ ] 提交设计记录。
-
-## 进行中
+- [x] 提交设计记录：`b11b513`，已推送到 `origin/main`。
 
 ### Task 3：全量验证、发布和下一阶段计划
 
-- [ ] 运行完整 `pnpm verify`，并检查 report 成功/失败和默认关闭副作用。
+- [x] 完整 `pnpm verify` 通过：TypeScript workspace **600/600**、release-gate contract **9/9**、Rust unit/doc **46/46**、real-Rust integration **10/10**。
+- [x] `pnpm verify:typescript` 和 `pnpm verify:rust` 已单独复跑并通过；默认 report-off 与 `--report` smoke、固定路径/allowlist 检查通过。
+- [x] `git diff --check`、结构检查和人工边界 review 通过；未改变 workspace/session memory。
+- [ ] 更新 v40 CHANGELOG/进度并提交推送。
 
 ## 后续任务
 
