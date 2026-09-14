@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { ChatSession } from "../dist/chat-session.js";
 import { createDesktopServer } from "../dist/server.js";
 
 function start(server) {
@@ -85,13 +86,62 @@ async function readSse(response, onEvent) {
 }
 
 test("GET /health returns ok", async () => {
+  const previousRustBinary = process.env.DEV_AGENT_RUST_BINARY;
+  delete process.env.DEV_AGENT_RUST_BINARY;
   const server = createDesktopServer();
   const base = await start(server);
   try {
     const res = await fetch(`${base}/health`);
     assert.equal(res.status, 200);
     const body: any = await res.json();
-    assert.equal(body.status, "ok");
+    assert.deepEqual(body, { status: "ok", executorMode: "local" });
+  } finally {
+    await close(server);
+    if (previousRustBinary === undefined) {
+      delete process.env.DEV_AGENT_RUST_BINARY;
+    } else {
+      process.env.DEV_AGENT_RUST_BINARY = previousRustBinary;
+    }
+  }
+});
+
+test("ChatSession exposes its actual executor mode", async () => {
+  const previousRustBinary = process.env.DEV_AGENT_RUST_BINARY;
+  delete process.env.DEV_AGENT_RUST_BINARY;
+  const session = new ChatSession();
+  try {
+    assert.equal(session.executorMode, "local");
+  } finally {
+    await session.close();
+    if (previousRustBinary === undefined) {
+      delete process.env.DEV_AGENT_RUST_BINARY;
+    } else {
+      process.env.DEV_AGENT_RUST_BINARY = previousRustBinary;
+    }
+  }
+});
+
+test("GET /health reports unknown for injected sessions without executor metadata", async () => {
+  const server = createDesktopServer({ session: { async run() {} } });
+  const base = await start(server);
+  try {
+    const res = await fetch(`${base}/health`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { status: "ok", executorMode: "unknown" });
+  } finally {
+    await close(server);
+  }
+});
+
+test("GET /health reports executor metadata from injected sessions", async () => {
+  const server = createDesktopServer({
+    session: { executorMode: "sandboxed-linux", async run() {} },
+  });
+  const base = await start(server);
+  try {
+    const res = await fetch(`${base}/health`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { status: "ok", executorMode: "sandboxed-linux" });
   } finally {
     await close(server);
   }

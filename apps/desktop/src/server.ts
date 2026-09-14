@@ -27,6 +27,7 @@ import {
   type ValidationStatus,
 } from "@dev-agent/agent-core";
 import type { ChatUsage } from "@dev-agent/model";
+import type { ExecutorMode } from "@dev-agent/executor";
 
 import {
   ChatSession,
@@ -39,6 +40,8 @@ import {
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
   readonly id?: string;
+  /** Metadata-only description of the executor backend; absent on legacy fakes. */
+  readonly executorMode?: ExecutorMode;
   /** Estimates the USD cost of a usage total with the session's current model. */
   estimateCost?(usage: ChatUsage): number | undefined;
   run(
@@ -157,7 +160,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
       if (req.method === "GET" && url.pathname === "/health") {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ status: "ok" }));
+        res.end(JSON.stringify({ status: "ok", executorMode: defaultSession.executorMode ?? "unknown" }));
         return;
       }
 

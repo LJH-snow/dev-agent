@@ -24,7 +24,7 @@ import {
   type ApprovalRequest,
   type ChangeSetReview,
 } from "@dev-agent/agent-core";
-import { createExecutor, type Executor } from "@dev-agent/executor";
+import { createExecutor, getExecutorMode, type Executor, type ExecutorMode } from "@dev-agent/executor";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -96,6 +96,7 @@ export interface ChatSessionOptions {
 }
 
 export class ChatSession {
+  readonly executorMode: ExecutorMode;
   private readonly model: ModelProvider;
   private readonly executor: Executor;
   private readonly validation: ValidationAdapter;
@@ -125,6 +126,7 @@ export class ChatSession {
     this.model = createProvider();
     const rustBinaryPath = options.rustBinaryPath ?? process.env.DEV_AGENT_RUST_BINARY;
     this.executor = createExecutor({ rustBinaryPath });
+    this.executorMode = getExecutorMode(this.executor);
     const validationRunner = createValidationRunner(this.executor);
     this.validation = {
       prepare: (review, context, options) =>
