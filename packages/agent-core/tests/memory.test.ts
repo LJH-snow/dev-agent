@@ -7,9 +7,12 @@ import test from "node:test";
 import {
   addUsage,
   createEvidenceAuditExport,
+  createEvidenceAuditPreview,
   createMemoryEntry,
   EVIDENCE_AUDIT_LIMIT_CAPS,
+  EVIDENCE_AUDIT_PREVIEW_SCHEMA_VERSION,
   EvidenceAuditLimitError,
+  serializeEvidenceAuditExport,
   selectEvidenceForAudit,
   FileMemory,
   InMemoryMemory,
@@ -662,6 +665,156 @@ test("metadata audit projection is allowlisted, sorted, and immutable", () => {
     changeSets: [changeSetLate, changeSetEarly],
     summary,
   });
+});
+
+
+test("metadata audit preview is a fixed allowlist with canonical UTF-8 byte accounting", () => {
+  const summary = {
+    validations: 2,
+    changeSets: 2,
+    protectedChangeSets: 2,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+    injected: "preview must not expose this secret",
+  } as typeof summary & { injected: string };
+  const validation = {
+    ...makeValidationResult("failed"),
+    validationId: "验证:🚀",
+    changeSetId: "变更集:用户",
+    recordedAt: "2026-09-14T00:09:00.000Z",
+    summary: "secret command output",
+    reason: "/workspace/secret",
+  };
+  const changeSet = makeChangeSetRecord({
+    changeSetId: "变更集:用户",
+    files: [
+      makeChangeSetRecord().files[0]!,
+      {
+        ...makeChangeSetRecord().files[0]!,
+        path: "文档/说明-✅.md",
+      },
+    ],
+  });
+  const generatedAt = "2026-09-14T00:10:00.000Z";
+  const audit = createEvidenceAuditExport(
+    "会话:用户",
+    [validation],
+    [changeSet],
+    summary,
+    { generatedAt }
+  );
+  const preview = createEvidenceAuditPreview(
+    "会话:用户",
+    [validation],
+    [changeSet],
+    summary,
+    { generatedAt }
+  );
+
+  assert.deepEqual(Object.keys(preview), [
+    "schemaVersion",
+    "sessionId",
+    "generatedAt",
+    "validationCount",
+    "changeSetCount",
+    "fileCount",
+    "serializedBytes",
+  ]);
+  assert.deepEqual(preview, {
+    schemaVersion: EVIDENCE_AUDIT_PREVIEW_SCHEMA_VERSION,
+    sessionId: "会话:用户",
+    generatedAt,
+    validationCount: 1,
+    changeSetCount: 1,
+    fileCount: 2,
+    serializedBytes: Buffer.byteLength(serializeEvidenceAuditExport(audit), "utf8"),
+  });
+  const serialized = JSON.stringify(preview);
+  assert.ok(preview.serializedBytes > serialized.length);
+  for (const forbidden of [
+    "secret command output",
+    "/workspace/secret",
+    "preview must not expose this secret",
+    '"command"',
+    '"workingDirectory"',
+    '"beforeImage"',
+    '"output"',
+    '"error"',
+  ]) {
+    assert.equal(serialized.includes(forbidden), false, `forbidden preview field leaked: ${forbidden}`);
+  }
+});
+
+test("metadata audit preview and serializer are stable for reordered evidence and preserve inputs", () => {
+  const summary = {
+    validations: 2,
+    changeSets: 2,
+    protectedChangeSets: 2,
+    rolledBackChangeSets: 0,
+    retention: { maxValidations: 100, maxChangeSets: 100 },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation" as const,
+  };
+  const validationEarly = {
+    ...makeValidationResult("passed"),
+    validationId: "validation:a",
+    changeSetId: "cs-a",
+    recordedAt: "2026-09-14T00:11:00.000Z",
+  };
+  const validationLate = {
+    ...makeValidationResult("failed"),
+    validationId: "validation:z",
+    changeSetId: "cs-z",
+    recordedAt: "2026-09-14T00:12:00.000Z",
+  };
+  const changeSetEarly = makeChangeSetRecord({
+    changeSetId: "cs-a",
+    recordedAt: "2026-09-14T00:13:00.000Z",
+  });
+  const changeSetLate = makeChangeSetRecord({
+    changeSetId: "cs-z",
+    recordedAt: "2026-09-14T00:14:00.000Z",
+  });
+  const inputs = {
+    validations: [validationLate, validationEarly],
+    changeSets: [changeSetLate, changeSetEarly],
+    summary,
+  };
+  const before = structuredClone(inputs);
+  const options = { generatedAt: "2026-09-14T00:15:00.000Z" };
+  const first = createEvidenceAuditExport(
+    "session-preview",
+    inputs.validations,
+    inputs.changeSets,
+    inputs.summary,
+    options
+  );
+  const second = createEvidenceAuditExport(
+    "session-preview",
+    [validationEarly, validationLate],
+    [changeSetEarly, changeSetLate],
+    inputs.summary,
+    options
+  );
+  assert.equal(serializeEvidenceAuditExport(first), JSON.stringify(first));
+  assert.equal(serializeEvidenceAuditExport(first), serializeEvidenceAuditExport(second));
+  assert.deepEqual(
+    createEvidenceAuditPreview(
+      "session-preview",
+      inputs.validations,
+      inputs.changeSets,
+      inputs.summary,
+      options
+    ),
+    createEvidenceAuditPreview(
+      "session-preview",
+      [validationEarly, validationLate],
+      [changeSetEarly, changeSetLate],
+      inputs.summary,
+      options
+    )
+  );
+  assert.deepEqual(inputs, before);
 });
 
 test("metadata audit projection rejects absolute and escaping evidence paths", () => {

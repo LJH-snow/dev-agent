@@ -7,7 +7,7 @@
 ## 当前状态
 
 v42 的 pagination/schema v2 评审结论为 **CONDITIONAL**，before-image 七项闸门为
-**NO-GO**。v43 当前进入 agent-core preview contract 的 TDD 阶段；目标是让操作者先
+**NO-GO**。v43 已完成 agent-core preview contract，当前进入 CLI/Desktop preview surface 的 TDD 阶段；目标是让操作者先
 看到完整 projection 的 metadata 规模，再选择 v41 的 rejection-only limits。
 
 ## v42 基线
@@ -20,9 +20,9 @@ v42 的 pagination/schema v2 评审结论为 **CONDITIONAL**，before-image 七�
 
 ### Task 1：Agent-core canonical serializer 与 preview
 
-- [ ] RED 测试：preview allowlist、UTF-8 bytes、计数、排序和不变性。
-- [ ] 实现 canonical serializer 和独立 preview schema。
-- [ ] agent-core 聚焦回归。
+- [x] RED 测试：preview allowlist、UTF-8 bytes、计数、排序和不变性。
+- [x] 实现 canonical serializer 和独立 preview schema。
+- [x] agent-core 聚焦回归：`pnpm --filter @dev-agent/agent-core build && pnpm --filter @dev-agent/agent-core test`，118/118 通过。
 
 ### Task 2：CLI/Desktop preview surface
 

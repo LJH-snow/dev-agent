@@ -8,6 +8,9 @@ import type { ValidationRecord, ValidationStatus } from "./validation.js";
 /** Version of the intentionally narrow evidence projection exposed to operators. */
 export const EVIDENCE_AUDIT_SCHEMA_VERSION = 1 as const;
 
+/** Version of the metadata-only audit preflight response. */
+export const EVIDENCE_AUDIT_PREVIEW_SCHEMA_VERSION = 1 as const;
+
 /** Fixed upper bounds for caller-supplied audit export limits. */
 export const EVIDENCE_AUDIT_LIMIT_CAPS = {
   maxValidations: 10_000,
@@ -116,6 +119,26 @@ export interface EvidenceAuditExport {
 }
 
 /**
+ * Metadata-only sizing information for a complete v1 audit projection.
+ *
+ * This schema is deliberately separate from `EvidenceAuditExport`: it is a
+ * preflight response and never carries the evidence projection itself.
+ */
+export interface EvidenceAuditPreview {
+  readonly schemaVersion: typeof EVIDENCE_AUDIT_PREVIEW_SCHEMA_VERSION;
+  readonly sessionId: string;
+  readonly generatedAt: string;
+  readonly validationCount: number;
+  readonly changeSetCount: number;
+  readonly fileCount: number;
+  readonly serializedBytes: number;
+}
+
+export interface EvidenceAuditPreviewOptions {
+  readonly generatedAt?: string;
+}
+
+/**
  * Selects the evidence associated with an optional audit filter. Change sets
  * follow validation filters so a filtered audit cannot accidentally include an
  * unrelated change-set record.
@@ -200,6 +223,48 @@ export function createEvidenceAuditExport(
   return audit;
 }
 
+/**
+ * Serializes a v1 audit projection using its canonical object and array order.
+ * The same representation is used for byte limits and preview sizing.
+ */
+export function serializeEvidenceAuditExport(audit: EvidenceAuditExport): string {
+  return JSON.stringify(audit);
+}
+
+/**
+ * Builds a metadata-only preflight for the complete v1 audit projection.
+ * Preview creation is read-only and intentionally does not accept export
+ * limits: callers need the full size before choosing a rejection-only limit.
+ */
+export function createEvidenceAuditPreview(
+  sessionId: string,
+  validations: readonly ValidationRecord[],
+  changeSets: readonly AppliedChangeSetRecord[],
+  summary: EvidenceSummary,
+  options: EvidenceAuditPreviewOptions = {}
+): EvidenceAuditPreview {
+  const audit = createEvidenceAuditExport(
+    sessionId,
+    validations,
+    changeSets,
+    summary,
+    { generatedAt: options.generatedAt }
+  );
+  const serialized = serializeEvidenceAuditExport(audit);
+  return {
+    schemaVersion: EVIDENCE_AUDIT_PREVIEW_SCHEMA_VERSION,
+    sessionId: audit.sessionId,
+    generatedAt: audit.generatedAt,
+    validationCount: audit.validations.length,
+    changeSetCount: audit.changeSets.length,
+    fileCount: audit.changeSets.reduce(
+      (count, changeSet) => count + changeSet.files.length,
+      0
+    ),
+    serializedBytes: Buffer.byteLength(serialized, "utf8"),
+  };
+}
+
 /** Validates caller-supplied limits without reading or changing any evidence. */
 export function validateEvidenceAuditLimits(limits?: EvidenceAuditLimits): void {
   if (limits === undefined) {
@@ -263,7 +328,7 @@ function assertEvidenceAuditWithinLimits(
   }
 
   if (limits.maxBytes !== undefined) {
-    const byteCount = Buffer.byteLength(JSON.stringify(audit), "utf8");
+    const byteCount = Buffer.byteLength(serializeEvidenceAuditExport(audit), "utf8");
     if (byteCount > limits.maxBytes) {
       throw new EvidenceAuditLimitError("bytes", limits.maxBytes, byteCount);
     }

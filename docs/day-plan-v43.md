@@ -49,11 +49,11 @@ rollback 输入。
 - Modify: `/Users/Admin/Desktop/dev-agent/packages/agent-core/src/index.ts`
 - Test: `/Users/Admin/Desktop/dev-agent/packages/agent-core/tests/memory.test.ts`
 
-- [ ] **Step 1: 写 RED 测试。** 覆盖 preview allowlist、稳定排序、UTF-8 多字节计量、三类计数、输入不变性和 v1 输出不变。
-- [ ] **Step 2: 运行聚焦测试确认 RED。** 预期 preview 类型/serializer 尚不存在而失败。
-- [ ] **Step 3: 写最小实现。** 统一 `serializeEvidenceAuditExport()` 与 byte budget；新增独立 preview schema 和计数 projection，不返回完整 evidence 内容。
-- [ ] **Step 4: 运行 agent-core 聚焦回归。** 确认 preview 和 v1 export 的 canonical bytes 一致，且无 workspace/session side effect。
-- [ ] **Step 5: 提交。** 提交 agent-core canonical preflight contract。
+- [x] **Step 1: 写 RED 测试。** 覆盖 preview allowlist、稳定排序、UTF-8 多字节计量、三类计数、输入不变性和 v1 输出不变。
+- [x] **Step 2: 运行聚焦测试确认 RED。** 预期 preview 类型/serializer 尚不存在而失败。
+- [x] **Step 3: 写最小实现。** 统一 `serializeEvidenceAuditExport()` 与 byte budget；新增独立 preview schema 和计数 projection，不返回完整 evidence 内容。
+- [x] **Step 4: 运行 agent-core 聚焦回归。** 确认 preview 和 v1 export 的 canonical bytes 一致，且无 workspace/session side effect；118/118 通过。
+- [x] **Step 5: 提交。** 提交 agent-core canonical preflight contract。
 
 ## Task 2：CLI/Desktop preview surface
 
