@@ -54,35 +54,48 @@ serialization 下的 CPU/memory/latency 工作量，确认 v41 export caps 是�
 
 **Produces:** benchmark artifact and evidence-backed decision.
 
-- [ ] **Step 1: 先写 benchmark/regression tests。** 测试完整 bytes、稳定排序、输入不变和
-  no-sensitive-output；新 rejection 行为先写 RED。
-- [ ] **Step 2: 运行受控 fixture matrix。** 比较 core preview 与 full export 的 projection/byte
-  semantics，记录异常点和可重复性。
-- [ ] **Step 3: 形成 GO / CONDITIONAL / NO-GO。** 若 v41 caps 足够，保持 runtime；若需要
-  protection，才进入 Task 2。
+- [x] **Step 1: 先写 benchmark/regression tests。** 先以缺失 benchmark module 的 RED
+  测试锁定 contract，再实现固定 artifact、完整 bytes、稳定排序、输入不变、malformed
+  selection 和 no-sensitive-output 回归。
+- [x] **Step 2: 运行受控 fixture matrix。** `pnpm benchmark:evidence` 连续运行两次；六个
+  fixture 的 preview bytes 均与 full export canonical UTF-8 bytes 一致，最大 100,000-file
+  fixture 为 27,489,424 bytes、74--76 ms、约 61.2 MiB heap delta。
+- [x] **Step 3: 形成决策。** 当前 v41 explicit export caps 足够，v45 对 preview hard cap
+  作 **NO-GO**；不改变 runtime success/error schema。
 
 ## Task 2：bounded-work rejection（条件执行）
 
 **Produces:** only if benchmark proves a concrete availability/safety gap.
 
-- [ ] **Step 1: TDD implement minimal guard.** 只能显式拒绝，不能 partial/truncate/cursor；
-  error metadata 不含 evidence 内容。
-- [ ] **Step 2: parity and compatibility regression.** core/CLI/Desktop 保持同一 counts/bytes
-  semantics，v1 export success schema 不变。
-- [ ] **Step 3: 若无证据，明确 NO-GO。** 不因理论风险添加未验证 hard cap。
+- [ ] **Step 1: TDD implement minimal guard.** 本轮没有 concrete gap，未执行；不加入
+  preview-only hard ceiling、partial/truncate 或 cursor。
+- [ ] **Step 2: parity and compatibility regression.** 未触发 runtime 改动；现有 core/CLI/
+  Desktop parity 由既有 v43/v44 回归保持。
+- [x] **Step 3: 若无证据，明确 NO-GO。** v45 benchmark 未复现 availability failure，明确
+  不增加未经验证的 preview hard cap。
 
 ## Task 3：验证、发布和下一阶段
 
 **Produces:** v45 decision record and a bounded next plan.
 
-- [ ] **Step 1: full verification。** focused/full TypeScript、Rust、integration、report、
-  structure 和 diff check。
-- [ ] **Step 2: 更新 CHANGELOG、progress、benchmark/review docs 和使用文档。**
-- [ ] **Step 3: commit/push 并新建 v46 计划。**
+- [x] **Step 1: full verification。** `pnpm verify` 通过：TypeScript workspace 612/612、
+  release-gate contract 9/9、Rust unit/doc 46/46、real-Rust integration 10/10；
+  独立 TypeScript/Rust gate、report smoke、structure 和 diff check 随后通过。
+- [x] **Step 2: 更新 CHANGELOG、progress、benchmark/review docs 和使用文档。**
+- [x] **Step 3: commit/push 并新建 v46 计划。** v46 parity/query 计划已写入
+  `docs/day-plan-v46.md` 与 `docs/day-plan-v46-progress.md`，提交将在最终检查后完成。
 
 ## Acceptance checklist
 
-- [ ] benchmark fixture 与 measurements 可重复且不接触 workspace/provider。
-- [ ] oversized preview 的决定有数据支撑；没有静默截断。
-- [ ] 如实现 rejection，CLI/Desktop/core 的 error contract 与敏感字段边界一致。
-- [ ] v1 export、pagination/schema v2、before-image/cross-process Undo boundaries remain intact.
+- [x] benchmark fixture 与 measurements 可重复且不接触 workspace/provider。
+- [x] oversized preview 的决定有数据支撑；没有静默截断。
+- [x] 本轮没有实现 rejection；既有 CLI/Desktop/core error boundary 与敏感字段边界保持不变。
+- [x] v1 export、pagination/schema v2、before-image/cross-process Undo boundaries remain intact.
+
+
+## v45 decision summary
+
+- benchmark/rejection design：**完成**；受控 matrix 与 parity regression 已落地。
+- preview hard cap：**NO-GO**；不新增 runtime 保护，避免重复 v41 export cap。
+- 新增可复现入口：`pnpm test:benchmark` 与 `pnpm benchmark:evidence`。
+- 详细数据与边界：见 `docs/evidence-preview-benchmark-v45.md`。

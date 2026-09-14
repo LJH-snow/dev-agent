@@ -1,5 +1,51 @@
 # Changelog
 
+
+## 2026-09-14 (Day plan v45: preview bounded-work benchmark)
+
+Executed `docs/day-plan-v45.md`. v45 adds a reproducible, dev-only benchmark for the
+metadata-only evidence preview and uses controlled synthetic evidence to decide whether
+a second preview hard cap is justified.
+
+### Added: benchmark and regression contract
+
+- Added `scripts/evidence-preview-benchmark.mjs` with the fixed `empty`, `small`,
+  `retention-sized`, `record-cap-sized`, `files-heavy`, and `utf8-heavy` fixture matrix.
+  Fixtures stay in memory, include deliberately non-exported sensitive fields, and emit
+  only schema version, generated time, counts, canonical UTF-8 bytes, duration, and
+  approximate heap measurements.
+- Added `pnpm test:benchmark` and `pnpm benchmark:evidence`; the ad-hoc artifact is
+  written only to ignored `.dev-agent/evidence-preview-benchmark.json`.
+- Added regression coverage for full-export byte parity, stable ordering, input immutability,
+  malformed fixture selection, fixed output allowlists, and no sensitive fixture fields.
+
+### Decision: no new preview hard cap
+
+- Two independent runs reached the planned 100,000-file fixture at **27,489,424 bytes**,
+  **74--76 ms**, and approximately **61.2 MiB** heap delta. The 10,000-record fixture was
+  **6,621,261 bytes** and **23--25 ms**. All six preview byte counts matched the full v1
+  export's canonical UTF-8 serialization exactly.
+- The 100,000-file projection is explicitly rejected by the existing v41 `maxBytes` export
+  limit with `EVIDENCE_AUDIT_LIMIT_EXCEEDED`, rather than truncated. No concrete availability
+  failure or serialization inconsistency was reproduced, so a second preview-only hard cap
+  is **NO-GO** for v45.
+- No pagination, cursor, partial response, schema v2, before-image, or Undo authority was added.
+  The current preview and v1 export runtime contracts remain unchanged.
+
+### Tests and release validation
+
+- Benchmark regression suite passed: **5/5**.
+- Full `pnpm verify` passed: TypeScript workspace **612/612**, release-gate contract **9/9**,
+  Rust unit/doc **46/46**, real-Rust integration **10/10**. Independent TypeScript/Rust gates,
+  metadata-only report smoke, structure check, and `git diff --check` also passed.
+
+### Boundary
+
+The benchmark covers the bounded synthetic matrix only; future evidence of multi-million-file
+or sustained heap-pressure behavior should start a new benchmark before changing runtime.
+Pagination/schema v2 remain **CONDITIONAL**, and before-image/cross-process Undo remains
+**NO-GO**.
+
 ## 2026-09-14 (Day plan v44: preview input isolation hardening)
 
 Executed `docs/day-plan-v44.md`. v44 reviewed preview input ambiguity and bounded-work

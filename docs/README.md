@@ -112,3 +112,18 @@ length, so it can guide a later rejection-only limit without truncation. Preview
 accepts the standard evidence filters but not audit limit parameters; it does not
 load a provider, enter the chat queue, access the workspace, expose evidence
 content, or provide pagination, schema negotiation, restore, or Undo authority.
+
+### Preview bounded-work benchmark (development only)
+
+v45 includes a synthetic, metadata-only benchmark for the complete preview projection:
+
+```bash
+pnpm test:benchmark       # contract/regression tests
+pnpm benchmark:evidence   # six fixtures; writes only .dev-agent/evidence-preview-benchmark.json
+```
+
+The benchmark never reads a workspace, starts a provider, enters the chat queue, or emits
+fixture evidence. It compares preview bytes with the full v1 canonical serializer and records
+counts, UTF-8 bytes, wall time, and approximate heap delta. The v45 matrix did not reproduce a
+concrete availability gap, so no second preview hard cap was added; future larger real-world
+traces should be benchmarked before changing the preview contract.
