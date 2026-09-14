@@ -23,11 +23,22 @@ v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubunt
 
 ## 进行中
 
-- [ ] 添加 `.github/workflows/ci.yml` 的独立 `linux-integration` job。
-- [ ] 将 `packages/executor/tests/real-rust-integration.integration.ts` 从 macOS-only
+- [x] 添加 `.github/workflows/ci.yml` 的独立 `linux-integration` job。
+- [x] 将 `packages/executor/tests/real-rust-integration.integration.ts` 从 macOS-only
   capability detection 改为 macOS/Linux platformized detection。
-- [ ] 运行本地 macOS fixed gate，确保 10/10 仍通过。
-- [ ] 推送后获取并核对 GitHub-hosted Ubuntu run 的真实结果，记录 skipped 数量和失败原因。
+- [x] 运行本地 macOS fixed gate，Rust 43/43、TypeScript release gate 和 real-Rust
+  integration 10/10 均通过。
+- [ ] 推送修复后的版本并核对 GitHub-hosted Ubuntu run 的真实结果，记录 skipped 数量和
+  capability evidence。
+
+## 首次 hosted run 发现
+
+- [x] run `34839400282` 的 TypeScript、Rust、macOS integration 均通过；Linux job 在 Rust
+  release gate 的 `linux_bwrap_runs_echo` 失败。真实原因是 `build_bwrap_args` 在只读 root
+  bind 后又尝试 bind `/root` 等 hosted runner 上存在但 workflow 用户不可读的 nested path。
+- [x] 先添加 failing Rust unit assertion，确认不应在 `--ro-bind / /` 后重复挂载 nested
+  standard paths；再把 backend 改为只读 root 单一 bind，并保留 `/proc`、`/dev`、`/tmp` overlay。
+- [ ] 修复后的 hosted run 仍待获取；不能把第一次失败当作 Linux evidence 通过。
 
 ## 当前阻塞/风险
 
@@ -42,10 +53,10 @@ v62 目标是补齐已经声明 active 的 Linux `bwrap` backend 的真实 Ubunt
 | --- | --- | --- |
 | macOS real-Rust integration | 现有 hosted gate 10/10 | 已有 |
 | Linux `bwrap` argument builder | Rust unit tests | 已有但非 live |
-| Linux hosted live integration | 尚未运行 | 待完成 |
+| Linux hosted live integration | `34839400282` 首次 run 暴露 nested bind 问题；修复后待重跑 | 待完成 |
 | TypeScript/Rust/release/docs gates | v61/v62 focused checks | 待本轮最终复核 |
 
 ## 下一步
 
-先实现并运行 RED contract 对应的 Linux job，再修正 platformized integration harness；
-之后把 Ubuntu hosted run 作为 v62 的最终 acceptance evidence。
+已实现 RED contract 对应的 Linux job；下一步推送 nested bind 修复并重新获取 Ubuntu hosted run，
+然后把成功且无 skipped 的结果作为 v62 最终 acceptance evidence。

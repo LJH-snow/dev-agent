@@ -264,13 +264,11 @@ fn build_bwrap_args(
         NetworkPolicy::NetworkEnabled | NetworkPolicy::NetworkUnspecified => {}
     };
 
-    // Read-only view of the standard filesystem hierarchy. Each entry is only
-    // bound if it exists on the host, so the same profile works across distros.
-    for path in &[
-        "/", "/usr", "/bin", "/lib", "/lib64", "/sbin", "/etc", "/opt", "/home", "/root",
-    ] {
-        ro_bind_if_exists(&mut args, path);
-    }
+    // A single read-only root bind covers the standard filesystem hierarchy on
+    // every distro. Rebinding nested host directories is both redundant and
+    // unsafe for hosted runners where paths such as /root exist but are not
+    // readable by the workflow user.
+    ro_bind_if_exists(&mut args, "/");
 
     args.push("--proc".to_string());
     args.push("/proc".to_string());
@@ -471,6 +469,19 @@ mod tests {
         assert!(args.contains(&"--proc".to_string()));
         assert!(args.contains(&"--dev".to_string()));
         assert!(args.contains(&"--die-with-parent".to_string()));
+        assert!(args
+            .windows(3)
+            .any(|window| { window == ["--ro-bind", "/", "/"] }));
+        for path in [
+            "/usr", "/bin", "/lib", "/lib64", "/sbin", "/etc", "/opt", "/home", "/root",
+        ] {
+            assert!(
+                !args
+                    .windows(3)
+                    .any(|window| { window == ["--ro-bind", path, path] }),
+                "the root bind should not be followed by an inaccessible nested bind: {path}"
+            );
+        }
         // Command must come after the `--` separator.
         let sep = args.iter().position(|a| a == "--").unwrap();
         assert_eq!(args[sep + 1], "echo");
@@ -611,7 +622,11 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(result.exit_code, 0);
+        assert_eq!(
+            result.exit_code, 0,
+            "bwrap echo failed: stdout={:?} stderr={:?}",
+            result.stdout, result.stderr
+        );
         assert_eq!(result.stdout.trim(), "hello");
     }
 

@@ -44,6 +44,9 @@
   `bwrap` hosted live evidence，不扩大公开 API、protobuf、Windows 支持或 release target。
 - 先锁定 Ubuntu/bubblewrap/user namespace/Python/Rust/dist 的 fail-closed prerequisites，
   并要求 integration harness 在 hosted job 中不能静默 skip。
+- 首次 hosted run `34839400282` 在 Linux Rust gate 暴露 `/root` 等不可读 nested bind
+  导致 `bwrap` live echo 失败；先以 failing Rust unit assertion 固化问题，再改为单一只读
+  root bind，保留 `/proc`、`/dev` 和 `/tmp` overlay，等待修复后的 hosted evidence。
 
 ## 2026-09-14（后续路线图：v62+）
 
