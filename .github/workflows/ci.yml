@@ -117,9 +117,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Build the debug runtime through the fixed Rust gate before integration.
+      # The fixed Rust gate runs cargo tests, but cargo test does not place the
+      # production binary at target/debug/dev-agent-executor. Build it explicitly
+      # before checking the integration harness prerequisite.
       - name: Rust release gate
         run: pnpm verify:rust
+
+      - name: Build debug Rust runtime
+        run: cargo build --bin dev-agent-executor
+        working-directory: runtime/rust
 
       # Do not let missing host capabilities turn live sandbox coverage into skips.
       # Keep each check in its own step so a hosted-runner failure identifies the

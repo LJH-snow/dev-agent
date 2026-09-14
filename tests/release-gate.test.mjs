@@ -319,17 +319,20 @@ test("CI runs live Rust integration on a dedicated macOS job", () => {
   assert.match(job, /name: macOS integration/);
   assert.match(job, /runs-on: macos-15/);
   assert.match(job, /pnpm verify:rust/);
+  assert.match(job, /- name: Build debug Rust runtime\n\s+run: cargo build --bin dev-agent-executor\n\s+working-directory: runtime\/rust/);
   assert.match(job, /- name: Check Rust binary prerequisite\n\s+run: test -x runtime\/rust\/target\/debug\/dev-agent-executor/);
   assert.match(job, /- name: Check sandbox-exec prerequisite\n\s+run: test -x \/usr\/bin\/sandbox-exec/);
   assert.match(job, /- name: Check Python network fixture prerequisite\n\s+run: python3 -c "import socket"/);
   assert.match(job, /pnpm verify:integration/);
+  const rustGate = job.indexOf("pnpm verify:rust");
+  const buildRuntime = job.indexOf("- name: Build debug Rust runtime");
   const rustPrerequisite = job.indexOf("- name: Check Rust binary prerequisite");
   const sandboxPrerequisite = job.indexOf("- name: Check sandbox-exec prerequisite");
   const pythonPrerequisite = job.indexOf("- name: Check Python network fixture prerequisite");
   const integrationGate = job.indexOf("pnpm verify:integration");
   assert.ok(
-    job.indexOf("pnpm verify:rust") < rustPrerequisite,
-    "Rust gate should build the binary before prerequisite checks"
+    rustGate < buildRuntime && buildRuntime < rustPrerequisite,
+    "Rust gate should be followed by an explicit binary build before prerequisite checks"
   );
   assert.ok(
     rustPrerequisite < sandboxPrerequisite && sandboxPrerequisite < pythonPrerequisite,

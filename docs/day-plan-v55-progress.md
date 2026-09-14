@@ -32,8 +32,11 @@ CI 之前只运行 TypeScript 与 Ubuntu Rust jobs。fixed local gate 虽然包�
 
 - [x] 已观察首个 GitHub-hosted `macos-15` run（34806937694）：macOS Rust gate 通过，但合并的
   prerequisite step 失败，integration 未执行。
+- [x] 第二个 run（34807975071）确认 Ubuntu/TypeScript 与 macOS Rust gate 通过，但 production
+  binary prerequisite 失败；后续已转入显式 `cargo build` 修复。
 - [x] 已将失败定位与后续兼容性处理转入 `docs/day-plan-v56.md`。
-- [ ] 下一次 run 必须确认 `/usr/bin/sandbox-exec`、Python fixture 和 live suite 的真实状态。
+- [ ] 下一次 run 必须确认 production binary、`/usr/bin/sandbox-exec`、Python fixture 和 live
+  suite 的真实状态。
 
 ## 发布状态
 

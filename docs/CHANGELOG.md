@@ -9,6 +9,8 @@
   x86_64-unknown-linux-gnu` 与 target-specific clippy。
 - 将 macOS binary、`sandbox-exec`、Python socket prerequisite 拆成独立 fail-closed steps，
   让下一次 hosted failure 能定位到具体 capability；release-gate contract 保持 **12/12**。
+- 第二个 hosted run（34807975071）确认 `cargo test` 不会保证 production binary artifact；新增
+  `cargo build --bin dev-agent-executor`，放在 Rust gate 之后、binary check 之前。
 - v55 的远端 live integration evidence 暂不关闭；下一阶段只接受 hosted runner 上真实
   `10/10`、无 unexpected skip 的证据。
 

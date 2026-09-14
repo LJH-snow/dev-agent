@@ -74,3 +74,28 @@ sandbox integration 和现有本地 full gate 的职责分层；不把 skipped t
 下一次 hosted run 必须同时证明 Ubuntu Rust gate 通过、三个 macOS prerequisite steps 通过，
 以及 `pnpm verify:integration` 真实输出 **10/10 且无 unexpected skip**。在此之前不切换
 runner image、不放宽检查、不修改 runtime/API/schema。
+
+## Second hosted run evidence（v56 follow-up）
+
+第二个 run 为 [34807975071](https://github.com/LJH-snow/dev-agent/actions/runs/34807975071)，
+对应 commit `130f22bfa093a4385196785b22261cd7e1708851`。第一项修复已生效：TypeScript、Ubuntu
+Rust 和 macOS Rust gate 均通过；macOS job 随后在 `Check Rust binary prerequisite` 失败，后续
+`sandbox-exec`、Python 和 integration steps 被正确阻断。
+
+这次失败确认了 workflow artifact contract 的缺口：`pnpm verify:rust` 通过 `cargo test` 验证
+Rust，但 `cargo test` 不负责把生产 binary 放到
+`runtime/rust/target/debug/dev-agent-executor`；integration test 的固定入口则直接读取这个
+路径。此前的 binary check 因而比 integration 更早失败。
+
+## v56 minimum follow-up（第二轮）
+
+- 在 Rust gate 之后显式运行 `cargo build --bin dev-agent-executor`，工作目录固定为
+  `runtime/rust`。
+- 保持 binary、`sandbox-exec`、Python socket 三个独立 prerequisite steps 及其 fail-closed
+  顺序。
+- 用 release-gate contract 锁定 Rust gate → production binary build → binary check →
+  sandbox/Python checks → integration 的顺序；本地 focused contract 保持 **12/12**。
+
+下一次 hosted run 必须同时证明 production binary、三个 macOS prerequisite steps 均通过，
+以及 `pnpm verify:integration` 真实输出 **10/10 且无 unexpected skip**。在此之前不切换
+runner image、不放宽检查、不修改 runtime/API/schema。

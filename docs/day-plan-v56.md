@@ -2,11 +2,11 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：首个 hosted run 已发现两个可复现/可诊断问题；最小修复已完成，等待下一次 run。**
+**当前状态：第二个 hosted run 已确认生产 binary 构建缺口；显式 build 修复已完成，等待下一次 run。**
 
 > 本计划承接 `docs/day-plan-v55.md`。v55 已在本地完成 macOS integration job、fail-closed prerequisite checks 和 fixed integration
-> entrypoint；首个 GitHub-hosted `macos-15` run（34806937694）已提供失败证据，但没有提供 live
-> integration 成功证据。v56 继续只基于远端日志推进，不把本地 contract 当作 CI 成功证明。
+> entrypoint；首个 run（34806937694）和第二个 run（34807975071）已提供失败证据，但没有提供
+> live integration 成功证据。v56 继续只基于远端日志推进，不把本地 contract 当作 CI 成功证明。
 
 ## Goal
 
@@ -25,10 +25,11 @@ runner image 缺少 `sandbox-exec`、Python fixture 或 Rust binary 而静默 sk
 ## Task 0：远端运行证据
 
 - [x] 找到 v55 push 对应的 CI workflow run 和 `macos-integration` job。
-- [x] 读取 runner/job 状态：macOS Rust gate 成功，但原合并 prerequisite step 失败；integration
-  未执行。
-- [x] 读取 Ubuntu Rust failure：Linux-only 测试调用 `RestrictedExecutor::run` 时缺少
-  `cancel` 参数。
+- [x] 读取首个 run：macOS Rust gate 成功，但合并 prerequisite step 失败；integration 未执行。
+- [x] 读取首个 run 的 Ubuntu Rust failure：Linux-only 测试调用 `RestrictedExecutor::run`
+  时缺少 `cancel` 参数。
+- [x] 读取第二个 run：Ubuntu Rust/TypeScript 和 macOS Rust gate 通过；macOS binary
+  prerequisite 失败，`sandbox-exec`、Python 和 integration 尚未执行。
 - [ ] 读取下一次 run 的 Node integration summary，确认 10 个 integration tests 没有
   unexpected skip。
 
@@ -37,8 +38,8 @@ runner image 缺少 `sandbox-exec`、Python fixture 或 Rust binary 而静默 sk
 - [x] 用 Linux target compile 在本地复现远端 Rust error，并补齐缺失的 `None` cancel 参数。
 - [x] 将 binary、`sandbox-exec`、Python fixture 检查拆成独立 steps；新增 contract 锁定失败
   可观测性与执行顺序。
-- [ ] 根据下一次 hosted log 选择固定 runner、环境安装或 test harness 的最小修复；不改变
-  fail-closed 语义。
+- [x] 根据第二个 hosted log 确认 `cargo test` 不会保证生产 binary artifact，加入显式
+  `cargo build --bin dev-agent-executor`，不改变 fail-closed 语义。
 - [x] 复跑 focused workflow contract 和本地 Rust checks；本地 macOS integration 仍保持
   10/10。
 
