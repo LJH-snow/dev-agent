@@ -58,9 +58,9 @@
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/evidence-audit-design-v38.md`
 - Modify: `/Users/Admin/Desktop/dev-agent/docs/day-plan-v40-progress.md`
 
-- [ ] **Step 1: 定义上限语义。** 区分 record count、file count、serialized byte budget 和分页；禁止静默截断导致 summary 与内容不一致。
-- [ ] **Step 2: 定义 schema negotiation。** 说明旧 CLI/Desktop 客户端遇到新字段、未知版本、部分导出和不支持的格式时的 fail-closed 行为。
-- [ ] **Step 3: 写兼容性矩阵。** 覆盖旧 memory、旧 audit client、新 projection、超限、损坏和过滤后的排序/计数关系。
+- [x] **Step 1: 定义上限语义。** `docs/evidence-audit-limits-v40.md` 区分 record count、file count、serialized byte budget 和 keyset pagination；超限 fail closed，禁止静默截断导致 summary 与内容不一致。
+- [x] **Step 2: 定义 schema negotiation。** 明确旧 CLI/Desktop 客户端遇到新字段、未知版本、部分导出和不支持的格式时的 fail-closed 行为。
+- [x] **Step 3: 写兼容性矩阵。** 覆盖旧 memory、旧 audit client、新 projection、超限、损坏、过滤后的排序/计数和 cursor 失效关系。
 - [ ] **Step 4: 提交设计记录。** 只写安全决策，不直接扩大对外 schema。
 
 ## Task 3：全量验证、发布和下一阶段计划

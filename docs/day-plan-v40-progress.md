@@ -30,16 +30,22 @@ v39 已在 `fc6d8a0` 完成固定 release gate、CI 复用和 before-image NO-GO
 - [x] 契约测试 **9/9**、`--help` 和 TypeScript `--report` smoke run 通过；报告不含 command/args/cwd/stdout/stderr/env/session evidence。
 - [x] 实现提交：`40cc4b0`。
 
-## 进行中
-
 ### Task 2：audit export 版本/大小边界设计
 
-- [ ] 定义 record/file/byte 上限与分页的 fail-closed 语义，并写兼容性矩阵。
+- [x] 新建 `docs/evidence-audit-limits-v40.md`，定义 record/file/byte limit、canonical serialization、keyset pagination 和超限 fail-closed 语义。
+- [x] 更新 `docs/evidence-audit-design-v38.md`；v1 不增加 partial 字段、不静默截断，旧客户端对未知版本明确拒绝。
+- [ ] 提交设计记录。
+
+## 进行中
+
+### Task 3：全量验证、发布和下一阶段计划
+
+- [ ] 运行完整 `pnpm verify`，并检查 report 成功/失败和默认关闭副作用。
 
 ## 后续任务
 
 - [x] Task 1：固定 gate report。
-- [ ] Task 2：audit export 版本/大小边界设计。
+- [x] Task 2：audit export 版本/大小边界设计。
 - [ ] Task 3：全量验证、发布和下一阶段计划。
 
 ## 设计原则

@@ -85,3 +85,7 @@ Task 1 只能实现上述 projection 和纯函数测试。Task 2 才能增加 CL
 ## 6. v39 before-image 闸门
 
 下一阶段的完整 go/no-go 要求记录在 [`docs/before-image-gate-v39.md`](before-image-gate-v39.md)。在七项闸门全部具备可重复证据前，v38 的 postimage-only、metadata-only 和 no-auto-rollback 边界继续有效；该文件不改变当前运行时行为。
+
+## 7. v40 audit export 限额与版本边界
+
+未来的 record/file/byte limit、canonical serialization、keyset pagination 和旧客户端拒绝语义记录在 [`docs/evidence-audit-limits-v40.md`](evidence-audit-limits-v40.md)。在这些要求具备独立 RED/GREEN 回归前，v1 不静默截断、不新增 partial 字段，当前 metadata-only 和 fail-closed 边界保持不变。
