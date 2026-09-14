@@ -36,12 +36,11 @@ CI 之前只运行 TypeScript 与 Ubuntu Rust jobs。fixed local gate 虽然包�
   binary prerequisite 失败；后续已转入显式 `cargo build` 修复。
 - [x] 第三个 run（34808369664）确认 production binary 与三个 host prerequisites 通过，但
   executor `dist` artifact 缺失导致 integration compile failure；后续已转入 package build 修复。
-- [x] 已将失败定位与后续兼容性处理转入 `docs/day-plan-v56.md`。
-- [ ] 下一次 run 必须确认 production binary、`/usr/bin/sandbox-exec`、Python fixture、executor
-  `dist` 和 live suite 的真实状态。
+- [x] 最终 run（34808757733）确认三个 job 全部成功，macOS live integration 为 10/10、0 skipped。
+- [x] 已将失败定位、修复和最终证据转入 `docs/day-plan-v56.md`。
 
 ## 发布状态
 
 - [x] v55 实现已提交并推送。
-- [x] 首个远端 run 已观察，但结论为失败而非通过。
-- [ ] 通过 v56 的复跑验证后再关闭 external evidence item。
+- [x] 首个、第二个和第三个远端失败已逐项修复。
+- [x] v56 复跑验证后关闭 external evidence item。

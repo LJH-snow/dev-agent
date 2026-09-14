@@ -104,6 +104,11 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
   typecheck, and workspace tests (Node 26, pnpm 12.3.4).
 - **Rust**: `pnpm verify:rust` runs the fixed `cargo fmt --check`, clippy, and
   unit/doc test phases from `runtime/rust`.
+- **macOS integration**: the pinned `macos-15` job explicitly builds the debug
+  `dev-agent-executor` binary and the `@dev-agent/executor` `dist` artifacts,
+  fail-closed checks `/usr/bin/sandbox-exec` and a usable Python socket fixture,
+  then runs `pnpm verify:integration`; the hosted gate has recorded 10/10 with
+  zero skips.
 
 ## Releases
 

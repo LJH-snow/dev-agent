@@ -14,8 +14,10 @@
 - 第三个 hosted run（34808369664）确认 host prerequisites 已通过，但 integration 缺少
   `packages/executor/dist`；新增 executor package build，放在 prerequisites 之后、integration
   之前。
-- v55 的远端 live integration evidence 暂不关闭；下一阶段只接受 hosted runner 上真实
-  `10/10`、无 unexpected skip 的证据。
+- 最终 hosted run（34808757733）三个 job 全部通过；macOS real integration 明确为 **10 tests、
+  0 failures、0 skipped**，v55/v56 的 hosted live evidence 正式关闭。
+- v56 决策为 **GO / Preserve**：保留固定 runner、显式 artifact builds、独立 fail-closed
+  prerequisites 和固定 integration entrypoint。
 
 ## 2026-09-14 (Day plan v50: Desktop shell accessibility 与交互稳健性)
 

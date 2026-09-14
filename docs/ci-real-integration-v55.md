@@ -122,3 +122,20 @@ integration，未在该 job 内建立 executor package 的 `dist` artifact；本
 - 下一次 hosted run 必须证明 Rust/TypeScript、production binary、三个 host prerequisites、
   executor package build 均通过，并得到真实 `pnpm verify:integration` **10/10、无 unexpected
   skip**。
+
+## Final hosted evidence（v56 complete）
+
+最终 run 为 [34808757733](https://github.com/LJH-snow/dev-agent/actions/runs/34808757733)，
+对应 commit `6be9778a8a55ae1c344b39f2bb8deffc88b9a205`。Ubuntu Rust、TypeScript 和 macOS
+integration 三个 job 全部成功；macOS job 的 Rust gate、production binary build、executor
+package build、binary/`sandbox-exec`/Python prerequisites 和 real integration step 均成功。
+
+`Real Rust integration gate` 的 hosted log 明确记录 **10 tests、0 failures、0 skipped**。
+因此可以确认本次 macOS sandbox integration 在 hosted runner 上真实执行，而不是由 skipped
+cases 形成虚假的 enforcement coverage。
+
+## Final decision
+
+**GO / Preserve。** 保留 `macos-15`、显式 artifact builds、独立 fail-closed prerequisites
+和固定 `pnpm verify:integration` entrypoint。v55/v56 的 CI coverage 目标已完成；后续只在新的
+runner、toolchain 或真实 failure evidence 出现时重新评估 compatibility。

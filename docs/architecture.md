@@ -211,7 +211,7 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 ### `runtime/rust`
 - Starlark policy evaluation for filesystem/network rules.
 - macOS `sandbox-exec` enforcement (active).
-- Linux bubblewrap backend (planned).
+- Linux `bwrap` backend (active): namespace isolation, filesystem bind policy, network policy, resource limits, and cwd enforcement; pure argument-builder tests run cross-platform and live execution tests run on Linux.
 - Per-stream output quota (`max_output_bytes`, default 1 MiB) enforced while
   streaming; exceeding it kills the child and sets `bytes_truncated`.
 - The stdio binary handles one envelope at a time, so a single

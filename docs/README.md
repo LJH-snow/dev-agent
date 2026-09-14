@@ -72,16 +72,17 @@ drift:
 pnpm verify                 # TypeScript → Rust → real-Rust integration
 pnpm verify:typescript      # structure check, build, typecheck, workspace tests
 pnpm verify:rust            # cargo fmt, clippy, and Rust unit/doc tests
-pnpm verify:integration     # real Rust integration (after verify:rust)
+pnpm verify:integration     # real Rust integration (after required artifact builds)
 ```
 
 The runner uses fixed argument arrays and fixed working directories, never enables
 a shell, and stops at the first failed phase. The integration phase is separate
-so it can be run after the Rust test phase has built the debug runtime. The GitHub
-workflow runs that phase on a pinned macOS runner after checking the live sandbox
-prerequisites; the standalone entrypoint is `pnpm verify:integration`. Gate
-selection does not accept arbitrary commands, model output, or persisted evidence
-as execution input.
+from the Rust unit/doc phase and requires two artifacts before it can run: the
+debug `dev-agent-executor` binary and the executor package's `dist` output. The
+GitHub workflow builds both explicitly, then checks the live sandbox prerequisites
+before invoking the standalone `pnpm verify:integration` entrypoint. Gate selection
+does not accept arbitrary commands, model output, or persisted evidence as execution
+input.
 
 When CI or a local pre-push check needs a machine-readable result, append
 `--report` to a phase entry point:
