@@ -2,6 +2,8 @@
 
 **建立日期：2026-09-14**
 
+**状态：Task 0--2 完成；跨宿主 parity 已通过，Desktop query 结论为 Preserve / tests-only。**
+
 > 本计划承接 `docs/day-plan-v45.md`。v45 用受控 benchmark 证明当前完整 preview
 > projection 在 record/file cap 边界内没有 concrete availability gap，因此没有新增
 > preview hard cap。v46 只处理仍有证据价值的跨宿主 contract parity 与 Desktop query
@@ -43,54 +45,65 @@ preview counts、file count、canonical UTF-8 `serializedBytes` 与敏感字段�
 
 **Produces:** 可复用的跨宿主 fixture、字段 allowlist 和 query decision matrix。
 
-- [ ] **Step 1: 记录 v45 基线。** 固化六个 benchmark bytes/counts、v41 cap decision、
+- [x] **Step 1: 记录 v45 基线。** 固化六个 benchmark bytes/counts、v41 cap decision、
   v45 NO-GO 结论和当前 CLI/Desktop preview routes。
-- [ ] **Step 2: 设计同一份 session fixture。** 同时覆盖未过滤、change-set filter、
-  validation filter、status filter、UTF-8 ids/paths、空 evidence 和损坏 evidence；明确
-  fixture 的 session id 不跨 test 污染。
-- [ ] **Step 3: 写 parity allowlist 与 query matrix。** 把 success、unknown session、
-  malformed memory、audit-limit query、duplicate/empty/unknown query 的预期状态、
-  response keys 和 side-effect invariants 写入文档。
+- [x] **Step 2: 设计同一份 session fixture。** 覆盖未过滤、change-set filter、validation
+  filter、status filter、UTF-8 ids/paths、空 evidence/错误边界；session id 与 workspace
+  均为临时值，不跨 test 污染。
+- [x] **Step 3: 写 parity allowlist 与 query matrix。** success、unknown session、
+  audit-limit query、duplicate/empty/unknown/encoded query 和 side-effect invariants
+  已记录于 `docs/evidence-preview-parity-v46.md`。
 
 ## Task 1：跨宿主 preview parity regression
 
 **Produces:** core/CLI/Desktop 的可重复 parity tests；优先不改 runtime。
 
-- [ ] **Step 1: 先写 RED tests。** 让同一 fixture 通过 CLI 与 Desktop，比较 schema version、
-  counts、file count、canonical bytes 和 generic error；旧实现若有差异先失败。
-- [ ] **Step 2: 实现最小共享 harness 或 fixture loader。** 不复制 serializer，不在宿主层
-  计算 bytes；只复用 core preview 与现有 memory boundary。
-- [ ] **Step 3: 回归敏感字段与 side effect。** 证明 preview 不改变 memory 文件、工作区，
-  不启动 provider/MCP/chat queue，不输出 evidence 内容。
+- [x] **Step 1: 先写 parity regression tests。** `tests/evidence-preview-parity.test.mjs`
+  让同一 fixture 通过 CLI 与 Desktop，比较 schema version、counts、file count、canonical
+  bytes；当前实现直接 GREEN，证明 preserve contract 没有 parity gap。
+- [x] **Step 2: 实现最小测试 harness 与 fixture loader。** `pnpm test:preview-parity` 只
+  构建既有 packages/apps 并使用 core/FileMemory；没有复制 serializer，也没有在宿主层
+  计算 bytes。
+- [x] **Step 3: 回归敏感字段与 side effect。** 证明 memory/workspace 不变、provider 未加载、
+  Desktop fake session 不运行，且 response 不输出 evidence 内容。
 
 ## Task 2：Desktop query semantics decision（条件执行）
 
 **Produces:** 明确 preserve/reject 决策；只有 proof gap 才改 parser。
 
-- [ ] **Step 1: 对 unknown/duplicate/empty/encoded query 做兼容性证据。** 对比 history/export
-  endpoint 与现有客户端调用方式；不得凭理论风险直接 reject。
-- [ ] **Step 2: 若发现明确 bug，先写 RED，再最小修复。** 错误状态/消息须 metadata-only，
-  filters 不得改变 session 选择；若无 bug，保留当前 `get()` first/empty-as-absent/
-  unknown-ignore 语义并记录理由。
-- [ ] **Step 3: 形成 decision。** preserve 为默认；query tightening 仅在真实 proof gap
-  下 GO，否则 CONDITIONAL/NO-GO，不引入版本协商。
+- [x] **Step 1: 对 unknown/duplicate/empty/encoded query 做兼容性证据。** 对比 preview
+  与既有 `/messages` history endpoint；结果一致，没有 silent session selection 变化。
+- [x] **Step 2: 未发现明确 bug，不修改 parser。** 保留当前 `get()` first/empty-as-absent/
+  unknown-ignore 语义；audit-limit、unknown-session 和 generic error 边界已有回归。
+- [x] **Step 3: 形成 decision。** **Preserve / tests-only**；query tightening 继续保持
+  CONDITIONAL，直到有真实客户端 proof gap，不引入版本协商。
 
 ## Task 3：验证、发布和下一阶段
 
 **Produces:** v46 parity decision、发布提交和下一份有边界的计划。
 
-- [ ] **Step 1: focused/full verification。** 新增 focused parity/query tests；再跑 TypeScript、
-  Rust、integration、report、structure 和 diff check。
-- [ ] **Step 2: 更新 README、CHANGELOG、progress 和 decision matrix。** 清楚区分 tests-only
-  evidence 与实际 runtime 修复。
-- [ ] **Step 3: commit/push 并制定 v47。** 保持 `origin/main` 可复现；若无 runtime proof gap，
-  v47 只选择新的真实产品需求，不继续堆 speculative preview semantics。
+- [x] **Step 1: focused/full verification。** `pnpm test:preview-parity` 3/3 通过；TypeScript
+  workspace 612/612、release-gate 9/9、Rust unit/doc 46/46、real-Rust integration 10/10，
+  独立 TypeScript/Rust gate、report smoke、structure 和 diff check 也通过。
+- [x] **Step 2: 更新 README、CHANGELOG、progress 和 decision matrix。** 明确记录
+  tests-only evidence 与未发生的 runtime 修复。
+- [x] **Step 3: commit/push 并制定 v47。** v47 digest design plan 已建立；v46 保持
+  `origin/main` 可复现。
 
 ## Acceptance checklist
 
-- [ ] 同一 evidence fixture 的 core/CLI/Desktop preview counts/bytes parity 有自动化证据。
-- [ ] success/error/unknown-session response 均保持 metadata-only allowlist。
-- [ ] duplicate/empty/unknown/encoded query 有明确 preserve 或 reject decision，并有兼容性
-  依据；没有 silent session selection 变化。
-- [ ] v41 export caps、v1 export、pagination/schema v2、before-image/cross-process Undo
+- [x] 同一 evidence fixture 的 core/CLI/Desktop preview counts/bytes parity 有自动化证据。
+- [x] success/error/unknown-session response 均保持 metadata-only allowlist。
+- [x] duplicate/empty/unknown/encoded query 有明确 preserve decision，并有兼容性依据；没有
+  silent session selection 变化。
+- [x] v41 export caps、v1 export、pagination/schema v2、before-image/cross-process Undo
   boundaries remain intact.
+
+
+## v46 decision summary
+
+- core/CLI/Desktop preview parity：**通过**，4 组标准 filter case 全部一致。
+- Desktop unknown/duplicate/empty/encoded query：**Preserve / tests-only**，不修改 parser。
+- runtime hardening：**未触发**；v1 export、v41 caps、schema/pagination/before-image/Undo
+  boundaries 均未改变。
+- 详细证据：见 `docs/evidence-preview-parity-v46.md`。

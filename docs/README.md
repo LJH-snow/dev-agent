@@ -118,8 +118,9 @@ content, or provide pagination, schema negotiation, restore, or Undo authority.
 v45 includes a synthetic, metadata-only benchmark for the complete preview projection:
 
 ```bash
-pnpm test:benchmark       # contract/regression tests
-pnpm benchmark:evidence   # six fixtures; writes only .dev-agent/evidence-preview-benchmark.json
+pnpm test:benchmark        # benchmark contract/regression tests
+pnpm benchmark:evidence    # six fixtures; writes only .dev-agent/evidence-preview-benchmark.json
+pnpm test:preview-parity   # core/CLI/Desktop preview contract and query compatibility tests
 ```
 
 The benchmark never reads a workspace, starts a provider, enters the chat queue, or emits

@@ -1,5 +1,48 @@
 # Changelog
 
+## 2026-09-14 (Day plan v46: preview cross-surface parity)
+
+Executed `docs/day-plan-v46.md`. v46 adds a cross-surface regression harness for the same
+persisted metadata-only evidence fixture and resolves the remaining Desktop query review as
+compatibility-preserving behavior.
+
+### Added: core/CLI/Desktop parity evidence
+
+- Added `tests/evidence-preview-parity.test.mjs` and `pnpm test:preview-parity` to exercise
+  the same temporary `FileMemory` through agent-core, CLI, and Desktop. Four standard filter
+  cases (unfiltered, status, UTF-8 change-set id, UTF-8 validation id) produced identical
+  counts, file counts, and canonical UTF-8 byte sizes.
+- The harness verifies the fixed seven-field success allowlist, input/memory/workspace
+  immutability, no provider load, no Desktop session run, and no persisted command/cwd/output/
+  error leakage.
+- The query matrix compares preview with the existing `/messages` history endpoint for empty,
+  duplicate, unknown, and encoded query values, and covers unknown-session and audit-limit
+  error ordering.
+
+### Decision: preserve Desktop query compatibility
+
+- Empty values remain absent, duplicate values continue to use the first `URLSearchParams.get()`
+  value, unknown query names remain ignored, and encoded UTF-8 filters remain supported. The
+  same behavior is now regression-tested against `/messages`; no silent session-selection change
+  or concrete proof gap was found.
+- Decision is **Preserve / tests-only**. No query tightening, schema negotiation, pagination,
+  cursor, partial response, before-image, or Undo authority was added. v1 export, v41 limits,
+  and preview success/error contracts are unchanged.
+
+### Tests and release validation
+
+- Cross-surface parity suite passed: **3/3**.
+- Full `pnpm verify` passed: TypeScript workspace **612/612**, release-gate **9/9**, Rust
+  unit/doc **46/46**, real-Rust integration **10/10**. Independent TypeScript/Rust gates,
+  report allowlist smoke, structure check, and `git diff --check` also passed.
+
+### Next boundary
+
+v47 is documented in `docs/day-plan-v47.md` to evaluate whether a deterministic canonical
+metadata hash has a real consumer. A hash must not be presented as a signature or used as
+execution/recovery authority; absent a concrete consumer and trust model, v47 will remain
+design-only/NO-GO.
+
 
 ## 2026-09-14 (Day plan v45: preview bounded-work benchmark)
 
