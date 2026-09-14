@@ -64,6 +64,71 @@ v52 is recorded in `docs/day-plan-v52.md` and should start only from a concrete 
 real assistive-technology feedback, reproducible narrow-window interaction issue, or another
 explicit Desktop UX trigger. Otherwise keep the preview/integrity surface frozen.
 
+## 2026-09-14 (Day plan v53: release summary source-of-truth)
+
+Completed the v53 source-of-truth inventory from `docs/day-plan-v53.md`. A fresh gate confirmed
+that the current TypeScript workspace has **614/614** tests, so the v52 hand-written 612 summary was
+not stable enough for an evergreen README.
+
+### Inventory and decision
+
+- `pnpm test` currently reports model **54**, code-intelligence **30**, MCP **49**, executor **48**,
+  agent-core **118**, tools **121**, Desktop **76**, and CLI **118**: **614/614** in total.
+- The fixed gate also passes preview-contract **8/8**, release-gate contract **11/11**, Rust unit/doc
+  **46/46**, and real-Rust integration **10/10**.
+- `scripts/release-gate.mjs --report` remains metadata-only and intentionally contains no stdout,
+  commands, paths, environment values, or test counts.
+- Decision: **Preserve / NO-GO** for automatic public test-count generation. Parsing concurrent
+  reporter output, scanning source for `test()` calls, or wrapping the gate again would add fragile
+  authority and maintenance behavior without an explicit consumer.
+
+### Minimal stabilization
+
+- The current `README.md` summary now names the fixed release-gate suite categories without hardcoded
+  totals; dated validation documents retain exact counts and their evidence.
+- No runtime, dependency, test-runner, API, schema, UI, gate-order, report-allowlist, session, or
+  Evidence authority behavior changed.
+- The decision and inventory are recorded in `docs/release-summary-source-of-truth-v53.md`.
+
+### Validation
+
+- Fresh `pnpm verify` passed all fixed stages with the counts above.
+- `node scripts/check.mjs` and `git diff --check` passed.
+
+### Next boundary
+
+v54 is recorded in `docs/day-plan-v54.md`. It should only design a machine-readable metrics contract
+if CI, a dashboard, or a maintainer supplies an explicit consumer and field-level requirement.
+
+## 2026-09-14 (Day plan v52: release documentation accuracy)
+
+Completed the initial documentation-only v52 slice after finding a concrete mismatch: `README.md`
+still reported **543 TypeScript tests**, while the then-current gate record was already higher and
+included separate preview-contract and release-gate contract suites.
+
+### Minimal correction and supersession
+
+- The initial v52 patch changed the README summary to the then-recorded TypeScript workspace **612**,
+  preview-contract **8**, release-gate contract **11**, Rust unit/doc **46**, and real-binary
+  integration **10**.
+- v53 fresh revalidation found the actual current workspace total is **614/614** (see the package
+  breakdown in the v53 decision doc), so 612 is explicitly superseded rather than presented as a
+  current evergreen number.
+- The current README now uses suite-category-only wording. No test runner, runtime, API, schema, UI,
+  dependency, or authority behavior changed.
+
+### Validation
+
+- The original v52 evidence was the post-v50 gate record; the v53 fresh `pnpm verify` superseded its
+  workspace count with **614/614**, preview **8/8**, release-gate **11/11**, Rust unit/doc **46/46**,
+  and real-Rust integration **10/10**.
+- Structure check and `git diff --check` passed.
+
+### Next boundary
+
+v53 is recorded in `docs/day-plan-v53.md` to evaluate a low-risk source-of-truth for future release
+summary counts while keeping the metadata-only gate/report boundary intact.
+
 ## 2026-09-14 (Day plan v49: Desktop evidence preview 可发现性与只读 UX)
 
 Executed `docs/day-plan-v49.md`. v49 closes the Desktop discoverability gap for the existing

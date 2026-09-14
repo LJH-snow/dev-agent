@@ -432,8 +432,9 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
   writes report `cacheCreationPromptTokens`, the session totals keep both, and
   `pricing` can price them with `cachedInputPerMillion` /
   `cacheCreationInputPerMillion`
-- Test suite: 543 TypeScript tests + 46 Rust unit/doc tests + 10 real-binary
-  integration tests, all passing
+- Test suite: the fixed release gate passes the TypeScript workspace, preview-contract,
+  release-gate contract, Rust unit/doc, and real-binary integration suites; dated validation
+  counts are recorded in the release notes
 
 ### Rust runtime progress
 
