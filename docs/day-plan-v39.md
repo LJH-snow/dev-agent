@@ -82,20 +82,20 @@
 
 **Produces:** v39 门禁自动化可交付，下一阶段路线留在文档中。
 
-- [ ] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust 门禁。** 记录每个阶段的通过计数和退出结果。
-- [ ] **Step 2: 运行结构检查、diff check 和人工 review。** 确认固定 argv、固定 cwd、fail-fast、无 shell 拼接和 before-image 禁止项。
-- [ ] **Step 3: 更新 `docs/CHANGELOG.md`、v39 进度和 README。** 记录门禁命令及完整验证结果。
-- [ ] **Step 4: Commit and push。** 发布文档和实现一起推送到 `origin/main`。
+- [x] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust 门禁。** 完整门禁、`pnpm verify:typescript` 和 `pnpm verify:rust` 均通过；TypeScript workspace **600/600**、release-gate contract **5/5**、Rust unit/doc **46/46**、real-Rust integration **10/10**。
+- [x] **Step 2: 运行结构检查、diff check 和人工 review。** 确认固定 argv、固定 cwd、fail-fast、无 shell 拼接和 before-image 禁止项；结构检查与 `git diff --check` 通过。
+- [x] **Step 3: 更新 `docs/CHANGELOG.md`、v39 进度和 README。** 已记录门禁命令及完整验证结果。
+- [x] **Step 4: Commit and push。** v39 实现、CI 和设计文档已推送到 `origin/main`（`c3c9350` 为本轮设计文档发布提交，前置实现提交为 `d212cb0`、`ab1b957`）。
 - [ ] **Step 5: 新建 v40 计划。** 只在 v39 完成后写入下一阶段；优先评估 audit schema 版本协商、导出大小边界和 before-image 独立评审，不默认承诺跨进程 Undo。
 
 ## Acceptance Checklist
 
-- [ ] `pnpm verify` 以固定顺序运行完整门禁，并在首个失败阶段停止。
-- [ ] `pnpm verify:typescript` 和 `pnpm verify:rust` 可供 CI job 独立复用。
-- [ ] 门禁不接受任意命令字符串，不执行模型输出或历史 evidence 输入。
-- [ ] v38 audit projection、session 隔离、active guard、no-auto-rollback、MCP 和 Rust sandbox 边界继续通过。
-- [ ] before-image 仍未进入 memory schema、audit export、CLI/Desktop API 或 Undo 路径。
-- [ ] 文档记录 before-image 的 go/no-go 闸门和未来实验隔离边界。
+- [x] `pnpm verify` 以固定顺序运行完整门禁，并在首个失败阶段停止。
+- [x] `pnpm verify:typescript` 和 `pnpm verify:rust` 可供 CI job 独立复用。
+- [x] 门禁不接受任意命令字符串，不执行模型输出或历史 evidence 输入。
+- [x] v38 audit projection、session 隔离、active guard、no-auto-rollback、MCP 和 Rust sandbox 边界继续通过。
+- [x] before-image 仍未进入 memory schema、audit export、CLI/Desktop API 或 Undo 路径。
+- [x] 文档记录 before-image 的 go/no-go 闸门和未来实验隔离边界。
 
 ## v39 完成后的后续路线
 

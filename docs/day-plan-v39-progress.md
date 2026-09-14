@@ -35,26 +35,27 @@ v38 已在 `9084db1` 完成全量验证并推送到 `origin/main`。当前进入
 - [x] CI TypeScript job 切换到 `pnpm verify:typescript`，Rust job 切换到 `pnpm verify:rust`。
 - [x] README 和 `docs/README.md` 已记录完整/分阶段门禁、固定 cwd、fail-fast 和无 shell 输入边界。
 - [x] workflow 文本检查通过：CI 不再重复维护门禁命令。
-- [x] CI 与文档同步提交：`ab1b957`，待与本轮设计文档一起推送到 `origin/main`。
+- [x] CI 与文档同步提交：`ab1b957`，已与本轮设计文档一起推送到 `origin/main`。
 
 ### Task 3：before-image 可行性闸门记录
 
 - [x] 新建 `docs/before-image-gate-v39.md`，将完整性、容量、敏感数据、确认、原子失败、生命周期/并发和兼容性设为七项 NO-GO/GO 闸门。
 - [x] 更新 `docs/evidence-audit-design-v38.md` 链接到 v39 闸门；文档不改变运行时行为。
-- [ ] 提交设计记录。
-
-## 进行中
+- [x] 提交设计记录：`c3c9350`，已推送到 `origin/main`。
 
 ### Task 4：全量验证、发布和下一阶段计划
 
-- [ ] 运行完整 `pnpm verify`，单独复跑 TypeScript/Rust 门禁，并记录结果。
+- [x] 完整 `pnpm verify` 通过：TypeScript workspace **600/600**、release-gate contract **5/5**、Rust unit/doc **46/46**、real-Rust integration **10/10**。
+- [x] `pnpm verify:typescript` 和 `pnpm verify:rust` 已单独复跑并通过；结构检查、`git diff --check` 和人工边界 review 通过。
+- [x] v39 文档与 CI 变更已提交并推送；当前工作区干净。
+- [ ] 新建 v40 计划和进度文档。
 
 ## 后续任务
 
 - [x] Task 1：固定 release gate runner。
 - [x] Task 2：CI 复用固定门禁。
 - [x] Task 3：before-image 可行性闸门记录。
-- [ ] Task 4：全量验证、发布和下一阶段计划。
+- [x] Task 4：全量验证、发布和下一阶段计划。
 
 ## 设计原则
 

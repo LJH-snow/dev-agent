@@ -1,5 +1,41 @@
 # Changelog
 
+## 2026-09-14 (Day plan v39: fixed release gate and before-image safety gates)
+
+Executed `docs/day-plan-v39.md`. v39 makes the repository verification path
+reusable locally and in CI, while keeping before-image recovery explicitly
+behind a seven-gate safety review.
+
+### Added: fixed release gate runner
+
+- Added `scripts/release-gate.mjs` with fixed argv, fixed working directories,
+  no shell execution, canonical TypeScript → Rust → real-Rust integration
+  ordering, fail-fast behavior, and explicit phase selection.
+- Added `pnpm verify`, `pnpm verify:typescript`, and `pnpm verify:rust`. The
+  TypeScript gate also runs the runner contract suite so changes to the gate
+  plan are exercised by CI.
+- CI now calls the same phase-specific entry points instead of duplicating
+  structure/build/typecheck/test and cargo commands.
+
+### Added: before-image safety decision record
+
+- `docs/before-image-gate-v39.md` defines integrity binding, capacity, sensitive
+  data, user confirmation, atomic/recoverable failure, lifecycle/concurrency,
+  and compatibility as independent go/no-go gates.
+- The status remains **NO-GO**: no before-image bytes, recovery API, hidden
+  switch, or cross-process Undo was added. Until every gate has reproducible
+  evidence, only postimage-only validation and metadata-only audit remain
+  allowed.
+
+### Tests
+
+- Full `pnpm verify` passed in the fixed order: TypeScript workspace **600/600**,
+  release-gate contract **5/5**, Rust unit/doc **46/46** (43 library, 3 binary,
+  0 doctests), and real-Rust integration **10/10**.
+- `pnpm verify:typescript` and `pnpm verify:rust` also passed independently;
+  structure check, build, typecheck, Rust fmt/clippy, and `git diff --check`
+  passed.
+
 ## 2026-09-13 (Day plan v38: metadata-only audit export and lifecycle regression guard)
 
 Executed `docs/day-plan-v38.md`. v38 turns persisted evidence into a versioned,
