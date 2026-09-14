@@ -52,7 +52,7 @@ pnpm check
 pnpm build
 pnpm typecheck
 pnpm test
-pnpm cli -- --version
+pnpm cli --version
 ```
 
 The fixed release gate is the preferred pre-push check:
@@ -169,7 +169,9 @@ and [progress record](docs/day-plan-v62-progress.md) track the hosted integratio
 [completed v64 release-candidate audit](docs/day-plan-v64.md) and [progress record](docs/day-plan-v64-progress.md)
 track the four-target manual release workflow validation; they do not authorize a formal release. The
 [completed v63 plan](docs/day-plan-v63.md) and [progress record](docs/day-plan-v63-progress.md) track
-metadata-only executor mode visibility without changing execution semantics.
+metadata-only executor mode visibility without changing execution semantics. The [CLI runtime
+observability spec](docs/cli-runtime-observability.md) and [implementation plan](docs/superpowers/plans/2026-09-14-cli-runtime-observability.md)
+track the provider/model banner and first-token/total timing output.
 
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup
 - Agent loop, context, and in-memory memory in `@dev-agent/agent-core`

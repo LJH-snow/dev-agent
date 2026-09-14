@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-14（CLI runtime observability）
+
+- CLI 人类可读模式现在会显示实际的 provider、model 和流式状态，避免用户误判当前请求
+  使用了哪个模型或是否启用了流式输出。
+- 每次 agent run 结束后会显示首个可见 token 延迟和总耗时；`--no-stream` 使用
+  `first-token=n/a`，`--json` stdout 保持单一可解析 JSON 文档。
+- 修正 CLI 文档中的命令示例，移除会被当前 pnpm script 转发为字面参数的多余 `--`；本轮
+  不改变模型选择、执行语义或发布边界。
+
 ## 2026-09-14（v63：Executor mode metadata 完成）
 
 - 建立 `docs/day-plan-v63.md`、`docs/day-plan-v63-progress.md` 和 implementation plan，限定

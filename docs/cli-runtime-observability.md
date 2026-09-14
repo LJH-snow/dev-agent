@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**文档状态：实现中**
+**文档状态：已完成（2026-09-14）**
 
 ## 目标
 
@@ -43,3 +43,11 @@
 - 流式请求报告数值化首 token 延迟；非流式请求报告 `first-token=n/a`。
 - JSON 输出仍可被 `JSON.parse` 直接解析。
 - CLI 测试、TypeScript 检查和现有固定验证保持通过。
+
+## 实现证据
+
+- CLI suite：**120/120** 通过，包含非流式与流式 runtime/timing contract。
+- CLI build、structure check 和 documentation contract **2/2** 通过。
+- 人类模式输出不会把流式回答与 `[turn N]` 标记粘在同一行。
+- JSON 模式继续只输出单个 JSON 文档。
+- 本阶段不创建 release tag 或 GitHub Release。

@@ -21,7 +21,9 @@ Architecture, design decisions, and module documentation.
   track the Linux hosted live integration. The completed [v64 release-candidate audit](day-plan-v64.md)
   and [progress record](day-plan-v64-progress.md) track the four-target manual release workflow
   validation without authorizing a formal release. The completed [v63 plan](day-plan-v63.md) and
-  [progress record](day-plan-v63-progress.md) track metadata-only executor mode visibility.
+  [progress record](day-plan-v63-progress.md) track metadata-only executor mode visibility. The
+  [CLI runtime observability spec](cli-runtime-observability.md) and [implementation plan](superpowers/plans/2026-09-14-cli-runtime-observability.md)
+  track the provider/model banner and first-token/total timing output.
 - **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
   fixed contract tests remain authoritative for CI and release behavior; prose here
   is navigation and explanation, not a replacement for those checks.

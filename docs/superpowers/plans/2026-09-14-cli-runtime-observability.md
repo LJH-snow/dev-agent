@@ -29,7 +29,7 @@
 - Consumes: current `node dist/index.js --once` CLI entry point and existing provider stubs.
 - Produces: assertions for `[runtime]` and `[timing]` output that implementation must satisfy.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add one human-mode non-stream test using `--once hello --no-stream` and an OpenAI JSON response. Assert:
 
@@ -45,7 +45,7 @@ assert.match(result.stdout, /\[runtime\] provider=openai model=gpt-4o-mini strea
 assert.match(result.stdout, /\[timing\] first-token=\d+ms total=\d+ms/);
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [x] **Step 2: Run the focused tests and verify RED**
 
 Run:
 
@@ -55,7 +55,7 @@ pnpm --filter @dev-agent/cli test -- --test-name-pattern "runtime|timing"
 
 Expected: the new assertions fail because no `[runtime]` or `[timing]` lines exist yet.
 
-- [ ] **Step 3: Commit the RED contract**
+- [x] **Step 3: Commit the RED contract**
 
 ```bash
 git add apps/cli/tests/usage-output.test.ts docs/cli-runtime-observability.md docs/superpowers/plans/2026-09-14-cli-runtime-observability.md
@@ -72,11 +72,11 @@ git commit -m "test: define cli runtime observability contract"
 - Consumes: `ModelProvider.id`, `ModelProvider.model`, existing `StreamingRun` callbacks, and `runPrompt` output flow.
 - Produces: `StreamingRun.begin()`, `StreamingRun.finish()`, and human-readable runtime/timing lines.
 
-- [ ] **Step 1: Add monotonic timing state to `StreamingRun`**
+- [x] **Step 1: Add monotonic timing state to `StreamingRun`**
 
 Add a run start timestamp and optional first-token timestamp. Reset both in `begin()`. In the existing `onToken` callback, record the first token timestamp before writing the token. Return a timing object from `finish()` with optional `firstTokenMs` and numeric `totalMs`.
 
-- [ ] **Step 2: Wire timing around `loop.run`**
+- [x] **Step 2: Wire timing around `loop.run`**
 
 In `runPrompt`, call `streaming.begin()` immediately before `loop.run`. Call `streaming.finish()` after the run resolves. In human mode, print:
 
@@ -86,7 +86,7 @@ In `runPrompt`, call `streaming.begin()` immediately before `loop.run`. Call `st
 
 Use `n/a` when no visible token was observed. Preserve the existing final answer, state, usage, review, validation, and cost output order.
 
-- [ ] **Step 3: Print runtime status only for human agent runs**
+- [x] **Step 3: Print runtime status only for human agent runs**
 
 After command-only paths (`--tools`, `--metadata`, `--session-list`, `--compact`) return and immediately before constructing the agent context, print:
 
@@ -96,7 +96,7 @@ After command-only paths (`--tools`, `--metadata`, `--session-list`, `--compact`
 
 Do not print it when `jsonOutput` is true. `streamingEnabled` must be false for `--no-stream` and true only when human streaming is enabled and the provider exposes `streamChat`.
 
-- [ ] **Step 4: Run the focused tests and verify GREEN**
+- [x] **Step 4: Run the focused tests and verify GREEN**
 
 Run:
 
@@ -106,7 +106,7 @@ pnpm --filter @dev-agent/cli test -- --test-name-pattern "runtime|timing"
 
 Expected: all new runtime and timing assertions pass.
 
-- [ ] **Step 5: Commit the implementation**
+- [x] **Step 5: Commit the implementation**
 
 ```bash
 git add apps/cli/src/index.ts apps/cli/tests/usage-output.test.ts
@@ -116,22 +116,24 @@ git commit -m "feat: show cli runtime and response timing"
 ### Task 3: Document and verify the user-facing behavior
 
 **Files:**
+- Modify: `README.md`
 - Modify: `apps/cli/README.md`
 - Modify: `docs/cli-runtime-observability.md`
 - Modify: `docs/README.md`
 - Modify: `docs/CHANGELOG.md`
+- Modify: `tests/documentation-contract.test.mjs`
 
 **Interfaces:**
 - Consumes: the output contract implemented in Task 2.
 - Produces: user documentation and completion evidence.
 
-- [ ] **Step 1: Document the runtime and timing lines**
+- [x] **Step 1: Document the runtime and timing lines**
 
 Add the human-mode output contract to `apps/cli/README.md`, including that `--no-stream` disables token streaming and reports `first-token=n/a`; note that `--json` stays machine-readable without banner text.
 
 Mark `docs/cli-runtime-observability.md` complete, add the plan/spec links to `docs/README.md`, and add a dated CHANGELOG entry without creating a release tag.
 
-- [ ] **Step 2: Run focused and full CLI verification**
+- [x] **Step 2: Run focused and full CLI verification**
 
 Run:
 
@@ -144,7 +146,7 @@ node --test tests/documentation-contract.test.mjs
 
 Expected: all commands exit 0; CLI tests report zero failures; documentation contract remains green.
 
-- [ ] **Step 3: Review the final diff and commit documentation**
+- [x] **Step 3: Review the final diff and commit documentation**
 
 ```bash
 git diff --check

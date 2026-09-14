@@ -43,6 +43,8 @@ test("documentation index points to the current source-of-truth documents", () =
     "docs/day-plan-v63-progress.md",
     "docs/day-plan-v64.md",
     "docs/day-plan-v64-progress.md",
+    "docs/cli-runtime-observability.md",
+    "docs/superpowers/plans/2026-09-14-cli-runtime-observability.md",
   ]) {
     assert.ok(readme.includes(link), `README should link to ${link}`);
   }
@@ -63,6 +65,8 @@ test("documentation index points to the current source-of-truth documents", () =
     "day-plan-v63-progress.md",
     "day-plan-v64.md",
     "day-plan-v64-progress.md",
+    "cli-runtime-observability.md",
+    "superpowers/plans/2026-09-14-cli-runtime-observability.md",
   ]) {
     assert.ok(docsReadme.includes(`](${link})`), `docs/README.md should link to ${link}`);
   }

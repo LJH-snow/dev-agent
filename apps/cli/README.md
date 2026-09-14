@@ -5,14 +5,14 @@ Primary entry point for phase 1.
 Run from the repo root:
 
 ```bash
-pnpm cli -- --version
-pnpm cli -- --once "list files in the current directory"
-pnpm cli -- --session docs --once "answer in code"
-pnpm cli -- --session docs --reset-memory --once "start over"
-pnpm cli -- --cleanup-evidence --remove-rolled-back --json
-pnpm cli -- --session docs --export-evidence --audit-max-bytes 1048576
-pnpm cli -- --session docs --preview-evidence --status failed
-pnpm cli -- --tools
+pnpm cli --version
+pnpm cli --once "list files in the current directory"
+pnpm cli --session docs --once "answer in code"
+pnpm cli --session docs --reset-memory --once "start over"
+pnpm cli --cleanup-evidence --remove-rolled-back --json
+pnpm cli --session docs --export-evidence --audit-max-bytes 1048576
+pnpm cli --session docs --preview-evidence --status failed
+pnpm cli --tools
 DEV_AGENT_MODEL_PROVIDER=ollama pnpm cli
 ```
 
@@ -125,6 +125,24 @@ cancels the request that is in flight (through the same abort path the
 desktop uses) and exits with status `130`; it also exits immediately when
 the CLI is idle at the prompt. `exit` or `quit` leaves with status `0`.
 
+Human-readable agent runs print the resolved runtime before the first prompt or
+`--once` request:
+
+```text
+[runtime] provider=ollama model=qwen3:4b-instruct streaming=enabled
+```
+
+After each request, the CLI prints the time to the first visible token and the
+total agent-run duration:
+
+```text
+[timing] first-token=418ms total=962ms
+```
+
+`--no-stream` reports `first-token=n/a` because it intentionally waits for the
+final answer. `--json` does not add these display lines to stdout; it continues
+to emit one parseable JSON value.
+
 When an MCP tool reports progress, human-readable runs print one line per
 update, for example `[tool-progress] files:download 4/10` (or just the current
 number when the server omits `total`). Machine-readable `--json` runs never
@@ -143,7 +161,7 @@ Use `review-writes` when a human should see the exact file changes before the
 agent writes them:
 
 ```bash
-pnpm cli -- --approval review-writes --once "update the README"
+pnpm cli --approval review-writes --once "update the README"
 ```
 
 The CLI prepares a change set before approval and prints its id, file paths,
