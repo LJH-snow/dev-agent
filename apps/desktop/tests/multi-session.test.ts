@@ -570,6 +570,22 @@ test("GET /api/sessions/<id>/export returns 404 for an unknown session", async (
   });
 });
 
+
+test("GET /api/sessions/<id>/evidence/preview hides malformed memory details", async () => {
+  await withSessionDir(async (dir) => {
+    await writeFile(join(dir, "corrupt.json"), "not-json", "utf8");
+    const server = createDesktopServer({ session: fakeSession("default") });
+    const base = await start(server);
+    try {
+      const response = await fetch(`${base}/api/sessions/corrupt/evidence/preview`);
+      assert.equal(response.status, 500);
+      assert.deepEqual(await response.json(), { error: "evidence preview failed" });
+    } finally {
+      await close(server);
+    }
+  });
+});
+
 test("renaming a session to its own name is idempotent when it exists", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-rename-same-"));
   const previousDir = process.env.DEV_AGENT_SESSION_DIR;

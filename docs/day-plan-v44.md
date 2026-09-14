@@ -53,39 +53,43 @@
 **Produces:** review document and focused regression cases; no runtime change unless a
 proof gap is found.
 
-- [ ] **Step 1: 检查当前实现。** 确认 core/CLI/Desktop 的 allowlist、sorting、UTF-8
-  measurement、error handling 和 side-effect behavior 没有分叉。
-- [ ] **Step 2: 先写 RED tests。** 只覆盖已决定要改变的边界；若结论是 preserve，
-  写 parity/regression test 而不是 speculative API。
-- [ ] **Step 3: 形成 decision。** 对每个 proof gap 标记 GO / CONDITIONAL / NO-GO，
-  未达到证据门槛的行为留在 design-only。
+- [x] **Step 1: 检查当前实现。** 确认 core/CLI/Desktop 的 allowlist、sorting、UTF-8
+  measurement、error handling 和 side-effect behavior 没有分叉；发现并记录 CLI
+  operation precedence proof gap。
+- [x] **Step 2: 先写 RED tests。** 为 preview 与 14 类竞争 CLI 操作组合写测试并确认旧实现
+  先失败；未对 Desktop query 或 bounded-work 做 speculative API。
+- [x] **Step 3: 形成 decision。** CLI operation isolation 标记 GO 并已实现；Desktop query
+  tightening 与 bounded-work cap 标记 CONDITIONAL，继续 design-only。
 
 ## Task 2：最小兼容性加固（条件执行）
 
 **Produces:** only if Task 1 proves a concrete gap.
 
-- [ ] **Step 1: TDD implement.** 可能的最小改动包括显式拒绝危险/歧义的 CLI 组合、
-  preview query allowlist 或 bounded-work rejection；不得加入 truncation/cursor。
-- [ ] **Step 2: 对 CLI/Desktop/core 做 parity 回归。** 保证 v1 export 和现有 clients
-  不变；generic error 不含敏感数据。
-- [ ] **Step 3: 若无足够证据，明确 NO-GO。** 只提交 review artifact，不为“看起来更严格”
-  而改变兼容性。
+- [x] **Step 1: TDD implement.** 仅实现已证明的 CLI operation-exclusive validation；
+  不加入 preview query allowlist、bounded-work cap、truncation 或 cursor。
+- [x] **Step 2: 对 CLI/Desktop/core 做 parity 回归。** CLI 118/118、agent-core 118/118、
+  Desktop 74/74；v1 export regression 保持通过。
+- [x] **Step 3: 若无足够证据，明确 NO-GO。** Desktop query tightening 与 bounded-work cap
+  暂不改变 runtime，并保留 review artifact。
 
 ## Task 3：验证、发布和下一阶段
 
 **Produces:** v44 decision record and a bounded next plan.
 
-- [ ] **Step 1: 运行 focused/full verification。** 记录 agent-core/CLI/Desktop、
+- [x] **Step 1: 运行 focused/full verification。** 记录 agent-core/CLI/Desktop、
   TypeScript、Rust、integration、report smoke、structure 和 diff check。
-- [ ] **Step 2: 更新 CHANGELOG、progress 和使用文档。** 区分 implemented 与
+  TypeScript workspace 612/612、release-gate contract 9/9、Rust unit/doc 46/46、
+  real-Rust integration 10/10；report allowlist smoke 通过。
+- [x] **Step 2: 更新 CHANGELOG、progress 和使用文档。** 区分 implemented 与
   design-only，记录 v1/pagination/schema/before-image boundary。
-- [ ] **Step 3: Commit and push。** 保持 `origin/main` 可复现。
-- [ ] **Step 4: 新建 v45 计划。** 只选择有证据支撑的独立小步。
+- [x] **Step 3: Commit and push。** 保持 `origin/main` 可复现。
+- [x] **Step 4: 新建 v45 计划。** 只选择有证据支撑的独立小步。
 
 ## Acceptance checklist
 
-- [ ] preview 的未知/重复/空值/损坏/超大输入语义有明确 decision 和测试证据。
-- [ ] preview 不泄露敏感字段，不读写 workspace，不初始化 provider，不进入 chat queue。
-- [ ] canonical bytes 与 v1 byte budget 仍使用同一 serializer；无静默截断。
-- [ ] v1 export schema 不变；pagination/schema v2 仍为 CONDITIONAL。
-- [ ] before-image/cross-process Undo 仍为 NO-GO。
+- [x] preview 的未知/重复/空值/损坏输入语义有明确 decision 和回归证据；超大输入
+  保持 CONDITIONAL，等待 v45 benchmark/rejection design。
+- [x] preview 不泄露敏感字段，不读写 workspace，不初始化 provider，不进入 chat queue。
+- [x] canonical bytes 与 v1 byte budget 仍使用同一 serializer；无静默截断。
+- [x] v1 export schema 不变；pagination/schema v2 仍为 CONDITIONAL。
+- [x] before-image/cross-process Undo 仍为 NO-GO。

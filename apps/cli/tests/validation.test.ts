@@ -433,6 +433,60 @@ test("CLI exports a metadata-only audit snapshot without initializing a provider
 });
 
 
+
+test("CLI preview rejects competing operations before they can access provider, workspace, or session state", async () => {
+  const competingOperations = [
+    ["--once", "this prompt must not run"],
+    ["--index", "."],
+    ["--session-delete", "preview-isolation"],
+    ["--session-rename", "preview-isolation", "renamed"],
+    ["--compact", "1"],
+    ["--reset-memory"],
+    ["--tools"],
+    ["--metadata"],
+    ["--session-list"],
+    ["--doctor"],
+    ["--check-rust"],
+    ["--mcp-server"],
+    ["--approval", "allow"],
+    ["--rust-executor", "/tmp/dev-agent-executor"],
+  ] as const;
+
+  for (const operation of competingOperations) {
+    const workspace = await createGitWorkspace();
+    const memoryFile = join(workspace.dir, "preview-isolation.json");
+    try {
+      await writeFile(
+        memoryFile,
+        JSON.stringify({ version: 1, entries: [] }),
+        "utf8"
+      );
+      const before = await readFile(memoryFile);
+      const result = await runCli(
+        ["--session", "preview-isolation", "--preview-evidence", ...operation],
+        {
+          ...process.env,
+          INIT_CWD: workspace.dir,
+          DEV_AGENT_MODEL_PROVIDER: "provider-that-must-not-be-loaded",
+          DEV_AGENT_MEMORY_FILE: memoryFile,
+        },
+        ""
+      );
+
+      assert.equal(result.code, 1, operation.join(" "));
+      assert.equal(result.stdout, "", operation.join(" "));
+      assert.match(
+        result.stderr,
+        /cannot be combined|preview.*exclusive|only.*preview/i,
+        operation.join(" ")
+      );
+      assert.deepEqual(await readFile(memoryFile), before, operation.join(" "));
+    } finally {
+      await rm(workspace.dir, { recursive: true, force: true });
+    }
+  }
+});
+
 test("CLI previews a metadata-only audit snapshot without initializing a provider", async () => {
   const workspace = await createGitWorkspace();
   const memoryFile = join(workspace.dir, "audit-preview.json");
@@ -550,6 +604,33 @@ test("CLI previews a metadata-only audit snapshot without initializing a provide
     assert.equal(conflict.stdout, "");
     assert.match(conflict.stderr, /cannot be combined|mutually exclusive/);
     assert.deepEqual(await readFile(memoryFile), before);
+  } finally {
+    await rm(workspace.dir, { recursive: true, force: true });
+  }
+});
+
+
+test("CLI preview hides malformed memory details behind a generic failure", async () => {
+  const workspace = await createGitWorkspace();
+  const memoryFile = join(workspace.dir, "preview-corrupt.json");
+  try {
+    await writeFile(memoryFile, "not-json", "utf8");
+    const result = await runCli(
+      ["--session", "preview-corrupt", "--preview-evidence"],
+      {
+        ...process.env,
+        INIT_CWD: workspace.dir,
+        DEV_AGENT_MODEL_PROVIDER: "provider-that-must-not-be-loaded",
+        DEV_AGENT_MEMORY_FILE: memoryFile,
+      },
+      ""
+    );
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, "");
+    assert.equal(result.stderr, "Evidence preview failed\n");
+    assert.equal(result.stderr.includes(memoryFile), false);
+    assert.equal(result.stderr.includes("not-json"), false);
   } finally {
     await rm(workspace.dir, { recursive: true, force: true });
   }

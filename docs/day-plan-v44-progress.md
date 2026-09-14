@@ -7,9 +7,9 @@
 
 ## 当前状态
 
-v43 已交付独立 `EvidenceAuditPreview`。v44 已完成 baseline/threat-model 和
-input decision matrix，确认 CLI operation precedence 是需要 TDD 加固的 proof gap；
-Desktop query 收紧与 bounded-work cap 暂保持 conditional。
+v43 已交付独立 `EvidenceAuditPreview`。v44 已完成 baseline/threat-model、input
+decision matrix、CLI operation isolation hardening 和全量发布验证；Desktop query
+收紧与 bounded-work cap 暂保持 conditional，v45 将继续用 benchmark 评估。
 
 ## v43 baseline
 
@@ -27,19 +27,32 @@ Desktop query 收紧与 bounded-work cap 暂保持 conditional。
 
 ### Task 1：安全评审与可重复证据
 
-- [ ] 检查 core/CLI/Desktop parity。
-- [ ] 仅为已决定的边界写 RED tests。
-- [x] 初步决策已形成：CLI operation isolation 为 GO；Desktop query tightening 与 bounded-work cap 为 CONDITIONAL。
+- [x] 检查 core/CLI/Desktop parity，并记录 CLI precedence proof gap。
+- [x] 仅为已决定的边界写 RED tests；旧实现先在 CLI competing-operation test 失败。补充
+  CLI/Desktop malformed-memory generic-error regression。
+- [x] 决策已形成：CLI operation isolation 为 GO；Desktop query tightening 与 bounded-work cap 为 CONDITIONAL。
 
 ### Task 2：最小兼容性加固（条件执行）
 
-- [ ] 仅在 proof gap 明确时实现。
-- [ ] 否则保持 design-only 并记录理由。
+- [x] 在明确 proof gap 上实现 CLI preview-exclusive validation，拒绝 provider/MCP/
+  workspace/session operation 组合。
+- [x] Desktop query tightening 与 bounded-work cap 保持 design-only，并记录理由。
+- [x] 聚焦回归：CLI 118/118、Desktop 74/74；v1 export 与 core 118/118 保持通过。
 
 ### Task 3：验证与发布
 
-- [ ] 全量门禁和边界 review。
-- [ ] CHANGELOG、发布提交和 v45 计划。
+- [x] 全量门禁和边界 review：TypeScript workspace 612/612，release-gate contract
+  9/9，Rust unit/doc 46/46，real-Rust integration 10/10；report/structure/diff
+  check 通过。
+- [x] CHANGELOG、发布提交和 v45 计划。
+
+## v44 结论
+
+- [x] CLI preview 在 provider/MCP/workspace/session operation 之前做显式 exclusive
+  validation；competing-operation regression 通过。
+- [x] 损坏 memory 的 CLI/Desktop preview 错误保持 generic metadata-only。
+- [x] Desktop unknown/duplicate/empty query 与 oversized projection 不做未经证明的
+  tightening；均记录为 CONDITIONAL/design-only。
 
 ## 设计原则
 

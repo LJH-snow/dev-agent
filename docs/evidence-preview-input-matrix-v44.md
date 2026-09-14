@@ -13,12 +13,12 @@ rollback 或 Undo 权限。
 | CLI preview + `--export-evidence` | 已拒绝 | **GO / preserve** | v43 test |
 | CLI preview + `--cleanup-evidence` | 已拒绝 | **GO / preserve** | v43 implementation |
 | CLI preview + `--audit-max-*` | parser 拒绝，limits 只属于 full export | **GO / preserve** | v43 test |
-| CLI preview + `--once` | 目前可能依赖 branch precedence 得到 preview | **GO / reject explicitly** | v44 TDD |
-| CLI preview + `--index` | 目前可能先访问 workspace | **GO / reject explicitly** | v44 TDD |
-| CLI preview + `--session-delete` / `--session-rename` / `--compact` / `--reset-memory` | 可能先读写或删除 session | **GO / reject explicitly** | v44 TDD |
-| CLI preview + `--mcp-server` / `--tools` / `--doctor` / `--check-rust` | 可能先启动 MCP、执行检查或 runtime | **GO / reject explicitly** | v44 TDD |
-| CLI preview + `--metadata` / `--session-list` | 可能读取不同 metadata surface | **GO / reject explicitly** | v44 TDD |
-| CLI preview + `--approval` / `--rust-executor` | 对 preview 无意义，可能影响执行配置 | **GO / reject explicitly** | v44 TDD |
+| CLI preview + `--once` | 入口显式拒绝 | **GO / implemented** | v44 RED/GREEN test |
+| CLI preview + `--index` | 入口显式拒绝 | **GO / implemented** | v44 RED/GREEN test |
+| CLI preview + `--session-delete` / `--session-rename` / `--compact` / `--reset-memory` | 入口显式拒绝 | **GO / implemented** | v44 RED/GREEN test |
+| CLI preview + `--mcp-server` / `--tools` / `--doctor` / `--check-rust` | 入口显式拒绝 | **GO / implemented** | v44 RED/GREEN test |
+| CLI preview + `--metadata` / `--session-list` | 入口显式拒绝 | **GO / implemented** | v44 RED/GREEN test |
+| CLI preview + `--approval` / `--rust-executor` | 入口显式拒绝 | **GO / implemented** | v44 RED/GREEN test |
 | Desktop preview + standard filters | `get()` first value；空值按未提供处理 | **CONDITIONAL / preserve** | compatibility review required before tightening |
 | Desktop preview + unknown query | 当前忽略 | **CONDITIONAL / preserve** | no response leak; typo policy deferred |
 | Desktop preview + `maxValidations` / `maxChangeSets` / `maxFiles` / `maxBytes` | 已拒绝 | **GO / preserve** | v43 focused test |

@@ -89,6 +89,28 @@ const version = "0.1.0";
 const defaultSystemPrompt =
   "You are dev-agent, a coding agent. Use tools when they help answer the user.";
 
+/** Flags that would turn a preview invocation into another operation. */
+const PREVIEW_EXCLUSIVE_FLAGS = [
+  "--version",
+  "-v",
+  "--tools",
+  "--metadata",
+  "--session-list",
+  "--cleanup-evidence",
+  "--export-evidence",
+  "--doctor",
+  "--mcp-server",
+  "--reset-memory",
+  "--compact",
+  "--session-delete",
+  "--session-rename",
+  "--index",
+  "--rust-executor",
+  "--check-rust",
+  "--approval",
+  "--once",
+] as const;
+
 /**
  * How many values each flag consumes.
  *
@@ -180,11 +202,31 @@ export function validateCliArgs(args: readonly string[]): string | undefined {
   return undefined;
 }
 
+function validatePreviewCliCombination(
+  args: readonly string[],
+  previewEvidence: boolean
+): string | undefined {
+  if (!previewEvidence) {
+    return undefined;
+  }
+  const conflictingFlag = PREVIEW_EXCLUSIVE_FLAGS.find((flag) => args.includes(flag));
+  return conflictingFlag === undefined
+    ? undefined
+    : `--preview-evidence cannot be combined with ${conflictingFlag}`;
+}
+
 export async function main(argv: string[]): Promise<void> {
   const args = argv.slice(2);
   const argError = validateCliArgs(args);
   if (argError) {
     console.error(argError);
+    process.exitCode = 1;
+    return;
+  }
+  const previewEvidence = args.includes("--preview-evidence");
+  const previewCombinationError = validatePreviewCliCombination(args, previewEvidence);
+  if (previewCombinationError) {
+    console.error(previewCombinationError);
     process.exitCode = 1;
     return;
   }
@@ -213,7 +255,6 @@ export async function main(argv: string[]): Promise<void> {
   const jsonOutput = args.includes("--json");
   const cleanupEvidence = args.includes("--cleanup-evidence");
   const exportEvidence = args.includes("--export-evidence");
-  const previewEvidence = args.includes("--preview-evidence");
   const cleanupOptionsResult = parseCliEvidenceCleanupOptions(args, cleanupEvidence);
   if ("error" in cleanupOptionsResult) {
     console.error(cleanupOptionsResult.error);

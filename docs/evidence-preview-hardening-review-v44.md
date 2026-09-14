@@ -2,7 +2,7 @@
 
 **评审日期：2026-09-14**
 
-**状态：进行中；Task 0 完成，Task 1 进入 TDD。**
+**状态：进行中；Task 0 完成，CLI operation isolation 已实现并进入回归验证。**
 
 ## Scope
 
@@ -52,10 +52,11 @@ server、tools、metadata、session-list、compact 等操作分支之后。仅�
 `--session-delete` 组合时，另一个操作可能先执行；preview 与 `--once` 虽然不会
 执行 provider，但会被当成一个含义不清的组合。
 
-**决定：**在 CLI 入口增加显式 preview-exclusive operation validation，并在任何
-provider、MCP、workspace 或 session mutation 之前拒绝不兼容操作。只保留
-`--session`、三个 evidence filters、`--json`/输出相关无副作用选项和 preview 本身。
-该改动不改变 v1 export。
+**决定/实现：**在 CLI 入口增加显式 preview-exclusive operation validation，并在任何
+provider、MCP、workspace 或 session mutation 之前拒绝不兼容操作。当前只保留
+`--session`、三个 evidence filters、`--json`/`--no-stream` 等无副作用输出选项和
+preview 本身；`--once`、`--index`、session mutation、MCP/tools/doctor、Rust 检查、
+metadata/list/compact、approval 等组合均在入口拒绝。该改动不改变 v1 export。
 
 ### 2. Desktop unknown/duplicate/empty query semantics — CONDITIONAL / preserve for now
 
@@ -102,9 +103,10 @@ CLI preview 对失败只输出固定 `Evidence preview failed`；Desktop preview
 
 ## Next evidence required
 
-1. CLI operation-exclusive RED/GREEN tests，证明 preview 组合不会触发其他操作。
-2. 损坏 memory / 非法 path generic-error tests，证明 preview 不回显敏感数据。
-3. 一个跨 surface parity fixture，证明 filters、counts、file count 和 UTF-8 bytes
-   均由 core 语义决定。
+1. [x] CLI operation-exclusive RED/GREEN tests，证明 preview 组合不会触发其他操作。
+2. [x] 损坏 memory generic-error regression，证明 preview 不回显敏感数据；CLI 和 Desktop
+   focused suites 已覆盖。
+3. [x] core/CLI/Desktop parity review，证明 filters、counts、file count 和 UTF-8 bytes
+   均由 core 语义决定；未在宿主层复制 serializer。
 4. 如要处理 bounded work，先记录 benchmark 和 rejection design；没有证据就不改
    runtime。

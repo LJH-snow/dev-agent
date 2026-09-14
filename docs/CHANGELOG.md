@@ -1,5 +1,43 @@
 # Changelog
 
+## 2026-09-14 (Day plan v44: preview input isolation hardening)
+
+Executed `docs/day-plan-v44.md`. v44 reviewed preview input ambiguity and bounded-work
+risk, then implemented only the concrete CLI operation-isolation fix.
+
+### Added: explicit CLI preview exclusivity
+
+- `--preview-evidence` now rejects competing command operations before version, provider,
+  MCP, workspace, Rust, or session-mutation branches can run. This covers prompts,
+  indexing, cleanup/export, reset/compact, delete/rename, tools/metadata/list, doctor,
+  MCP server, Rust checks/configuration, and approval flags. Session selection, evidence
+  filters, and harmless output flags remain available.
+- The preview response and v1 export contracts are unchanged; no cursor, partial response,
+  schema v2, before-image, or recovery authority was added.
+
+### Review and regression evidence
+
+- CLI competing-operation tests cover 14 representative combinations and prove that the
+  selected memory file is unchanged; malformed-memory preview errors remain generic.
+- Desktop malformed-memory preview errors remain generic. Desktop unknown/duplicate/empty
+  query semantics are preserved for compatibility and remain a conditional follow-up.
+- Potentially large complete projection work is not silently capped or truncated. A bounded
+  work benchmark and any explicit rejection contract are deferred to v45.
+
+### Tests and release validation
+
+- Focused suites passed: agent-core **118/118**, CLI **118/118**, Desktop **74/74**.
+- Full `pnpm verify` passed: TypeScript workspace **612/612**, release-gate contract
+  **9/9**, Rust unit/doc **46/46**, real-Rust integration **10/10**.
+- Separate TypeScript/Rust gates, metadata-only report allowlist smoke, structure check, and
+  `git diff --check` passed.
+
+### Boundary
+
+No v1 export field changed. Desktop query tightening and preview bounded-work caps remain
+**CONDITIONAL** pending evidence. Pagination/schema v2 remain **CONDITIONAL** and
+before-image/cross-process Undo remains **NO-GO**.
+
 ## 2026-09-14 (Day plan v43: canonical audit preflight and read-only preview)
 
 Executed `docs/day-plan-v43.md`. v43 adds a separate metadata-only preview for

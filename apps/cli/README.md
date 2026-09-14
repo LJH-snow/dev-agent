@@ -56,7 +56,10 @@ Options:
   `serializedBytes`. It is for choosing a later export limit; it does not return
   evidence records, commands, paths, output/errors, file bytes, before-images,
   pagination fields, or recovery/execution authority. It cannot be combined with
-  `--export-evidence`, `--cleanup-evidence`, or `--audit-max-*` options.
+  `--export-evidence`, `--cleanup-evidence`, `--audit-max-*`, or another command
+  operation such as `--once`, `--index`, `--compact`, `--session-delete`,
+  `--session-rename`, `--reset-memory`, `--mcp-server`, `--tools`, `--doctor`,
+  or `--check-rust`.
 - `--compact <n>` - compact the selected session, keeping the `n` most recent turns
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary
