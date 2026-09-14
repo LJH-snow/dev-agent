@@ -39,6 +39,8 @@ test("documentation index points to the current source-of-truth documents", () =
     "docs/next-roadmap-plans-v62-plus.md",
     "docs/day-plan-v62.md",
     "docs/day-plan-v62-progress.md",
+    "docs/day-plan-v63.md",
+    "docs/day-plan-v63-progress.md",
     "docs/day-plan-v64.md",
     "docs/day-plan-v64-progress.md",
   ]) {
@@ -57,6 +59,8 @@ test("documentation index points to the current source-of-truth documents", () =
     "next-roadmap-plans-v62-plus.md",
     "day-plan-v62.md",
     "day-plan-v62-progress.md",
+    "day-plan-v63.md",
+    "day-plan-v63-progress.md",
     "day-plan-v64.md",
     "day-plan-v64-progress.md",
   ]) {

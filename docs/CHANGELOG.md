@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-14（v63：Executor mode metadata 开始）
+
+- 建立 `docs/day-plan-v63.md`、`docs/day-plan-v63-progress.md` 和 implementation plan，限定
+  v63 只增加 executor mode metadata，不改变执行、审批、policy、protobuf、session schema、
+  Windows backend 或 release matrix。
+- `@dev-agent/executor` 现在能显式表达 `local`、`sandboxed-macos`、`sandboxed-linux`、
+  `unsupported` 和 injected implementation 的 `unknown`；resolver 不启动子进程，也不读取
+  命令输出。
+- CLI doctor 的 human/JSON 输出加入 `executorMode`，并保持 Rust health check 的原有
+  warn/fail 语义；executor suite **51/51**、CLI suite **119/119** 已通过。
+- Desktop `/health` metadata 和最终 fixed/hosted gates 在 v63 完成后补充；本阶段不创建 tag 或
+  GitHub Release。
+
 ## 2026-09-14（v64：发布前 Release Candidate 审计完成）
 
 - 建立 `docs/day-plan-v64.md` 与 `docs/day-plan-v64-progress.md`，把 v64 限定为四个既有
