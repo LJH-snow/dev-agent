@@ -2,7 +2,8 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：Task 0 inventory 已完成；进入 threat model，暂不实现 Windows backend。**
+**当前状态：已完成；完成平台 inventory/threat model，结论为 Preserve current
+macOS/Linux implementation / NO-GO for Windows backend。**
 
 > v60 已完成 roadmap 编号归一化、文档 source-of-truth 导航和 hosted CI 复核。当前
 > `runtime/rust` 对 macOS (`sandbox-exec`) 与 Linux (`bwrap`) 提供 restricted execution，
@@ -57,29 +58,31 @@ negative tests；Task 1 只完成了初步 threat model，继续 feasibility 验
   记录在 `docs/windows-sandbox-feasibility-v61.md`。
 - [x] 初步评估候选 OS primitive 对 filesystem/network/cwd/resource/timeout/cancel 的覆盖，
   并将未证明部分标记为 proof gap；这不是实现授权。
-- [ ] 确认候选原语能在 CI 中生成可复现的 negative tests；没有证据的能力继续标记为 proof gap。
-- [ ] 确认 build toolchain、runner、artifact naming/checksum、签名/发布和用户安装边界，
-  不把静态 contract 当作 live sandbox proof。
+- [x] 评估候选原语能否在 CI 中生成可复现的 negative tests；当前无法确认，所有未证明能力
+  均保留为 proof gap。
+- [x] 评估 build toolchain、runner、artifact naming/checksum、签名/发布和用户安装边界；
+  当前没有足够 evidence，不把静态 contract 当作 live sandbox proof。
 
 ## Task 2：最小实现或 Preserve
 
-- [ ] 只有发现具体、可复现的 fail-open 或用户需求时，先写 RED contract，再做最小代码修复。
-- [ ] 如果当前 Unsupported 路径已经满足 fail-closed 目标，记录 Preserve/NO-GO，不新增
-  platform abstraction、模拟器或 speculative dependency。
+- [x] 没有发现具体、可复现的 fail-open 或明确用户需求，因此没有写 RED implementation
+  contract，也没有修改 runtime。
+- [x] 当前 Unsupported 路径满足 fail-closed 目标，记录 Preserve/NO-GO；不新增 platform
+  abstraction、模拟器或 speculative dependency。
 
 ## Task 3：验证、文档与下一阶段
 
-- [ ] 运行与本轮变更对应的 focused tests、fixed gate 和结构/diff checks。
-- [ ] 若进入实现，另建明确的 code plan，单独描述 API/schema、CI、release 和安全证据；若
-  不进入实现，更新 progress/CHANGELOG，保留 proof gap 和触发条件。
-- [ ] 不创建 Windows release tag、artifact 或 GitHub Release。
+- [x] 运行与本轮变更对应的 focused tests、fixed gate 和结构/diff checks。
+- [x] 没有进入实现；已更新 progress/CHANGELOG，保留 proof gap 和触发条件。
+- [x] 不创建 Windows release tag、artifact 或 GitHub Release。
 
 ## Acceptance checklist
 
-- [ ] 当前 macOS/Linux 支持与 Windows Unsupported 边界有代码和文档证据。
-- [ ] 没有无沙箱 fallback、隐式成功或把模拟测试误报为 Windows live coverage。
-- [ ] 所有进入实现的建议都有明确的 security primitive、runner、negative tests 和发布边界。
-- [ ] 没有在证据不足时扩大 runtime、依赖、schema 或 release authority。
+- [x] 当前 macOS/Linux 支持与 Windows Unsupported 边界有代码和文档证据。
+- [x] 没有无沙箱 fallback、隐式成功或把模拟测试误报为 Windows live coverage。
+- [x] 任何进入实现的建议都必须先具备明确的 security primitive、runner、negative tests 和
+  发布边界；本轮没有越过该门槛。
+- [x] 没有在证据不足时扩大 runtime、依赖、schema 或 release authority。
 
 ## Decision boundary
 

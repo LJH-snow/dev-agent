@@ -24,6 +24,20 @@
   安全原语、runner、负向测试和发布边界；在证据不足前保持当前 Unsupported/NO-GO，不新增
   无沙箱 fallback 或 Windows release target。
 
+## 2026-09-14（v61：Windows restricted execution feasibility）
+
+- 完成平台路径 inventory：macOS `sandbox-exec`、Linux `bwrap` 和其他平台
+  `RestrictedError::Unsupported` 的边界保持分离；显式配置的 TypeScript `LocalExecutor`
+  不被解释成 restricted backend fallback。
+- 在 `docs/windows-sandbox-feasibility-v61.md` 记录资产、攻击者能力、信任边界、候选原语
+  的限制和 filesystem/network/process/resource/timeout/cancel/stdio proof-gap matrix。
+- 结论为 **Preserve current macOS/Linux implementation / NO-GO for Windows backend**：没有
+  Windows runner、端到端 negative tests、完整 artifact/release evidence 或明确需求前，不
+  添加 Windows shim、release target、模拟 coverage 或无沙箱 fallback。
+- commit `17bfa7a` 的普通 CI run
+  [34815029965](https://github.com/LJH-snow/dev-agent/actions/runs/34815029965) 的 Rust、
+  TypeScript 和 macOS integration jobs 全部成功；documentation contract **2/2**。
+
 ## 2026-09-14（v56：首个 hosted macOS CI run 的失败证据与最小修复）
 
 - 观察到首个 GitHub-hosted `macos-15` run：Ubuntu Rust job 暴露 Linux-only 测试缺少

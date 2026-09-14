@@ -2,13 +2,13 @@
 
 > 最后更新：2026-09-14
 
-> v60 已完成并通过 hosted CI。v61 已完成 Task 0 inventory，并完成 Task 1 的初步 threat
-> model/primitive feasibility notes；尚未修改 runtime、公开 schema、CI 或 release workflow，
-> 默认保留 macOS/Linux 支持和其他平台的 Unsupported fail-closed 行为。
+> v61 已完成。v60 已通过 hosted CI；v61 完成平台 inventory、初步 threat model 和 feasibility
+> decision，未修改 runtime、公开 schema、CI 或 release workflow，最终保留 macOS/Linux 支持
+> 和其他平台的 Unsupported fail-closed 行为。
 
 ## 当前状态
 
-**Task 1 preliminary / release feasibility next.** 当前代码已经把 macOS `sandbox-exec`、Linux `bwrap`
+**Completed / Preserve current implementation / NO-GO for Windows backend.** 当前代码已经把 macOS `sandbox-exec`、Linux `bwrap`
 和其他平台 `Unsupported` 分开；release matrix 只覆盖 macOS/Linux。Windows backend 需要
 先证明安全原语、runner、负向测试和发布边界，不能由“本地命令能运行”推导出 restricted
 execution 已成立。
@@ -47,6 +47,11 @@ execution 已成立。
   Windows backend。
 - [x] 明确 fail-closed 约束：不把 `LocalExecutor` 作为 restricted fallback，不新增
   Windows release target，不把模拟环境当作 live evidence。
+- [x] 没有发现 fail-open 或明确用户需求；因此不写 Windows RED implementation contract，
+  维持 Preserve/NO-GO。
+- [x] focused documentation contract **2/2**；commit `17bfa7a` 的普通 CI run
+  [34815029965](https://github.com/LJH-snow/dev-agent/actions/runs/34815029965) 的 Rust、
+  TypeScript 和 macOS integration jobs 全部成功。
 
 ## 待完成
 
@@ -55,12 +60,20 @@ execution 已成立。
   模式与 restricted execution 失败。
 - [x] 建立 Windows 资产/边界 threat model，列出 filesystem、network、cwd、resource、
   timeout/cancel 和可观测性 proof gaps。
-- [ ] 根据证据选择 Preserve/NO-GO，或建立独立的 Windows 实现计划；没有 trigger 时不扩大
-  runtime、依赖、schema 或 release authority。
+- [x] 根据证据选择 Preserve/NO-GO：当前没有 Windows runner、primitive、negative tests、
+  端到端 evidence 或 release 需求，因此保留 Unsupported，不扩大 runtime、依赖、schema
+  或 release authority。
 
-## 下一步
+## 最终决策
 
-1. 评估是否能获得 Windows runner、可审计 primitive 和可复现 negative-test fixture，不写
-   Windows compatibility shim。
-2. 只有发现具体 fail-open 或真实用户需求，才进入 RED contract；否则收束为 Preserve/NO-GO。
-3. 保持 v60 的 roadmap/documentation contract 与普通 CI 证据不变。
+**Preserve current macOS/Linux implementation / NO-GO for Windows backend.** v61 的目标是
+判断是否具备实现条件，而不是承诺 Windows 支持。若未来出现稳定 runner、可审计 primitive、
+完整 negative tests 和明确发布需求，再另建 code plan；在此之前 `Unsupported` 是正确的
+安全结果。
+
+## 下一阶段触发条件
+
+1. 出现真实 Windows 用户需求或可维护者明确的 target commitment。
+2. 能获得稳定 Windows runner、可审计安全 primitive、negative-test fixture 和完整 release
+   boundary evidence。
+3. 满足前两项后，另建独立 code plan；否则不写 Windows compatibility shim。
