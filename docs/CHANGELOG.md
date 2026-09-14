@@ -35,6 +35,35 @@ Complete the v50 release push, then use `docs/day-plan-v51.md` to decide whether
 viewport/screen-reader items have enough evidence for a minimal follow-up or should be recorded as
 Preserve/NO-GO.
 
+## 2026-09-14 (Day plan v51: Desktop viewport 与 assistive-tech 验证)
+
+Completed the v51 QA review from `docs/day-plan-v51.md`. The available in-app browser can provide
+DOM/accessibility snapshots, screenshots, keyboard actions, and console health, but its current
+capability list does not provide a viewport override or real screen-reader announcement output.
+
+### Decision: Preserve / deferred
+
+- Desktop/default viewport smoke found no reproducible overflow, focus loss, ARIA error, stale
+  session result, or sensitive-field leak. Evidence success/error/stale/session-switch behavior
+  remains covered by the v49/v50 served-HTML and browser checks.
+- No browser/DOM dependency was added and no CSS or runtime behavior was changed speculatively.
+  Narrow-window screenshots and actual screen-reader announcements are explicitly deferred rather
+  than inferred from the default window.
+- The v51 decision matrix and harness boundary are recorded in
+  `docs/desktop-viewport-qa-v51.md`; ARIA/status/usage/counts/bytes remain presentation hints, not
+  execution, validation, recovery, rollback, or Undo authority.
+
+### Validation
+
+- Existing post-v50 focused/full gates, report smoke, structure check, inline script check, and
+  `git diff --check` remained green; v51 itself added no runtime code.
+
+### Next boundary
+
+v52 is recorded in `docs/day-plan-v52.md` and should start only from a concrete viewport harness,
+real assistive-technology feedback, reproducible narrow-window interaction issue, or another
+explicit Desktop UX trigger. Otherwise keep the preview/integrity surface frozen.
+
 ## 2026-09-14 (Day plan v49: Desktop evidence preview 可发现性与只读 UX)
 
 Executed `docs/day-plan-v49.md`. v49 closes the Desktop discoverability gap for the existing
