@@ -2,11 +2,12 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：第二个 hosted run 已确认生产 binary 构建缺口；显式 build 修复已完成，等待下一次 run。**
+**当前状态：第三个 hosted run 已确认 executor dist 构建缺口；显式 package build 修复已完成，等待下一次 run。**
 
 > 本计划承接 `docs/day-plan-v55.md`。v55 已在本地完成 macOS integration job、fail-closed prerequisite checks 和 fixed integration
-> entrypoint；首个 run（34806937694）和第二个 run（34807975071）已提供失败证据，但没有提供
-> live integration 成功证据。v56 继续只基于远端日志推进，不把本地 contract 当作 CI 成功证明。
+> entrypoint；首个 run（34806937694）、第二个 run（34807975071）和第三个 run（34808369664）
+> 均提供了失败证据，但没有提供 live integration 成功证据。v56 继续只基于远端日志推进，
+> 不把本地 contract 当作 CI 成功证明。
 
 ## Goal
 
@@ -30,6 +31,8 @@ runner image 缺少 `sandbox-exec`、Python fixture 或 Rust binary 而静默 sk
   时缺少 `cancel` 参数。
 - [x] 读取第二个 run：Ubuntu Rust/TypeScript 和 macOS Rust gate 通过；macOS binary
   prerequisite 失败，`sandbox-exec`、Python 和 integration 尚未执行。
+- [x] 读取第三个 run：Rust/TypeScript、production binary 和三个 host prerequisites 均通过；
+  integration 在 executor TypeScript compile 阶段失败。
 - [ ] 读取下一次 run 的 Node integration summary，确认 10 个 integration tests 没有
   unexpected skip。
 
@@ -40,7 +43,9 @@ runner image 缺少 `sandbox-exec`、Python fixture 或 Rust binary 而静默 sk
   可观测性与执行顺序。
 - [x] 根据第二个 hosted log 确认 `cargo test` 不会保证生产 binary artifact，加入显式
   `cargo build --bin dev-agent-executor`，不改变 fail-closed 语义。
-- [x] 复跑 focused workflow contract 和本地 Rust checks；本地 macOS integration 仍保持
+- [x] 根据第三个 hosted log 确认 integration 需要 executor `dist` artifact，加入显式
+  `pnpm --filter @dev-agent/executor build`，不改变固定 integration entrypoint。
+- [x] 复跑 focused workflow contract 和本地 Rust/package checks；本地 macOS integration 仍保持
   10/10。
 
 ## Task 2：成功分支

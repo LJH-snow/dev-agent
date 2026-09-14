@@ -34,9 +34,11 @@ CI 之前只运行 TypeScript 与 Ubuntu Rust jobs。fixed local gate 虽然包�
   prerequisite step 失败，integration 未执行。
 - [x] 第二个 run（34807975071）确认 Ubuntu/TypeScript 与 macOS Rust gate 通过，但 production
   binary prerequisite 失败；后续已转入显式 `cargo build` 修复。
+- [x] 第三个 run（34808369664）确认 production binary 与三个 host prerequisites 通过，但
+  executor `dist` artifact 缺失导致 integration compile failure；后续已转入 package build 修复。
 - [x] 已将失败定位与后续兼容性处理转入 `docs/day-plan-v56.md`。
-- [ ] 下一次 run 必须确认 production binary、`/usr/bin/sandbox-exec`、Python fixture 和 live
-  suite 的真实状态。
+- [ ] 下一次 run 必须确认 production binary、`/usr/bin/sandbox-exec`、Python fixture、executor
+  `dist` 和 live suite 的真实状态。
 
 ## 发布状态
 

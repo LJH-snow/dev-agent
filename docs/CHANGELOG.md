@@ -11,6 +11,9 @@
   让下一次 hosted failure 能定位到具体 capability；release-gate contract 保持 **12/12**。
 - 第二个 hosted run（34807975071）确认 `cargo test` 不会保证 production binary artifact；新增
   `cargo build --bin dev-agent-executor`，放在 Rust gate 之后、binary check 之前。
+- 第三个 hosted run（34808369664）确认 host prerequisites 已通过，但 integration 缺少
+  `packages/executor/dist`；新增 executor package build，放在 prerequisites 之后、integration
+  之前。
 - v55 的远端 live integration evidence 暂不关闭；下一阶段只接受 hosted runner 上真实
   `10/10`、无 unexpected skip 的证据。
 

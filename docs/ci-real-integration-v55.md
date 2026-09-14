@@ -99,3 +99,26 @@ Rust，但 `cargo test` 不负责把生产 binary 放到
 下一次 hosted run 必须同时证明 production binary、三个 macOS prerequisite steps 均通过，
 以及 `pnpm verify:integration` 真实输出 **10/10 且无 unexpected skip**。在此之前不切换
 runner image、不放宽检查、不修改 runtime/API/schema。
+
+## Third hosted run evidence（v56 follow-up）
+
+第三个 run 为 [34808369664](https://github.com/LJH-snow/dev-agent/actions/runs/34808369664)，
+对应 commit `3b660fb324c807d9eeaf957cb433067fee232571`。这次 Rust/TypeScript jobs、显式 Rust
+binary build、binary check、`sandbox-exec` check 和 Python check 均通过；integration 在
+TypeScript test compilation 阶段失败，报错为找不到 `../dist/index.js` 与
+`../dist/local-executor.js`。
+
+这确认了第二个 workflow artifact contract 缺口：real integration test 不是只依赖 Rust
+production binary，也依赖 `packages/executor/dist/`。此前 macOS job 只运行 Rust gate 和
+integration，未在该 job 内建立 executor package 的 `dist` artifact；本地 `pnpm verify:integration`
+之所以通过，是因为先前完整 gate 已经留下了该构建产物。
+
+## v56 minimum follow-up（第三轮）
+
+- 在 macOS host prerequisites 通过后、`pnpm verify:integration` 之前显式运行
+  `pnpm --filter @dev-agent/executor build`。
+- 用 release-gate contract 锁定 package build 位于 Python prerequisite 之后、integration 之前，
+  继续保留 fail-closed host checks 与固定 integration entrypoint。
+- 下一次 hosted run 必须证明 Rust/TypeScript、production binary、三个 host prerequisites、
+  executor package build 均通过，并得到真实 `pnpm verify:integration` **10/10、无 unexpected
+  skip**。

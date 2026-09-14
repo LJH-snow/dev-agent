@@ -139,5 +139,9 @@ jobs:
       - name: Check Python network fixture prerequisite
         run: python3 -c "import socket"
 
+      # The integration test compiles against the executor package's dist artifacts.
+      - name: Build executor package
+        run: pnpm --filter @dev-agent/executor build
+
       - name: Real Rust integration gate
         run: pnpm verify:integration
