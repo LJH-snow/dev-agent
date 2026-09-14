@@ -77,3 +77,6 @@ execution 已成立。
 2. 能获得稳定 Windows runner、可审计安全 primitive、negative-test fixture 和完整 release
    boundary evidence。
 3. 满足前两项后，另建独立 code plan；否则不写 Windows compatibility shim。
+
+下一阶段的候选方向已集中记录在
+`docs/next-roadmap-plans-v62-plus.md`，当前推荐先执行 Linux `bwrap` hosted live integration。

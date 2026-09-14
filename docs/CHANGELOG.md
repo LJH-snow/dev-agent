@@ -38,6 +38,14 @@
   [34815029965](https://github.com/LJH-snow/dev-agent/actions/runs/34815029965) 的 Rust、
   TypeScript 和 macOS integration jobs 全部成功；documentation contract **2/2**。
 
+## 2026-09-14（后续路线图：v62+）
+
+- 新增 `docs/next-roadmap-plans-v62-plus.md`，集中记录后续候选方向：优先补齐 Linux
+  `bwrap` hosted live integration，其后按真实需求考虑 executor mode 显式化、release
+  candidate readiness 和 Desktop 产品化 UX。
+- Windows backend 继续保持 NO-GO；文档明确了进入实现前必须具备的 runner、security
+  primitive、negative tests、端到端 evidence 和 release boundary。
+
 ## 2026-09-14（v56：首个 hosted macOS CI run 的失败证据与最小修复）
 
 - 观察到首个 GitHub-hosted `macos-15` run：Ubuntu Rust job 暴露 Linux-only 测试缺少

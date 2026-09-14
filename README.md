@@ -156,7 +156,9 @@ For the project map and decision history, use the [documentation index](docs/REA
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md), and the
 current [v61 plan](docs/day-plan-v61.md) with its [progress record](docs/day-plan-v61-progress.md).
 The completed [v60 normalization plan](docs/day-plan-v60.md) and [progress record](docs/day-plan-v60-progress.md)
-remain the source for the roadmap/documentation boundary.
+remain the source for the roadmap/documentation boundary. The consolidated
+[next-phase plan](docs/next-roadmap-plans-v62-plus.md) records the recommended v62 Linux
+integration work and later conditional options.
 
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup
 - Agent loop, context, and in-memory memory in `@dev-agent/agent-core`

@@ -36,6 +36,7 @@ test("documentation index points to the current source-of-truth documents", () =
     "docs/day-plan-v60-progress.md",
     "docs/day-plan-v61.md",
     "docs/day-plan-v61-progress.md",
+    "docs/next-roadmap-plans-v62-plus.md",
   ]) {
     assert.ok(readme.includes(link), `README should link to ${link}`);
   }
@@ -49,6 +50,7 @@ test("documentation index points to the current source-of-truth documents", () =
     "day-plan-v61.md",
     "day-plan-v61-progress.md",
     "windows-sandbox-feasibility-v61.md",
+    "next-roadmap-plans-v62-plus.md",
   ]) {
     assert.ok(docsReadme.includes(`](${link})`), `docs/README.md should link to ${link}`);
   }

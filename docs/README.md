@@ -15,7 +15,9 @@ Architecture, design decisions, and module documentation.
   records its status. The completed [v60 plan](day-plan-v60.md) and
   [v60 progress](day-plan-v60-progress.md) remain the source for the roadmap/documentation
   normalization decision. The supporting [Windows feasibility notes](windows-sandbox-feasibility-v61.md)
-  contain the preliminary threat model and proof-gap matrix.
+  contain the preliminary threat model and proof-gap matrix. The consolidated
+  [next-phase plan](next-roadmap-plans-v62-plus.md) records v62–v65 options and their
+  trigger conditions.
 - **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
   fixed contract tests remain authoritative for CI and release behavior; prose here
   is navigation and explanation, not a replacement for those checks.
