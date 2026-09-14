@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**当前状态：已建立；先做平台能力 inventory 和 threat model，暂不实现 Windows backend。**
+**当前状态：Task 0 inventory 已完成；进入 threat model，暂不实现 Windows backend。**
 
 > v60 已完成 roadmap 编号归一化、文档 source-of-truth 导航和 hosted CI 复核。当前
 > `runtime/rust` 对 macOS (`sandbox-exec`) 与 Linux (`bwrap`) 提供 restricted execution，
@@ -35,11 +35,21 @@ fail-closed、不能静默降级到 LocalExecutor”的边界写清楚：
 
 ## Task 0：平台路径 inventory
 
-- [ ] 列出 `RestrictedExecutor`、`SandboxExecutor`、stdio binary 错误映射和 CLI/desktop
+- [x] 列出 `RestrictedExecutor`、`SandboxExecutor`、stdio binary 错误映射和 CLI/desktop
   展示路径中的所有 platform-specific 分支。
-- [ ] 对照 `.github/workflows/ci.yml`、`.github/workflows/release.yml`、README、architecture
+- [x] 对照 `.github/workflows/ci.yml`、`.github/workflows/release.yml`、README、architecture
   和当前 day-plan，确认支持声明没有比可执行 evidence 更宽。
-- [ ] 确认 Windows 上不能意外走无沙箱 LocalExecutor，也不能把 Unsupported 转成成功结果。
+- [x] 确认 Windows 上不能意外走无沙箱 LocalExecutor，也不能把 Unsupported 转成成功结果。
+
+**Task 0 result：** `RestrictedExecutor::run` 在 macOS/Linux 分别构造
+`sandbox-exec`/`bwrap`，其他平台直接返回 `RestrictedError::Unsupported`；
+`SandboxExecutor` 将其映射为 `SandboxError::Unsupported`，stdio binary 输出
+`SANDBOX_UNSUPPORTED`。TypeScript 的 `createExecutor()` 在未配置 Rust binary 时明确选择
+普通 `LocalExecutor`，CLI `--doctor` 也明确提示“without the sandbox”；这是一条显式的
+非 restricted 模式，不是 Windows 上从 restricted path 静默降级。CI/release matrix 和
+README/architecture/runtime README 都只声明 macOS/Linux active，没有 Windows target 或
+live evidence。当前 proof gap 是缺少 Windows runner、OS primitive 评估和 target-specific
+negative tests，进入 Task 1 前不改实现。
 
 ## Task 1：threat model 与 feasibility gate
 
