@@ -2,34 +2,57 @@
 
 > 最后更新：2026-09-14
 
-> v59 已完成并推送；v60 已建立，当前先盘点 README/文档中的 roadmap 与近期状态冲突，
-> 不改变 runtime、API 或 release authority。
+> v60 的文档 inventory 和最小修复已完成。根 README Roadmap 现在包含 71 个唯一、连续的
+> 编号；新增的 bounded documentation contract 已接入 fixed TypeScript gate。本地全量验证
+> 已通过，当前剩余工作是提交推送和 hosted CI 复核。
 
-## 当前状态
+## 最终变更
 
-根 README 的 Roadmap 在第 63 项后重新出现 47–54 的编号，近期 v-plan 与 CHANGELOG 也有
-历史条目混排现象。v60 要先区分“历史事实保留”与“当前导航清晰”这两个目标，再决定是否
-做最小文档修复；不为文档问题新增 generator 或依赖。
+- 根 `README.md` 的 Roadmap 原先为 `1..63, 47..54`；保留八条历史描述，仅将后八项重编号
+  为 `64..71`。
+- 根 README 增加 documentation index、architecture、CHANGELOG、v60 plan/progress 的导航。
+- `docs/README.md` 明确四类 source of truth：用户状态/roadmap、architecture、时间顺序的
+  CHANGELOG、当前 day-plan/progress；同时声明 workflow、fixed gate 和 contract tests 是
+  可执行行为的权威来源。
+- 新增 `tests/documentation-contract.test.mjs`，覆盖 roadmap 连续编号和 source-of-truth
+  导航链接；没有新增依赖，也没有触碰 runtime、protobuf、公开 schema 或 release workflow。
+- `scripts/release-gate.mjs` 将 documentation contract 作为固定 TypeScript gate step；既有
+  gate order/metadata contract 同步更新。
 
 ## 已完成
 
-- [x] 建立 `docs/day-plan-v60.md`，限定为 roadmap/documentation source-of-truth inventory。
-- [x] 保留 v59 的 packaging smoke decision、v58 release contract 和 v56 hosted evidence。
+- [x] 盘点 README Roadmap：共 71 项，重复编号为 47–54，原位置在第 63 项之后。
+- [x] 对照 v56–v59 的 CI、release、sandbox、artifact 和 Preserve/NO-GO 记录；未发现需要
+  改写执行行为的状态冲突。
+- [x] RED-to-GREEN documentation contract：实现前能复现重复编号失败，修复后
+  documentation contract **2/2**。
+- [x] release-gate contract 更新后 focused suite **12/12**。
+- [x] 完成 roadmap 最小重编号与文档导航修复，保留历史事实和发布边界。
+- [x] `pnpm verify`：workspace **614/614**、preview **8/8**、release-gate contract **12/12**、
+  release-workflow contract **2/2**、documentation contract **2/2**、Rust unit/doc **46/46**、
+  real-Rust integration **10/10**。
+- [x] `node scripts/check.mjs`、`node --check scripts/release-gate.mjs`、CI workflow YAML parse、
+  `git diff --check`。
 
 ## 待完成
 
-- [ ] 盘点 roadmap 全部编号、重复项和近期计划链接。
-- [ ] 对照 README、docs/README、architecture、CHANGELOG 与 progress 文档。
-- [ ] 写 bounded 文档 contract 或审计清单，并做最小修复（若有具体 mismatch）。
-- [ ] 验证、更新 CHANGELOG，并决定是否建立 v61。
+- [x] `pnpm verify`：workspace、preview、release-gate/release-workflow/documentation contracts、
+  Rust 和 real-Rust integration 全部保持绿色。
+- [x] `node scripts/check.mjs`、`node --check scripts/release-gate.mjs`、workflow YAML parse、
+  `git diff --check`。
+- [x] 更新 `docs/CHANGELOG.md`，准备推送普通分支变更；不触发 tag release。
+- [ ] 记录 hosted CI run；若没有新的具体需求，再建立一个保持窄范围的 v61 入口。
 
 ## 当前决策
 
-**Inventory first / preserve history.** 先确认文档冲突的范围；不删除历史条目、不改变
-功能状态、不把文档清理扩张成新的自动化系统。
+**GO for unique roadmap numbering and bounded documentation navigation; Preserve history.**
+本轮没有删除 CHANGELOG、day-plan、NO-GO/deferred 决策，也没有新增 generator 或依赖。
+README/architecture/day-plan/CHANGELOG 继续分别承担摘要、结构、过程决策和时间记录职责；
+CI/release workflow 与 fixed contract tests 继续承担可执行行为权威。
 
 ## 下一步
 
-1. 读取 README Roadmap 的完整编号和对应描述。
-2. 找到近期 day-plan/decision 文档的 source-of-truth 关系。
-3. 只在审计证明必要时修正导航或编号。
+1. 完成本地 fixed gate 与文档/结构检查。
+2. 更新 CHANGELOG，提交推送并观察普通 CI。
+3. 根据 hosted evidence 决定是否建立 `docs/day-plan-v61.md` 和对应 progress；没有新
+   trigger 时，不扩张为 speculative 功能开发。

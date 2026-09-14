@@ -2,6 +2,21 @@
 
 Architecture, design decisions, and module documentation.
 
+## Documentation source of truth
+
+- **User-facing status and roadmap:** the [root README](../README.md) is the concise
+  entry point; its Roadmap uses one unique sequential number per completed item.
+- **Architecture and module boundaries:** [architecture.md](architecture.md) is the
+  reference for system responsibilities and runtime boundaries.
+- **Chronological decisions and evidence:** [CHANGELOG.md](CHANGELOG.md) preserves
+  dated implementation notes, validation evidence, and Preserve/NO-GO decisions.
+- **Current execution plan:** [day-plan-v60.md](day-plan-v60.md) defines the bounded
+  documentation scope, while [day-plan-v60-progress.md](day-plan-v60-progress.md)
+  records the inventory, decisions, and verification results.
+- **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
+  fixed contract tests remain authoritative for CI and release behavior; prose here
+  is navigation and explanation, not a replacement for those checks.
+
 ## Architecture Overview
 
 `dev-agent` is a pnpm workspace monorepo. TypeScript packages form the agent
@@ -84,7 +99,8 @@ fresh checkout, run `pnpm build`, `cargo build --bin dev-agent-executor` from
 both explicitly and checks the live sandbox prerequisites before invoking it.
 Non-macOS workspaces intentionally report macOS-only cases as skipped. Gate
 selection does not accept arbitrary commands, model output, or persisted evidence
-as execution input.
+as execution input. The TypeScript phase also runs the preview, fixed-gate,
+release-workflow, and bounded documentation contracts in a fixed order.
 
 When CI or a local pre-push check needs a machine-readable result, append
 `--report` to a phase entry point:

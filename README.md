@@ -152,6 +152,10 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 
 ## Current Status
 
+For the project map and decision history, use the [documentation index](docs/README.md),
+[architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md), and the
+current [v60 plan](docs/day-plan-v60.md) with its [progress record](docs/day-plan-v60-progress.md).
+
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup
 - Agent loop, context, and in-memory memory in `@dev-agent/agent-core`
 - File-backed memory in `@dev-agent/agent-core` for cross-run conversation history,
@@ -445,8 +449,8 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 - CI runs the fixed TypeScript/Rust gates plus a pinned macOS integration job; the latter checks
   the live sandbox prerequisites before running real Rust integration.
 - Test suite: the fixed release gate passes the TypeScript workspace, preview-contract,
-  release-gate contract, Rust unit/doc, and real-binary integration suites; dated validation
-  counts are recorded in the release notes
+  release-gate, release-workflow, and documentation contracts, Rust unit/doc, and real-binary
+  integration suites; dated validation counts are recorded in the release notes
 
 ### Rust runtime progress
 
@@ -525,11 +529,11 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 61. ~~End-to-end MCP tool cancellation and progress propagation~~ (done)
 62. ~~MCP-aware diff review, approval, and rollback~~ (done)
 63. ~~Change-set-derived automated verification~~ (done)
-47. ~~Literal-pattern guard for the `search` tool's query~~ (done)
-48. ~~Approval coverage for git command-execution options~~ (done)
-49. ~~Clear `--metadata` error for a corrupt session file~~ (done)
-50. ~~MCP `reconnect()` resets its closed state~~ (done)
-51. ~~Always-allow keys keep two leading arguments~~ (done)
-52. ~~Tool errors are reported back to the model instead of ending the run~~ (done)
-53. ~~Readable `code-search` errors for out-of-range positions~~ (done)
-54. ~~MCP tool failures preserve server-provided error details~~ (done)
+64. ~~Literal-pattern guard for the `search` tool's query~~ (done)
+65. ~~Approval coverage for git command-execution options~~ (done)
+66. ~~Clear `--metadata` error for a corrupt session file~~ (done)
+67. ~~MCP `reconnect()` resets its closed state~~ (done)
+68. ~~Always-allow keys keep two leading arguments~~ (done)
+69. ~~Tool errors are reported back to the model instead of ending the run~~ (done)
+70. ~~Readable `code-search` errors for out-of-range positions~~ (done)
+71. ~~MCP tool failures preserve server-provided error details~~ (done)

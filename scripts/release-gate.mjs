@@ -48,6 +48,12 @@ const FIXED_STEPS = Object.freeze({
       "node",
       ["--test", "tests/release-workflow.test.mjs"]
     ),
+    step(
+      "documentation-contract",
+      "documentation contract tests",
+      "node",
+      ["--test", "tests/documentation-contract.test.mjs"]
+    ),
   ]),
   rust: Object.freeze([
     step("rust-fmt", "Rust format check", "cargo", ["fmt", "--check"], rustRoot),

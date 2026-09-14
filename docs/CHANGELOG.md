@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-14（v60：roadmap 编号与文档 source of truth）
+
+- 盘点根 README Roadmap 共 71 项，确认第 63 项之后原本错误地重复使用 47–54；保留原有
+  历史描述，将它们最小重编号为 64–71。
+- 根 README 与 `docs/README.md` 增加有限的文档导航，明确 README、architecture、day-plan/
+  progress、CHANGELOG 与 workflow/fixed contract tests 各自承担的 source-of-truth 边界。
+- 新增 `tests/documentation-contract.test.mjs`，覆盖 roadmap 唯一连续编号和当前文档导航；
+  documentation contract 为 **2/2**，并作为 fixed TypeScript gate 的独立 fail-fast step。
+- 本地 `pnpm verify` 通过：workspace **614/614**、preview **8/8**、release-gate contract
+  **12/12**、release-workflow contract **2/2**、documentation contract **2/2**、Rust unit/doc
+  **46/46**、real-Rust integration **10/10**。structure check、脚本语法、CI workflow YAML
+  parse 和 `git diff --check` 也通过。
+- 本轮没有改变 Rust/TypeScript runtime、公开 schema、release workflow 或发布权限；不创建 tag、
+  不上传 artifact、不发布 GitHub Release。hosted CI evidence 在推送后补记。
+
 ## 2026-09-14（v56：首个 hosted macOS CI run 的失败证据与最小修复）
 
 - 观察到首个 GitHub-hosted `macos-15` run：Ubuntu Rust job 暴露 Linux-only 测试缺少
