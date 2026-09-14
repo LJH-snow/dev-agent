@@ -1,5 +1,52 @@
 # Changelog
 
+## 2026-09-14 (Day plan v43: canonical audit preflight and read-only preview)
+
+Executed `docs/day-plan-v43.md`. v43 adds a separate metadata-only preview for
+selecting v41 rejection-only export limits while keeping the v1 audit export
+complete, stable, and backward-compatible.
+
+### Added: agent-core canonical preview contract
+
+- `serializeEvidenceAuditExport()` is the single canonical serializer used by both
+  v1 byte-limit enforcement and preview sizing. It serializes the stable allowlist
+  projection and measures UTF-8 bytes with `Buffer.byteLength(..., "utf8")`.
+- `EvidenceAuditPreview` has its own schema version and fixed fields:
+  `schemaVersion`, `sessionId`, `generatedAt`, `validationCount`,
+  `changeSetCount`, `fileCount`, and `serializedBytes`. It never contains the v1
+  evidence records or internal validation/change-set fields.
+- Preview builds the complete filtered projection before reporting its size; it does
+  not truncate, paginate, add cursors, negotiate schema v2, or authorize restore/Undo.
+
+### Added: CLI/Desktop read-only mapping
+
+- CLI `--preview-evidence` accepts the standard evidence filters and prints only the
+  fixed preview metadata without initializing a provider or MCP server. It rejects
+  audit-limit flags and cannot be combined with export or cleanup.
+- Desktop `GET /api/sessions/<id>/evidence/preview` accepts the standard evidence
+  filters and rejects audit-limit query values because limits apply only to the full
+  `/evidence` endpoint. Unknown sessions return `404`; preview errors are generic
+  and do not echo persisted evidence details.
+- Both surfaces read only the selected session memory, preserve the memory file, and
+  exclude commands, paths, output/errors, file contents, before-images, and working
+  directory values from the response.
+
+### Tests and release validation
+
+- Focused suites passed: agent-core **118/118**, CLI **116/116**, Desktop **73/73**.
+- Full `pnpm verify` passed: TypeScript workspace **609/609**, release-gate contract
+  **9/9**, Rust unit/doc **46/46**, real-Rust integration **10/10**.
+- Separate `pnpm verify:typescript` and `pnpm verify:rust` gates passed. Structure
+  check, `git diff --check`, metadata-only report smoke, and sensitive-field/side-effect
+  review passed.
+
+### Boundary
+
+No v1 export field changed. No `partial`, `hasMore`, `nextCursor`, pagination, schema v2,
+before-image, patch, diff, file bytes, historical command, or cross-process Undo behavior
+was added. v42 pagination/schema v2 remain **CONDITIONAL** and before-image/cross-process
+Undo remains **NO-GO**.
+
 ## 2026-09-14 (Day plan v42: pagination/schema v2 and before-image review)
 
 Executed `docs/day-plan-v42.md` as a design-only review. v42 freezes the v1

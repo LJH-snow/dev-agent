@@ -34,7 +34,7 @@ v42 的 pagination/schema v2 评审结论为 **CONDITIONAL**，before-image 七�
 
 - [x] 完整 TypeScript/Rust/integration gate：TypeScript workspace 609/609，release-gate contract 9/9，Rust unit/doc 46/46，real-Rust integration 10/10。
 - [x] report smoke、结构/diff check、敏感字段和 side-effect review；`--typescript --report` 顶层/step allowlist 通过。
-- [ ] CHANGELOG、发布提交和 v44 后续计划。
+- [x] CHANGELOG、发布提交和 v44 后续计划已完成/创建。
 
 ## 设计原则
 

@@ -82,17 +82,17 @@ rollback 输入。
 
 - [x] **Step 1: 运行完整 `pnpm verify`，并单独复跑 TypeScript/Rust gate。** 记录所有通过计数：TypeScript workspace 609/609，release-gate contract 9/9，Rust unit/doc 46/46，real-Rust integration 10/10。
 - [x] **Step 2: 运行 report smoke、结构检查、diff check 和人工边界 review。** 确认 preview 不含敏感字段且不产生 workspace side effect；report allowlist smoke 通过。
-- [ ] **Step 3: 更新 CHANGELOG、v43 progress 和使用文档。** 记录 preview schema 与 v1 compatibility。
-- [ ] **Step 4: Commit and push。** 发布实现和文档到 `origin/main`。
-- [ ] **Step 5: 新建 v44 计划。** 继续评估安全、可观测性或独立的兼容性小步，不默认进入 pagination/schema v2/before-image。
+- [x] **Step 3: 更新 CHANGELOG、v43 progress 和使用文档。** 记录 preview schema 与 v1 compatibility。
+- [x] **Step 4: Commit and push。** 发布实现和文档到 `origin/main`。
+- [x] **Step 5: 新建 v44 计划。** 继续评估安全、可观测性或独立的兼容性小步，不默认进入 pagination/schema v2/before-image。
 
 ## Acceptance Checklist
 
-- [ ] canonical serializer 与 v1 byte budget 使用同一 UTF-8 bytes。
-- [ ] preview 只包含固定 metadata allowlist，不返回 evidence 内容或敏感字段。
-- [ ] CLI/Desktop preview 不初始化 provider、不进入 chat queue、不访问 workspace，session 隔离保持不变。
-- [ ] v1 export 成功 schema 不增加 preview/partial/pagination/cursor 字段。
-- [ ] pagination/schema v2 仍为 CONDITIONAL；before-image/cross-process Undo 仍为 NO-GO。
+- [x] canonical serializer 与 v1 byte budget 使用同一 UTF-8 bytes。
+- [x] preview 只包含固定 metadata allowlist，不返回 evidence 内容或敏感字段。
+- [x] CLI/Desktop preview 不初始化 provider、不进入 chat queue、不访问 workspace，session 隔离保持不变。
+- [x] v1 export 成功 schema 不增加 preview/partial/pagination/cursor 字段。
+- [x] pagination/schema v2 仍为 CONDITIONAL；before-image/cross-process Undo 仍为 NO-GO。
 
 ## v43 完成后的后续路线
 
