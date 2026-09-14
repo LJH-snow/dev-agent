@@ -1,10 +1,18 @@
 import { spawn } from "node:child_process";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const rustRoot = join(repositoryRoot, "runtime", "rust");
 const packageManager = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+
+export const GATE_REPORT_SCHEMA_VERSION = 1;
+export const RELEASE_GATE_REPORT_PATH = join(
+  repositoryRoot,
+  ".dev-agent",
+  "release-gate-report.json"
+);
 
 export const GATE_MODES = Object.freeze([
   "typescript",
@@ -61,6 +69,7 @@ export function parseGateArgs(args) {
   const selected = new Set();
   let help = false;
   let all = false;
+  let report = false;
 
   for (const arg of args) {
     if (arg === "--help" || arg === "-h") {
@@ -69,6 +78,10 @@ export function parseGateArgs(args) {
     }
     if (arg === "--all") {
       all = true;
+      continue;
+    }
+    if (arg === "--report") {
+      report = true;
       continue;
     }
     if (arg === "--typescript" || arg === "--rust" || arg === "--integration") {
@@ -88,6 +101,7 @@ export function parseGateArgs(args) {
 
   return Object.freeze({
     help,
+    report,
     modes: Object.freeze(help ? [] : modes),
   });
 }
@@ -100,24 +114,88 @@ export function createGatePlan(selection) {
     if (!steps) {
       throw new Error(`unknown gate mode: ${mode}`);
     }
-    plan.push(...steps);
+    plan.push(...steps.map((currentStep) => Object.freeze({ ...currentStep, mode })));
   }
   return Object.freeze([...plan]);
 }
 
-export async function runGatePlan(plan, execute = runStep) {
+export async function runGatePlan(plan, execute = runStep, options = {}) {
+  const result = await runGatePlanWithReport(plan, execute, options);
+  return result.exitCode;
+}
+
+export async function runGatePlanWithReport(plan, execute = runStep, options = {}) {
+  const now = options.now ?? Date.now;
+  const logger = options.logger ?? console;
+  const generatedAt = options.generatedAt ?? new Date(now()).toISOString();
+  const results = [];
+  const modes = GATE_MODES.filter((mode) =>
+    plan.some((currentStep) => currentStep.mode === mode)
+  );
+
   for (const currentStep of plan) {
-    console.log(`\n=== ${currentStep.label} ===`);
+    logger.log(`\n=== ${currentStep.label} ===`);
+    const startedAtMs = now();
     const exitCode = await execute(currentStep);
+    const finishedAtMs = now();
+    const result = {
+      id: currentStep.id,
+      status: exitCode === 0 ? "passed" : "failed",
+      startedAt: new Date(startedAtMs).toISOString(),
+      finishedAt: new Date(finishedAtMs).toISOString(),
+      durationMs: Math.max(0, finishedAtMs - startedAtMs),
+      exitCode: exitCode ?? 1,
+    };
+    results.push(result);
     if (exitCode !== 0) {
-      console.error(
+      logger.error(
         `${currentStep.label} failed with exit code ${exitCode ?? 1}`
       );
-      return exitCode ?? 1;
+      return {
+        exitCode: exitCode ?? 1,
+        report: createGateReport(modes, results, generatedAt),
+      };
     }
   }
-  console.log("\n=== all selected gates passed ===");
-  return 0;
+  logger.log("\n=== all selected gates passed ===");
+  return {
+    exitCode: 0,
+    report: createGateReport(modes, results, generatedAt),
+  };
+}
+
+export function createGateReport(modes, results, generatedAt = new Date().toISOString()) {
+  const failedStep = results.find((result) => result.status === "failed");
+  return {
+    schemaVersion: GATE_REPORT_SCHEMA_VERSION,
+    generatedAt,
+    modes: [...modes],
+    status: failedStep ? "failed" : "passed",
+    ...(failedStep ? { failedStepId: failedStep.id } : {}),
+    steps: results.map((result) => ({
+      id: result.id,
+      status: result.status,
+      startedAt: result.startedAt,
+      finishedAt: result.finishedAt,
+      durationMs: result.durationMs,
+      exitCode: result.exitCode,
+    })),
+  };
+}
+
+export async function writeGateReport(report) {
+  await mkdir(dirname(RELEASE_GATE_REPORT_PATH), { recursive: true });
+  const tempPath = `${RELEASE_GATE_REPORT_PATH}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await writeFile(tempPath, `${JSON.stringify(report, null, 2)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+    });
+    await rename(tempPath, RELEASE_GATE_REPORT_PATH);
+  } catch (error) {
+    await rm(tempPath, { force: true });
+    throw error;
+  }
 }
 
 function runStep(currentStep) {
@@ -162,6 +240,7 @@ export function formatHelp() {
     "  --rust         cargo fmt, clippy, and Rust unit/doc tests",
     "  --integration  real Rust integration tests",
     "  --all          explicitly select the complete gate",
+    "  --report       write metadata-only results to .dev-agent/release-gate-report.json",
     "  --help         show this help",
   ].join("\n");
 }
@@ -182,7 +261,20 @@ async function main() {
     return;
   }
 
-  process.exitCode = await runGatePlan(createGatePlan(selection));
+  const result = await runGatePlanWithReport(createGatePlan(selection));
+  if (selection.report) {
+    try {
+      await writeGateReport(result.report);
+      console.log(`Report written to ${RELEASE_GATE_REPORT_PATH}`);
+    } catch (error) {
+      console.error(
+        `could not write release gate report: ${error instanceof Error ? error.message : String(error)}`
+      );
+      process.exitCode = result.exitCode === 0 ? 1 : result.exitCode;
+      return;
+    }
+  }
+  process.exitCode = result.exitCode;
 }
 
 const entrypoint = process.argv[1] ? resolve(process.argv[1]) : undefined;
