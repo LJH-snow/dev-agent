@@ -40,11 +40,22 @@ function decodeHealthCheckResponse(buf) {
   const result: any = {};
   if (healthCheckData) {
     offset = 0;
+    result.protocolVersion = 0;
     while (offset < healthCheckData.length) {
       const tag = healthCheckData[offset++];
       const field = tag >>> 3;
       const wireType = tag & 0x07;
-      if (wireType === 2) {
+      if (wireType === 0) {
+        let value = 0;
+        let shift = 0;
+        while (offset < healthCheckData.length) {
+          const byte = healthCheckData[offset++];
+          value |= (byte & 0x7f) << shift;
+          if ((byte & 0x80) === 0) break;
+          shift += 7;
+        }
+        if (field === 3) result.protocolVersion = value;
+      } else if (wireType === 2) {
         let len = 0;
         let shift = 0;
         while (offset < healthCheckData.length) {
@@ -65,10 +76,10 @@ function decodeHealthCheckResponse(buf) {
   return result;
 }
 
-function sendHealthCheck(): Promise<any> {
+function sendHealthCheck(env = process.env): Promise<any> {
   return new Promise((resolve, reject) => {
     const child = spawn("node", [mockBinary], {
-      env: process.env,
+      env,
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = Buffer.alloc(0);
@@ -90,6 +101,7 @@ function sendHealthCheck(): Promise<any> {
 test("health check returns runtime version and capabilities", async () => {
   const response = await sendHealthCheck();
   assert.equal(response.runtimeVersion, "0.0.0-mock");
+  assert.equal(response.protocolVersion, 1);
   assert.deepEqual(response.capabilities, ["run", "run_sandboxed"]);
 });
 
@@ -115,4 +127,13 @@ test("health check response has valid framing", async () => {
     child.stdin.end();
   });
   assert.equal(await result, true);
+});
+
+
+test("legacy health check responses default the missing protocol version to zero", async () => {
+  const response = await sendHealthCheck({
+    ...process.env,
+    MOCK_EXECUTOR_OMIT_PROTOCOL_VERSION: "1",
+  });
+  assert.equal(response.protocolVersion, 0);
 });

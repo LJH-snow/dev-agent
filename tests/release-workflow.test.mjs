@@ -103,7 +103,7 @@ test("release packaging and publish boundaries are fail-closed and tag-only", ()
   assert.match(buildJob, /dist\/dev-agent-executor-\$\{\{ matrix\.target \}\}\.tar\.gz\.sha256/);
   assert.match(buildJob, /if-no-files-found: error/);
 
-  assert.match(releaseJob, /needs: \[build, cli-package\]/);
+  assert.match(releaseJob, /needs: \[build, cli-package, manifest\]/);
   assert.match(releaseJob, /if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/'\)/);
   assert.match(releaseJob, /uses: actions\/download-artifact@v8/);
   assert.match(releaseJob, /merge-multiple: true/);
@@ -140,7 +140,55 @@ test("release workflow verifies and carries the npm CLI package without publishi
   assert.match(cliJob, /- name: Upload CLI package/);
   assert.match(cliJob, /pnpm --filter @agent_cli\/cli pack --pack-destination dist/);
   assert.match(cliJob, /path: dist\/agent_cli-cli-\*\.tgz/);
-  assert.match(releaseJob, /needs: \[build, cli-package\]/);
+  assert.match(releaseJob, /needs: \[build, cli-package, manifest\]/);
   assert.match(releaseJob, /agent_cli-cli-\*\.tgz/);
   assert.match(releaseJob, /dist\/\*\.tar\.gz dist\/\*\.sha256 dist\/\*\.tgz/);
+});
+
+
+test("manifest job aggregates the four build outputs and uploads the checksum-only contract", () => {
+  const manifestJob = sectionAfter("  manifest:\n", "  release:\n");
+
+  assert.match(manifestJob, /needs: build/);
+  assert.match(manifestJob, /actions\/download-artifact@v8/);
+  assert.match(manifestJob, /merge-multiple: true/);
+  assert.match(manifestJob, /build-runtime-manifest\.mjs/);
+  assert.match(manifestJob, /verify-release-version\.mjs/);
+  assert.match(manifestJob, /--tag/);
+  assert.match(manifestJob, /--repository/);
+  assert.match(manifestJob, /actions\/upload-artifact@v7/);
+  assert.match(manifestJob, /dev-agent-runtime-manifest\.json/);
+  assert.match(manifestJob, /checksum-only/i);
+});
+
+test("release allowlist and release assets include the runtime manifest", () => {
+  const releaseJob = sectionAfter("  release:\n");
+
+  assert.match(releaseJob, /needs: \[build, cli-package, manifest\]/);
+  assert.match(releaseJob, /dev-agent-runtime-manifest\.json/);
+  assert.match(releaseJob, /JSON\.parse|node .*dev-agent-runtime-manifest/);
+  assert.match(releaseJob, /gh release create/);
+  assert.match(releaseJob, /dist\/dev-agent-runtime-manifest\.json/);
+});
+
+test("manual dispatch can build and upload a manifest but can never publish", () => {
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /release_tag:/);
+  const releaseJob = sectionAfter("  release:\n");
+  assert.match(
+    releaseJob,
+    /if: github\.event_name == 'push' && startsWith\(github\.ref, 'refs\/tags\/'\)/
+  );
+  assert.doesNotMatch(releaseJob, /if: startsWith\(github\.ref, 'refs\/tags\/'\)/);
+});
+
+test("manifest and build jobs keep read-only contents permissions", () => {
+  const jobsStart = workflow.indexOf("jobs:\n");
+  const workflowPermissions = workflow.slice(0, jobsStart);
+  const buildJob = sectionAfter("  build:\n", "  cli-package:\n");
+  const manifestJob = sectionAfter("  manifest:\n", "  release:\n");
+
+  assert.match(workflowPermissions, /permissions:\n\s+contents: read/);
+  assert.doesNotMatch(buildJob, /contents: write/);
+  assert.doesNotMatch(manifestJob, /contents: write/);
 });

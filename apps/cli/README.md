@@ -36,7 +36,25 @@ dev-agent --session other-project --once "list files in the current directory"
 dev-agent init --cwd /path/to/other-project --gitignore
 dev-agent config validate --cwd /path/to/other-project --project-state --json
 dev-agent config show --cwd /path/to/other-project --project-state --json
+# Explicitly inspect and install the managed Rust runtime when sandboxing is needed
+dev-agent runtime status --runtime-version 0.2.0 --json
+dev-agent runtime install --runtime-version 0.2.0
+dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
+# Provider-free CI workflows
+dev-agent review --cwd /path/to/other-project --json --non-interactive
+dev-agent plan --cwd /path/to/other-project --changes-file changes.json --plan-file plan.json --session ci --json --non-interactive
+dev-agent apply --cwd /path/to/other-project --changes-file changes.json --plan-file plan.json --session ci --json --non-interactive
 ```
+
+The managed runtime is opt-in. `runtime status`, `runtime path`, and `runtime remove`
+only inspect or change the local cache; they do not load a model provider or connect to
+MCP. `runtime install` downloads only the fixed release manifest and the matching
+macOS/Linux artifact, verifies its SHA-256 and runtime protocol/version, then installs
+atomically under `~/.dev-agent/runtimes/<version>/<target>`. It never runs from npm
+`postinstall` and never silently falls back to `local`. Windows, Linux musl, and unknown
+platforms return a structured unsupported result.
+
+`dev-agent review` is read-only and provider-free. It reports changed-file metadata from the working tree; use `--base <ref> --head <ref>` for a Git range. `dev-agent plan` accepts a JSON array of filesystem mutation inputs, writes only a metadata-only plan document, and never changes the workspace. `dev-agent apply` requires both the plan document and the original `--changes-file`; it rechecks the workspace preimage before applying. Use `--event-stream` for newline-delimited, versioned, redacted workflow events. CI workflows use stable exit codes: 0 success, 2 findings, 3 policy denied, 4 config error, 5 runtime unavailable, 6 execution error, and 64 usage error.
 
 `dev-agent init` creates `.dev-agent/config.json` and `.dev-agent/sessions`
 without overwriting existing files. Add `--gitignore` only when you want the
@@ -109,6 +127,10 @@ Options:
   or `--check-rust`.
 - `--compact <n>` - compact the selected session, keeping the `n` most recent turns
 - `--no-stream` - print only the final answer instead of streaming tokens
+- `--executor <local|rust-sandbox>` - explicitly select the local executor or an already-installed managed Rust runtime; `rust-sandbox` fails if no matching runtime is installed
+- `--runtime-version <version>` - select the managed Rust runtime release when used with `--executor rust-sandbox`
+- `--runtime-dir <path>` - override the managed runtime cache directory for the current invocation
+- `runtime status|install|path|remove` - inspect, install, locate, or remove a managed Rust runtime; add `--target <target>` to scope lifecycle operations
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary
 - `--check-rust [path]` - send a health check to the Rust runtime binary
 - `--mcp-server` - run as an MCP server over stdio instead of starting the agent,
@@ -199,6 +221,22 @@ fields are redacted and the diagnostic body is bounded before it reaches agent m
 error document.
 `NO_COLOR=1` disables color ANSI in rich TTY mode, but cursor movement and clear-line
 sequences required for live redraw remain.
+### Managed Rust runtime
+
+The npm package contains the JavaScript CLI only. Runtime installation is explicit:
+
+```bash
+dev-agent runtime status --runtime-version 0.2.0 --json
+dev-agent runtime install --runtime-version 0.2.0 --json
+dev-agent runtime path --runtime-version 0.2.0 --json
+dev-agent runtime remove --runtime-version 0.2.0 --json
+```
+
+A normal run remains local unless `--executor rust-sandbox` or the legacy
+`DEV_AGENT_RUST_BINARY`/`--rust-executor` path selects the Rust executor. Managed
+runtime selection is fail-closed: an absent, corrupt, unsupported, or protocol/version
+mismatched runtime stops before the model provider or tools start.
+
 Human-readable agent runs print the resolved runtime before the first prompt or
 `--once` request:
 
@@ -385,6 +423,8 @@ Configuration is read from the environment:
 - `DEV_AGENT_RUST_BINARY` - path to the `dev-agent-executor` binary. Applies to
   real tool runs as well as `--check-rust`, so setting it routes every tool
   command through the Rust sandbox. `--rust-executor <path>` wins over it.
+- `DEV_AGENT_RUNTIME_DIR` - optional cache root for managed runtime releases;
+  `--runtime-dir <path>` wins over it.
 - `DEV_AGENT_MCP_SERVERS` - optional JSON array of MCP stdio server configs
 
 Each entry may also set `timeoutMs` (per-request MCP timeout, default 30000);

@@ -1,0 +1,26 @@
+{
+  "name": "@dev-agent/runtime-manager",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Secure distribution and cache management for the dev-agent executor runtime.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test --test-concurrency=1 tests-dist/*.test.js",
+    "clean": "rm -rf dist tests-dist"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.9.0"
+  }
+}

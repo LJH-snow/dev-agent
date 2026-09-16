@@ -137,6 +137,9 @@ importers:
       '@dev-agent/model':
         specifier: workspace:*
         version: link:../../packages/model
+      '@dev-agent/runtime-manager':
+        specifier: workspace:*
+        version: link:../../packages/runtime-manager
       '@dev-agent/tools':
         specifier: workspace:*
         version: link:../../packages/tools
@@ -218,6 +221,15 @@ importers:
         version: 5.9.3
 
   packages/model:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.4.1
+      typescript:
+        specifier: ^5.9.0
+        version: 5.9.3
+
+  packages/runtime-manager:
     devDependencies:
       '@types/node':
         specifier: ^26.0.0

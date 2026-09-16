@@ -68,7 +68,20 @@ cd /path/to/other-project
 dev-agent --version
 dev-agent --cwd /path/to/other-project --index . --json
 dev-agent --session other-project --once "list files in the current directory"
+dev-agent runtime status --runtime-version 0.2.0 --json
+dev-agent runtime install --runtime-version 0.2.0
+dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
+# Provider-free CI workflows
+dev-agent review --cwd /path/to/other-project --json --non-interactive
+dev-agent plan --cwd /path/to/other-project --changes-file changes.json --plan-file plan.json --session ci --json --non-interactive
+dev-agent apply --cwd /path/to/other-project --changes-file changes.json --plan-file plan.json --session ci --json --non-interactive
 ```
+
+Managed Rust runtime installation is explicit and fail-closed. The npm package does
+not download binaries in `postinstall`; `runtime install` verifies the fixed release
+manifest, target, SHA-256, and runtime protocol/version before atomically populating
+`~/.dev-agent/runtimes/<version>/<target>`. Unsupported platforms and missing/corrupt
+cache entries are reported without starting a provider or silently falling back to local.
 
 The package is built as a self-contained JavaScript CLI bundle and is verified by
 `pnpm package:smoke` in a clean npm prefix. As of September 16, 2026,
@@ -192,15 +205,18 @@ cargo build --release --bin dev-agent-executor
 ```
 
 Point the CLI or desktop app at it with `--rust-executor <path>` or
-`DEV_AGENT_RUST_BINARY`.
+`DEV_AGENT_RUST_BINARY`. For released binaries, the CLI can instead use
+`dev-agent runtime install --runtime-version 0.2.0` followed by
+`--executor rust-sandbox`; `runtime status|path|remove` provide cache diagnostics
+without starting a model provider.
 
 ## Current Status
 
 The active post-release implementation sequence is tracked in
-[docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). The first
-phase adds project initialization and configuration validation; later phases cover managed Rust
-runtime distribution, CI/review mode, provider/model budgets, larger code indexes, MCP management,
-and Desktop execution-state UX.
+[docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). Project initialization,
+managed Rust runtime distribution, and the review/plan/apply CI foundation are implemented in the
+workspace; the next phases cover provider/model budgets, larger code indexes, MCP management, and
+Desktop execution-state UX.
 
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),

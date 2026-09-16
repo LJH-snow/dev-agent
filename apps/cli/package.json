@@ -37,7 +37,8 @@
     "@dev-agent/model": "workspace:*",
     "@dev-agent/tools": "workspace:*",
     "@types/node": "^26.0.0",
-    "esbuild": "^0.28.2"
+    "esbuild": "^0.28.2",
+    "@dev-agent/runtime-manager": "workspace:*"
   },
   "engines": {
     "node": ">=20"

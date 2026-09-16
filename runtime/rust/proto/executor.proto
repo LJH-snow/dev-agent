@@ -82,6 +82,8 @@ message HealthCheck {}
 message HealthCheckResult {
   string runtime_version = 1;
   repeated string capabilities = 2;
+  // Contract version for the runtime identity and health-check payload.
+  uint32 protocol_version = 3;
 }
 
 message ErrorResult {

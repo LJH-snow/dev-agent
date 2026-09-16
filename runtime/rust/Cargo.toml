@@ -1,6 +1,6 @@
 [package]
 name = "dev-agent-runtime"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Rust runtime for dev-agent: sandboxed command execution and process isolation."
 

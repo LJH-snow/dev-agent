@@ -21,6 +21,7 @@ type SharedWriter = Arc<Mutex<io::Stdout>>;
 /// Overridable with `DEV_AGENT_MAX_CONCURRENT`; the TypeScript side keeps its
 /// own cap, so the effective limit is the smaller of the two.
 const DEFAULT_MAX_CONCURRENT: usize = 5;
+const RUST_PROTOCOL_VERSION: u32 = 1;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -123,14 +124,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(RequestPayload::HealthCheck(_)) => {
                 let response = Response {
                     request_id,
-                    payload: Some(ResponsePayload::HealthCheckResult(HealthCheckResult {
-                        runtime_version: env!("CARGO_PKG_VERSION").to_string(),
-                        capabilities: vec![
-                            "run".to_string(),
-                            "run_sandboxed".to_string(),
-                            "cancel".to_string(),
-                        ],
-                    })),
+                    payload: Some(ResponsePayload::HealthCheckResult(health_check_result())),
                 };
                 let mut out = writer.lock().await;
                 write_response_with_limit(&mut *out, &response, max_frame_bytes)?;
@@ -145,6 +139,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+fn health_check_result() -> HealthCheckResult {
+    HealthCheckResult {
+        runtime_version: env!("CARGO_PKG_VERSION").to_string(),
+        protocol_version: RUST_PROTOCOL_VERSION,
+        capabilities: vec![
+            "run".to_string(),
+            "run_sandboxed".to_string(),
+            "cancel".to_string(),
+        ],
+    }
 }
 
 async fn register_cancel(
@@ -283,5 +289,12 @@ mod tests {
             }
             other => panic!("unexpected payload: {other:?}"),
         }
+    }
+
+    #[test]
+    fn health_check_contract_uses_v020_and_protocol_one() {
+        let result = health_check_result();
+        assert_eq!(result.runtime_version, "0.2.0");
+        assert_eq!(result.protocol_version, 1);
     }
 }

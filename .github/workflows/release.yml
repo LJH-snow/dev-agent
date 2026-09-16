@@ -4,6 +4,16 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to validate for this non-publishing run
+        required: true
+        default: v0.2.0
+        type: string
+      release_version:
+        description: Optional release version assertion without the v prefix
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -166,9 +176,73 @@ jobs:
           path: dist/agent_cli-cli-*.tgz
           if-no-files-found: error
 
+  manifest:
+    name: Build runtime manifest (checksum-only)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download runtime build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # The v0.2.0 release contract is checksum-only; no signature is asserted
+      # or fabricated until a signing key and verification policy exist.
+      - name: Verify release version source
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--tag "${RELEASE_TAG}")
+          if [ -n "${RELEASE_VERSION}" ]; then
+            args+=(--version "${RELEASE_VERSION}")
+          fi
+          node scripts/verify-release-version.mjs "${args[@]}"
+
+      - name: Build checksum-only runtime manifest
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            --input-dir dist
+            --output dist/dev-agent-runtime-manifest.json
+            --tag "${RELEASE_TAG}"
+            --repository "${REPOSITORY}"
+          )
+          if [ -n "${RELEASE_VERSION}" ]; then
+            args+=(--version "${RELEASE_VERSION}")
+          fi
+          node scripts/build-runtime-manifest.mjs "${args[@]}"
+          test -s dist/dev-agent-runtime-manifest.json
+
+      - name: Upload runtime manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-agent-runtime-manifest
+          path: dist/dev-agent-runtime-manifest.json
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: [build, cli-package]
+    needs: [build, cli-package, manifest]
     permissions:
       contents: write
     # Only tag pushes publish; manual runs just verify the builds.
@@ -191,6 +265,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -s dist/dev-agent-runtime-manifest.json
+          node -e 'JSON.parse(require("node:fs").readFileSync("dist/dev-agent-runtime-manifest.json", "utf8"))'
           tag_sha="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
           test "${tag_sha}" = "${GITHUB_SHA}"
 
@@ -219,7 +295,7 @@ jobs:
               dev-agent-executor-aarch64-apple-darwin.tar.gz|dev-agent-executor-aarch64-apple-darwin.tar.gz.sha256|\
               dev-agent-executor-x86_64-apple-darwin.tar.gz|dev-agent-executor-x86_64-apple-darwin.tar.gz.sha256|\
               dev-agent-executor-x86_64-unknown-linux-gnu.tar.gz|dev-agent-executor-x86_64-unknown-linux-gnu.tar.gz.sha256|\
-              dev-agent-executor-aarch64-unknown-linux-gnu.tar.gz|dev-agent-executor-aarch64-unknown-linux-gnu.tar.gz.sha256|agent_cli-cli-*.tgz) ;;
+              dev-agent-executor-aarch64-unknown-linux-gnu.tar.gz|dev-agent-executor-aarch64-unknown-linux-gnu.tar.gz.sha256|agent_cli-cli-*.tgz|dev-agent-runtime-manifest.json) ;;
               *) echo "unexpected release artifact: ${artifact}" >&2; exit 1 ;;
             esac
           done
@@ -231,7 +307,7 @@ jobs:
           set -euo pipefail
           ls -l dist
           gh release create "${GITHUB_REF_NAME}" \
-            dist/*.tar.gz dist/*.sha256 dist/*.tgz \
+            dist/*.tar.gz dist/*.sha256 dist/*.tgz dist/dev-agent-runtime-manifest.json \
             --verify-tag \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes

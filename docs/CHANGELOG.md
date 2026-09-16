@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-16（v0.2.x workflow and CI foundation）
+
+- 新增 provider-free `review`、metadata-only `plan/apply` 和跨 CLI 进程的 change-set 重建校验。
+- 新增非交互 fail-closed、稳定退出码和脱敏 JSON event stream；不等待 stdin，不回显 secret、命令输出或绝对路径。
+- 新增预算追踪基础模块，支持 turn、token、duration 和 output 字符数边界。
+- CLI 完整测试通过 272/272；本轮未发布 npm、未创建 tag、未推送远程。
+
+## 2026-09-16（v0.2.0 runtime distribution workspace implementation）
+
+- 新增私有 workspace package `@dev-agent/runtime-manager`，固定支持 macOS ARM64/x64 和
+  Linux ARM64/x64 glibc；平台不支持、manifest 不合法、校验和错误和 runtime 缺失均 fail-closed。
+- 新增 `dev-agent runtime status|install|path|remove`，以及显式的
+  `--executor local|rust-sandbox`、`--runtime-version`、`--runtime-dir`；runtime lifecycle
+  命令不加载 provider/MCP，npm 包不通过 `postinstall` 下载 Rust binary。
+- release workflow 生成并上传固定的 `dev-agent-runtime-manifest.json`，逐个校验四个平台
+  archive、SHA-256 sidecar 和 archive allowlist；当前保持 checksum-only contract。
+- Rust runtime health contract 对齐 release `0.2.0` 与 protocol `1`，managed install 在落盘前
+  执行健康检查，随后使用完成标记和原子替换。
+- 本轮只完成工作区实现与验证，未创建 tag、推送、发布 npm 或 GitHub Release。
+
 ## Unreleased（v0.1.5 开发中）
 
 - 新增 `dev-agent init`，可幂等创建项目级 `.dev-agent/config.json` 和 sessions 目录，支持

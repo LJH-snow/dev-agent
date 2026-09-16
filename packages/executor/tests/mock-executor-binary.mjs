@@ -198,11 +198,14 @@ function encodeResponse(msg) {
     bytes = bytes.concat(encodeEmbedded(2, inner));
   }
   if (msg.healthCheckResult) {
-    // HealthCheckResult: runtime_version=1, capabilities=2
+    // HealthCheckResult: runtime_version=1, capabilities=2, protocol_version=3
     let inner = [];
     inner = inner.concat(encodeString(1, msg.healthCheckResult.runtimeVersion));
     for (const cap of msg.healthCheckResult.capabilities ?? []) {
       inner = inner.concat(encodeString(2, cap));
+    }
+    if (msg.healthCheckResult.protocolVersion !== undefined) {
+      inner = inner.concat(encodeVarintField(3, msg.healthCheckResult.protocolVersion));
     }
     bytes = bytes.concat(encodeEmbedded(3, inner));
   }
@@ -335,7 +338,15 @@ function handleRequest(encoded) {
     const run = envelope.payload.runSandboxed.run ?? { command: "" };
     response = { requestId, runResult: { stdout: `sandboxed:${run.command}`, stderr: "", exitCode: 0, timedOut: false } };
   } else if (envelope.payload?.healthCheck) {
-    response = { requestId, healthCheckResult: { runtimeVersion: "0.0.0-mock", capabilities: ["run", "run_sandboxed"] } };
+    response = {
+      requestId,
+      healthCheckResult: {
+        runtimeVersion: "0.0.0-mock",
+        capabilities: ["run", "run_sandboxed"],
+        protocolVersion:
+          process.env.MOCK_EXECUTOR_OMIT_PROTOCOL_VERSION === "1" ? undefined : 1,
+      },
+    };
   } else {
     response = { requestId, error: { message: "empty envelope", code: "INVALID_REQUEST" } };
   }

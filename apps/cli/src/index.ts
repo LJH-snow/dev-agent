@@ -84,6 +84,14 @@ import type { McpResourceLine, McpPromptLine } from "./mcp-system-prompt.js";
 import { printDoctorReport, probeRustBinary, runDoctor } from "./doctor.js";
 import { executeConfigCommand, formatConfigCommandResult } from "./config-command.js";
 import { initializeProject } from "./project-init.js";
+import {
+  executeRuntimeCommand,
+  formatRuntimeCommandResult,
+  resolveManagedRuntimeBinary,
+} from "./runtime-command.js";
+import { resolveExecutorSelection, type ExecutorPreference } from "./runtime-selection.js";
+import { executeWorkflowCommand } from "./workflow-command.js";
+import { createNonInteractiveController, EXIT_CODES } from "./non-interactive.js";
 import { indexDirectory } from "./index-command.js";
 import {
   createAnthropicProvider,
@@ -173,6 +181,16 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--config": "one",
   "--project-state": "none",
   "--rust-executor": "one",
+  "--executor": "one",
+  "--runtime-version": "one",
+  "--runtime-dir": "one",
+  "--target": "one",
+  "--base": "one",
+  "--head": "one",
+  "--changes-file": "one",
+  "--plan-file": "one",
+  "--non-interactive": "none",
+  "--event-stream": "none",
   "--approval": "one",
   "--session-rename": "two",
   "--compact": "optional",
@@ -188,7 +206,9 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
  */
 type ExplicitCliCommand =
   | { readonly kind: "init" }
-  | { readonly kind: "config"; readonly action: "validate" | "show" };
+  | { readonly kind: "config"; readonly action: "validate" | "show" }
+  | { readonly kind: "runtime"; readonly action: "status" | "install" | "path" | "remove" }
+  | { readonly kind: "workflow"; readonly action: "review" | "plan" | "apply" };
 
 function parseExplicitCliCommand(args: readonly string[]): ExplicitCliCommand | undefined {
   if (args[0] === "init") {
@@ -196,6 +216,15 @@ function parseExplicitCliCommand(args: readonly string[]): ExplicitCliCommand | 
   }
   if (args[0] === "config" && (args[1] === "validate" || args[1] === "show")) {
     return { kind: "config", action: args[1] };
+  }
+  if (
+    args[0] === "runtime" &&
+    (args[1] === "status" || args[1] === "install" || args[1] === "path" || args[1] === "remove")
+  ) {
+    return { kind: "runtime", action: args[1] };
+  }
+  if (args[0] === "review" || args[0] === "plan" || args[0] === "apply") {
+    return { kind: "workflow", action: args[0] };
   }
   return undefined;
 }
@@ -205,8 +234,11 @@ function explicitCommandPrefixLength(args: readonly string[]): number {
   if (command?.kind === "init") {
     return 1;
   }
-  if (command?.kind === "config") {
+  if (command?.kind === "config" || command?.kind === "runtime") {
     return 2;
+  }
+  if (command?.kind === "workflow") {
+    return 1;
   }
   return 0;
 }
@@ -275,6 +307,12 @@ function flagValue(args: readonly string[], flag: string): string | undefined {
   return index >= 0 ? args[index + 1] : undefined;
 }
 
+function parseExecutorPreference(value: string | undefined): ExecutorPreference | undefined {
+  if (value === undefined) return undefined;
+  if (value === "local" || value === "rust-sandbox") return value;
+  throw new Error("--executor must be one of: local, rust-sandbox.");
+}
+
 function validateExplicitCommandFlags(
   command: ExplicitCliCommand,
   args: readonly string[]
@@ -282,11 +320,25 @@ function validateExplicitCommandFlags(
   const allowed =
     command.kind === "init"
       ? new Set(["--cwd", "--project-state", "--gitignore", "--dry-run", "--json"])
-      : new Set(["--cwd", "--project-state", "--config", "--json"]);
+      : command.kind === "config"
+        ? new Set(["--cwd", "--project-state", "--config", "--json"])
+        : command.kind === "runtime"
+          ? new Set(["--runtime-version", "--runtime-dir", "--target", "--json"])
+          : command.action === "review"
+            ? new Set(["--cwd", "--base", "--head", "--json", "--non-interactive", "--event-stream"])
+            : new Set(["--cwd", "--session", "--changes-file", "--plan-file", "--json", "--non-interactive", "--event-stream"]);
   const prefixLength = explicitCommandPrefixLength(args);
   for (const arg of args.slice(prefixLength)) {
     if (arg.startsWith("-") && !allowed.has(arg)) {
-      return `${arg} is not supported by ${command.kind === "init" ? "init" : `config ${command.action}`}.`;
+      const commandName =
+        command.kind === "init"
+          ? "init"
+          : command.kind === "config"
+            ? `config ${command.action}`
+            : command.kind === "runtime"
+              ? `runtime ${command.action}`
+              : command.action;
+      return `${arg} is not supported by ${commandName}.`;
     }
   }
   return undefined;
@@ -312,6 +364,39 @@ async function runExplicitCliCommand(
   } catch (error) {
     emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
     process.exitCode = 1;
+    return;
+  }
+
+  if (command.kind === "runtime") {
+    const execution = await executeRuntimeCommand({ action: command.action, args });
+    const output = formatRuntimeCommandResult(execution, jsonOutput);
+    if (execution.exitCode === 0) {
+      console.log(output);
+    } else {
+      // JSON errors stay on stdout to preserve the CLI's existing --json
+      // contract; human-readable failures use stderr.
+      if (jsonOutput) console.log(output);
+      else console.error(output);
+      process.exitCode = execution.exitCode;
+    }
+    return;
+  }
+
+  if (command.kind === "workflow") {
+    const sessionValue = flagValue(args, "--session");
+    const sessionId = normalizeSessionId(sessionValue ?? "default");
+    const execution = await executeWorkflowCommand({
+      command: command.action,
+      args,
+      workingDirectory,
+      sessionId,
+      jsonOutput,
+      eventStream: args.includes("--event-stream"),
+    });
+    process.stdout.write(execution.output);
+    if (execution.exitCode !== EXIT_CODES.success) {
+      process.exitCode = execution.exitCode;
+    }
     return;
   }
 
@@ -402,14 +487,19 @@ export async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (args.includes("--version") || args.includes("-v")) {
-    console.log(`dev-agent ${version}`);
-    return;
-  }
-
   const explicitCommand = parseExplicitCliCommand(args);
   if (explicitCommand !== undefined) {
     await runExplicitCliCommand(explicitCommand, args, jsonOutput, jsonErrorOutput);
+    return;
+  }
+  if (args.includes("--event-stream")) {
+    emitCliError("--event-stream is supported only by review, plan, and apply.", jsonErrorOutput);
+    process.exitCode = EXIT_CODES.usage_error;
+    return;
+  }
+
+  if (args.includes("--version") || args.includes("-v")) {
+    console.log(`dev-agent ${version}`);
     return;
   }
 
@@ -430,6 +520,7 @@ export async function main(argv: string[]): Promise<void> {
   }
   const resetMemory = args.includes("--reset-memory");
   const noStream = args.includes("--no-stream");
+  const nonInteractive = args.includes("--non-interactive");
   const cleanupEvidence = args.includes("--cleanup-evidence");
   const cleanupOptionsResult = parseCliEvidenceCleanupOptions(args, cleanupEvidence);
   if ("error" in cleanupOptionsResult) {
@@ -521,6 +612,27 @@ export async function main(argv: string[]): Promise<void> {
     workingDirectory,
     projectState
   );
+  const executorIndex = args.indexOf("--executor");
+  const executorFlagValue = executorIndex >= 0 ? args[executorIndex + 1] : undefined;
+  let executorPreference: ExecutorPreference | undefined;
+  try {
+    executorPreference = parseExecutorPreference(executorFlagValue);
+  } catch (error) {
+    emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+  const hasManagedRuntimeFlag = ["--runtime-version", "--runtime-dir", "--target"].some((flag) =>
+    args.includes(flag)
+  );
+  if (hasManagedRuntimeFlag && executorPreference !== "rust-sandbox") {
+    emitCliError(
+      "--runtime-version, --runtime-dir, and --target require --executor rust-sandbox outside runtime commands.",
+      jsonErrorOutput
+    );
+    process.exitCode = 1;
+    return;
+  }
   const rustIndex = args.indexOf("--rust-executor");
   const rustFlag = rustIndex >= 0 ? args[rustIndex + 1] : undefined;
   if (rustIndex >= 0 && !rustFlag) {
@@ -533,9 +645,36 @@ export async function main(argv: string[]): Promise<void> {
   }
   const rustCheckIndex = args.indexOf("--check-rust");
   const rustCheckFlag = rustCheckIndex >= 0 ? args[rustCheckIndex + 1] : undefined;
+  if (executorPreference === "local" && args.includes("--check-rust")) {
+    emitCliError("--check-rust cannot be combined with --executor local.", jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
   // An explicit flag wins; otherwise DEV_AGENT_RUST_BINARY applies to real runs
-  // too, not just --check-rust.
-  const rustBinaryPath = resolveRustBinaryPath(rustFlag ?? rustCheckFlag);
+  // too, not just --check-rust. Managed runtime selection is explicit and
+  // fail-closed: it never installs or silently falls back to local execution.
+  const legacyRustBinaryPath = resolveRustBinaryPath(rustFlag ?? rustCheckFlag);
+  let rustBinaryPath: string | undefined;
+  try {
+    const managedRuntimeBinary =
+      executorPreference === "rust-sandbox" && legacyRustBinaryPath === undefined
+        ? await resolveManagedRuntimeBinary(args)
+        : undefined;
+    const selection = resolveExecutorSelection({
+      executor: executorPreference,
+      rustBinaryPath:
+        executorPreference === "local" && rustFlag === undefined ? undefined : legacyRustBinaryPath,
+      rustBinarySource:
+        rustFlag !== undefined ? "flag" : process.env.DEV_AGENT_RUST_BINARY ? "environment" : undefined,
+      runtimeBinary: managedRuntimeBinary,
+    });
+    rustBinaryPath = selection.mode === "rust-sandbox" ? selection.rustBinaryPath : undefined;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    emitCliError(message, jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
   if (args.includes("--check-rust")) {
     await checkRust(rustBinaryPath);
     return;
@@ -790,10 +929,53 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
 
+  const providerFreeCommand =
+    args.includes("--tools") ||
+    args.includes("--metadata") ||
+    args.includes("--session-list") ||
+    args.includes("--session-delete") ||
+    args.includes("--session-rename") ||
+    args.includes("--compact") ||
+    args.includes("--index") ||
+    args.includes("--doctor") ||
+    args.includes("--check-rust") ||
+    args.includes("--mcp-server") ||
+    args.includes("--cleanup-evidence") ||
+    args.includes("--export-evidence") ||
+    args.includes("--preview-evidence");
+  if (nonInteractive && oncePrompt === undefined && !providerFreeCommand) {
+    const decision = createNonInteractiveController({ interactive: false }).guard({ kind: "input" });
+    const payload = {
+      error: {
+        code: "needs_input",
+        reason: decision.allowed ? undefined : decision.reason,
+        message: "--non-interactive requires --once or a provider-free command.",
+      },
+    };
+    if (jsonErrorOutput) console.log(JSON.stringify(payload, null, 2));
+    else console.error(payload.error.message);
+    process.exitCode = decision.allowed ? EXIT_CODES.execution_error : decision.exitCode;
+    return;
+  }
+
   const mcpSessions: McpServerSession[] = [];
   try {
     const config = loadConfig(configPath, process.env, workingDirectory, projectState);
     const approvalMode = approvalFlagMode ?? resolveApprovalMode(config);
+    if (nonInteractive && oncePrompt !== undefined && (approvalMode === "ask" || approvalMode === "review-writes")) {
+      const decision = createNonInteractiveController({ interactive: false }).guard({ kind: "approval" });
+      const payload = {
+        error: {
+          code: "policy_denied",
+          reason: decision.allowed ? undefined : decision.reason,
+          message: "The selected approval mode requires interactive input.",
+        },
+      };
+      if (jsonErrorOutput) console.log(JSON.stringify(payload, null, 2));
+      else console.error(payload.error.message);
+      process.exitCode = decision.allowed ? EXIT_CODES.execution_error : decision.exitCode;
+      return;
+    }
     const questionBox: QuestionBox = {};
     const executor = createExecutor({ rustBinaryPath });
     const tools = new AgentToolRegistry();

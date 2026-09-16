@@ -41,7 +41,44 @@ export interface DoctorReport {
 
 export interface RustProbeResult {
   readonly runtimeVersion: string;
+  /** Missing on pre-v0.2.0 runtimes; the decoder normalizes it to zero. */
+  readonly protocolVersion?: number;
   readonly capabilities: string[];
+}
+
+export const RUST_RUNTIME_RELEASE_VERSION = "0.2.0";
+export const RUST_RUNTIME_PROTOCOL_VERSION = 1;
+
+export interface RustRuntimeContractExpectation {
+  readonly releaseVersion: string;
+  readonly protocolVersion: number;
+}
+
+export type RustRuntimeContractValidation =
+  | { readonly ok: true }
+  | {
+      readonly ok: false;
+      readonly reason: "runtime-version-mismatch" | "protocol-version-mismatch";
+      readonly expected: RustRuntimeContractExpectation;
+      readonly actual: { readonly runtimeVersion: string; readonly protocolVersion: number };
+    };
+
+/** Pure exact-match validation for the Rust runtime identity contract. */
+export function validateRustRuntimeContract(
+  probe: Pick<RustProbeResult, "runtimeVersion" | "protocolVersion">,
+  expected: RustRuntimeContractExpectation
+): RustRuntimeContractValidation {
+  const actual = {
+    runtimeVersion: probe.runtimeVersion,
+    protocolVersion: probe.protocolVersion ?? 0,
+  };
+  if (actual.runtimeVersion !== expected.releaseVersion) {
+    return { ok: false, reason: "runtime-version-mismatch", expected, actual };
+  }
+  if (actual.protocolVersion !== expected.protocolVersion) {
+    return { ok: false, reason: "protocol-version-mismatch", expected, actual };
+  }
+  return { ok: true };
 }
 
 export interface DoctorOptions {
@@ -223,22 +260,34 @@ async function checkRustRuntime(options: DoctorOptions): Promise<DoctorCheck> {
     return {
       name: "rust runtime",
       status: "fail",
-      detail: `${options.rustBinaryPath} not found`,
+      detail: "configured binary not found",
     };
   }
 
   try {
     const probe = await (options.probeRust ?? probeRustBinary)(options.rustBinaryPath);
+    const validation = validateRustRuntimeContract(probe, {
+      releaseVersion: RUST_RUNTIME_RELEASE_VERSION,
+      protocolVersion: RUST_RUNTIME_PROTOCOL_VERSION,
+    });
+    const protocolVersion = probe.protocolVersion ?? 0;
+    if (!validation.ok) {
+      return {
+        name: "rust runtime",
+        status: "fail",
+        detail: `unsupported runtime contract (version ${probe.runtimeVersion}, protocol version ${protocolVersion}; expected ${validation.expected.releaseVersion}, protocol version ${validation.expected.protocolVersion})`,
+      };
+    }
     return {
       name: "rust runtime",
       status: "ok",
-      detail: `${options.rustBinaryPath} (version ${probe.runtimeVersion}, capabilities: ${probe.capabilities.join(", ")})`,
+      detail: `available (version ${probe.runtimeVersion}, protocol version ${protocolVersion}, capabilities: ${probe.capabilities.join(", ")})`,
     };
   } catch (error) {
     return {
       name: "rust runtime",
       status: "fail",
-      detail: `health check failed: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `health check failed (${doctorErrorCode(error)})`,
     };
   }
 }
@@ -391,12 +440,21 @@ function decodeLengthDelimited(
 function decodeHealthCheckResult(data: Buffer): RustProbeResult {
   let offset = 0;
   let version = "";
+  let protocolVersion = 0;
   const capabilities: string[] = [];
   while (offset < data.length) {
     const tag = readProtobufVarint(data, offset);
     offset = tag.offset;
     const field = tag.value >>> 3;
     const wireType = tag.value & 0x07;
+    if (wireType === 0) {
+      const value = readProtobufVarint(data, offset);
+      offset = value.offset;
+      if (field === 3) {
+        protocolVersion = value.value;
+      }
+      continue;
+    }
     if (wireType !== 2) {
       offset = readProtobufVarint(data, offset).offset;
       continue;
@@ -409,7 +467,7 @@ function decodeHealthCheckResult(data: Buffer): RustProbeResult {
       capabilities.push(fieldData.data.toString("utf8"));
     }
   }
-  return { runtimeVersion: version, capabilities };
+  return { runtimeVersion: version, protocolVersion, capabilities };
 }
 
 function decodeErrorResult(data: Buffer): string {

@@ -58,6 +58,7 @@ message HealthCheck {}
 message HealthCheckResult {
   string runtime_version = 1;
   repeated string capabilities = 2;
+  uint32 protocol_version = 3;
 }
 message ErrorResult {
   string message = 1;

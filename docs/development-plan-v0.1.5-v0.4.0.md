@@ -20,8 +20,8 @@
 | 阶段 | 内容 | 优先级 | 状态 | 主要交付物 |
 | --- | --- | ---: | --- | --- |
 | v0.1.5 | `dev-agent init`、配置校验、项目初始化 | 最高 | DONE（待版本发布） | 初始化命令、配置命令、项目状态/忽略规则、安全测试 |
-| v0.2.0 | Rust runtime 自动分发与安装 | 最高 | TODO | 平台 runtime 包、安装/状态命令、校验和、fail-closed 解析 |
-| v0.2.x | `review`、`plan/apply`、CI 非交互模式 | 高 | TODO | 只读审查、计划与应用边界、稳定退出码/JSON 事件 |
+| v0.2.0 | Rust runtime 自动分发与安装 | 最高 | DONE（待版本发布） | 平台 runtime 包、安装/状态命令、校验和、fail-closed 解析 |
+| v0.2.x | `review`、`plan/apply`、CI 非交互模式 | 高 | DONE（待版本发布） | 只读审查、计划与应用边界、稳定退出码/JSON 事件 |
 | v0.3.0 | Provider/model 管理与预算控制 | 中高 | TODO | provider/model 命令、连通性检查、预算与 fallback 策略 |
 | v0.3.x | Code Search 多语言和大型项目优化 | 中 | TODO | ignore 语义、索引状态/增量、更多语言或可插拔扫描器 |
 | v0.4.0 | MCP 管理和 Desktop 状态面板 | 中 | TODO | MCP 管理命令、健康状态、Desktop 执行能力状态展示 |
@@ -200,8 +200,34 @@ dev-agent doctor --json
 - [x] v0.1.5：实现 `init`、`config validate/show` 和项目初始化。
 - [x] v0.1.5：补齐 CLI、外部目录和安全回归验证。
 - [x] v0.1.5：更新 README、CHANGELOG 和版本计划状态。
-- [ ] v0.2.0：Rust runtime 自动分发与安装。
-- [ ] v0.2.x 及后续阶段：等待 v0.2.0 完成后按顺序推进。
+- [x] v0.2.0：Rust runtime 自动分发与安装。
+- [x] v0.2.x：实现 `review`、`plan/apply`、稳定退出码、脱敏 JSON event stream 和非交互 fail-closed 基础。
+- [ ] v0.3.0 及后续阶段：按顺序推进 Provider/model、Code Search 和 MCP/Desktop。
+
+## v0.2.x 完成记录（2026-09-16）
+
+- 新增 provider-free 的 `dev-agent review`：支持 working tree 和成对的 Git base/head，输出变更文件、状态、增删统计和稳定 reason；不回显 diff、stderr、命令参数或绝对路径。
+- 新增 `dev-agent plan` / `dev-agent apply`：plan 只生成 metadata-only 文档，不修改 workspace；apply 校验 session、workspace、过期时间、mutation 输入和 before/after hash，并支持在不同 CLI 进程中通过 `--changes-file` 安全重建 change set。
+- 新增 `--non-interactive` 的 fail-closed 基础：普通运行没有 `--once` 时不会读取 stdin；approval 或人工输入要求返回结构化拒绝和稳定退出码。
+- 新增 `--event-stream`（review/plan/apply）以及稳定退出码：0 成功、2 findings、3 policy denied、4 config error、5 runtime unavailable、6 execution error、64 usage error；事件默认脱敏。
+- 新增预算追踪基础模块，覆盖 turns、tokens、duration 和 output chars 的下一次调用前检查，后续 v0.3.0 会接入 provider/model 生命周期。
+- CLI 完整测试通过（272/272）；本轮只完成工作区实现与验证，未提升 npm 版本、创建 tag、推送或发布。
+
+## v0.2.0 完成记录（2026-09-16）
+
+- runtime-manager 已独立为 `@dev-agent/runtime-manager` workspace package，覆盖四个支持 target：
+  macOS ARM64/x64、Linux ARM64/x64 glibc；Windows、Linux musl 和未知平台明确返回
+  `UNSUPPORTED_PLATFORM`。
+- 发布 workflow 已聚合并上传固定的 `dev-agent-runtime-manifest.json`，manifest 由四个平台
+  archive 和 `.sha256` sidecar 生成，校验目标、archive allowlist、版本和稳定 JSON；当前仍为
+  checksum-only，不伪造签名。
+- CLI 已增加 `runtime status|install|path|remove`、`--executor local|rust-sandbox`、
+  `--runtime-version` 和 `--runtime-dir`；status/path/remove 不联网、不启动 provider/MCP，
+  rust-sandbox 缺少已安装 runtime 时 fail-closed。
+- 安装流程使用临时目录、SHA-256、受限 tar.gz 解包、可执行位、Rust health/protocol/version
+  检查和完成标记后原子替换；npm 包不执行 postinstall，也不静默回退到 local。
+- Rust runtime 与 executor health contract 已统一为 release `0.2.0`、protocol `1`。
+- 当前只完成工作区实现和验证，尚未提升 npm 版本、创建 v0.2.0 tag、推送或发布；这些动作需单独授权。
 
 ## v0.1.5 完成记录（2026-09-16）
 
