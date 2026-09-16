@@ -72,11 +72,11 @@ dev-agent --session other-project --once "list files in the current directory"
 
 The package is built as a self-contained JavaScript CLI bundle and is verified by
 `pnpm package:smoke` in a clean npm prefix. As of September 16, 2026,
-`@agent_cli/cli@0.1.3` has been published to npm. The formal GitHub tag/release
+`@agent_cli/cli@0.1.4` has been published to npm. The formal GitHub tag/release
 remains separately gated; see [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules.
 
-The published `@agent_cli/cli@0.1.3` includes the explicit `--project-state` opt-in for
+The published `@agent_cli/cli@0.1.4` includes the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing
 user-level sessions.
 

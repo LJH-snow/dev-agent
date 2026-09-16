@@ -274,11 +274,11 @@ fallback。详细 proof gap 见
 上一轮 [8 小时安全无人值守并行开发计划](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md)、
 其[进度记录](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md)
 以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
-均已完成。当前 npm 包 `@agent_cli/cli@0.1.3` 已发布，正式 GitHub release 仍需单独授权。
+均已完成。当前 npm 包 `@agent_cli/cli@0.1.4` 已发布，正式 GitHub release 仍需单独授权。
 在没有新的产品决策或真实 Desktop UX trigger 时，保持当前实现和发布边界，不开始
 speculative Desktop UI，也不重新打开 Windows backend。
 
 2026-09-16 已在当前工作区完成保持兼容的 `--project-state` opt-in：它只为明确选择的
 外部项目使用 `<final-cwd>/.dev-agent` 下的 config/session，不改变用户级默认值，也不
-自动迁移历史 session。该变更已随已发布的 npm `0.1.3` 提供；详细步骤和验证记录见
+自动迁移历史 session。该变更已随已发布的 npm `0.1.4` 提供；详细步骤和验证记录见
 `superpowers/plans/2026-09-16-project-state-isolation.md`。

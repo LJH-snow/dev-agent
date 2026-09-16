@@ -1,6 +1,6 @@
 {
   "name": "@agent_cli/cli",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": false,
   "description": "Primary command-line entry point for dev-agent.",
   "type": "module",

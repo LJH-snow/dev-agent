@@ -373,3 +373,11 @@ release gate contract。上述命令用于验证本地发布候选物；后续�
 在维护者明确授权后，基于本计划已验证的 npm bundle 发布补丁版本
 `@agent_cli/cli@0.1.3`。该版本包含显式 `--project-state`，并已通过完整固定 gate、clean
 install smoke 和 registry 复核；本次仍未创建 Git tag 或 GitHub Release。
+
+## 后续补充：0.1.4 session metadata 修复发布（2026-09-16）
+
+在维护者明确授权后，将 `@agent_cli/cli` 从 `0.1.3` 升级并发布为 `@agent_cli/cli@0.1.4`。该版本修复了指定
+`--session <id>` 时新建/更新 memory metadata 仍保留 `sessionId: "default"` 的问题，并
+通过完整固定 gate、package smoke、registry 复核和全局安装后的
+`dev-agent --session smoke --metadata --json` 验证；`smoke.json` 的 `sessionId` 为
+`smoke`。本次仍未创建 Git tag 或 GitHub Release。

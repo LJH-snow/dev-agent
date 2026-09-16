@@ -4,7 +4,7 @@
 
 **目标窗口：** 从本计划建立起持续推进；用户预计于 2026-09-16 08:00（Asia/Shanghai）起床。
 
-**当前基线：** `@agent_cli/cli@0.1.3` 已发布到 npm，并已从 registry 安装验证；
+**当前基线：** `@agent_cli/cli@0.1.4` 已发布到 npm，并已从 registry 安装验证；
 CLI 全量测试、npm package smoke、TypeScript、Rust、real-Rust integration、workflow
 contract 和 documentation contract 均已通过。
 
@@ -343,10 +343,11 @@ npm install --prefix /tmp/dev-agent-cli-registry-install --no-save @agent_cli/cl
 - 仍存在的 proof gap、平台限制或人工决策；
 - 是否允许进入下一个目标。
 
-**当前下一步：** `@agent_cli/cli@0.1.3` 已可在其他项目中使用；本轮已收口 MCP frame
+**当前下一步：** `@agent_cli/cli@0.1.4` 已可在其他项目中使用；本轮已收口 MCP frame
 limit、动态 prompt 同步、Rust 进程树/回压和工具级项目目录边界。新的兼容性后续工作是
 显式 `--project-state` opt-in 已在当前工作区实现，用于外部项目的 config/session 隔离；
-它不改变用户级默认值，也不自动迁移历史 session，且已随已发布的 npm `0.1.3` 提供。
+它不改变用户级默认值，也不自动迁移历史 session，且已随已发布的 npm `0.1.4` 提供；同时
+修复了指定 session 的 memory metadata 不保留 session id 的问题。
 Windows restricted backend 仍需独立的平台决策并保持 deferred。
 
 ## 七、当前进度（2026-09-16）
@@ -357,12 +358,12 @@ Windows restricted backend 仍需独立的平台决策并保持 deferred。
 | 2 | DONE | `--exclude` 支持重复/目录/文件；相对最终 `--cwd`；越界拒绝；symlink 不跟随 |
 | 3 | DONE | 签名加入 `ctimeMs`；损坏缓存回退全扫；删除/改名与确定性排序回归通过；schema 仍为 v1 |
 | 4 | DONE + DEFERRED | provider-free 命令延迟初始化；相对 session/memory 路径按最终 `--cwd` 解析；doctor 不回显 config/session 绝对路径；更强跨用户隔离仍 deferred |
-| 5 | DONE | `@agent_cli/cli@0.1.3` 已发布；registry clean install、版本横幅、`--tools` 和 `--project-state` 已复核 |
+| 5 | DONE | `@agent_cli/cli@0.1.4` 已发布；registry clean install、全局安装、版本横幅、`--tools`、`--project-state` 和 `smoke.json` session metadata 已复核 |
 | 6 | PRESERVE | machine output、redaction 和 release/documentation contract 已有通过证据 |
 | 7 | DONE | MCP package 61/61；frame limit、server-side cooperative cancel、tools/resources/prompts 动态同步和每轮 system-prompt refresh 已补齐 |
 | 8 | PRESERVE | TTY、pipe、NO_COLOR 与 machine-output 测试已有通过证据 |
 | 9 | DONE / PRESERVE WINDOWS | Rust lib 48/48、executor 53/53、binary frame-parser tests 5/5、real integration 11/11 全通过；stdin 回压、进程树和 frame 上限已补齐，Windows 仍 Preserve |
-| 10 | DONE | docs、CI、release workflow contract 全通过；npm 0.1.3 已发布，未 tag/push/GitHub Release |
+| 10 | DONE | docs、CI、release workflow contract 全通过；npm 0.1.4 已发布，未 tag/push/GitHub Release |
 
 **当前最终结果：** `pnpm verify` 通过；包含 TypeScript build/typecheck/test、CLI
 package smoke、preview 8/8、release gate 16/16、release workflow 7/7、CI workflow
@@ -405,3 +406,12 @@ tools 124/124 通过，`git diff --check` 通过。CLI 测试串行执行，避�
   `0.1.3`，`dev-agent --version` 输出 `0.1.3`。
 - `--project-state` 已进入已发布包；该模式仍为显式 opt-in，不改变旧的用户级默认值。
 - 本次没有创建 Git tag、push 或 GitHub Release；Windows restricted backend 仍 deferred。
+
+## 十一、0.1.4 发布补充（2026-09-16）
+
+- 将 `@agent_cli/cli` 从 `0.1.3` 升级到 `0.1.4`，修复指定 `--session smoke` 时
+  `smoke.json` 的 metadata 保留 `sessionId: "default"` 的回归。
+- 重新执行 `pnpm verify`、package smoke、registry 版本复核；随后全局重新安装
+  `@agent_cli/cli@0.1.4` 并运行 `dev-agent --session smoke --metadata --json`。
+- 发布后确认 `smoke.json` 的 `sessionId` 为 `smoke`，没有创建 Git tag、push 或 GitHub
+  Release；Windows restricted backend 仍 deferred。

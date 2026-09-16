@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-16（`@agent_cli/cli@0.1.4`）
+
+- 修复指定 `--session <id>` 时，在 memory 文件尚不存在 metadata 的情况下，后续写入仍把
+  `sessionId` 记录成 `default` 的问题；现在 `--session smoke` 会在 `smoke.json` 中保留
+  `sessionId: "smoke"`。
+- 重新通过发布前固定 gate、package smoke、registry 安装和全局安装后的 metadata smoke。
+- 本次只发布 npm 包，没有创建 Git tag、推送代码或创建 GitHub Release。
+
 ## 2026-09-16（`@agent_cli/cli@0.1.3`）
 
 - 发布 `@agent_cli/cli@0.1.3`，包含显式 `--project-state` 项目级状态隔离：默认情况下将
