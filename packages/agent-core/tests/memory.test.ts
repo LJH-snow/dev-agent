@@ -42,6 +42,20 @@ test("file memory persists entries across instances", async () => {
   }
 });
 
+test("file memory uses the configured session id for a new file", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "sessions", "smoke.json");
+    const memory = new FileMemory({ filePath, sessionId: "smoke" });
+    await memory.append(createMemoryEntry("user", "hello"));
+
+    const metadata = await memory.getMetadata();
+    assert.equal(metadata?.sessionId, "smoke");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("file memory clear removes persisted history", async () => {
   const dir = makeTempDir();
   try {

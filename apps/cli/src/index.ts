@@ -899,7 +899,10 @@ function createMemory(
 ): FileMemory {
   // Keep this consistent with sessionDir() so sessions written by the CLI are
   // the same ones --session-list and --compact operate on.
-  return new FileMemory({ filePath: memoryFilePath(sessionId, baseDirectory, projectState) });
+  return new FileMemory({
+    filePath: memoryFilePath(sessionId, baseDirectory, projectState),
+    sessionId,
+  });
 }
 
 function resolveRuntimePath(value: string | undefined, baseDirectory: string): string | undefined {

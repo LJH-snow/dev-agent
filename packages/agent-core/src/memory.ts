@@ -255,6 +255,8 @@ export class InMemoryMemory implements AgentMemory {
 
 export interface FileMemoryOptions {
   readonly filePath: string;
+  /** Session id to persist when the file does not already contain metadata. */
+  readonly sessionId?: string;
   readonly evidenceRetention?: EvidenceRetentionOptions;
 }
 
@@ -278,11 +280,13 @@ interface MemoryFile {
 
 export class FileMemory implements AgentMemory {
   private readonly filePath: string;
+  private readonly sessionId: string;
   private readonly evidenceRetention: Required<EvidenceRetentionOptions>;
   private chain: Promise<void> = Promise.resolve();
 
   constructor(options: FileMemoryOptions) {
     this.filePath = options.filePath;
+    this.sessionId = options.sessionId ?? "default";
     this.evidenceRetention = normalizeEvidenceRetention(options.evidenceRetention);
   }
 
@@ -551,7 +555,7 @@ export class FileMemory implements AgentMemory {
     const existing = await this.readMemoryFile().catch(() => undefined);
     const now = new Date().toISOString();
     const metadata: SessionMetadata = {
-      sessionId: existing?.metadata?.sessionId ?? "default",
+      sessionId: existing?.metadata?.sessionId ?? this.sessionId,
       createdAt: existing?.metadata?.createdAt ?? now,
       lastActiveAt: now,
       entryCount: entries.length,

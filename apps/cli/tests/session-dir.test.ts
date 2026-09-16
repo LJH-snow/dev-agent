@@ -91,6 +91,29 @@ test("--compact compacts the session inside DEV_AGENT_SESSION_DIR", async () => 
   }
 });
 
+test("--compact records the requested session id when metadata is absent", async () => {
+  const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-sessiondir-"));
+  try {
+    await writeFile(
+      join(sessionDir, `${probeSession}.json`),
+      JSON.stringify({ version: 1, entries: memoryEntries(8) })
+    );
+
+    const compact = await runCli(["--session", probeSession, "--compact", "1"], {
+      DEV_AGENT_SESSION_DIR: sessionDir,
+    });
+    assert.equal(compact.code, 0, compact.stderr);
+
+    const metadata = await runCli(["--session", probeSession, "--metadata", "--json"], {
+      DEV_AGENT_SESSION_DIR: sessionDir,
+    });
+    assert.equal(metadata.code, 0, metadata.stderr);
+    assert.equal(JSON.parse(metadata.stdout).sessionId, probeSession);
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+});
+
 test("--session-list human output sanitizes the session directory path", async () => {
   const parent = await mkdtemp(join(tmpdir(), "dev-agent-sessiondir-"));
   const sessionDir = join(parent, "sessions\u001b[31m");
