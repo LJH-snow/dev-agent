@@ -196,6 +196,12 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 
 ## Current Status
 
+The active post-release implementation sequence is tracked in
+[docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). The first
+phase adds project initialization and configuration validation; later phases cover managed Rust
+runtime distribution, CI/review mode, provider/model budgets, larger code indexes, MCP management,
+and Desktop execution-state UX.
+
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),
 [CLI npm distribution guide](docs/release-cli-npm.md), and the

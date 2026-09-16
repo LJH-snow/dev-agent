@@ -82,6 +82,8 @@ import {
 import { buildMcpSystemPromptSupplement } from "./mcp-system-prompt.js";
 import type { McpResourceLine, McpPromptLine } from "./mcp-system-prompt.js";
 import { printDoctorReport, probeRustBinary, runDoctor } from "./doctor.js";
+import { executeConfigCommand, formatConfigCommandResult } from "./config-command.js";
+import { initializeProject } from "./project-init.js";
 import { indexDirectory } from "./index-command.js";
 import {
   createAnthropicProvider,
@@ -175,6 +177,8 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--session-rename": "two",
   "--compact": "optional",
   "--check-rust": "optional",
+  "--gitignore": "none",
+  "--dry-run": "none",
 };
 
 /**
@@ -182,11 +186,40 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
  * like another flag. Returns a message to print, or undefined when the command
  * line is well formed.
  */
+type ExplicitCliCommand =
+  | { readonly kind: "init" }
+  | { readonly kind: "config"; readonly action: "validate" | "show" };
+
+function parseExplicitCliCommand(args: readonly string[]): ExplicitCliCommand | undefined {
+  if (args[0] === "init") {
+    return { kind: "init" };
+  }
+  if (args[0] === "config" && (args[1] === "validate" || args[1] === "show")) {
+    return { kind: "config", action: args[1] };
+  }
+  return undefined;
+}
+
+function explicitCommandPrefixLength(args: readonly string[]): number {
+  const command = parseExplicitCliCommand(args);
+  if (command?.kind === "init") {
+    return 1;
+  }
+  if (command?.kind === "config") {
+    return 2;
+  }
+  return 0;
+}
+
 export function validateCliArgs(args: readonly string[]): string | undefined {
-  for (let i = 0; i < args.length; i += 1) {
+  const commandPrefixLength = explicitCommandPrefixLength(args);
+  for (let i = commandPrefixLength; i < args.length; i += 1) {
     const arg = args[i] ?? "";
     if (!arg.startsWith("-")) {
       return `Unexpected argument '${arg}'.`;
+    }
+    if ((arg === "--gitignore" || arg === "--dry-run") && commandPrefixLength === 0) {
+      return `Unknown option '${arg}'.`;
     }
 
     const arity = CLI_FLAGS[arg];
@@ -237,6 +270,120 @@ function validatePreviewCliCombination(
     : `--preview-evidence cannot be combined with ${conflictingFlag}`;
 }
 
+function flagValue(args: readonly string[], flag: string): string | undefined {
+  const index = args.indexOf(flag);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
+function validateExplicitCommandFlags(
+  command: ExplicitCliCommand,
+  args: readonly string[]
+): string | undefined {
+  const allowed =
+    command.kind === "init"
+      ? new Set(["--cwd", "--project-state", "--gitignore", "--dry-run", "--json"])
+      : new Set(["--cwd", "--project-state", "--config", "--json"]);
+  const prefixLength = explicitCommandPrefixLength(args);
+  for (const arg of args.slice(prefixLength)) {
+    if (arg.startsWith("-") && !allowed.has(arg)) {
+      return `${arg} is not supported by ${command.kind === "init" ? "init" : `config ${command.action}`}.`;
+    }
+  }
+  return undefined;
+}
+
+async function runExplicitCliCommand(
+  command: ExplicitCliCommand,
+  args: readonly string[],
+  jsonOutput: boolean,
+  jsonErrorOutput: boolean
+): Promise<void> {
+  const commandError = validateExplicitCommandFlags(command, args);
+  if (commandError) {
+    emitCliError(commandError, jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+
+  const cwdFlag = flagValue(args, "--cwd");
+  const workingDirectory = resolveWorkingDirectory(cwdFlag);
+  try {
+    assertWorkingDirectory(workingDirectory);
+  } catch (error) {
+    emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+
+  if (command.kind === "init") {
+    try {
+      const result = await initializeProject({
+        workingDirectory,
+        addGitignore: args.includes("--gitignore"),
+        dryRun: args.includes("--dry-run"),
+      });
+      const entryStatus = (path: string) => result.entries.find((entry) => entry.path === path)?.status;
+      const summarizeEntry = (path: string) => {
+        const status = entryStatus(path);
+        return {
+          created: status === "created" && !result.dryRun,
+          existing: status === "existing",
+          changed: status === "changed" && !result.dryRun,
+          skipped: status === "skipped",
+          wouldCreate: status === "created" && result.dryRun,
+          wouldChange: status === "changed" && result.dryRun,
+        };
+      };
+      const payload = {
+        command: "init",
+        projectState: true,
+        dryRun: result.dryRun,
+        config: summarizeEntry(result.configPath),
+        sessions: summarizeEntry(result.sessionsDirectory),
+        gitignore: summarizeEntry(result.gitignorePath),
+        created: result.created.length,
+        existing: result.existing.length,
+        changed: result.changed.length,
+        skipped: result.skipped.length,
+      };
+      if (jsonOutput) {
+        console.log(JSON.stringify(payload, null, 2));
+      } else {
+        console.log(`Initialized project state in ${safeTerminalText(workingDirectory)}.`);
+        console.log(`Created: ${result.created.length}; existing: ${result.existing.length}; changed: ${result.changed.length}.`);
+        if (result.skipped.length > 0) {
+          console.log(`Skipped: ${result.skipped.length}.`);
+        }
+      }
+    } catch (error) {
+      emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
+      process.exitCode = 1;
+    }
+    return;
+  }
+
+  const projectState = args.includes("--project-state");
+  const configPath = resolveConfigPath(
+    flagValue(args, "--config"),
+    process.env,
+    homedir(),
+    workingDirectory,
+    projectState
+  );
+  const execution = await executeConfigCommand({
+    command: command.action,
+    configPath,
+  });
+  if (jsonOutput) {
+    console.log(JSON.stringify(execution.result, null, 2));
+  } else {
+    console.log(formatConfigCommandResult(execution.result));
+  }
+  if (execution.exitCode !== 0) {
+    process.exitCode = execution.exitCode;
+  }
+}
+
 export async function main(argv: string[]): Promise<void> {
   const args = argv.slice(2);
   const jsonOutput = args.includes("--json");
@@ -257,6 +404,12 @@ export async function main(argv: string[]): Promise<void> {
   }
   if (args.includes("--version") || args.includes("-v")) {
     console.log(`dev-agent ${version}`);
+    return;
+  }
+
+  const explicitCommand = parseExplicitCliCommand(args);
+  if (explicitCommand !== undefined) {
+    await runExplicitCliCommand(explicitCommand, args, jsonOutput, jsonErrorOutput);
     return;
   }
 
@@ -430,6 +583,12 @@ export async function main(argv: string[]): Promise<void> {
       rustBinaryPath,
       sessionDir: sessionDir(workingDirectory, projectState),
       configPath,
+      projectState,
+      configSource: configFlag || process.env.DEV_AGENT_CONFIG_FILE
+        ? "explicit"
+        : projectState
+          ? "project"
+          : "user",
     });
     if (jsonOutput) {
       console.log(JSON.stringify(report, null, 2));

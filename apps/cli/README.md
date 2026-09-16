@@ -33,7 +33,19 @@ dev-agent --version
 dev-agent --tools
 dev-agent --cwd /path/to/other-project --index . --json
 dev-agent --session other-project --once "list files in the current directory"
+dev-agent init --cwd /path/to/other-project --gitignore
+dev-agent config validate --cwd /path/to/other-project --project-state --json
+dev-agent config show --cwd /path/to/other-project --project-state --json
 ```
+
+`dev-agent init` creates `.dev-agent/config.json` and `.dev-agent/sessions`
+without overwriting existing files. Add `--gitignore` only when you want the
+command to append an idempotent `.dev-agent/` rule to the project `.gitignore`;
+add `--dry-run` to preview the initialization. `config validate` checks the
+JSON structure and supported provider, approval, validation, pricing, and MCP
+fields without loading a provider or executing an MCP command. `config show`
+prints the effective project configuration with sensitive-looking values
+redacted. Both config commands support stable `--json` output.
 
 `pnpm cli` is a workspace-only developer command; it is not required by an
 installed user. See [`docs/release-cli-npm.md`](../../docs/release-cli-npm.md)

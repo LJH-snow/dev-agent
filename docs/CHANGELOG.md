@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased（v0.1.5 开发中）
+
+- 新增 `dev-agent init`，可幂等创建项目级 `.dev-agent/config.json` 和 sessions 目录，支持
+  `--gitignore`、`--dry-run` 与稳定的 `--json` 输出。
+- 新增 `dev-agent config validate` 和 `dev-agent config show`，校验 provider、model、approval、
+  validation、pricing 与 MCP 配置；诊断不回显配置值、API key、token 或绝对路径。
+- `--doctor --json` 增加 project-state、config source 和 runtime selection metadata，同时保持旧的
+  `DoctorReport` 调用兼容。
+
 ## 2026-09-16（`@agent_cli/cli@0.1.4`）
 
 - 修复指定 `--session <id>` 时，在 memory 文件尚不存在 metadata 的情况下，后续写入仍把

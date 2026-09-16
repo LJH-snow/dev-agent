@@ -315,3 +315,32 @@ test("--check-rust sanitizes an untrusted binary path in human errors", async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("runDoctor reports project scope and runtime selection metadata without paths", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-scope-"));
+  try {
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir: join(dir, ".dev-agent", "sessions"),
+      configPath: join(dir, ".dev-agent", "config.json"),
+      projectState: true,
+      configSource: "project",
+      env: {},
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+
+    assert.deepEqual(report.scope, {
+      projectState: true,
+      configSource: "project",
+      workingDirectoryScope: "final-cwd",
+    });
+    assert.deepEqual(report.runtime, {
+      source: "default-local",
+      configured: false,
+      selectedMode: "local",
+    });
+    assert.doesNotMatch(JSON.stringify(report), new RegExp(escapeRegExp(dir)));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

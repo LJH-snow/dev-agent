@@ -15,9 +15,26 @@ export interface DoctorCheck {
   readonly detail: string;
 }
 
+export type DoctorConfigSource = "explicit" | "project" | "user";
+
+export interface DoctorScope {
+  /** The selected working directory is intentionally represented as a scope label, not a path. */
+  readonly workingDirectoryScope: "final-cwd";
+  readonly projectState: boolean;
+  readonly configSource: DoctorConfigSource;
+}
+
+export interface DoctorRuntimeSelection {
+  readonly source: "explicit-path" | "default-local";
+  readonly configured: boolean;
+  readonly selectedMode: ExecutorMode;
+}
+
 export interface DoctorReport {
   /** The selected executor backend; health checks separately report availability. */
   readonly executorMode: ExecutorMode;
+  readonly scope?: DoctorScope;
+  readonly runtime?: DoctorRuntimeSelection;
   readonly checks: readonly DoctorCheck[];
   readonly summary: { readonly ok: number; readonly warn: number; readonly fail: number };
 }
@@ -33,6 +50,8 @@ export interface DoctorOptions {
   readonly sessionDir: string;
   /** Shared config file to inspect; defaults to ~/.dev-agent/config.json. */
   readonly configPath?: string;
+  readonly projectState?: boolean;
+  readonly configSource?: DoctorConfigSource;
   readonly env?: NodeJS.ProcessEnv;
   readonly nodeVersion?: string;
   /** Injectable for tests: returns the version banner, or undefined when missing. */
@@ -93,11 +112,31 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   for (const check of checks) {
     summary[check.status] += 1;
   }
-  return { executorMode, checks, summary };
+  const runtime: DoctorRuntimeSelection = {
+    source: options.rustBinaryPath ? "explicit-path" : "default-local",
+    configured: options.rustBinaryPath !== undefined,
+    selectedMode: executorMode,
+  };
+  const scope: DoctorScope = {
+    workingDirectoryScope: "final-cwd",
+    projectState: options.projectState === true,
+    configSource: options.configSource ?? "user",
+  };
+  return { executorMode, scope, runtime, checks, summary };
 }
 
 export function printDoctorReport(report: DoctorReport): void {
   console.log(`executor mode: ${safeDoctorText(report.executorMode)}`);
+  if (report.scope !== undefined) {
+    console.log(
+      `scope: ${safeDoctorText(report.scope.workingDirectoryScope)} project-state=${String(report.scope.projectState)} config=${safeDoctorText(report.scope.configSource)}`
+    );
+  }
+  if (report.runtime !== undefined) {
+    console.log(
+      `runtime: source=${safeDoctorText(report.runtime.source)} configured=${String(report.runtime.configured)} mode=${safeDoctorText(report.runtime.selectedMode)}`
+    );
+  }
   for (const check of report.checks) {
     console.log(
       `${safeDoctorText(check.status).padEnd(4)} ${safeDoctorText(check.name).padEnd(13)} ${safeDoctorText(check.detail)}`

@@ -30,7 +30,7 @@ numbered items 62/63/64 in the root README Roadmap.
   record](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md), the [release provenance
   audit](superpowers/plans/2026-09-15-release-provenance-audit.md), the [cancellation boundary audit](superpowers/plans/2026-09-15-cancellation-boundary-audit.md), and the [current 10-goal overnight development plan](superpowers/plans/2026-09-15-overnight-development-goals.md) define the current merge-preparation boundary
   and maintainer decision gate. The [project-scoped CLI state plan](superpowers/plans/2026-09-16-project-state-isolation.md)
-  records the explicit opt-in follow-up for external-project config/session isolation. Historical phase records remain linked for auditability:
+  records the explicit opt-in follow-up for external-project config/session isolation. The [v0.1.5–v0.4.0 development plan](development-plan-v0.1.5-v0.4.0.md) is now the active execution checklist for project initialization, runtime distribution, CI/review mode, provider management, code search, MCP management, and Desktop status UX. Historical phase records remain linked for auditability:
   [v60 plan](day-plan-v60.md), [v60 progress](day-plan-v60-progress.md), [v61 plan](day-plan-v61.md),
   [v61 progress](day-plan-v61-progress.md), [Windows feasibility notes](windows-sandbox-feasibility-v61.md),
   [v62 plan](day-plan-v62.md), [v62 progress](day-plan-v62-progress.md), [v63 plan](day-plan-v63.md),
