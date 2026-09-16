@@ -99,3 +99,69 @@ test("a malformed config file falls back to defaults instead of crashing", async
     assert.match(result.stdout, /code-search/);
   });
 });
+
+test("--config selects a project config relative to --cwd", async () => {
+  await withHome(async (home) => {
+    const project = await mkdtemp(join(tmpdir(), "dev-agent-config-project-"));
+    try {
+      const configPath = join(project, "config.json");
+      await writeFile(configPath, JSON.stringify({ defaultProvider: "gemini" }), "utf8");
+
+      const result = await runCli(
+        ["--cwd", project, "--config", "config.json", "--once", "hi"],
+        baseEnv(home)
+      );
+
+      assert.match(result.stderr, /GEMINI_API_KEY is required/);
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
+  });
+});
+
+test("--tools does not initialize a configured provider", async () => {
+  await withHome(async (home) => {
+    const project = await mkdtemp(join(tmpdir(), "dev-agent-tools-project-"));
+    try {
+      await writeFile(
+        join(project, "config.json"),
+        JSON.stringify({ defaultProvider: "gemini" }),
+        "utf8"
+      );
+
+      const result = await runCli(
+        ["--cwd", project, "--config", "config.json", "--tools", "--json"],
+        baseEnv(home)
+      );
+
+      assert.equal(result.code, 0, result.stderr);
+      const tools = JSON.parse(result.stdout);
+      assert.ok(tools.some((tool) => tool.name === "filesystem"));
+      assert.doesNotMatch(result.stderr, /GEMINI_API_KEY is required/);
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
+  });
+});
+
+test("DEV_AGENT_CONFIG_FILE selects a project config relative to --cwd", async () => {
+  await withHome(async (home) => {
+    const project = await mkdtemp(join(tmpdir(), "dev-agent-config-env-project-"));
+    try {
+      await writeFile(
+        join(project, "config.json"),
+        JSON.stringify({ defaultProvider: "anthropic" }),
+        "utf8"
+      );
+
+      const result = await runCli(["--cwd", project, "--once", "hi"], {
+        ...baseEnv(home),
+        DEV_AGENT_CONFIG_FILE: "config.json",
+      });
+
+      assert.match(result.stderr, /ANTHROPIC_API_KEY is required/);
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
+  });
+});

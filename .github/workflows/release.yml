@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -31,6 +31,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install protobuf compiler (Linux)
         if: runner.os == 'Linux'
@@ -113,9 +115,62 @@ jobs:
             dist/dev-agent-executor-${{ matrix.target }}.tar.gz.sha256
           if-no-files-found: error
 
+  cli-package:
+    name: Build CLI npm package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # This builds, packs, installs into an isolated prefix, and exercises the
+      # installed bin from an external project directory without publishing.
+      - name: CLI package install smoke test
+        run: pnpm package:smoke
+
+      - name: Pack CLI npm artifact
+        run: |
+          mkdir -p dist
+          pnpm --filter @agent_cli/cli pack --pack-destination dist
+
+      - name: Verify CLI npm artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_count="$(find dist -maxdepth 1 -type f -name 'agent_cli-cli-*.tgz' | wc -l)"
+          test "${package_count//[[:space:]]/}" -eq 1
+          tarball="$(find dist -maxdepth 1 -type f -name 'agent_cli-cli-*.tgz' -print -quit)"
+          tar -tzf "${tarball}" | grep -Fx 'package/dist/cli.js'
+          tar -tzf "${tarball}" | grep -Fx 'package/dist/cli.js.map'
+
+      - name: Upload CLI package
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-agent-cli-npm
+          path: dist/agent_cli-cli-*.tgz
+          if-no-files-found: error
+
   release:
     name: Publish release
-    needs: build
+    needs: [build, cli-package]
+    permissions:
+      contents: write
     # Only tag pushes publish; manual runs just verify the builds.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
@@ -123,12 +178,51 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Download build artifacts
         uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
+
+      - name: Verify downloaded release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag_sha="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          test "${tag_sha}" = "${GITHUB_SHA}"
+
+          targets=(
+            aarch64-apple-darwin
+            x86_64-apple-darwin
+            x86_64-unknown-linux-gnu
+            aarch64-unknown-linux-gnu
+          )
+          for target in "${targets[@]}"; do
+            archive="dist/dev-agent-executor-${target}.tar.gz"
+            checksum="${archive}.sha256"
+            test -f "${archive}"
+            test -f "${checksum}"
+            (cd dist && sha256sum -c "$(basename "${checksum}")")
+          done
+
+          archive_count="$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l)"
+          checksum_count="$(find dist -maxdepth 1 -type f -name '*.tar.gz.sha256' | wc -l)"
+          cli_package_count="$(find dist -maxdepth 1 -type f -name 'agent_cli-cli-*.tgz' | wc -l)"
+          test "${archive_count//[[:space:]]/}" -eq "${#targets[@]}"
+          test "${checksum_count//[[:space:]]/}" -eq "${#targets[@]}"
+          test "${cli_package_count//[[:space:]]/}" -eq 1
+          for artifact in dist/*; do
+            case "${artifact##*/}" in
+              dev-agent-executor-aarch64-apple-darwin.tar.gz|dev-agent-executor-aarch64-apple-darwin.tar.gz.sha256|\
+              dev-agent-executor-x86_64-apple-darwin.tar.gz|dev-agent-executor-x86_64-apple-darwin.tar.gz.sha256|\
+              dev-agent-executor-x86_64-unknown-linux-gnu.tar.gz|dev-agent-executor-x86_64-unknown-linux-gnu.tar.gz.sha256|\
+              dev-agent-executor-aarch64-unknown-linux-gnu.tar.gz|dev-agent-executor-aarch64-unknown-linux-gnu.tar.gz.sha256|agent_cli-cli-*.tgz) ;;
+              *) echo "unexpected release artifact: ${artifact}" >&2; exit 1 ;;
+            esac
+          done
 
       - name: Create GitHub release
         env:
@@ -137,6 +231,7 @@ jobs:
           set -euo pipefail
           ls -l dist
           gh release create "${GITHUB_REF_NAME}" \
-            dist/*.tar.gz dist/*.sha256 \
+            dist/*.tar.gz dist/*.sha256 dist/*.tgz \
+            --verify-tag \
             --title "${GITHUB_REF_NAME}" \
             --generate-notes

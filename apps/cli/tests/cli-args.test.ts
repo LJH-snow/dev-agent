@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -65,12 +65,32 @@ test("a flag cannot be consumed as another flag's value", async () => {
   });
 });
 
+test("--cwd requires a directory path instead of consuming another flag", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--cwd", "--tools"], dir);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /--cwd requires a value/);
+    assert.equal(result.stdout, "", "must not start a CLI operation");
+  });
+});
+
+test("--cwd is accepted alongside a normal operation", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--cwd", dir, "--tools"], dir);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /code-search/);
+  });
+});
+
 test("--once does not treat the next flag as its prompt", async () => {
   await withSessionDir(async (dir) => {
     const result = await runCli(["--once", "--json"], dir);
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /--once requires a value/);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(JSON.parse(result.stdout), { error: "--once requires a value." });
   });
 });
 
@@ -83,11 +103,22 @@ test("a stray positional argument is rejected", async () => {
   });
 });
 
+test("human CLI errors sanitize untrusted argument text", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["hello\u001b[31m"], dir);
+
+    assert.equal(result.code, 1);
+    assert.doesNotMatch(result.stderr, /\u001b/);
+    assert.match(result.stderr, /Unexpected argument/);
+  });
+});
+
 test("valid flag combinations still run", async () => {
   await withSessionDir(async (dir) => {
     const version = await runCli(["--version"], dir);
     assert.equal(version.code, 0);
-    assert.match(version.stdout, /dev-agent 0\.1\.0/);
+    const manifest = JSON.parse(await readFile(join(__dirname, "..", "package.json"), "utf8"));
+    assert.equal(version.stdout.trim(), `dev-agent ${manifest.version}`);
 
     const short = await runCli(["-v"], dir);
     assert.equal(short.code, 0);
@@ -95,6 +126,10 @@ test("valid flag combinations still run", async () => {
     const tools = await runCli(["--session", "demo", "--tools"], dir);
     assert.equal(tools.code, 0, tools.stderr);
     assert.match(tools.stdout, /code-search/);
+
+    const projectState = await runCli(["--project-state", "--tools"], dir);
+    assert.equal(projectState.code, 0, projectState.stderr);
+    assert.match(projectState.stdout, /code-search/);
   });
 });
 
@@ -113,5 +148,50 @@ test("optional-value flags still work without a value", async () => {
     const result = await runCli(["--compact"], dir);
 
     assert.doesNotMatch(result.stderr, /Unknown option|requires a value/);
+  });
+});
+
+test("--config requires a file path instead of consuming another flag", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--config", "--tools"], dir);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /--config requires a value/);
+    assert.equal(result.stdout, "");
+  });
+});
+
+test("blank --cwd and --config values are rejected", async () => {
+  await withSessionDir(async (dir) => {
+    const cwdResult = await runCli(["--cwd", "", "--tools"], dir);
+    assert.equal(cwdResult.code, 1);
+    assert.match(cwdResult.stderr, /--cwd requires a directory path/);
+
+    const configResult = await runCli(["--config", "", "--tools"], dir);
+    assert.equal(configResult.code, 1);
+    assert.match(configResult.stderr, /--config requires a file path/);
+  });
+});
+
+test("--exclude requires an index operation", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--exclude", "generated", "--json"], dir);
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, "");
+    assert.match(JSON.parse(result.stdout).error, /--exclude.*--index/i);
+  });
+});
+
+test("--preview-evidence cannot be combined with --exclude", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(
+      ["--preview-evidence", "--exclude", "generated", "--json"],
+      dir
+    );
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stdout, "");
+    assert.match(result.stderr, /preview-evidence.*exclude/i);
   });
 });

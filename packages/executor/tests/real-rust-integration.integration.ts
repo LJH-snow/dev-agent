@@ -311,6 +311,30 @@ test(
 );
 
 test(
+  "real Rust binary refuses an already-aborted request",
+  { skip: existsSync(rustBinaryPath) ? false : "Rust binary not built" },
+  async () => {
+    const executor = new RustExecutor({ binaryPath: rustBinaryPath, requestTimeoutMs: 1500 });
+    const controller = new AbortController();
+    controller.abort();
+
+    try {
+      const started = Date.now();
+      await assert.rejects(
+        () => executor.run("/bin/sleep", ["1"], { signal: controller.signal }),
+        /cancelled/i
+      );
+      assert.ok(
+        Date.now() - started < 500,
+        "an already-aborted request must be rejected before dispatch"
+      );
+    } finally {
+      await executor.dispose();
+    }
+  }
+);
+
+test(
   "real Rust binary cancels a running command",
   { skip: existsSync(rustBinaryPath) ? false : "Rust binary not built" },
   async () => {

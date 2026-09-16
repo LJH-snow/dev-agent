@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { resolveExecutorMode, type ExecutorMode } from "@dev-agent/executor";
+import { redactSensitiveText, sanitizeTerminalText } from "./tui-renderer.js";
 
 export type DoctorStatus = "ok" | "warn" | "fail";
 
@@ -96,13 +97,19 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
 }
 
 export function printDoctorReport(report: DoctorReport): void {
-  console.log(`executor mode: ${report.executorMode}`);
+  console.log(`executor mode: ${safeDoctorText(report.executorMode)}`);
   for (const check of report.checks) {
-    console.log(`${check.status.padEnd(4)} ${check.name.padEnd(13)} ${check.detail}`);
+    console.log(
+      `${safeDoctorText(check.status).padEnd(4)} ${safeDoctorText(check.name).padEnd(13)} ${safeDoctorText(check.detail)}`
+    );
   }
   const { ok, warn, fail } = report.summary;
   console.log("");
   console.log(`${report.checks.length} checks: ${ok} ok, ${warn} warn, ${fail} fail`);
+}
+
+function safeDoctorText(value: unknown): string {
+  return redactSensitiveText(sanitizeTerminalText(String(value)));
 }
 
 const CONFIG_SECTIONS = [
@@ -128,12 +135,12 @@ async function checkConfig(path: string): Promise<DoctorCheck> {
     raw = await readFile(path, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { name: "config", status: "ok", detail: `${path} not found; defaults are used` };
+      return { name: "config", status: "ok", detail: "config file not found; defaults are used" };
     }
     return {
       name: "config",
       status: "warn",
-      detail: `${path} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `config file could not be read (${doctorErrorCode(error)})`,
     };
   }
 
@@ -144,7 +151,7 @@ async function checkConfig(path: string): Promise<DoctorCheck> {
     return {
       name: "config",
       status: "warn",
-      detail: `${path} is not valid JSON (${error instanceof Error ? error.message : String(error)}); the file is ignored`,
+      detail: "config file is not valid JSON; the file is ignored",
     };
   }
 
@@ -152,7 +159,7 @@ async function checkConfig(path: string): Promise<DoctorCheck> {
     return {
       name: "config",
       status: "warn",
-      detail: `${path} must contain a JSON object; the file is ignored`,
+      detail: "config file must contain a JSON object; the file is ignored",
     };
   }
 
@@ -162,7 +169,7 @@ async function checkConfig(path: string): Promise<DoctorCheck> {
     known.length > 0
       ? `${known.length} recognised section${known.length === 1 ? "" : "s"} (${known.join(", ")})`
       : "no recognised sections";
-  return { name: "config", status: "ok", detail: `${path} (${summary})` };
+  return { name: "config", status: "ok", detail: `config file (${summary})` };
 }
 
 async function checkRustRuntime(options: DoctorOptions): Promise<DoctorCheck> {
@@ -233,14 +240,19 @@ async function checkSessionDir(dir: string): Promise<DoctorCheck> {
     await mkdir(dir, { recursive: true });
     await writeFile(probe, "ok", "utf8");
     await rm(probe, { force: true });
-    return { name: "sessions", status: "ok", detail: `${dir} (writable)` };
+    return { name: "sessions", status: "ok", detail: "session directory (writable)" };
   } catch (error) {
     return {
       name: "sessions",
       status: "fail",
-      detail: `${dir} is not writable: ${error instanceof Error ? error.message : String(error)}`,
+      detail: `session directory is not writable (${doctorErrorCode(error)})`,
     };
   }
+}
+
+function doctorErrorCode(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException).code;
+  return typeof code === "string" ? code : "unknown error";
 }
 
 function defaultCommandVersion(command: string): Promise<string | undefined> {

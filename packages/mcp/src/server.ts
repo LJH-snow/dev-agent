@@ -7,13 +7,25 @@
  * tools so the MCP layer has no dependency on them.
  */
 
+import {
+  assertFrameSize,
+  McpFrameTooLargeError,
+  MCP_FRAME_TOO_LARGE_CODE,
+  resolveMaxFrameBytes,
+} from "./framing.js";
+
 export interface McpServerTool {
   readonly name: string;
   readonly description: string;
   readonly parameters?: Record<string, unknown>;
   execute(
     input: unknown,
-    context?: { readonly sessionId: string; readonly workingDirectory: string }
+    context?: {
+      readonly sessionId: string;
+      readonly workingDirectory: string;
+      /** Cooperative cancellation for the matching JSON-RPC request. */
+      readonly signal?: AbortSignal;
+    }
   ): Promise<unknown>;
 }
 
@@ -60,6 +72,8 @@ export interface McpServerOptions {
   readonly workingDirectory?: string;
   readonly input?: McpServerInput;
   readonly output?: McpServerOutput;
+  /** Maximum UTF-8 bytes in one newline-delimited JSON frame. Defaults to 8 MiB. */
+  readonly maxFrameBytes?: number;
 }
 
 /** The slice of a readable stream the server needs; `process.stdin` fits. */
@@ -110,6 +124,8 @@ export function createMcpServer(options: McpServerOptions): McpServer {
   const serverVersion = options.version ?? "0.1.0";
   const sessionId = options.sessionId ?? "mcp-server";
   const workingDirectory = options.workingDirectory ?? process.cwd();
+  const maxFrameBytes = resolveMaxFrameBytes(options.maxFrameBytes);
+  const activeToolCalls = new Map<number | string, AbortController>();
 
   async function dispatch(request: JsonRpcMessage): Promise<unknown> {
     switch (request.method) {
@@ -124,8 +140,19 @@ export function createMcpServer(options: McpServerOptions): McpServer {
           serverInfo: { name: serverName, version: serverVersion },
         };
       case "notifications/initialized":
-      case "notifications/cancelled":
         return undefined;
+      case "notifications/cancelled": {
+        const params = asRecord(request.params);
+        const requestId = asRequestId(params.requestId);
+        if (requestId !== undefined) {
+          const controller = activeToolCalls.get(requestId);
+          if (controller) {
+            const reason = typeof params.reason === "string" ? params.reason : "request cancelled";
+            controller.abort(reason);
+          }
+        }
+        return undefined;
+      }
       case "ping":
         return {};
       case "tools/list":
@@ -181,8 +208,17 @@ export function createMcpServer(options: McpServerOptions): McpServer {
         if (!tool) {
           throw new McpServerError(-32602, `unknown tool: ${name}`);
         }
+        const requestId = asRequestId(request.id);
+        const controller = requestId === undefined ? undefined : new AbortController();
+        if (requestId !== undefined && controller) {
+          activeToolCalls.set(requestId, controller);
+        }
         try {
-          const result = await tool.execute(params.arguments, { sessionId, workingDirectory });
+          const result = await tool.execute(params.arguments, {
+            sessionId,
+            workingDirectory,
+            signal: controller?.signal,
+          });
           return {
             content: [{ type: "text", text: stringifyResult(result) }],
             structuredContent: result,
@@ -196,6 +232,10 @@ export function createMcpServer(options: McpServerOptions): McpServer {
             ],
             isError: true,
           };
+        } finally {
+          if (requestId !== undefined && activeToolCalls.get(requestId) === controller) {
+            activeToolCalls.delete(requestId);
+          }
         }
       }
       default:
@@ -210,6 +250,15 @@ export function createMcpServer(options: McpServerOptions): McpServer {
     const trimmed = message.trim();
     if (!trimmed) {
       return undefined;
+    }
+
+    const incomingBytes = Buffer.byteLength(trimmed, "utf8");
+    if (incomingBytes > maxFrameBytes) {
+      return errorResponse(
+        null,
+        MCP_FRAME_TOO_LARGE_CODE,
+        new McpFrameTooLargeError(incomingBytes, maxFrameBytes).message
+      );
     }
 
     let request: JsonRpcMessage;
@@ -227,7 +276,16 @@ export function createMcpServer(options: McpServerOptions): McpServer {
       if (isNotification || result === undefined) {
         return undefined;
       }
-      return JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id, result });
+      const response = JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id, result });
+      try {
+        assertFrameSize(response, maxFrameBytes);
+        return response;
+      } catch (error) {
+        if (error instanceof McpFrameTooLargeError) {
+          return errorResponse(id, MCP_FRAME_TOO_LARGE_CODE, error.message);
+        }
+        throw error;
+      }
     } catch (error) {
       if (isNotification) {
         return undefined;
@@ -245,40 +303,81 @@ export function createMcpServer(options: McpServerOptions): McpServer {
     const input: McpServerInput = options.input ?? process.stdin;
     const output: McpServerOutput = options.output ?? process.stdout;
     let buffer = "";
+    let bufferBytes = 0;
     let chain: Promise<void> = Promise.resolve();
+    const tasks: Promise<void>[] = [];
+    let protocolError: unknown;
+    let rejectInput: ((error: unknown) => void) | undefined;
 
     const enqueue = (line: string): void => {
       if (!line.trim()) {
         return;
       }
-      chain = chain.then(async () => {
+      const run = async (): Promise<void> => {
         const response = await handleMessage(line);
         if (response !== undefined) {
+          assertFrameSize(response, maxFrameBytes);
           output.write(`${response}\n`);
         }
-      });
+      };
+
+      // Keep ordinary requests serialized for stable tool side effects, but
+      // let cancellation notifications bypass a blocked tools/call request.
+      if (isCancellationNotification(line)) {
+        tasks.push(run());
+      } else {
+        chain = chain.then(run);
+        tasks.push(chain);
+      }
     };
 
     await new Promise<void>((resolve, reject) => {
+      rejectInput = reject;
       input.on("data", (chunk: string | Buffer) => {
-        buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
-        for (;;) {
-          const newline = buffer.indexOf("\n");
-          if (newline < 0) {
-            break;
+        if (protocolError) {
+          return;
+        }
+        const data = typeof chunk === "string" ? chunk : chunk.toString("utf8");
+        try {
+          let offset = 0;
+          while (offset < data.length) {
+            const newline = data.indexOf("\n", offset);
+            const end = newline < 0 ? data.length : newline;
+            const segment = data.slice(offset, end);
+            const segmentBytes = Buffer.byteLength(segment, "utf8");
+            const nextFrameBytes = bufferBytes + segmentBytes;
+            if (nextFrameBytes > maxFrameBytes) {
+              throw new McpFrameTooLargeError(nextFrameBytes, maxFrameBytes);
+            }
+            buffer += segment;
+            bufferBytes = nextFrameBytes;
+            if (newline < 0) {
+              break;
+            }
+            const line = buffer;
+            buffer = "";
+            bufferBytes = 0;
+            offset = newline + 1;
+            enqueue(line);
           }
-          const line = buffer.slice(0, newline);
-          buffer = buffer.slice(newline + 1);
-          enqueue(line);
+        } catch (error) {
+          protocolError = error;
+          rejectInput?.(error);
         }
       });
       input.on("end", () => {
+        if (protocolError) {
+          return;
+        }
         if (buffer.trim()) {
           enqueue(buffer);
         }
-        chain.then(resolve, reject);
+        Promise.all(tasks).then(() => resolve(), reject);
       });
-      input.on("error", reject);
+      input.on("error", (error) => {
+        protocolError = error;
+        reject(error);
+      });
     });
   }
 
@@ -305,6 +404,19 @@ function asRecord(value: unknown): Record<string, unknown> {
     return {};
   }
   return value as Record<string, unknown>;
+}
+
+function asRequestId(value: unknown): number | string | undefined {
+  return typeof value === "number" || typeof value === "string" ? value : undefined;
+}
+
+function isCancellationNotification(message: string): boolean {
+  try {
+    const request = JSON.parse(message) as JsonRpcMessage;
+    return request.id === undefined && request.method === "notifications/cancelled";
+  } catch {
+    return false;
+  }
 }
 
 function asStringRecord(value: unknown): Record<string, string> {

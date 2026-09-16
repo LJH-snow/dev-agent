@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { runDoctor } from "../dist/doctor.js";
+import { printDoctorReport, runDoctor } from "../dist/doctor.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
@@ -225,6 +225,92 @@ test("--doctor --json prints a parseable report and matches the exit code", asyn
     assert.equal(checkFor(report, "ripgrep").status, "ok");
     assert.equal(checkFor(report, "sessions").status, "ok");
     assert.equal(report.executorMode, "local");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("doctor JSON and human output do not expose config or session absolute paths", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-"));
+  const configPath = join(dir, "private", "config.json");
+  const sessionDir = join(dir, "private", "sessions");
+  try {
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir,
+      configPath,
+      env: {},
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+
+    const json = JSON.stringify(report);
+    assert.doesNotMatch(json, new RegExp(escapeRegExp(configPath)));
+    assert.doesNotMatch(json, new RegExp(escapeRegExp(sessionDir)));
+    assert.match(checkFor(report, "config").detail, /config file/);
+    assert.match(checkFor(report, "sessions").detail, /session directory/);
+
+    const lines: string[] = [];
+    const originalLog = console.log;
+    console.log = (...values: unknown[]) => {
+      lines.push(values.map((value) => String(value)).join(" "));
+    };
+    try {
+      printDoctorReport(report);
+    } finally {
+      console.log = originalLog;
+    }
+
+    const human = lines.join("\n");
+    assert.doesNotMatch(human, new RegExp(escapeRegExp(configPath)));
+    assert.doesNotMatch(human, new RegExp(escapeRegExp(sessionDir)));
+    assert.match(human, /config file/);
+    assert.match(human, /session directory/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("human doctor output sanitizes untrusted check details", () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...values: unknown[]) => {
+    lines.push(values.map((value) => String(value)).join(" "));
+  };
+
+  try {
+    printDoctorReport({
+      executorMode: "local",
+      checks: [
+        {
+          name: "config",
+          status: "warn",
+          detail: "/tmp/config\u001b[31m password=hunter2",
+        },
+      ],
+      summary: { ok: 0, warn: 1, fail: 0 },
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  const output = lines.join("\n");
+  assert.doesNotMatch(output, /\u001b|hunter2/);
+  assert.match(output, /\[redacted\]/);
+});
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+test("--check-rust sanitizes an untrusted binary path in human errors", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-"));
+  const path = join(dir, "missing\u001b[31m-binary");
+  try {
+    const result = await runCli(["--check-rust", path]);
+
+    assert.equal(result.code, 1);
+    assert.doesNotMatch(result.stderr, /\u001b/);
+    assert.match(result.stderr, /Rust executor binary not found/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

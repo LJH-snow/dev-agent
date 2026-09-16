@@ -50,6 +50,33 @@ function server(): Record<string, unknown> {
   return { command: process.execPath, args: [fixture] };
 }
 
+async function runTools(
+  servers: readonly Record<string, unknown>[],
+  dir: string
+): Promise<any> {
+  return await new Promise((resolve) => {
+    const child = spawn("node", [cliPath, "--tools"], {
+      env: {
+        ...process.env,
+        DEV_AGENT_MODEL_PROVIDER: "ollama",
+        DEV_AGENT_SESSION_DIR: dir,
+        DEV_AGENT_MCP_SERVERS: JSON.stringify(servers),
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.stdin.end();
+    child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
 async function withTempDir(run: (dir: string) => Promise<void>): Promise<void> {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-prefix-"));
   try {
@@ -97,5 +124,15 @@ test("a single unnamed server keeps the historical mcp prefix", async () => {
       mcp.every((name) => name === "mcp"),
       `single unnamed server should stay on 'mcp', got ${mcp.join(", ")}`
     );
+  });
+});
+
+test("human --tools output sanitizes an untrusted MCP prefix", async () => {
+  await withTempDir(async (dir) => {
+    const result = await runTools([{ ...server(), name: "remote\u001b[31m" }], dir);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /\u001b/);
+    assert.match(result.stdout, /remote:hello/);
   });
 });

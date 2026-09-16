@@ -52,7 +52,38 @@ pnpm check
 pnpm build
 pnpm typecheck
 pnpm test
+pnpm package:smoke
 pnpm cli --version
+```
+
+## Using the CLI from another project
+
+The workspace command `pnpm cli` is for repository development only. For use
+from another folder, install the standalone CLI package and invoke its `dev-agent`
+bin from the target project:
+
+```bash
+npm install -g @agent_cli/cli
+cd /path/to/other-project
+dev-agent --version
+dev-agent --cwd /path/to/other-project --index . --json
+dev-agent --session other-project --once "list files in the current directory"
+```
+
+The package is built as a self-contained JavaScript CLI bundle and is verified by
+`pnpm package:smoke` in a clean npm prefix. As of September 16, 2026,
+`@agent_cli/cli@0.1.3` has been published to npm. The formal GitHub tag/release
+remains separately gated; see [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
+for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules.
+
+The published `@agent_cli/cli@0.1.3` includes the explicit `--project-state` opt-in for
+project-scoped config and sessions. It remains opt-in and does not migrate existing
+user-level sessions.
+
+To exercise the workspace build locally from the repository:
+
+```bash
+pnpm cli --cwd /path/to/other-project --project-state --tools
 ```
 
 The fixed release gate is the preferred pre-push check:
@@ -105,7 +136,9 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 `.github/workflows/ci.yml` runs on every push to `main` and on pull requests:
 
 - **TypeScript**: `pnpm verify:typescript` runs the fixed structure check, build,
-  typecheck, and workspace tests (Node 26, pnpm 12.3.4).
+  typecheck, workspace tests, CLI package install smoke, preview contract, release/CI
+  workflow contracts, and documentation contract (Node 26, pnpm 12.3.4). The hosted job installs `expect` and
+  `procps` before the PTY-backed interactive tests.
 - **Rust**: `pnpm verify:rust` runs the fixed `cargo fmt --check`, clippy, and
   unit/doc test phases from `runtime/rust`.
 - **macOS integration**: the pinned `macos-15` job explicitly builds the debug
@@ -123,8 +156,9 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 The sandbox runtime binary (`dev-agent-executor`) has to be built from
 `runtime/rust`. `.github/workflows/release.yml` does that for you: pushing a
 `v*` tag builds `dev-agent-executor` for each supported platform, packages it as
-a `.tar.gz` with a `.sha256` checksum, and attaches everything to a GitHub
-Release.
+a `.tar.gz` with a `.sha256` checksum, and attaches the runtime artifacts and the
+verified CLI npm tarball to a GitHub Release. This workflow still does not publish
+to npm automatically.
 
 Supported targets:
 
@@ -133,7 +167,10 @@ Supported targets:
 - `x86_64-unknown-linux-gnu`
 - `aarch64-unknown-linux-gnu`
 
-To cut a release:
+To cut a release (authorized release flow only):
+
+Formal release is currently gated and has not been authorized. Do not run the following commands
+until a maintainer explicitly approves the release.
 
 ```bash
 git tag v0.1.0
@@ -142,7 +179,8 @@ git push origin v0.1.0
 
 The workflow can also be run manually (`workflow_dispatch`). This is the v64
 release-candidate audit path: it builds and verifies all four target artifacts,
-then skips the publish job. Only a `push` event for a `v*` tag can publish a
+then skips the publish job. The publish job also verifies the tag commit and downloaded
+checksums, and uses `--verify-tag`. Only a `push` event for a `v*` tag can publish a
 GitHub Release.
 
 To build the binary locally:
@@ -159,19 +197,18 @@ Point the CLI or desktop app at it with `--rust-executor <path>` or
 ## Current Status
 
 For the project map and decision history, use the [documentation index](docs/README.md),
-[architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md), and the
-current [v61 plan](docs/day-plan-v61.md) with its [progress record](docs/day-plan-v61-progress.md).
-The completed [v60 normalization plan](docs/day-plan-v60.md) and [progress record](docs/day-plan-v60-progress.md)
-remain the source for the roadmap/documentation boundary. The consolidated
-[next-phase plan](docs/next-roadmap-plans-v62-plus.md) records the recommended v62 Linux
-integration work and later conditional options. The active [v62 day plan](docs/day-plan-v62.md)
-and [progress record](docs/day-plan-v62-progress.md) track the hosted integration evidence. The
-[completed v64 release-candidate audit](docs/day-plan-v64.md) and [progress record](docs/day-plan-v64-progress.md)
-track the four-target manual release workflow validation; they do not authorize a formal release. The
-[completed v63 plan](docs/day-plan-v63.md) and [progress record](docs/day-plan-v63-progress.md) track
-metadata-only executor mode visibility without changing execution semantics. The [CLI runtime
-observability spec](docs/cli-runtime-observability.md) and [implementation plan](docs/superpowers/plans/2026-09-14-cli-runtime-observability.md)
-track the provider/model banner and first-token/total timing output.
+[architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),
+[CLI npm distribution guide](docs/release-cli-npm.md), and the
+[next-phase plan](docs/next-roadmap-plans-v62-plus.md). The v62 Linux hosted integration, v63
+executor-mode visibility, and v64 release-candidate audit are complete; their day plans and
+progress records remain the evidence source for those decisions. The v64 audit validates four
+platform artifacts but does not authorize a formal release. The current CLI delivery is tracked by
+the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TUI v1 spec](docs/cli-tui-v1.md),
+[CLI TUI v1.1 reliability spec](docs/cli-tui-v1.1-reliability.md), [CLI runtime implementation plan](docs/superpowers/plans/2026-09-14-cli-runtime-observability.md),
+[CLI TUI implementation plan](docs/superpowers/plans/2026-09-14-cli-tui-v1.md), [CLI TUI v1.1 implementation plan](docs/superpowers/plans/2026-09-14-cli-tui-v1.1-reliability.md), [v0.1.0 Release Candidate checklist](docs/release-candidate-checklist-v0.1.0.md), [Release Candidate hardening plan](docs/superpowers/plans/2026-09-15-release-candidate-hardening.md), [8-hour unattended development goal](docs/superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md), its [progress record](docs/superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md), the [release provenance audit](docs/superpowers/plans/2026-09-15-release-provenance-audit.md), the [cancellation boundary audit](docs/superpowers/plans/2026-09-15-cancellation-boundary-audit.md), and the [current 10-goal overnight development plan](docs/superpowers/plans/2026-09-15-overnight-development-goals.md). Historical phase records remain linked for auditability: [v60 plan](docs/day-plan-v60.md),
+[v60 progress](docs/day-plan-v60-progress.md), [v61 plan](docs/day-plan-v61.md), [v61 progress](docs/day-plan-v61-progress.md),
+[v62 plan](docs/day-plan-v62.md), [v62 progress](docs/day-plan-v62-progress.md), [v63 plan](docs/day-plan-v63.md),
+[v63 progress](docs/day-plan-v63-progress.md), [v64 plan](docs/day-plan-v64.md), and [v64 progress](docs/day-plan-v64-progress.md).
 
 - Phase 1 workspace skeleton with pnpm monorepo TypeScript setup
 - Agent loop, context, and in-memory memory in `@dev-agent/agent-core`
@@ -554,3 +591,7 @@ track the provider/model banner and first-token/total timing output.
 69. ~~Tool errors are reported back to the model instead of ending the run~~ (done)
 70. ~~Readable `code-search` errors for out-of-range positions~~ (done)
 71. ~~MCP tool failures preserve server-provided error details~~ (done)
+72. ~~CLI Modern TUI v1 rich TTY presentation~~ (done)
+73. ~~CLI TUI v1.1 streaming and input reliability~~ (done)
+74. ~~CLI machine-error and terminal-output safety hardening~~ (done)
+75. ~~Release-candidate verification and provenance audit~~ (done; formal release remains gated)

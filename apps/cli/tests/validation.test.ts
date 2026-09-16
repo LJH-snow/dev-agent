@@ -647,6 +647,20 @@ test("CLI rejects an invalid audit status before loading the provider", async ()
   assert.equal(result.stdout, "");
 });
 
+test("JSON evidence option errors stay on stderr", async () => {
+  for (const operation of ["--preview-evidence", "--export-evidence"]) {
+    const result = await runCli(
+      [operation, "--audit-max-bytes", "not-a-number", "--json"],
+      { ...process.env, DEV_AGENT_MODEL_PROVIDER: "provider-that-must-not-be-loaded" },
+      ""
+    );
+
+    assert.equal(result.code, 1, operation);
+    assert.equal(result.stdout, "", operation);
+    assert.match(result.stderr, /require(?:s)? --export-evidence|positive integer/i, operation);
+  }
+});
+
 
 test("CLI validates audit limits and returns a metadata-only over-limit error", async () => {
   const workspace = await createGitWorkspace();

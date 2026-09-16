@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,6 +9,14 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
+const expectAvailable = (() => {
+  try {
+    execFileSync("expect", ["-c", "exit 0"], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+})();
 
 async function listen(server: Server): Promise<string> {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
@@ -22,6 +30,40 @@ function closeServer(server: Server): Promise<void> {
 }
 
 /** Answers every request with the same content and usage. */
+async function startStreamingStubProvider(options: {
+  readonly chunks?: readonly string[];
+  readonly firstTokenDelayMs?: number;
+} = {}): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+  const chunks = options.chunks ?? ["answer"];
+  const firstTokenDelayMs = options.firstTokenDelayMs ?? 250;
+  const server = createServer((req, res) => {
+    req.on("data", () => {});
+    req.on("end", () => {
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      let index = 0;
+      const writeNext = (): void => {
+        const chunk = chunks[index];
+        if (chunk === undefined) {
+          res.write(
+            `data: ${JSON.stringify({
+              choices: [],
+              usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            })}\n\n`
+          );
+          res.end("data: [DONE]\n\n");
+          return;
+        }
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`);
+        index += 1;
+        setTimeout(writeNext, 10);
+      };
+      setTimeout(writeNext, firstTokenDelayMs);
+    });
+  });
+  const baseUrl = await listen(server);
+  return { baseUrl, close: () => closeServer(server) };
+}
+
 async function startStubProvider(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     req.on("data", () => {});
@@ -55,6 +97,61 @@ interface InteractiveOptions {
   readonly provider: string;
   readonly memoryFile: string;
   readonly openAiBaseUrl?: string;
+}
+
+function launchRich({ provider, memoryFile, openAiBaseUrl }: InteractiveOptions): ChildProcess {
+  // Expect drives the complete scenario inside a real controlling pty. Avoid
+  // `interact` here: when expect itself has piped stdin, interact is not a
+  // reliable way to forward input to the spawned pty.
+  const expectScript = `
+    log_user 1
+    spawn {${process.execPath}} {${cliPath}}
+    expect "Dev Agent"
+    send "unique-user-prompt\\r"
+    expect "Thinking…"
+    expect -exact {[state=done turns=1]}
+    send "exit\\r"
+    expect eof
+  `;
+  return spawn("expect", ["-c", expectScript], {
+    env: {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: provider,
+      ...(openAiBaseUrl
+        ? { OPENAI_API_KEY: "test-key", OPENAI_BASE_URL: openAiBaseUrl }
+        : {}),
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+function launchRichCtrlC({ provider, memoryFile, openAiBaseUrl }: InteractiveOptions): ChildProcess {
+  // Drive the signal from inside expect while the CLI is attached to its pty.
+  // Sending SIGINT to the expect wrapper itself can terminate the wrapper
+  // before its pty flushes the ANSI cleanup sequence.
+  const expectScript = `
+    log_user 1
+    spawn {${process.execPath}} {${cliPath}}
+    expect "Dev Agent"
+    send "interrupt-me\\r"
+    expect "Thinking…"
+    set childPid [exec pgrep -P [pid] -f {dist/index.js}]
+    exec kill -INT $childPid
+    expect "(interrupted)"
+    expect eof
+  `;
+  return spawn("expect", ["-c", expectScript], {
+    env: {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: provider,
+      ...(openAiBaseUrl
+        ? { OPENAI_API_KEY: "test-key", OPENAI_BASE_URL: openAiBaseUrl }
+        : {}),
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
 }
 
 function launch({ provider, memoryFile, openAiBaseUrl }: InteractiveOptions): ChildProcess {
@@ -91,6 +188,14 @@ async function waitForExit(
 ): Promise<{ code: number | null; signal: NodeJS.Signals | null; elapsed: number }> {
   const started = Date.now();
   return await new Promise((resolve, reject) => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve({
+        code: child.exitCode,
+        signal: child.signalCode,
+        elapsed: Date.now() - started,
+      });
+      return;
+    }
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       reject(new Error(`the CLI did not exit within ${timeoutMs}ms`));
@@ -213,3 +318,93 @@ test("Ctrl-C exits the CLI while it is idle at the prompt", async () => {
     }
   });
 });
+
+test("interactive CLI exits cleanly when stdin reaches EOF", async () => {
+  await withTempDir(async (dir) => {
+    const child = launch({ provider: "ollama", memoryFile: join(dir, "session.json") });
+    let stdout = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    try {
+      await waitForReady(child, () => stdout);
+      child.stdin?.end();
+      const result = await waitForExit(child, 1500);
+
+      assert.equal(result.code, 0, stdout);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+    }
+  });
+});
+
+
+test(
+  "rich TTY does not duplicate the echoed user input and clears Thinking before streaming",
+  { skip: !expectAvailable ? "expect is unavailable" : false },
+  async () => {
+  const provider = await startStreamingStubProvider();
+  await withTempDir(async (dir) => {
+    const child = launchRich({
+      provider: "openai",
+      openAiBaseUrl: provider.baseUrl,
+      memoryFile: join(dir, "session.json"),
+    });
+    let stdout = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    try {
+      await waitFor(() => stdout.includes("\u001b[1A\u001b[2K\r"), 5000);
+      await waitFor(() => stdout.includes("Thinking…"), 2000);
+      await waitFor(() => stdout.includes("[state=done turns=1]"), 5000);
+      const result = await waitForExit(child, 5000);
+      assert.equal(result.code, 0, stdout);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+    }
+
+    assert.equal(
+      stdout.split("unique-user-prompt").length - 1,
+      1,
+      "readline echo should be the only user-prompt rendering"
+    );
+    assert.match(stdout, /\u001b\[1A\u001b\[2K\r/, "Thinking should be cleared before the answer");
+  });
+  await provider.close();
+  }
+);
+
+test(
+  "rich TTY clears Thinking when Ctrl-C aborts an in-flight run",
+  { skip: !expectAvailable ? "expect is unavailable" : false },
+  async () => {
+  const provider = await startHangingProvider();
+  await withTempDir(async (dir) => {
+    const child = launchRichCtrlC({
+      provider: "openai",
+      openAiBaseUrl: provider.baseUrl,
+      memoryFile: join(dir, "session.json"),
+    });
+    let stdout = "";
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    try {
+      await waitFor(() => stdout.includes("\u001b[1A\u001b[2K\r"), 5000);
+      const result = await waitForExit(child, 3000);
+      assert.equal(result.code, 0, stdout);
+    } finally {
+      if (child.exitCode === null && child.signalCode === null) {
+        child.kill("SIGKILL");
+      }
+    }
+    assert.match(stdout, /\u001b\[1A\u001b\[2K\r/, "Ctrl-C should clear Thinking");
+  });
+  await provider.close();
+  }
+);

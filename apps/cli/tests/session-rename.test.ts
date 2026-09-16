@@ -80,7 +80,8 @@ test("--session-rename refuses to overwrite an existing session", async () => {
     });
 
     assert.equal(result.code, 1);
-    assert.match(result.stderr, /already exists/);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(JSON.parse(result.stdout), { error: "Session taken already exists." });
     assert.equal(await exists(join(dir, "before.json")), true, "the source stays");
   } finally {
     await rm(dir, { recursive: true, force: true });

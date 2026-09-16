@@ -8,22 +8,33 @@ Architecture, design decisions, and module documentation.
   entry point; its Roadmap uses one unique sequential number per completed item.
 - **Architecture and module boundaries:** [architecture.md](architecture.md) is the
   reference for system responsibilities and runtime boundaries.
+
+The `v62/v63/v64` labels in phase documents are release-planning phase labels; they are not the
+numbered items 62/63/64 in the root README Roadmap.
 - **Chronological decisions and evidence:** [CHANGELOG.md](CHANGELOG.md) preserves
   dated implementation notes, validation evidence, and Preserve/NO-GO decisions.
-- **Current execution plan:** [day-plan-v61.md](day-plan-v61.md) defines the bounded
-  Windows feasibility scope, while [day-plan-v61-progress.md](day-plan-v61-progress.md)
-  records its status. The completed [v60 plan](day-plan-v60.md) and
-  [v60 progress](day-plan-v60-progress.md) remain the source for the roadmap/documentation
-  normalization decision. The supporting [Windows feasibility notes](windows-sandbox-feasibility-v61.md)
-  contain the preliminary threat model and proof-gap matrix. The consolidated
-  [next-phase plan](next-roadmap-plans-v62-plus.md) records v62–v65 options and their
-  trigger conditions. The completed [v62 day plan](day-plan-v62.md) and [progress record](day-plan-v62-progress.md)
-  track the Linux hosted live integration. The completed [v64 release-candidate audit](day-plan-v64.md)
-  and [progress record](day-plan-v64-progress.md) track the four-target manual release workflow
-  validation without authorizing a formal release. The completed [v63 plan](day-plan-v63.md) and
-  [progress record](day-plan-v63-progress.md) track metadata-only executor mode visibility. The
-  [CLI runtime observability spec](cli-runtime-observability.md) and [implementation plan](superpowers/plans/2026-09-14-cli-runtime-observability.md)
-  track the provider/model banner and first-token/total timing output.
+- **Current execution and delivery plan:** the v62 Linux hosted integration, v63 executor-mode
+  visibility, v64 release-candidate readiness audit, CLI Modern TUI v1, and CLI TUI v1.1 reliability work are
+  complete. Their day plans and
+  progress records remain the evidence source for each decision. The [next-phase plan](next-roadmap-plans-v62-plus.md)
+  records the remaining gated options: formal release preparation, v65 Desktop UX only after a
+  concrete trigger, and the Windows backend as NO-GO. The [CLI npm distribution guide](release-cli-npm.md)
+  records the clean-install evidence, `--cwd` precedence, config/session isolation, npm preflight,
+  and optional Rust sandbox boundary. The [CLI runtime observability spec](cli-runtime-observability.md),
+  [CLI runtime implementation plan](superpowers/plans/2026-09-14-cli-runtime-observability.md),
+  [CLI TUI v1 spec](cli-tui-v1.md), [CLI TUI v1.1 reliability spec](cli-tui-v1.1-reliability.md),
+  [implementation plan](superpowers/plans/2026-09-14-cli-tui-v1.md), and [v1.1 implementation plan](superpowers/plans/2026-09-14-cli-tui-v1.1-reliability.md)
+  describe the current CLI interaction delivery. The [v0.1.0 Release Candidate checklist](release-candidate-checklist-v0.1.0.md)
+  and [hardening plan](superpowers/plans/2026-09-15-release-candidate-hardening.md), and the [8-hour
+  unattended development goal](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md), its [progress
+  record](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md), the [release provenance
+  audit](superpowers/plans/2026-09-15-release-provenance-audit.md), the [cancellation boundary audit](superpowers/plans/2026-09-15-cancellation-boundary-audit.md), and the [current 10-goal overnight development plan](superpowers/plans/2026-09-15-overnight-development-goals.md) define the current merge-preparation boundary
+  and maintainer decision gate. The [project-scoped CLI state plan](superpowers/plans/2026-09-16-project-state-isolation.md)
+  records the explicit opt-in follow-up for external-project config/session isolation. Historical phase records remain linked for auditability:
+  [v60 plan](day-plan-v60.md), [v60 progress](day-plan-v60-progress.md), [v61 plan](day-plan-v61.md),
+  [v61 progress](day-plan-v61-progress.md), [Windows feasibility notes](windows-sandbox-feasibility-v61.md),
+  [v62 plan](day-plan-v62.md), [v62 progress](day-plan-v62-progress.md), [v63 plan](day-plan-v63.md),
+  [v63 progress](day-plan-v63-progress.md), [v64 plan](day-plan-v64.md), and [v64 progress](day-plan-v64-progress.md).
 - **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
   fixed contract tests remain authoritative for CI and release behavior; prose here
   is navigation and explanation, not a replacement for those checks.
@@ -110,8 +121,10 @@ fresh checkout, run `pnpm build`, `cargo build --bin dev-agent-executor` from
 both explicitly and checks the live sandbox prerequisites before invoking it.
 Local workspaces may skip live sandbox cases when their platform prerequisites are absent; hosted macOS/Linux jobs fail closed on missing prerequisites and require all expected live cases to run. Gate
 selection does not accept arbitrary commands, model output, or persisted evidence
-as execution input. The TypeScript phase also runs the preview, fixed-gate,
-release-workflow, and bounded documentation contracts in a fixed order.
+as execution input. The TypeScript phase also runs the preview, fixed-gate, release-workflow, CI-workflow,
+and bounded documentation contracts in a fixed order. The CI workflow installs the
+`expect`/`procps` PTY dependencies before the TypeScript gate; the release workflow keeps
+publish permissions job-scoped and verifies tag/artifact integrity before invoking GitHub CLI.
 
 When CI or a local pre-push check needs a machine-readable result, append
 `--report` to a phase entry point:

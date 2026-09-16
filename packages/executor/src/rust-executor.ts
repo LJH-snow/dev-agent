@@ -100,6 +100,8 @@ export interface RustExecutorOptions {
    * answers. `0` disables it (truly unbounded). Defaults to 60000.
    */
   readonly requestTimeoutMs?: number;
+  /** Maximum protobuf payload in one framed message. Defaults to 8 MiB. */
+  readonly maxFrameBytes?: number;
 }
 
 const NETWORK_POLICY_MAP: Readonly<Record<SandboxNetworkPolicy, number>> = {
@@ -110,8 +112,25 @@ const NETWORK_POLICY_MAP: Readonly<Record<SandboxNetworkPolicy, number>> = {
 
 const DEFAULT_MAX_CONCURRENT = 5;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+/** Maximum protobuf payload in either direction of the Rust stdio transport. */
+export const DEFAULT_RUST_EXECUTOR_MAX_FRAME_BYTES = 8 * 1024 * 1024;
 /** Extra time on top of a caller's `timeoutMs`, so the runtime's own timeout wins. */
 const RUNTIME_TIMEOUT_GRACE_MS = 5_000;
+
+export class RustExecutorFrameTooLargeError extends Error {
+  readonly code = "FRAME_TOO_LARGE";
+  readonly frameBytes: number;
+  readonly maxFrameBytes: number;
+
+  constructor(frameBytes: number, maxFrameBytes: number) {
+    super(
+      `Rust executor frame exceeds maximum of ${maxFrameBytes} bytes (received ${frameBytes} bytes)`
+    );
+    this.name = "RustExecutorFrameTooLargeError";
+    this.frameBytes = frameBytes;
+    this.maxFrameBytes = maxFrameBytes;
+  }
+}
 
 export class RustExecutor implements SandboxExecutor {
   readonly mode: ExecutorMode;
@@ -119,10 +138,12 @@ export class RustExecutor implements SandboxExecutor {
   private readonly protoPath?: string;
   private readonly maxConcurrentExecutions: number;
   private readonly requestTimeoutMs: number;
+  private readonly maxFrameBytes: number;
   private child?: ChildProcessWithoutNullStreams;
   private readonly pending = new Map<number, PendingRequest>();
   private nextRequestId = 1;
   private buffer = Buffer.alloc(0);
+  private frameLength?: number;
   private root?: protobuf.Root;
   private envelopeType?: protobuf.Type;
   private responseType?: protobuf.Type;
@@ -138,6 +159,7 @@ export class RustExecutor implements SandboxExecutor {
     this.protoPath = options.protoPath;
     this.maxConcurrentExecutions = options.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
+    this.maxFrameBytes = resolveMaxFrameBytes(options.maxFrameBytes);
   }
 
   async run(
@@ -153,6 +175,12 @@ export class RustExecutor implements SandboxExecutor {
     args: readonly string[] = [],
     options: ExecutorRunOptions & { readonly profile?: SandboxProfile } = {}
   ): Promise<ExecutorResult> {
+    // Reject before touching the runtime. If the cancel envelope were written
+    // first, the runtime could consume it before it has registered the run.
+    if (options.signal?.aborted) {
+      throw new ExecutorCancelledError(command);
+    }
+
     // Same diagnosis as LocalExecutor: a bad cwd must not surface as a missing
     // command once the request reaches the runtime.
     assertWorkingDirectory(options.cwd);
@@ -253,7 +281,13 @@ export class RustExecutor implements SandboxExecutor {
         }, backstopMs);
       }
 
-      this.writeEnvelope(envelope);
+      try {
+        this.writeEnvelope(envelope);
+      } catch (error) {
+        const pendingRequest = this.pending.get(requestId);
+        this.pending.delete(requestId);
+        pendingRequest?.reject(error);
+      }
     });
   }
 
@@ -318,12 +352,45 @@ export class RustExecutor implements SandboxExecutor {
 
     const child = spawn(this.binaryPath, {
       stdio: ["pipe", "pipe", "pipe"],
+      // Keep the runtime's decoder/encoder boundary identical to the
+      // TypeScript side. Without this, a custom maxFrameBytes value would
+      // only protect the host parser while the Rust child still accepted its
+      // larger default.
+      env: {
+        ...process.env,
+        DEV_AGENT_MAX_FRAME_BYTES: String(this.maxFrameBytes),
+      },
     });
     this.child = child;
-    child.stdout.on("data", (chunk: Buffer) => this.handleData(chunk));
+    child.stdout.on("data", (chunk: Buffer) => {
+      if (this.child !== child) {
+        return;
+      }
+      try {
+        this.handleData(chunk);
+      } catch (error) {
+        this.failRuntime(error, child);
+      }
+    });
     child.stderr.setEncoding("utf8");
-    child.on("error", (error) => this.rejectAll(error));
+    child.on("error", (error) => {
+      if (this.child !== child) {
+        return;
+      }
+      this.child = undefined;
+      this.started = false;
+      this.frameLength = undefined;
+      this.buffer = Buffer.alloc(0);
+      this.rejectAll(error);
+    });
     child.on("exit", (code, signal) => {
+      if (this.child !== child) {
+        return;
+      }
+      this.child = undefined;
+      this.started = false;
+      this.frameLength = undefined;
+      this.buffer = Buffer.alloc(0);
       this.rejectAll(new Error(`Rust executor exited (code=${code} signal=${signal ?? "none"})`));
     });
     this.started = true;
@@ -362,6 +429,9 @@ export class RustExecutor implements SandboxExecutor {
     }
     const message = this.envelopeType.create(envelope);
     const buffer = this.envelopeType.encode(message).finish();
+    if (buffer.length > this.maxFrameBytes) {
+      throw new RustExecutorFrameTooLargeError(buffer.length, this.maxFrameBytes);
+    }
     const header = Buffer.alloc(4);
     header.writeUInt32BE(buffer.length, 0);
     this.child.stdin.write(header);
@@ -378,17 +448,40 @@ export class RustExecutor implements SandboxExecutor {
   }
 
   private handleData(chunk: Buffer): void {
-    this.buffer = Buffer.concat([this.buffer, chunk]);
-    for (;;) {
-      if (this.buffer.length < 4) {
-        break;
+    let offset = 0;
+    while (offset < chunk.length) {
+      if (this.frameLength === undefined) {
+        const prefixNeeded = 4 - this.buffer.length;
+        const prefixBytes = chunk.subarray(offset, offset + prefixNeeded);
+        this.buffer = Buffer.concat([this.buffer, prefixBytes]);
+        offset += prefixBytes.length;
+        if (this.buffer.length < 4) {
+          return;
+        }
+        const length = this.buffer.readUInt32BE(0);
+        this.buffer = Buffer.alloc(0);
+        if (length > this.maxFrameBytes) {
+          throw new RustExecutorFrameTooLargeError(length, this.maxFrameBytes);
+        }
+        this.frameLength = length;
+        if (length === 0) {
+          this.frameLength = undefined;
+          this.handleResponse(Buffer.alloc(0));
+          continue;
+        }
       }
-      const length = this.buffer.readUInt32BE(0);
-      if (this.buffer.length < 4 + length) {
-        break;
+
+      const remaining = this.frameLength - this.buffer.length;
+      const payload = chunk.subarray(offset, offset + remaining);
+      this.buffer = Buffer.concat([this.buffer, payload]);
+      offset += payload.length;
+      if (this.buffer.length < this.frameLength) {
+        return;
       }
-      const encoded = this.buffer.subarray(4, 4 + length);
-      this.buffer = this.buffer.subarray(4 + length);
+
+      const encoded = this.buffer;
+      this.buffer = Buffer.alloc(0);
+      this.frameLength = undefined;
       this.handleResponse(encoded);
     }
   }
@@ -439,4 +532,28 @@ export class RustExecutor implements SandboxExecutor {
     }
     this.pending.clear();
   }
+
+  private failRuntime(error: unknown, child: ChildProcessWithoutNullStreams): void {
+    if (this.child !== child) {
+      return;
+    }
+    this.child = undefined;
+    this.started = false;
+    this.startPromise = undefined;
+    this.frameLength = undefined;
+    this.buffer = Buffer.alloc(0);
+    this.rejectAll(error);
+    child.stdin.destroy();
+    child.kill();
+  }
+}
+
+function resolveMaxFrameBytes(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_RUST_EXECUTOR_MAX_FRAME_BYTES;
+  }
+  if (!Number.isSafeInteger(value) || value <= 0) {
+    throw new RangeError("RustExecutor maxFrameBytes must be a positive safe integer");
+  }
+  return value;
 }

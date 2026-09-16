@@ -33,6 +33,7 @@ export class ToolRegistry {
 
 export * from "./change-set.js";
 export * from "./filesystem.js";
+export * from "./workspace-path.js";
 export * from "./shell.js";
 export * from "./git.js";
 export * from "./search.js";

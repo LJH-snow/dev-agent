@@ -6,4 +6,7 @@ pub mod stdio_transport;
 
 pub use local_executor::LocalExecutor;
 pub use sandbox_executor::{SandboxError, SandboxExecutor};
-pub use stdio_transport::{read_envelope, write_response, TransportError};
+pub use stdio_transport::{
+    read_envelope, read_envelope_with_limit, write_response, write_response_with_limit,
+    TransportError, DEFAULT_MAX_FRAME_BYTES,
+};

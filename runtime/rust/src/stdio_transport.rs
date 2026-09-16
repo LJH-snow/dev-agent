@@ -4,6 +4,12 @@ use prost::Message;
 
 use crate::proto::dev_agent::executor::{Envelope, Response};
 
+/// Maximum protobuf payload accepted or emitted by the stdio transport.
+///
+/// The TypeScript client mirrors this default. Callers that need a smaller
+/// boundary can use the `*_with_limit` helpers in tests or an embedding host.
+pub const DEFAULT_MAX_FRAME_BYTES: usize = 8 * 1024 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum TransportError {
     #[error("I/O error: {0}")]
@@ -12,17 +18,30 @@ pub enum TransportError {
     Decode(#[from] prost::DecodeError),
     #[error("protobuf encode error: {0}")]
     Encode(#[from] prost::EncodeError),
+    #[error("frame length {length} exceeds maximum of {max} bytes")]
+    FrameTooLarge { length: usize, max: usize },
 }
 
 pub fn read_envelope<R: Read>(reader: &mut R) -> Result<Option<Envelope>, TransportError> {
+    read_envelope_with_limit(reader, DEFAULT_MAX_FRAME_BYTES)
+}
+
+pub fn read_envelope_with_limit<R: Read>(
+    reader: &mut R,
+    max_frame_bytes: usize,
+) -> Result<Option<Envelope>, TransportError> {
     let mut length_buf = [0u8; 4];
-    if let Err(err) = reader.read_exact(&mut length_buf) {
-        if err.kind() == io::ErrorKind::UnexpectedEof {
-            return Ok(None);
-        }
-        return Err(TransportError::Io(err));
+    if reader.read(&mut length_buf[..1])? == 0 {
+        return Ok(None);
     }
+    reader.read_exact(&mut length_buf[1..])?;
     let length = u32::from_be_bytes(length_buf) as usize;
+    if length > max_frame_bytes {
+        return Err(TransportError::FrameTooLarge {
+            length,
+            max: max_frame_bytes,
+        });
+    }
 
     let mut message_buf = vec![0u8; length];
     reader.read_exact(&mut message_buf)?;
@@ -32,7 +51,21 @@ pub fn read_envelope<R: Read>(reader: &mut R) -> Result<Option<Envelope>, Transp
 }
 
 pub fn write_response<W: Write>(writer: &mut W, response: &Response) -> Result<(), TransportError> {
+    write_response_with_limit(writer, response, DEFAULT_MAX_FRAME_BYTES)
+}
+
+pub fn write_response_with_limit<W: Write>(
+    writer: &mut W,
+    response: &Response,
+    max_frame_bytes: usize,
+) -> Result<(), TransportError> {
     let encoded = response.encode_to_vec();
+    if encoded.len() > max_frame_bytes {
+        return Err(TransportError::FrameTooLarge {
+            length: encoded.len(),
+            max: max_frame_bytes,
+        });
+    }
     writer.write_all(&(encoded.len() as u32).to_be_bytes())?;
     writer.write_all(&encoded)?;
     writer.flush()?;
@@ -101,5 +134,48 @@ mod tests {
         let result = read_envelope(&mut reader);
         // Should error because the stream ends before the full message.
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn read_envelope_rejects_partial_length_prefix() {
+        for prefix in [&[0x00][..], &[0x00, 0x00][..], &[0x00, 0x00, 0x00][..]] {
+            let mut reader = prefix;
+            let result = read_envelope(&mut reader);
+            assert!(
+                result.is_err(),
+                "partial frame prefix must be an error: {prefix:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn read_envelope_rejects_frame_above_the_configured_limit() {
+        let mut reader: &[u8] = &[0x00, 0x00, 0x00, 0x10];
+        let error = read_envelope_with_limit(&mut reader, 8).unwrap_err();
+        assert!(matches!(
+            error,
+            TransportError::FrameTooLarge { length: 16, max: 8 }
+        ));
+    }
+
+    #[test]
+    fn write_response_rejects_encoded_frame_above_the_configured_limit() {
+        let response = Response {
+            request_id: Some(42),
+            payload: Some(Payload::RunResult(RunResult {
+                stdout: "0123456789".to_string(),
+                stderr: "".to_string(),
+                exit_code: 0,
+                timed_out: false,
+                bytes_truncated: false,
+            })),
+        };
+        let mut buf = Vec::new();
+        let error = write_response_with_limit(&mut buf, &response, 4).unwrap_err();
+        assert!(matches!(
+            error,
+            TransportError::FrameTooLarge { length: _, max: 4 }
+        ));
+        assert!(buf.is_empty());
     }
 }

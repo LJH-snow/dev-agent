@@ -123,3 +123,94 @@ test("--once --json prints one machine-readable result object", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("--json emits one parseable error document when startup fails", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-json-"));
+  try {
+    const result = await runCli(["--once", "hi", "--json"], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "openai",
+      OPENAI_API_KEY: "",
+      DEV_AGENT_OPENAI_API_KEY: "",
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+    });
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(JSON.parse(result.stdout), {
+      error: "OPENAI_API_KEY is required for the openai provider",
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--json turns a provider run error into a non-zero error document", async () => {
+  const server = createServer((req, res) => {
+    req.on("data", () => {});
+    req.on("end", () => {
+      res.writeHead(500, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          error: "upstream unavailable",
+          apiKey: "secret-value",
+          authorization: "Bearer super-secret",
+        })
+      );
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as { port: number };
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-json-"));
+
+  try {
+    const result = await runCli(["--once", "hi", "--json"], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "openai",
+      OPENAI_API_KEY: "test-key",
+      OPENAI_BASE_URL: `http://127.0.0.1:${port}/v1`,
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+    });
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, "");
+    const payload = JSON.parse(result.stdout);
+    assert.match(payload.error, /OpenAI request failed \(500\)/);
+    assert.doesNotMatch(payload.error, /secret-value|super-secret/);
+    assert.equal(result.stdout.trim().split("\n").length, 1);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--once human mode returns a non-zero exit code for a provider run error", async () => {
+  const server = createServer((req, res) => {
+    req.on("data", () => {});
+    req.on("end", () => {
+      res.writeHead(400, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: "invalid request" }));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const { port } = server.address() as { port: number };
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-human-error-"));
+
+  try {
+    const result = await runCli(["--once", "hi", "--no-stream"], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "openai",
+      OPENAI_API_KEY: "test-key",
+      OPENAI_BASE_URL: `http://127.0.0.1:${port}/v1`,
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+    });
+
+    assert.equal(result.code, 1);
+    assert.equal(result.stderr, "");
+    assert.match(result.stdout, /\[state=error turns=0\]/);
+    assert.match(result.stdout, /OpenAI request failed \(400\)/);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(dir, { recursive: true, force: true });
+  }
+});

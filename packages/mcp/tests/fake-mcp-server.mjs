@@ -219,6 +219,7 @@ rl.on("line", (line) => {
                 process.env.DEV_AGENT_WORKING_DIRECTORY ?? "",
                 process.env.DEV_AGENT_SESSION_ID ?? "",
                 process.env.MCP_TEST_ENV ?? "",
+                process.cwd(),
               ].join("|"),
             },
           ],

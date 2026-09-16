@@ -1,5 +1,12 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 
+import {
+  assertFrameSize,
+  DEFAULT_MCP_MAX_FRAME_BYTES,
+  McpFrameTooLargeError,
+  resolveMaxFrameBytes,
+} from "./framing.js";
+
 import type {
   McpClient,
   McpCallOptions,
@@ -65,6 +72,8 @@ export class McpStdioClient implements McpClient {
   private readonly progressRequests = new Map<string | number, number>();
   private nextId = 1;
   private buffer = "";
+  private frameBufferBytes = 0;
+  private maxFrameBytes = DEFAULT_MCP_MAX_FRAME_BYTES;
   private notificationHandlers: NotificationHandler[] = [];
   private closed = false;
 
@@ -77,22 +86,48 @@ export class McpStdioClient implements McpClient {
     // leave pending requests hanging instead of rejecting them.
     this.closed = false;
     this.buffer = "";
+    this.frameBufferBytes = 0;
+    this.maxFrameBytes = resolveMaxFrameBytes(config.maxFrameBytes);
+    this.initializeResult = undefined;
 
     const child = spawn(config.command, [...(config.args ?? [])], {
+      // The project root is both the MCP roots capability and the process
+      // boundary. Without cwd, a server launched by an external project would
+      // inherit the host application's directory instead.
+      cwd: config.rootDirectory,
       stdio: ["pipe", "pipe", "pipe"],
       env: { ...process.env, ...config.env },
     });
     this.child = child;
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
-    child.stdout.on("data", (chunk: string) => this.handleData(chunk));
+    child.stdout.on("data", (chunk: string) => {
+      // A previous child may still flush data after close/reconnect. Never let
+      // that stale stream feed the new session's JSON-RPC decoder.
+      if (this.child === child) {
+        try {
+          this.handleData(chunk);
+        } catch (error) {
+          this.failProtocol(error, child);
+        }
+      }
+    });
     child.on("error", (error) => {
+      if (this.child !== child) {
+        return;
+      }
+      this.closed = true;
+      this.initializeResult = undefined;
       this.rejectAll(error);
     });
     child.on("exit", (code, signal) => {
-      if (!this.closed) {
-        this.rejectAll(new Error(`MCP server exited (code=${code} signal=${signal ?? "none"})`));
+      if (this.child !== child) {
+        return;
       }
+      this.child = undefined;
+      this.closed = true;
+      this.initializeResult = undefined;
+      this.rejectAll(new Error(`MCP server exited (code=${code} signal=${signal ?? "none"})`));
     });
 
     let result: McpInitializeResult | undefined;
@@ -355,9 +390,7 @@ export class McpStdioClient implements McpClient {
             },
           };
       try {
-        this.child.stdin.write(
-          `${JSON.stringify({ jsonrpc: "2.0", id, method, params: requestParams })}\n`
-        );
+        this.sendMessage({ jsonrpc: "2.0", id, method, params: requestParams });
       } catch (error) {
         const removed = this.removePending(id);
         removed?.reject(error);
@@ -405,14 +438,31 @@ export class McpStdioClient implements McpClient {
     if (!this.child) {
       return;
     }
-    this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`);
+    this.sendMessage({ jsonrpc: "2.0", method, params });
   }
 
   private handleData(chunk: string): void {
-    this.buffer += chunk;
-    const lines = this.buffer.split("\n");
-    this.buffer = lines.pop() ?? "";
-    for (const line of lines) {
+    let offset = 0;
+    while (offset < chunk.length) {
+      const newline = chunk.indexOf("\n", offset);
+      const end = newline < 0 ? chunk.length : newline;
+      const segment = chunk.slice(offset, end);
+      const segmentBytes = Buffer.byteLength(segment, "utf8");
+      const nextFrameBytes = this.frameBufferBytes + segmentBytes;
+      if (nextFrameBytes > this.maxFrameBytes) {
+        throw new McpFrameTooLargeError(nextFrameBytes, this.maxFrameBytes);
+      }
+      this.buffer += segment;
+      this.frameBufferBytes = nextFrameBytes;
+
+      if (newline < 0) {
+        return;
+      }
+
+      const line = this.buffer;
+      this.buffer = "";
+      this.frameBufferBytes = 0;
+      offset = newline + 1;
       const trimmed = line.trim();
       if (trimmed) {
         this.handleLine(trimmed);
@@ -474,7 +524,30 @@ export class McpStdioClient implements McpClient {
     if (!this.child) {
       return;
     }
-    this.child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`);
+    this.sendMessage({ jsonrpc: "2.0", id, result });
+  }
+
+  private sendMessage(message: Record<string, unknown>): void {
+    if (!this.child) {
+      return;
+    }
+    const frame = JSON.stringify(message);
+    assertFrameSize(frame, this.maxFrameBytes);
+    this.child.stdin.write(`${frame}\n`);
+  }
+
+  private failProtocol(error: unknown, child: ChildProcessWithoutNullStreams): void {
+    if (this.child !== child) {
+      return;
+    }
+    this.child = undefined;
+    this.closed = true;
+    this.initializeResult = undefined;
+    this.buffer = "";
+    this.frameBufferBytes = 0;
+    this.rejectAll(error);
+    child.stdin.destroy();
+    child.kill();
   }
 
   private rejectAll(error: unknown): void {

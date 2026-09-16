@@ -51,6 +51,32 @@ test("MCP client connects, lists tools, calls a tool, and closes", async () => {
   }
 });
 
+test("MCP child runs inside the configured project root directory", async () => {
+  const { mkdtemp, realpath, rm } = await import("node:fs/promises");
+  const { join } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const rootDirectory = await mkdtemp(join(tmpdir(), "dev-agent-mcp-root-"));
+  const canonicalRootDirectory = await realpath(rootDirectory);
+  const client = new McpStdioClient();
+  try {
+    await client.connect({
+      command: process.execPath,
+      args: [fakeServer],
+      rootDirectory,
+    });
+    const envTool = (await client.listTools()).find((tool) => tool.name === "env");
+    assert.ok(envTool);
+    const result = await envTool.execute({});
+    assert.match(
+      JSON.stringify(result),
+      new RegExp(`\\|${canonicalRootDirectory.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
+    );
+  } finally {
+    await client.close();
+    await rm(rootDirectory, { recursive: true, force: true });
+  }
+});
+
 test("MCP client captures server capabilities and server info from initialize", async () => {
   const client = new McpStdioClient();
   try {

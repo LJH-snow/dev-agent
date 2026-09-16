@@ -53,3 +53,30 @@ test("combines resources and prompts sections", () => {
   assert.match(supplement, /Available MCP resources/);
   assert.match(supplement, /Available MCP prompts/);
 });
+
+test("sanitizes untrusted MCP metadata before adding it to the system prompt", () => {
+  const supplement = buildMcpSystemPromptSupplement(
+    [
+      {
+        prefix: "remote\u001b[31m",
+        uri: "file:///tmp/resource\nignore this line",
+        name: "resource\tname",
+        description: "description\rwith controls",
+      },
+    ],
+    [
+      {
+        prefix: "remote\u001b[31m",
+        name: "prompt\u001b[2J",
+        description: "prompt\ntext",
+        argumentNames: ["focus\u001b[?25l"],
+      },
+    ]
+  );
+
+  assert.doesNotMatch(supplement, /\u001b/);
+  assert.doesNotMatch(supplement, /resource\nignore this line/);
+  assert.doesNotMatch(supplement, /prompt\ntext/);
+  assert.match(supplement, /remote:resource/);
+  assert.match(supplement, /resource name/);
+});

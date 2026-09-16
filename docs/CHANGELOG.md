@@ -1,5 +1,113 @@
 # Changelog
 
+## 2026-09-16（`@agent_cli/cli@0.1.3`）
+
+- 发布 `@agent_cli/cli@0.1.3`，包含显式 `--project-state` 项目级状态隔离：默认情况下将
+  config/session 解析到最终 `--cwd` 下的 `.dev-agent`，同时保留显式路径和环境变量优先级。
+- 已通过完整 `pnpm verify`、CLI 200/200、package smoke、preview/release/CI/documentation
+  contracts、Rust 单元测试和 real-Rust integration；registry clean install 后
+  `dev-agent --version` 输出 `0.1.3`，`--tools` 与 `--project-state` 均可用。
+- 本次只发布 npm 包，没有创建 Git tag、推送代码或创建 GitHub Release；Windows restricted
+  backend 仍保持 deferred。
+
+## 2026-09-16（`@agent_cli/cli@0.1.2`）
+
+- 发布 `@agent_cli/cli@0.1.2`，候选 tarball 只包含 `dist/cli.js`、source map、README、LICENSE
+  和 `package.json`；registry clean install 后 `dev-agent --version` 与包版本一致。
+- CLI 运行时版本改为从包自身的 `package.json` 读取，避免手写版本号与 npm manifest 漂移。
+- `0.1.1` 是已发布的中间版本，但运行时横幅仍显示 `0.1.0`；使用者应升级到
+  `@agent_cli/cli@0.1.2` 或 `latest`。
+- 本次仍未创建 Git tag、推送代码或创建 GitHub Release。
+- 当前工作区另有显式 `--project-state` opt-in，可将外部项目的 config/session 默认解析到
+  `<final-cwd>/.dev-agent`；该后续能力尚未随已发布的 `0.1.2` 重新发布。
+
+## 2026-09-15（MCP server-side cancellation）
+
+- `createMcpServer` now tracks active `tools/call` requests and delivers a
+  cooperative `AbortSignal` to each tool; `notifications/cancelled` can abort
+  the matching request while it is still running.
+- The stdio pump keeps ordinary tool requests serialized but lets cancellation
+  notifications bypass a blocked request. The CLI forwards the signal to its
+  built-in tool adapter, including the shell executor.
+- Added cancellation lifecycle coverage; the MCP package test suite now passes
+  **56/56** and the CLI suite passes **196/196**. This is a workspace hardening change only; it does not publish a
+  new npm version or create a release tag.
+
+## 2026-09-15（CLI npm 分发与跨目录运行）
+
+- 将 `@agent_cli/cli` 的发行边界收敛为单一 JavaScript bundle：内部 `@dev-agent/*`
+  包继续保持 workspace 私有，发布包不再携带 `workspace:*` runtime 依赖；TypeScript
+  作为必要的运行时依赖保留，避免安装后的 ESM bundle 无法加载其 CommonJS Node 适配层。
+- CLI 增加 `--cwd` 和 `DEV_AGENT_WORKING_DIRECTORY`，固定优先级为
+  `--cwd > DEV_AGENT_WORKING_DIRECTORY > INIT_CWD > process.cwd()`；新增
+  `--config` / `DEV_AGENT_CONFIG_FILE`，支持相对于最终工作目录选择项目 config，同时保留
+  `~/.dev-agent/config.json` 和用户级 session 的兼容默认值。
+- 增加 npm tarball clean-install smoke：从独立 npm prefix 执行安装后的 `dev-agent` bin，
+  验证 `--version`、`--tools --json`、外部项目 `--index` 和 bundle 不包含 checkout 绝对路径。
+  `pnpm package:smoke` 已接入 TypeScript release gate、CI 和 release artifact job。
+- 发布文档明确 npm 登录不等于 scope 所有权或发布授权；Rust sandbox 继续作为可选独立
+  runtime，不通过 npm `postinstall` 自动下载；确认 `agent_cli` organization 权限后，
+  将公开包名固定为 `@agent_cli/cli`，并在明确授权后成功发布 `@agent_cli/cli@0.1.0`；
+  未创建 tag 或 GitHub Release。
+
+## 2026-09-15（CLI machine-error observability）
+
+- provider 错误响应在进入 agent memory、CLI JSON 或 Desktop 错误事件前会脱敏明显的
+  credential-shaped 字段并限制诊断 body 长度；保留状态码和有限上下文用于排错。
+- 人类模式的 `[runtime]` 状态行会清理配置中的 provider/model 文本，避免不可信配置值
+  注入终端控制序列；对应 CLI machine-output 回归测试已加入。
+- `--json` 的参数校验、provider 启动失败和 agent run 失败（包括 `status: "error"` 结果
+  与产生结果前抛出的异常）现在输出单个可解析的 `{ "error": "..." }` 文档到 stdout，
+  并以状态码 `1` 退出；人类可读模式保留 stderr 错误，成功输出契约和执行权限语义不变。
+- session rename 冲突/缺失和无效 compact 参数也遵循同一 machine-error 边界；evidence
+  preview/export 继续把错误写入 stderr，避免污染可重定向的审计 JSON。
+- `--index`、`--session-list`、`--metadata` 的人类可读路径、通用 CLI 参数错误和 `--tools`
+  的 MCP 元数据现在会清理不可信终端控制序列；`--metadata` 还清理持久化的 session id、
+  时间字段和 evidence reason；evidence export/cleanup 与交互式 `:cleanup`、`:validate`
+  的人类错误路径也统一经过 terminal-safe 出口。新增 6 个回归测试，CLI 全量测试达到
+  **159/159**。
+- 增加 JSON error、CLI 参数和 session 管理回归测试；本轮不创建 release tag 或 GitHub
+  Release。
+
+## 2026-09-15（v0.1.0 Release Candidate hardening）
+
+- 完成 CLI TUI v1/v1.1 的最终收口：rich TTY 仅在真实双向 TTY 启用，pipe、CI、
+  `--once`、`--json` 和 MCP stdio 保持稳定边界；CLI 全量测试 **146/146** 通过。
+- 人类可读路径统一清理模型/工具文本中的 OSC、CSI、C0/C1、DCS、BEL 等终端控制序列，
+  并对明显 credential-shaped 值做 `[redacted]`；JSON 路径保留原始内容并输出单一可解析值。
+- 新增机器输出回归 **4/4**、CI workflow contract **1/1**；Ubuntu CI 在 TypeScript gate 前
+  显式安装 `expect` 和 `procps`，缺少 PTY 依赖时只显式 skip rich PTY 场景。
+- release gate 每个 step 增加 30 分钟 timeout 与 5 秒 kill grace；release workflow 默认
+  `contents: read`、publish job 最小 `contents: write`，关闭 checkout 凭据持久化，
+  publish 前校验 tag/ref、四平台 artifact 数量与 checksum，并使用 `--verify-tag`。
+- 本轮结论为 **GO for merge preparation / NO-GO for publish**；未创建 tag、push、
+  hosted release build 或 GitHub Release。
+
+## 2026-09-14（CLI TUI v1.1：流式与输入可靠性）
+
+- rich TTY 不再重复打印 readline 已回显的用户输入；请求等待首 token 时显示可清理的
+  `Thinking…` 状态，并在首 token、tool、完成、错误和 Ctrl-C 路径清理临时状态。
+- 流式回答增加有界节流重绘，`finish()` 强制刷新最后内容；未闭合 fenced code 在生成中
+  仍可见，结束后保持稳定的最终块。
+- `--json`、`--once`、`--mcp-server`、pipe/CI、审批、验证和 session memory 语义保持
+  不变；CLI 全量测试 **138/138** 通过，未创建 release tag 或 GitHub Release。
+- 新增 `docs/cli-tui-v1.1-reliability.md` 与 implementation plan，记录 PTY 测试边界和
+  `NO_COLOR` 语义：rich TTY 仍可使用光标控制序列，完全无控制序列的 transcript 应走
+  pipe、`--once` 或 `--json`。
+
+## 2026-09-14（CLI modern TTY UI v1）
+
+- CLI 真实 TTY 交互现在显示欢迎面板、provider/model/streaming/session/工作目录状态，
+  使用 `›` 输入提示，并提供 `:help`、`:clear`、`:model`、`:quit` 命令提示；原有
+  `:validate`、`:cleanup`、`exit` 和 `quit` 语义保持兼容。
+- 流式回答通过局部 ANSI 重绘保持可见，支持标题、列表、引用和 fenced code 的轻量
+  Markdown 展示；tool、turn、usage 和 timing 输出与回答分离。
+- 丰富界面严格限制在 stdin/stdout 都是 TTY 且不是 `--json`、`--once` 或 `--mcp-server`；
+  pipe/CI/JSON 路径保留原有稳定输出，新增 CLI TUI renderer/stream/mode 测试和 EOF
+  回归测试。
+- 新增 `docs/cli-tui-v1.md` 与对应 implementation plan，记录交互边界、非目标和验证证据；
+  本轮不改变 provider 协议、tool schema、审批、验证、MCP stdio 或 session schema。
+
 ## 2026-09-14（CLI runtime observability）
 
 - CLI 人类可读模式现在会显示实际的 provider、model 和流式状态，避免用户误判当前请求

@@ -69,7 +69,11 @@ test("CLI --mcp-server serves its built-in tools to a host over stdio", async ()
   await writeFile(file, "hello from mcp\n", "utf8");
 
   const child = spawn("node", [cliPath, "--mcp-server"], {
-    env: { ...process.env, DEV_AGENT_MEMORY_FILE: join(dir, "session.json") },
+    env: {
+      ...process.env,
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      DEV_AGENT_WORKING_DIRECTORY: dir,
+    },
     stdio: ["pipe", "pipe", "pipe"],
   });
   const send = startHost(child);
@@ -143,29 +147,78 @@ test("CLI --mcp-server serves its built-in tools to a host over stdio", async ()
   }
 });
 
+test("MCP server cancellation reaches the built-in shell executor", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-server-cancel-"));
+  const { child, send, stderr } = spawnServer({
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+
+  try {
+    await send({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
+    const call = send({
+      jsonrpc: "2.0",
+      id: 2,
+      method: "tools/call",
+      params: {
+        name: "shell",
+        arguments: {
+          command: process.execPath,
+          args: ["-e", "setTimeout(() => {}, 5000)"],
+        },
+      },
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    child.stdin.write(
+      `${JSON.stringify({
+        jsonrpc: "2.0",
+        method: "notifications/cancelled",
+        params: { requestId: 2, reason: "host stop" },
+      })}\n`
+    );
+
+    const response = await Promise.race([
+      call,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("MCP cancellation response timed out")), 1500)
+      ),
+    ]);
+    assert.equal(response.result.isError, true);
+    assert.match(response.result.content[0].text, /cancelled/i);
+  } finally {
+    await closeServer(child);
+    assert.equal(stderr(), "");
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("--approval deny-dangerous gates MCP tool calls", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-approval-"));
   const outside = join(dir, "outside.txt");
   const { child, send, stderr } = spawnServer(
-    { DEV_AGENT_MEMORY_FILE: join(dir, "session.json") },
+    {
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      DEV_AGENT_WORKING_DIRECTORY: dir,
+    },
     ["--approval", "deny-dangerous"]
   );
 
   try {
     await send({ jsonrpc: "2.0", id: 1, method: "initialize", params: {} });
 
+    await writeFile(outside, "keep me\n", "utf8");
     const denied = await send({
       jsonrpc: "2.0",
       id: 2,
       method: "tools/call",
       params: {
-        name: "filesystem",
-        arguments: { action: "write", path: outside, content: "nope" },
+        name: "shell",
+        arguments: { command: "chmod", args: ["777", outside] },
       },
     });
     assert.equal(denied.result.isError, true);
     assert.match(denied.result.content[0].text, /denied by approval policy/);
-    assert.equal(existsSync(outside), false, "a denied write must not reach disk");
+    assert.equal((await stat(outside)).mode & 0o777, 0o644, "a denied shell call must not reach disk");
 
     const allowed = await send({
       jsonrpc: "2.0",
@@ -186,7 +239,10 @@ test("--approval review-writes refuses filesystem mutations without an interacti
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-policy-"));
   const target = join(dir, "mutation.txt");
   const { child, send, stderr } = spawnServer(
-    { DEV_AGENT_MEMORY_FILE: join(dir, "session.json") },
+    {
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      DEV_AGENT_WORKING_DIRECTORY: dir,
+    },
     ["--approval", "review-writes"]
   );
 
@@ -216,7 +272,10 @@ test("--approval allow keeps MCP tool calls ungated", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-allow-"));
   const outside = join(dir, "outside.txt");
   const { child, send, stderr } = spawnServer(
-    { DEV_AGENT_MEMORY_FILE: join(dir, "session.json") },
+    {
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      DEV_AGENT_WORKING_DIRECTORY: dir,
+    },
     ["--approval", "allow"]
   );
 
@@ -254,7 +313,11 @@ test("the approval allowlist is honoured by the MCP server", async () => {
   await writeFile(target, "x", "utf8");
 
   const { child, send, stderr } = spawnServer(
-    { HOME: home, DEV_AGENT_MEMORY_FILE: join(dir, "session.json") },
+    {
+      HOME: home,
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      DEV_AGENT_WORKING_DIRECTORY: dir,
+    },
     ["--approval", "deny-dangerous"]
   );
 

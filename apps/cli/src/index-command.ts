@@ -1,7 +1,15 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { extname, join, resolve } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { scanFile, type CodeSymbol } from "@dev-agent/code-intelligence";
+
+export interface IndexWarning {
+  readonly kind: "skipped-directory";
+  /** A path relative to the indexed root; absolute paths are intentionally omitted. */
+  readonly path: string;
+  /** A stable filesystem error category, without the error message or path. */
+  readonly code: "EACCES" | "EPERM" | "ENOENT" | "ENOTDIR" | "UNKNOWN";
+}
 
 export interface IndexReport {
   readonly path: string;
@@ -11,6 +19,12 @@ export interface IndexReport {
   /** Files whose stored source and symbols were reused because nothing changed. */
   readonly reused: number;
   readonly languages: Readonly<Record<string, number>>;
+  /** Number of child directories that could not be enumerated. */
+  readonly skipped: number;
+  /** Structured warnings for skipped child directories. */
+  readonly warnings: readonly IndexWarning[];
+  /** Number of distinct explicit exclude paths that matched a file or directory. */
+  readonly excluded: number;
 }
 
 const DEFAULT_MAX_DEPTH = 8;
@@ -49,6 +63,8 @@ interface IndexFile {
 interface FileSignature {
   readonly mtimeMs: number;
   readonly size: number;
+  /** Changes when a file is rewritten even if its mtime and byte length are restored. */
+  readonly ctimeMs: number;
 }
 
 /**
@@ -59,16 +75,20 @@ interface FileSignature {
  */
 export async function indexDirectory(
   rootInput: string,
-  maxDepth: number = DEFAULT_MAX_DEPTH
+  maxDepth: number = DEFAULT_MAX_DEPTH,
+  excludeInputs: readonly string[] = []
 ): Promise<IndexReport> {
   const root = resolve(rootInput);
+  const excludes = normalizeExcludePaths(root, excludeInputs);
   const info = await stat(root);
   if (!info.isDirectory()) {
     throw new Error(`${root} is not a directory`);
   }
 
   const signatures = new Map<string, FileSignature>();
-  await collectFiles(root, 0, maxDepth, signatures);
+  const warnings: IndexWarning[] = [];
+  const matchedExcludes = new Set<string>();
+  await collectFiles(root, root, 0, maxDepth, signatures, warnings, matchedExcludes, excludes, true);
 
   const previous = await readPersistedIndex(root);
   const previousSymbols = groupSymbolsByFile(previous?.symbols ?? []);
@@ -83,7 +103,8 @@ export async function indexDirectory(
       typeof previousSource === "string" &&
       previousSignature &&
       previousSignature.mtimeMs === signature.mtimeMs &&
-      previousSignature.size === signature.size
+      previousSignature.size === signature.size &&
+      previousSignature.ctimeMs === signature.ctimeMs
     ) {
       files.set(filePath, previousSource);
       symbols.push(...(previousSymbols.get(filePath) ?? []));
@@ -119,28 +140,63 @@ export async function indexDirectory(
     symbols: symbols.length,
     reused,
     languages: countLanguages(files.keys()),
+    skipped: warnings.length,
+    warnings,
+    excluded: matchedExcludes.size,
   };
 }
 
 async function collectFiles(
   dir: string,
+  root: string,
   depth: number,
   maxDepth: number,
-  signatures: Map<string, FileSignature>
+  signatures: Map<string, FileSignature>,
+  warnings: IndexWarning[],
+  matchedExcludes: Set<string>,
+  excludes: ReadonlySet<string>,
+  isRoot: boolean
 ): Promise<void> {
   if (depth > maxDepth) {
     return;
   }
 
-  const entries = await readdir(dir, { withFileTypes: true });
+  let entries;
+  try {
+    entries = await readdir(dir, { withFileTypes: true });
+  } catch (error) {
+    if (isRoot) {
+      throw error;
+    }
+    warnings.push({
+      kind: "skipped-directory",
+      path: relative(root, dir) || ".",
+      code: classifyDirectoryError(error),
+    });
+    return;
+  }
+
+  entries.sort((left, right) => comparePathNames(left.name, right.name));
+
   for (const entry of entries) {
+    const entryPath = join(dir, entry.name);
+    if (excludes.has(entryPath)) {
+      matchedExcludes.add(entryPath);
+      continue;
+    }
+
     if (entry.isDirectory()) {
       if (!SKIPPED_DIRECTORIES.has(entry.name)) {
         await collectFiles(
           join(dir, entry.name),
+          root,
           depth + 1,
           maxDepth,
-          signatures
+          signatures,
+          warnings,
+          matchedExcludes,
+          excludes,
+          false
         );
       }
       continue;
@@ -154,14 +210,40 @@ async function collectFiles(
       continue;
     }
 
-    const filePath = join(dir, entry.name);
+    const filePath = entryPath;
     try {
       const info = await stat(filePath);
-      signatures.set(filePath, { mtimeMs: info.mtimeMs, size: info.size });
+      signatures.set(filePath, {
+        mtimeMs: info.mtimeMs,
+        size: info.size,
+        ctimeMs: info.ctimeMs,
+      });
     } catch {
       // Skip unreadable files instead of failing the whole scan.
     }
   }
+}
+
+function normalizeExcludePaths(root: string, inputs: readonly string[]): ReadonlySet<string> {
+  const excludes = new Set<string>();
+  for (const input of inputs) {
+    const candidate = resolve(input);
+    const relativePath = relative(root, candidate);
+    if (
+      relativePath.length === 0 ||
+      relativePath === ".." ||
+      relativePath.startsWith(`..${sep}`) ||
+      isAbsolute(relativePath)
+    ) {
+      throw new Error("--exclude paths must be inside the indexed directory and cannot exclude its root");
+    }
+    excludes.add(candidate);
+  }
+  return excludes;
+}
+
+function comparePathNames(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 interface PersistedIndex {
@@ -202,7 +284,11 @@ async function readPersistedIndex(root: string): Promise<PersistedIndex | undefi
     const signatures: Record<string, FileSignature> = {};
     for (const [filePath, value] of Object.entries(parsed.signatures)) {
       if (isSignature(value)) {
-        signatures[filePath] = { mtimeMs: value.mtimeMs, size: value.size };
+        signatures[filePath] = {
+          mtimeMs: value.mtimeMs,
+          size: value.size,
+          ctimeMs: value.ctimeMs,
+        };
       }
     }
 
@@ -226,12 +312,31 @@ function groupSymbolsByFile(symbols: readonly CodeSymbol[]): Map<string, CodeSym
   return byFile;
 }
 
+function classifyDirectoryError(error: unknown): IndexWarning["code"] {
+  if (!isNodeError(error)) {
+    return "UNKNOWN";
+  }
+  switch (error.code) {
+    case "EACCES":
+    case "EPERM":
+    case "ENOENT":
+    case "ENOTDIR":
+      return error.code;
+    default:
+      return "UNKNOWN";
+  }
+}
+
 async function readSource(filePath: string): Promise<string | undefined> {
   try {
     return await readFile(filePath, "utf8");
   } catch {
     return undefined;
   }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
 }
 
 function countLanguages(files: Iterable<string>): Record<string, number> {
@@ -255,7 +360,9 @@ function isSignature(value: unknown): value is FileSignature {
     typeof value.mtimeMs === "number" &&
     Number.isFinite(value.mtimeMs) &&
     typeof value.size === "number" &&
-    Number.isFinite(value.size)
+    Number.isFinite(value.size) &&
+    typeof value.ctimeMs === "number" &&
+    Number.isFinite(value.ctimeMs)
   );
 }
 

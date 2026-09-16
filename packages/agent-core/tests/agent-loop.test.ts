@@ -414,3 +414,51 @@ test("agent loop accumulates usage across runs and reports each turn", async () 
     totalTokens: 30,
   });
 });
+
+test("agent loop refreshes a dynamic system prompt on every model turn", async () => {
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "refresh",
+    description: "Refreshes the prompt state.",
+    async execute() {
+      return { ok: true };
+    },
+  });
+
+  let supplement = "old MCP prompt";
+  const capturedPrompts: string[] = [];
+  let calls = 0;
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat(messages) {
+      calls += 1;
+      capturedPrompts.push(String(messages.find((message) => message.role === "system")?.content ?? ""));
+      if (calls === 1) {
+        supplement = "new MCP prompt";
+        return {
+          content: "",
+          toolCalls: [{ id: "call-refresh", name: "refresh", input: {} }],
+        };
+      }
+      return { content: "done", toolCalls: [] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("dynamic-prompt", memory);
+  const loop = new AgentLoop({
+    model,
+    tools,
+    systemPromptProvider: () => supplement,
+    maxTurns: 3,
+  });
+
+  const result = await loop.run(context, "use the current MCP prompt");
+
+  assert.equal(result.state.status, "done");
+  assert.equal(capturedPrompts.length, 2);
+  assert.match(capturedPrompts[0], /old MCP prompt/);
+  assert.doesNotMatch(capturedPrompts[0], /new MCP prompt/);
+  assert.match(capturedPrompts[1], /new MCP prompt/);
+});

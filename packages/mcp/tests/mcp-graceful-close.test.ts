@@ -29,3 +29,14 @@ test("server exit does not reject pending requests after close", async () => {
   assert.equal(tools.length, 3);
   await client.close();
 });
+
+test("unexpected server exit clears the connected state", async () => {
+  const client = new McpStdioClient();
+  try {
+    await client.connect({ command: process.execPath, args: [fakeServer] });
+    await assert.rejects(() => client.callTool("crash", {}), /MCP server exited/);
+    assert.equal(client.isConnected(), false);
+  } finally {
+    await client.close();
+  }
+});

@@ -74,10 +74,10 @@
 
 ## Task 4：文档与验证
 
-- [ ] 更新 README、docs index、CHANGELOG 和 documentation contract。
-- [ ] 运行 TypeScript、Rust、real-Rust integration、structure、YAML 和 diff checks。
+- [x] 更新 README、docs index、CHANGELOG 和 documentation contract。
+- [x] 运行 TypeScript、Rust、real-Rust integration、structure、workflow contract 和 diff checks。
 - [x] 推送后确认 Rust、TypeScript、macOS integration、Linux integration hosted CI 全部通过。
-- [ ] 不创建 release tag 或 GitHub Release。
+- [x] 不创建 release tag 或 GitHub Release。
 
 ## Acceptance checklist
 

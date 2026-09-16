@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { PriceTable } from "@dev-agent/model";
 import {
@@ -51,15 +51,56 @@ export function parseConfig(raw: string): CliConfig {
   } as CliConfig;
 }
 
-export function loadConfig(): CliConfig {
-  const configPath = join(homedir(), ".dev-agent", "config.json");
-  if (!existsSync(configPath)) {
+type Env = Readonly<Record<string, string | undefined>>;
+
+/**
+ * Resolves the config file without changing the legacy user-level default.
+ * Explicit paths are relative to the selected working directory so a project
+ * can carry a checked-in or otherwise project-local config file. The
+ * environment variable follows the same rule when no flag is supplied.
+ */
+export function resolveConfigPath(
+  flagValue: string | undefined,
+  env: Env = process.env,
+  homeDirectory = homedir(),
+  baseDirectory = process.cwd(),
+  projectState = false
+): string {
+  const fromFlag = flagValue?.trim();
+  if (fromFlag) {
+    return resolve(baseDirectory, fromFlag);
+  }
+
+  const fromEnv = env.DEV_AGENT_CONFIG_FILE?.trim();
+  if (fromEnv) {
+    return resolve(baseDirectory, fromEnv);
+  }
+
+  return projectState
+    ? join(baseDirectory, ".dev-agent", "config.json")
+    : join(homeDirectory, ".dev-agent", "config.json");
+}
+
+export function loadConfig(
+  configPath?: string,
+  env: Env = process.env,
+  baseDirectory = process.cwd(),
+  projectState = false
+): CliConfig {
+  const resolvedPath = resolveConfigPath(
+    configPath,
+    env,
+    homedir(),
+    baseDirectory,
+    projectState
+  );
+  if (!existsSync(resolvedPath)) {
     return {};
   }
 
   let raw: string;
   try {
-    raw = readFileSync(configPath, "utf8");
+    raw = readFileSync(resolvedPath, "utf8");
   } catch {
     return {};
   }
@@ -67,8 +108,6 @@ export function loadConfig(): CliConfig {
   // propagate instead of silently disabling the safety policy.
   return parseConfig(raw);
 }
-
-type Env = Readonly<Record<string, string | undefined>>;
 
 /**
  * Resolves the sandbox runtime binary path. An explicit CLI flag wins, then the
@@ -95,7 +134,8 @@ export function resolveProviderId(config: CliConfig = {}, env: Env = process.env
   if (fromEnv) {
     return fromEnv;
   }
-  const fromConfig = config.defaultProvider?.trim();
+  const fromConfig =
+    typeof config.defaultProvider === "string" ? config.defaultProvider.trim() : undefined;
   return fromConfig ? fromConfig : "ollama";
 }
 
@@ -107,7 +147,8 @@ export function resolveModel(
   if (fromEnv) {
     return fromEnv;
   }
-  const fromConfig = config.defaultModel?.trim();
+  const fromConfig =
+    typeof config.defaultModel === "string" ? config.defaultModel.trim() : undefined;
   return fromConfig ? fromConfig : undefined;
 }
 

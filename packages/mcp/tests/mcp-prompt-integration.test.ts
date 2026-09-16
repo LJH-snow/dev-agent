@@ -43,7 +43,7 @@ function createMockClient() {
     },
     async ping() {},
     async close() {},
-    getServerCapabilities() { return {}; },
+    getServerCapabilities() { return { tools: {}, prompts: {} }; },
     getServerInfo() { return { name: "mock" }; },
     onNotification() {},
     async reconnect() {},
@@ -84,4 +84,51 @@ test("getPrompt retrieves prompt messages with arguments", async () => {
   const result = await prompt.get({ file: "index.ts", focus: "security" });
   assert.ok(result.messages);
   assert.equal(result.messages.length, 1);
+});
+
+test("session refreshes prompts and emits a new snapshot after prompts/list_changed", async () => {
+  let prompts = [
+    {
+      info: { name: "old-prompt", description: "Old prompt", arguments: [] },
+      async get() {
+        return { messages: [] };
+      },
+    },
+  ];
+  let notificationHandler: ((notification: { method: "prompts/list_changed" }) => void) | undefined;
+  const base = createMockClient();
+  const client = {
+    ...base,
+    async listPrompts() {
+      return prompts;
+    },
+    onNotification(handler: (notification: { method: "prompts/list_changed" }) => void) {
+      notificationHandler = handler;
+    },
+  };
+  const session = new McpServerSession({
+    config: { command: "mock" },
+    client,
+  });
+  const changes: string[] = [];
+  session.onChange((snapshot) => {
+    changes.push(snapshot.prompts.map((prompt) => prompt.info.name).join(","));
+  });
+
+  const initial = await session.connect();
+  assert.deepEqual(initial.prompts.map((prompt) => prompt.info.name), ["old-prompt"]);
+
+  prompts = [
+    {
+      info: { name: "new-prompt", description: "New prompt", arguments: [] },
+      async get() {
+        return { messages: [] };
+      },
+    },
+  ];
+  notificationHandler?.({ method: "prompts/list_changed" });
+  await new Promise((resolve) => setTimeout(resolve, 550));
+
+  assert.deepEqual(session.getSnapshot().prompts.map((prompt) => prompt.info.name), ["new-prompt"]);
+  assert.ok(changes.includes("new-prompt"));
 });

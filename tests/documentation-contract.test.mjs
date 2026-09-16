@@ -4,6 +4,27 @@ import test from "node:test";
 
 const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 const docsReadme = readFileSync(new URL("../docs/README.md", import.meta.url), "utf8");
+const nextRoadmap = readFileSync(
+  new URL("../docs/next-roadmap-plans-v62-plus.md", import.meta.url),
+  "utf8"
+);
+const v63Plan = readFileSync(new URL("../docs/day-plan-v63.md", import.meta.url), "utf8");
+const releaseChecklist = readFileSync(
+  new URL("../docs/release-candidate-checklist-v0.1.0.md", import.meta.url),
+  "utf8"
+);
+const cliReadme = readFileSync(new URL("../apps/cli/README.md", import.meta.url), "utf8");
+const cliPackage = JSON.parse(
+  readFileSync(new URL("../apps/cli/package.json", import.meta.url), "utf8")
+);
+const npmRelease = readFileSync(
+  new URL("../docs/release-cli-npm.md", import.meta.url),
+  "utf8"
+);
+const cliDistributionPlan = readFileSync(
+  new URL("../docs/superpowers/plans/2026-09-15-cli-npm-distribution.md", import.meta.url),
+  "utf8"
+);
 
 const roadmapStart = readme.indexOf("## Roadmap");
 assert.ok(roadmapStart >= 0, "README should contain a Roadmap heading");
@@ -45,6 +66,18 @@ test("documentation index points to the current source-of-truth documents", () =
     "docs/day-plan-v64-progress.md",
     "docs/cli-runtime-observability.md",
     "docs/superpowers/plans/2026-09-14-cli-runtime-observability.md",
+    "docs/cli-tui-v1.md",
+    "docs/cli-tui-v1.1-reliability.md",
+    "docs/release-candidate-checklist-v0.1.0.md",
+    "docs/superpowers/plans/2026-09-14-cli-tui-v1.md",
+    "docs/superpowers/plans/2026-09-14-cli-tui-v1.1-reliability.md",
+    "docs/superpowers/plans/2026-09-15-release-candidate-hardening.md",
+    "docs/superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md",
+    "docs/superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md",
+    "docs/superpowers/plans/2026-09-15-release-provenance-audit.md",
+    "docs/superpowers/plans/2026-09-15-cancellation-boundary-audit.md",
+    "docs/superpowers/plans/2026-09-15-overnight-development-goals.md",
+    "docs/release-cli-npm.md",
   ]) {
     assert.ok(readme.includes(link), `README should link to ${link}`);
   }
@@ -67,7 +100,131 @@ test("documentation index points to the current source-of-truth documents", () =
     "day-plan-v64-progress.md",
     "cli-runtime-observability.md",
     "superpowers/plans/2026-09-14-cli-runtime-observability.md",
+    "cli-tui-v1.md",
+    "cli-tui-v1.1-reliability.md",
+    "release-candidate-checklist-v0.1.0.md",
+    "superpowers/plans/2026-09-14-cli-tui-v1.md",
+    "superpowers/plans/2026-09-14-cli-tui-v1.1-reliability.md",
+    "superpowers/plans/2026-09-15-release-candidate-hardening.md",
+    "superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md",
+    "superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md",
+    "superpowers/plans/2026-09-15-release-provenance-audit.md",
+    "superpowers/plans/2026-09-15-cancellation-boundary-audit.md",
+    "superpowers/plans/2026-09-15-overnight-development-goals.md",
+    "release-cli-npm.md",
   ]) {
     assert.ok(docsReadme.includes(`](${link})`), `docs/README.md should link to ${link}`);
   }
+});
+
+test("next-phase roadmap records the completed ten-goal overnight plan", () => {
+  assert.match(nextRoadmap, /## v62：Linux `bwrap` hosted live integration（已完成）/);
+  assert.doesNotMatch(nextRoadmap, /## v62：Linux `bwrap` hosted live integration（推荐下一步）/);
+  assert.match(
+    nextRoadmap,
+    /## 当前推荐[\s\S]*10 个开发目标的过夜开发计划[\s\S]*均已完成/
+  );
+  assert.match(nextRoadmap, /过夜开发计划/);
+  assert.doesNotMatch(nextRoadmap, /先处理 CLI 索引/);
+  assert.doesNotMatch(
+    nextRoadmap,
+    /8 小时安全无人值守并行开发计划[\s\S]*已经完成[\s\S]*merge preparation \/ maintainer decision gate/
+  );
+});
+
+test("completed v63 day plan has no stale unchecked delivery items", () => {
+  const taskStart = v63Plan.indexOf("## Task 4：文档与验证");
+  const taskEnd = v63Plan.indexOf("## Acceptance checklist", taskStart);
+  assert.ok(taskStart >= 0, "v63 plan should contain Task 4");
+  assert.ok(taskEnd > taskStart, "v63 plan should delimit Task 4");
+  const task = v63Plan.slice(taskStart, taskEnd);
+  assert.doesNotMatch(task, /^- \[ \]/m, "completed v63 Task 4 must not retain unchecked items");
+});
+
+test("release docs distinguish readiness audit from formal release authorization", () => {
+  assert.match(
+    nextRoadmap,
+    /## v64：Release candidate readiness（已完成）/
+  );
+  assert.match(nextRoadmap, /v64 readiness audit 已完成；formal release 仍保持 gated/);
+  assert.match(readme, /Formal release is currently gated and has not been authorized/);
+  assert.match(readme, /To cut a release \(authorized release flow only\)/);
+  assert.match(docsReadme, /release-candidate readiness audit/);
+});
+
+test("phase labels are distinct from root README roadmap item numbers", () => {
+  assert.match(
+    docsReadme,
+    /The `v62\/v63\/v64` labels in phase documents are release-planning phase labels/,
+  );
+  assert.match(
+    docsReadme,
+    /not the\s+numbered items 62\/63\/64 in the root README Roadmap/,
+  );
+});
+
+test("npm CLI docs describe external-directory use and current publication status", () => {
+  assert.match(readme, /release-cli-npm\.md/);
+  assert.match(readme, /npm install -g @agent_cli\/cli/);
+  assert.match(readme, /--project-state/);
+  assert.match(readme, new RegExp(`@agent_cli/cli@${String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(nextRoadmap, new RegExp(`当前 npm 包 \`@agent_cli/cli@${String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\` 已发布`));
+  assert.doesNotMatch(nextRoadmap, /当前 npm 包 `@agent_cli\/cli@0\.1\.0` 已发布/);
+  assert.match(docsReadme, /release-cli-npm\.md/);
+  assert.match(cliReadme, /^# @agent_cli\/cli/m);
+  assert.match(cliReadme, /npm install -g @agent_cli\/cli/);
+  assert.match(cliReadme, /--cwd <path>/);
+  assert.match(cliReadme, /--project-state/);
+  assert.match(cliReadme, /\.dev-agent\/config\.json/);
+  assert.match(cliReadme, /\.dev-agent\/sessions/);
+  assert.match(cliReadme, /DEV_AGENT_WORKING_DIRECTORY/);
+  assert.match(cliReadme, /DEV_AGENT_CONFIG_FILE/);
+  assert.match(npmRelease, /npm install -g @agent_cli\/cli/);
+  assert.match(npmRelease, /dev-agent --cwd/);
+  assert.match(npmRelease, /--project-state/);
+  assert.match(npmRelease, /\.dev-agent\/config\.json/);
+  assert.match(npmRelease, /\.dev-agent\/sessions/);
+  assert.match(npmRelease, /npm whoami/);
+  assert.match(
+    npmRelease,
+    new RegExp(`@agent_cli/cli@${String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
+  );
+  assert.match(npmRelease, /published to npm|已发布到 npm/i);
+  assert.doesNotMatch(npmRelease, /not been published|尚未发布/i);
+  assert.match(npmRelease, /Rust|sandbox/i);
+  assert.match(npmRelease, /session/i);
+  assert.match(npmRelease, /GitHub Release|release tag|正式发布/i);
+});
+
+test("published CLI version is synchronized across release documentation", () => {
+  assert.match(cliDistributionPlan, new RegExp(`@agent_cli/cli@${String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.doesNotMatch(cliDistributionPlan, /@agent_cli\/cli@0\.1\.0/);
+  assert.match(cliDistributionPlan, /本次已获得该授权并单独完成 npm 包发布/);
+});
+
+test("published project-state work is represented in the current npm docs", () => {
+  const escapedVersion = String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  assert.match(
+    readme,
+    new RegExp(`published[\\s\\S]*@agent_cli/cli@${escapedVersion}[\\s\\S]*--project-state`, "i")
+  );
+  assert.match(
+    npmRelease,
+    new RegExp(`--project-state[\\s\\S]*已随已发布的 \`@agent_cli/cli@${escapedVersion}\` 提供`)
+  );
+  assert.doesNotMatch(readme, /has not yet been republished/);
+  assert.doesNotMatch(npmRelease, /尚未随已发布/);
+});
+
+test("release checklist evidence matches the current fixed gate counts", () => {
+  assert.match(releaseChecklist, /CLI 全量测试[^\n]*159\/159/);
+  assert.match(releaseChecklist, /机器输出回归[^\n]*5\/5/);
+  assert.match(releaseChecklist, /JSON 输出契约[^\n]*7\/7/);
+  assert.match(releaseChecklist, /Provider error-body boundary[^\n]*2\/2/);
+  assert.match(releaseChecklist, /documentation contract[^\n]*7\/7/);
+  assert.doesNotMatch(releaseChecklist, /CLI 全量测试[^\n]*158\/158/);
+  assert.doesNotMatch(releaseChecklist, /CLI 全量测试[^\n]*157\/157/);
+  assert.doesNotMatch(releaseChecklist, /CLI 全量测试[^\n]*151\/151/);
+  assert.doesNotMatch(releaseChecklist, /CLI 全量测试[^\n]*146\/146/);
+  assert.doesNotMatch(releaseChecklist, /documentation contract[^\n]*2\/2/);
 });

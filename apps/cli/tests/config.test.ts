@@ -6,6 +6,7 @@ import {
   loadConfig,
   parseApprovalMode,
   resolveApprovalMode,
+  resolveConfigPath,
   resolveMaxContextChars,
   resolveMaxTurns,
   resolveModel,
@@ -75,6 +76,15 @@ test("resolveProviderId prefers env, then config, then ollama", () => {
   assert.equal(resolveProviderId({ defaultProvider: "gemini" }, {}), "gemini");
   assert.equal(resolveProviderId({}, {}), "ollama");
   assert.equal(resolveProviderId(undefined, {}), "ollama");
+});
+
+test("invalid provider and model config values fall back instead of throwing", () => {
+  const config = parseConfig(
+    JSON.stringify({ defaultProvider: 42, defaultModel: false })
+  );
+
+  assert.equal(resolveProviderId(config, {}), "ollama");
+  assert.equal(resolveModel(config, {}), undefined);
 });
 
 test("resolveModel prefers env, then config, then undefined", () => {
@@ -194,5 +204,56 @@ test("validation policy config accepts only predefined policy names", () => {
   assert.throws(
     () => parseConfig('{"validation":{"policy":"fast","args":["-c","echo injected"]}}'),
     /validation.*(only|unsupported|unknown)|args/i
+  );
+});
+
+test("resolveConfigPath prefers an explicit flag over the environment", () => {
+  assert.equal(
+    resolveConfigPath("project.json", {
+      DEV_AGENT_CONFIG_FILE: "env.json",
+    }, "/tmp/home", "/tmp/workspace"),
+    "/tmp/workspace/project.json"
+  );
+});
+
+test("resolveConfigPath uses DEV_AGENT_CONFIG_FILE before the user default", () => {
+  assert.equal(
+    resolveConfigPath(undefined, {
+      DEV_AGENT_CONFIG_FILE: "config/project.json",
+    }, "/tmp/home", "/tmp/workspace"),
+    "/tmp/workspace/config/project.json"
+  );
+  assert.equal(
+    resolveConfigPath(undefined, {}, "/tmp/home", "/tmp/workspace"),
+    "/tmp/home/.dev-agent/config.json"
+  );
+});
+
+test("resolveConfigPath uses the final project directory when project state is enabled", () => {
+  const resolveWithProjectState = resolveConfigPath as unknown as (
+    flagValue: string | undefined,
+    env: Record<string, string | undefined>,
+    homeDirectory: string,
+    baseDirectory: string,
+    projectState: boolean
+  ) => string;
+
+  assert.equal(
+    resolveWithProjectState(undefined, {}, "/tmp/home", "/tmp/project", true),
+    "/tmp/project/.dev-agent/config.json"
+  );
+  assert.equal(
+    resolveWithProjectState("explicit.json", {}, "/tmp/home", "/tmp/project", true),
+    "/tmp/project/explicit.json"
+  );
+  assert.equal(
+    resolveWithProjectState(
+      undefined,
+      { DEV_AGENT_CONFIG_FILE: "env.json" },
+      "/tmp/home",
+      "/tmp/project",
+      true
+    ),
+    "/tmp/project/env.json"
   );
 });

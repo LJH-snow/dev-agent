@@ -19,6 +19,19 @@ preserves the server's text content in the thrown `McpRequestError` (multiple
 text blocks are joined in order and oversized details are truncated); an empty
 error result keeps the generic `reported an error` message.
 
+Active `tools/call` requests receive a cooperative `AbortSignal` in the tool
+context. The server handles `notifications/cancelled` while a tool is pending,
+aborts the matching signal, and keeps ordinary requests serialized for stable
+tool side effects. A tool must observe the signal itself; cancellation cannot
+forcibly stop a non-cooperative promise.
+
+Both sides enforce a bounded newline-delimited frame size. The default is
+`8 MiB` (`DEFAULT_MCP_MAX_FRAME_BYTES`); `McpClientConfig.maxFrameBytes` and
+`McpServerOptions.maxFrameBytes` can set a smaller positive limit. The parser
+counts UTF-8 bytes incrementally, rejects an oversized frame before buffering
+the payload, and returns a `-32002` frame-too-large error where a JSON-RPC
+error response can still be emitted.
+
 ## Client
 
 Implemented:
@@ -61,6 +74,9 @@ that would otherwise lose data should use the plural method.
 The implementation deliberately uses only Node built-ins and no MCP SDK
 dependency. The CLI injects `DEV_AGENT_SESSION_ID` and
 `DEV_AGENT_WORKING_DIRECTORY` into MCP server environments when it connects.
+The configured project directory is also passed as the child process `cwd` and
+is the roots boundary; this prevents an MCP server launched from an external
+project from inheriting the host application's directory by accident.
 
 Every request has a timeout (`McpClientConfig.timeoutMs`, default 30s). A server
 that never answers fails the call with
@@ -116,6 +132,9 @@ written to the server.
 The CLI registers a `<prefix>:resource` tool (read by URI) and a
 `<prefix>:prompt` tool (get by name) for every connected server, and lists the
 available resources and prompts in the agent system prompt so the model can
-discover and use them. When a server emits a `tools/list_changed` notification,
-the CLI unregisters that server's old `<prefix>:*` tools and re-registers the
-updated set.
+discover and use them. When a server emits any `*_list_changed` notification,
+the CLI unregisters that server's old `<prefix>:*` tools, re-registers the
+updated set, and rebuilds the resource/prompt supplement. The agent loop reads
+that supplement immediately before each model turn, so a prompt or resource
+added during a session is visible without restarting the CLI and stale entries
+are not duplicated.

@@ -29,6 +29,15 @@
 ### JSON 模式
 
 不向 stdout 插入运行信息或耗时文本，保持 stdout 为单个 JSON 文档，避免破坏脚本调用方。
+参数校验、provider 启动失败和 agent run 失败也遵循这个边界：无论失败是以
+`status: "error"` 返回，还是在产生结果前抛出，`--json` 都会在 stdout 输出单个
+`{ "error": "..." }` 文档并以状态码 `1` 退出；人类可读模式继续把错误写入 stderr。
+Evidence preview/export 的选项错误例外保留 stderr，以免把错误文档混入可重定向的审计
+JSON artifact。
+
+Provider 返回的错误响应属于不可信输入：模型层会在记录错误前对明显的 credential-shaped
+字段做脱敏，并限制诊断 body 的长度；因此错误信息仍保留状态码和有限诊断上下文，但不会
+把完整响应或明显密钥复制到 agent memory、CLI JSON 或 Desktop 错误事件。
 
 ### 边界
 

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { EventEmitter } from "node:events";
 import { existsSync, readFileSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -8,12 +9,28 @@ import test from "node:test";
 import {
   createGatePlan,
   createGateReport,
+  DEFAULT_KILL_GRACE_MS,
+  DEFAULT_STEP_TIMEOUT_MS,
   parseGateArgs,
   RELEASE_GATE_REPORT_PATH,
   runGatePlan,
+  runStep,
   writeGateReport,
   runGatePlanWithReport,
 } from "../scripts/release-gate.mjs";
+
+function createNeverExitingChild() {
+  const child = new EventEmitter();
+  const signals = [];
+  child.kill = (signal) => {
+    signals.push(signal);
+    if (signal === "SIGKILL") {
+      queueMicrotask(() => child.emit("exit", null, signal));
+    }
+    return true;
+  };
+  return { child, signals };
+}
 
 test("the default gate uses the fixed TypeScript, Rust, and integration order", () => {
   const selection = parseGateArgs([]);
@@ -26,9 +43,11 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
     "build",
     "typecheck",
     "typescript-test",
+    "package-smoke",
     "preview-contract",
     "gate-contract",
     "release-workflow-contract",
+    "ci-workflow-contract",
     "documentation-contract",
     "rust-fmt",
     "rust-clippy",
@@ -42,6 +61,7 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
       ["pnpm", "build"],
       ["pnpm", "typecheck"],
       ["pnpm", "test"],
+      ["pnpm", "package:smoke"],
       [
         "node",
         "--test",
@@ -50,6 +70,7 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
       ],
       ["node", "--test", "tests/release-gate.test.mjs"],
       ["node", "--test", "tests/release-workflow.test.mjs"],
+      ["node", "--test", "tests/ci-workflow.test.mjs"],
       ["node", "--test", "tests/documentation-contract.test.mjs"],
       ["cargo", "fmt", "--check"],
       ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"],
@@ -106,6 +127,33 @@ test("the runner stops at the first failed fixed step", async () => {
 
   assert.equal(exitCode, 23);
   assert.deepEqual(observed, ["structure", "build"]);
+});
+
+test("release gate defaults keep a bounded step timeout and kill grace period", () => {
+  assert.equal(DEFAULT_STEP_TIMEOUT_MS, 30 * 60 * 1000);
+  assert.equal(DEFAULT_KILL_GRACE_MS, 5 * 1000);
+});
+
+test("a never-exiting child is terminated after its timeout and returns failure", async () => {
+  const { child, signals } = createNeverExitingChild();
+  const exitCode = await runStep(
+    {
+      id: "fake-timeout",
+      label: "fake timeout",
+      command: "fake-child",
+      args: [],
+      cwd: resolve(fileURLToPath(new URL("../", import.meta.url))),
+      shell: false,
+    },
+    {
+      timeoutMs: 10,
+      killGraceMs: 10,
+      spawnProcess: () => child,
+    }
+  );
+
+  assert.equal(exitCode, 124);
+  assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
 });
 
 
@@ -265,7 +313,8 @@ test("the TypeScript gate includes the lightweight preview contract suite", () =
     shell: false,
     mode: "typescript",
   });
-  assert.equal(plan[previewIndex - 1].id, "typescript-test");
+  assert.equal(plan[previewIndex - 1].id, "package-smoke");
+  assert.equal(plan[previewIndex - 2].id, "typescript-test");
   assert.equal(plan[previewIndex + 1].id, "gate-contract");
 });
 
@@ -294,6 +343,7 @@ test("preview contract failures remain fail-fast and reportable", async () => {
     "build",
     "typecheck",
     "typescript-test",
+    "package-smoke",
     "preview-contract",
   ]);
   assert.equal(result.report.failedStepId, "preview-contract");
@@ -405,4 +455,20 @@ test("CI runs live Rust integration on a dedicated Linux bwrap job", () => {
       buildExecutor < integrationGate,
     "all live prerequisites should pass before executor build and integration"
   );
+});
+
+test("the TypeScript gate includes the package install smoke test", () => {
+  const plan = createGatePlan(parseGateArgs(["--typescript"]));
+  const packageSmokeIndex = plan.findIndex((step) => step.id === "package-smoke");
+  assert.ok(packageSmokeIndex >= 0);
+  assert.deepEqual(plan[packageSmokeIndex], {
+    id: "package-smoke",
+    label: "CLI package install smoke test",
+    command: "pnpm",
+    args: ["package:smoke"],
+    cwd: plan[0].cwd,
+    shell: false,
+    mode: "typescript",
+  });
+  assert.equal(plan[packageSmokeIndex - 1].id, "typescript-test");
 });

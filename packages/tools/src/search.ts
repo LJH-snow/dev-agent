@@ -1,6 +1,7 @@
 import type { Executor } from "@dev-agent/executor";
 
 import type { Tool, ToolExecutionContext } from "./index.js";
+import { resolveWorkspacePath } from "./workspace-path.js";
 
 interface SearchInput {
   readonly query: string;
@@ -31,9 +32,13 @@ export class SearchTool implements Tool {
     }
     // `--` keeps a query (or path) that starts with `-` a positional argument
     // instead of a ripgrep option like `--files` or `--pre`.
+    const workingDirectory = context?.workingDirectory ?? process.cwd();
+    await resolveWorkspacePath(workingDirectory, params.path, context !== undefined);
+    // Preserve the caller's relative spelling for executor adapters and tests;
+    // validation above has already checked its project boundary.
     args.push("--", params.query, params.path);
     return this.executor.run("rg", args, {
-      cwd: context?.workingDirectory,
+      cwd: workingDirectory,
       ...(context?.signal ? { signal: context.signal } : {}),
     });
   }

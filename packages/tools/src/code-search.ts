@@ -9,6 +9,7 @@ import {
 } from "@dev-agent/code-intelligence";
 
 import type { Tool, ToolExecutionContext } from "./index.js";
+import { resolveWorkspacePath } from "./workspace-path.js";
 
 type Mode = "search" | "references" | "definition";
 
@@ -116,7 +117,12 @@ export class CodeSearchTool implements Tool {
     const record = asRecord(input);
     const mode = parseMode(record.mode);
     const pathValue = typeof record.path === "string" && record.path.length > 0 ? record.path : ".";
-    const root = resolve(context?.workingDirectory ?? process.cwd(), pathValue);
+    const workingDirectory = context?.workingDirectory ?? process.cwd();
+    const root = await resolveWorkspacePath(
+      workingDirectory,
+      pathValue,
+      context !== undefined
+    );
     const maxDepth = record.maxDepth === undefined
       ? defaultMaxDepth
       : parsePositiveInt(record.maxDepth, "maxDepth");
@@ -146,7 +152,11 @@ export class CodeSearchTool implements Tool {
 
     // The scan indexes absolute paths, so a relative `file` must be resolved
     // against the scanned root (the working directory by default).
-    const file = resolve(root, requireString(record.file, "file"));
+    const file = await resolveWorkspacePath(
+      workingDirectory,
+      resolve(root, requireString(record.file, "file")),
+      context !== undefined
+    );
     const line = parseLineOrColumn(record.line, "line");
     const column = record.column === undefined
       ? 1

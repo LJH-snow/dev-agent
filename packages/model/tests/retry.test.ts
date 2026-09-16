@@ -91,6 +91,50 @@ test("other 4xx responses are not retried", async () => {
   assert.equal(calls, 1);
 });
 
+test("provider error bodies redact credentials before becoming model errors", async () => {
+  const provider = createOpenAIProvider({
+    model: "gpt-4o-mini",
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          error: "invalid request",
+          apiKey: "secret-value",
+          authorization: "Bearer super-secret",
+          password: "hunter2",
+        }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      ),
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.match(error.message, /OpenAI request failed \(400\)/);
+      assert.doesNotMatch(error.message, /secret-value|super-secret|hunter2/);
+      assert.match(error.message, /\[redacted\]/);
+      return true;
+    }
+  );
+});
+
+test("provider error bodies are bounded before becoming model errors", async () => {
+  const provider = createOpenAIProvider({
+    model: "gpt-4o-mini",
+    fetch: async () => new Response(`prefix-${"x".repeat(10_000)}`, { status: 400 }),
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.ok(error.message.length < 2_500, `error was ${error.message.length} chars`);
+      assert.match(error.message, /prefix-/);
+      return true;
+    }
+  );
+});
+
 test("network failures are retried", async () => {
   let calls = 0;
 

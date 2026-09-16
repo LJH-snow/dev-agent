@@ -45,6 +45,7 @@ export class McpServerSession {
   private changeHandlers: McpSessionChangeHandler[] = [];
   private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
   private readonly resourceWatchers = new Map<string, McpResourceWatcher[]>();
+  private generation = 0;
   private static readonly DEBOUNCE_MS = 500;
 
   constructor(options: McpSessionOptions) {
@@ -68,10 +69,29 @@ export class McpServerSession {
   }
 
   async connect(): Promise<McpSessionSnapshot> {
-    this.client = this.createClient();
-    this.client.onNotification((notification) => void this.handleNotification(notification));
-    await this.client.connect(this.config);
-    return this.refreshAll();
+    this.clearDebounceTimers();
+    const client = this.createClient();
+    const generation = ++this.generation;
+    this.client = client;
+    client.onNotification((notification) => {
+      if (!this.isCurrent(client, generation)) {
+        return;
+      }
+      void this.handleNotification(notification, client, generation).catch(() => undefined);
+    });
+    try {
+      await client.connect(this.config);
+      return await this.refreshAll(client, generation);
+    } catch (error) {
+      if (this.isCurrent(client, generation)) {
+        this.generation += 1;
+      }
+      // A client can connect successfully and still fail during the initial
+      // tools/resources/prompts refresh. Close that half-open session before
+      // surfacing the startup failure so its child cannot outlive the caller.
+      await client.close().catch(() => undefined);
+      throw error;
+    }
   }
 
   async reconnect(): Promise<McpSessionSnapshot> {
@@ -80,7 +100,7 @@ export class McpServerSession {
     const backoffMs = [1000, 2000, 4000];
     for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
       try {
-        await this.client.close();
+        await this.close();
         return await this.connect();
       } catch (error) {
         lastError = error;
@@ -95,6 +115,8 @@ export class McpServerSession {
   }
 
   async close(): Promise<void> {
+    this.generation += 1;
+    this.clearDebounceTimers();
     await this.client.close();
   }
 
@@ -125,12 +147,24 @@ export class McpServerSession {
     };
   }
 
-  private async refreshAll(): Promise<McpSessionSnapshot> {
+  private async refreshAll(
+    client: McpClient,
+    generation: number
+  ): Promise<McpSessionSnapshot> {
+    const capabilities = client.getServerCapabilities();
+    const supports = (kind: "tools" | "resources" | "prompts"): boolean =>
+      capabilities === undefined || capabilities[kind] !== undefined;
+    const load = <T>(enabled: boolean, request: () => Promise<T[]>): Promise<T[]> =>
+      enabled ? request() : Promise.resolve([]);
+
     const [tools, resources, prompts] = await Promise.all([
-      this.client.listTools(),
-      this.client.listResources(),
-      this.client.listPrompts(),
+      load(supports("tools"), () => client.listTools()),
+      load(supports("resources"), () => client.listResources()),
+      load(supports("prompts"), () => client.listPrompts()),
     ]);
+    if (!this.isCurrent(client, generation)) {
+      throw new Error("MCP session is no longer active");
+    }
     this.tools = tools;
     this.resources = resources;
     this.prompts = prompts;
@@ -138,17 +172,32 @@ export class McpServerSession {
     return this.getSnapshot();
   }
 
-  private async handleNotification(notification: McpNotification): Promise<void> {
+  private async handleNotification(
+    notification: McpNotification,
+    client: McpClient,
+    generation: number
+  ): Promise<void> {
+    if (!this.isCurrent(client, generation)) {
+      return;
+    }
     switch (notification.method) {
       case "tools/list_changed":
         this.debounceReload("tools", async () => {
-          this.tools = await this.client.listTools();
+          const tools = await client.listTools();
+          if (!this.isCurrent(client, generation)) {
+            return;
+          }
+          this.tools = tools;
           this.emitChange();
         });
         break;
       case "resources/list_changed":
         this.debounceReload("resources", async () => {
-          this.resources = await this.client.listResources();
+          const resources = await client.listResources();
+          if (!this.isCurrent(client, generation)) {
+            return;
+          }
+          this.resources = resources;
           this.emitChange();
           this.notifyResourceWatchers();
         });
@@ -158,13 +207,21 @@ export class McpServerSession {
         break;
       case "prompts/list_changed":
         this.debounceReload("prompts", async () => {
-          this.prompts = await this.client.listPrompts();
+          const prompts = await client.listPrompts();
+          if (!this.isCurrent(client, generation)) {
+            return;
+          }
+          this.prompts = prompts;
           this.emitChange();
         });
         break;
       default:
         break;
     }
+  }
+
+  private isCurrent(client: McpClient, generation: number): boolean {
+    return this.client === client && this.generation === generation;
   }
 
   private emitChange(): void {
@@ -177,7 +234,11 @@ export class McpServerSession {
   private notifyResourceWatchers(): void {
     for (const watchers of this.resourceWatchers.values()) {
       for (const watcher of watchers) {
-        watcher("*");
+        try {
+          watcher("*");
+        } catch {
+          // A watcher must not break the MCP notification loop.
+        }
       }
     }
   }
@@ -186,9 +247,20 @@ export class McpServerSession {
     const watchers = this.resourceWatchers.get(uri);
     if (watchers) {
       for (const watcher of watchers) {
-        watcher(uri);
+        try {
+          watcher(uri);
+        } catch {
+          // A watcher must not break the MCP notification loop.
+        }
       }
     }
+  }
+
+  private clearDebounceTimers(): void {
+    for (const timer of this.debounceTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.debounceTimers.clear();
   }
 
   private debounceReload(kind: string, reload: () => Promise<void>): void {
@@ -200,7 +272,7 @@ export class McpServerSession {
       kind,
       setTimeout(() => {
         this.debounceTimers.delete(kind);
-        void reload();
+        void reload().catch(() => undefined);
       }, McpServerSession.DEBOUNCE_MS)
     );
   }

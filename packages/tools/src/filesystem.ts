@@ -6,7 +6,6 @@ import {
   open,
   readFile,
   readdir,
-  realpath,
   rename,
   rmdir,
   stat,
@@ -25,6 +24,7 @@ import {
   type ChangeSetReview,
 } from "./change-set.js";
 import type { Tool, ToolExecutionContext } from "./index.js";
+import { canonicalWorkingDirectory, resolveWorkspacePath } from "./workspace-path.js";
 
 export type FilesystemMutationAction = "write" | "edit" | "patch" | "mkdir";
 export type FilesystemAction =
@@ -184,21 +184,32 @@ export class FilesystemTool implements Tool {
   async execute(input: unknown, context?: ToolExecutionContext): Promise<unknown> {
     const params = parseFilesystemInput(input);
     const cwd = context?.workingDirectory ?? process.cwd();
+    const enforceWorkingDirectory = context !== undefined;
+    const targetPath = (path: string): Promise<string> =>
+      resolveWorkspacePath(cwd, path, enforceWorkingDirectory);
 
     switch (params.action) {
       case "read":
-        return readFileRange(resolve(cwd, resolveRequiredPath(params)), params.offset ?? 1, params.limit ?? DEFAULT_READ_LIMIT);
+        return readFileRange(
+          await targetPath(resolveRequiredPath(params)),
+          params.offset ?? 1,
+          params.limit ?? DEFAULT_READ_LIMIT
+        );
       case "write": {
-        const target = resolve(cwd, resolveRequiredPath(params));
+        const target = await targetPath(resolveRequiredPath(params));
         await writeFile(target, params.content ?? "", "utf8");
         return { ok: true, path: target };
       }
       case "edit":
-        return editFile(resolve(cwd, resolveRequiredPath(params)), params.oldText!, params.newText!);
+        return editFile(
+          await targetPath(resolveRequiredPath(params)),
+          params.oldText!,
+          params.newText!
+        );
       case "patch":
-        return patchFile(resolve(cwd, resolveRequiredPath(params)), params.hunks!);
+        return patchFile(await targetPath(resolveRequiredPath(params)), params.hunks!);
       case "list": {
-        const target = resolve(cwd, resolveRequiredPath(params));
+        const target = await targetPath(resolveRequiredPath(params));
         const entries = await readdir(target, { withFileTypes: true });
         return {
           path: target,
@@ -209,7 +220,7 @@ export class FilesystemTool implements Tool {
         };
       }
       case "stat": {
-        const target = resolve(cwd, resolveRequiredPath(params));
+        const target = await targetPath(resolveRequiredPath(params));
         const fileStat = await stat(target);
         return {
           path: target,
@@ -219,12 +230,12 @@ export class FilesystemTool implements Tool {
         };
       }
       case "mkdir": {
-        const target = resolve(cwd, resolveRequiredPath(params));
+        const target = await targetPath(resolveRequiredPath(params));
         await mkdir(target, { recursive: true });
         return { ok: true, path: target };
       }
       case "preview":
-        return this.previewMutations(params.changes!, cwd);
+        return this.previewMutations(params.changes!, cwd, enforceWorkingDirectory);
       case "apply":
         return this.applyChangeSet(params.changeSetId!);
       case "rollback":
@@ -240,7 +251,8 @@ export class FilesystemTool implements Tool {
     if (params.action === "preview") {
       const review = await this.previewMutations(
         params.changes!,
-        context?.workingDirectory ?? process.cwd()
+        context?.workingDirectory ?? process.cwd(),
+        context !== undefined
       );
       return {
         review,
@@ -253,7 +265,8 @@ export class FilesystemTool implements Tool {
 
     const review = await this.previewMutations(
       [toMutationInput(params)],
-      context?.workingDirectory ?? process.cwd()
+      context?.workingDirectory ?? process.cwd(),
+      context !== undefined
     );
     return {
       review,
@@ -417,18 +430,21 @@ export class FilesystemTool implements Tool {
 
   private async previewMutations(
     changes: readonly FilesystemMutationInput[],
-    cwd: string
+    cwd: string,
+    enforceWorkingDirectory = false
   ): Promise<ChangeSetReview> {
     const seen = new Set<string>();
     const plannedDirectories = new Set<string>();
-    const targets = changes.map((change) => {
-      const target = resolve(cwd, change.path);
-      if (seen.has(target)) {
-        throw new Error(`filesystem preview contains the same path more than once: ${target}`);
-      }
-      seen.add(target);
-      return target;
-    });
+    const targets = await Promise.all(
+      changes.map(async (change) => {
+        const target = await resolveWorkspacePath(cwd, change.path, enforceWorkingDirectory);
+        if (seen.has(target)) {
+          throw new Error(`filesystem preview contains the same path more than once: ${target}`);
+        }
+        seen.add(target);
+        return target;
+      })
+    );
     const preparedDirectories = new Map<string, PreparedMutation>();
     for (let index = 0; index < changes.length; index += 1) {
       const change = changes[index]!;
@@ -941,16 +957,6 @@ function assertAppliedChangeSetRecord(record: AppliedChangeSetRecord): void {
         `filesystem change set ${record.changeSetId} has invalid persisted evidence for path ${String(file?.path ?? "unknown")}`
       );
     }
-  }
-}
-
-async function canonicalWorkingDirectory(path: string): Promise<string> {
-  try {
-    return await realpath(resolve(path));
-  } catch (error) {
-    throw new Error(
-      `filesystem working directory cannot be resolved: ${path} (${error instanceof Error ? error.message : String(error)})`
-    );
   }
 }
 

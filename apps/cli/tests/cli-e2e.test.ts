@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
@@ -44,7 +44,8 @@ test("CLI --tools lists built-in tools without provider", async () => {
 test("CLI --version prints version", async () => {
   const { stdout, code } = await runCli(["--version"]);
   assert.equal(code, 0);
-  assert.match(stdout, /dev-agent 0\.1\.0/);
+  const manifest = JSON.parse(await readFile(join(cliRoot, "package.json"), "utf8"));
+  assert.equal(stdout.trim(), `dev-agent ${manifest.version}`);
 });
 
 test("CLI --metadata shows no metadata for fresh session", async () => {
@@ -142,6 +143,38 @@ test("CLI --metadata prints the accumulated usage", async () => {
 
     assert.equal(code, 0);
     assert.match(stdout, /Usage: prompt=12 completion=5 total=17/);
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+});
+
+test("CLI --metadata human output sanitizes persisted metadata", async () => {
+  const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-cli-"));
+  const sessionFile = join(sessionDir, "tainted.json");
+  try {
+    await writeFile(
+      sessionFile,
+      JSON.stringify({
+        version: 1,
+        metadata: {
+          sessionId: "tainted\u001b[31m",
+          createdAt: "2026-09-15T00:00:00.000Z\u001b[32m",
+          lastActiveAt: "2026-09-15T00:05:00.000Z\u001b[33m",
+          entryCount: 1,
+        },
+        entries: [],
+      }),
+      "utf8"
+    );
+
+    const { stdout, stderr, code } = await runCli(["--metadata"], {
+      DEV_AGENT_MEMORY_FILE: sessionFile,
+    });
+
+    assert.equal(code, 0, stderr);
+    assert.doesNotMatch(stdout, /\u001b/);
+    assert.match(stdout, /Session: tainted/);
+    assert.match(stdout, /Entries: 1/);
   } finally {
     await rm(sessionDir, { recursive: true, force: true });
   }

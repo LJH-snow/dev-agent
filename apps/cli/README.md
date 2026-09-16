@@ -1,6 +1,11 @@
-# @dev-agent/cli
+# @agent_cli/cli
 
-Primary entry point for phase 1.
+Primary entry point for phase 1. The package has two supported invocation modes:
+
+- workspace development through `pnpm cli` from this repository;
+- an installed `dev-agent` binary from any project directory after `@agent_cli/cli` is published or installed from a local tarball.
+
+## Workspace development
 
 Run from the repo root:
 
@@ -16,9 +21,39 @@ pnpm cli --tools
 DEV_AGENT_MODEL_PROVIDER=ollama pnpm cli
 ```
 
+## Installed CLI and external projects
+
+After installing the package (or after placing a local package tarball in an npm
+prefix), run the binary directly from the target project:
+
+```bash
+npm install -g @agent_cli/cli
+cd /path/to/other-project
+dev-agent --version
+dev-agent --tools
+dev-agent --cwd /path/to/other-project --index . --json
+dev-agent --session other-project --once "list files in the current directory"
+```
+
+`pnpm cli` is a workspace-only developer command; it is not required by an
+installed user. See [`docs/release-cli-npm.md`](../../docs/release-cli-npm.md)
+for clean-install checks, npm scope/version preflight, config/session isolation,
+and the optional Rust sandbox boundary.
+
 Options:
 
 - `--once <prompt>` - run a single prompt and exit
+- `--cwd <path>` - use an explicit working directory for filesystem, shell, git,
+  search, code-search, MCP, and validation operations; the directory must exist.
+  Filesystem, search, code-search, and MCP child-process paths are bounded to
+  this project directory; shell and git remain command-level operations with
+  the host permissions of the selected executor
+- `--config <path>` - read a config file, resolving a relative path from the final
+  working directory selected by `--cwd`
+- `--project-state` - opt in to project-scoped defaults: config uses
+  `<final-cwd>/.dev-agent/config.json` and sessions use
+  `<final-cwd>/.dev-agent/sessions` unless an explicit config/session path is set;
+  this does not migrate or rename existing user-level sessions
 - `--session <id>` - use a separate persisted memory session
 - `--reset-memory` - clear the selected memory before running
 - `--tools` - list registered tools and exit
@@ -85,7 +120,12 @@ Options:
   `--session-list`, `--compact`, and `--cleanup-evidence`; implies `--no-stream`
   so nothing else is written to stdout. Prompt results include structured
   `reviews`, `validations`, `changeSets`, and metadata-only `evidenceSummary`
-  fields.
+  fields. Argument-validation, provider-startup, and agent-run failures (whether
+  returned as `status: "error"` or raised before a result exists) emit one
+  `{ "error": "..." }` document on stdout and exit `1`; human-readable
+  invocations keep their existing stderr errors. Evidence preview/export keep
+  option errors on stderr so a successful JSON artifact can never be mixed with
+  an error document.
 - `--doctor` - check the environment (Node version, `rg`, `protoc`, the Rust
   runtime binary, the provider API key, `~/.dev-agent/config.json`, and the
   session directory); a missing config is fine, while malformed JSON is reported
@@ -108,23 +148,45 @@ Options:
 - `--version` / `-v` - print the CLI version
 
 Arguments are validated before anything else runs: an unknown flag, a flag that
-is missing its value, and a stray positional argument all exit `1` with a
-message on stderr instead of being ignored. This matters because a typo used to
-fall through to interactive mode (`--nope`), send the next flag as the prompt
-(`--once --json`), or consume it as a session id (`--session --once`).
+is missing its value, and a stray positional argument all exit `1` instead of
+being ignored. Human-readable invocations receive the message on stderr;
+`--json` invocations receive one parseable `{ "error": "..." }` document on
+stdout. This matters because a typo used to fall through to interactive mode
+(`--nope`), send the next flag as the prompt (`--once --json`), or consume it
+as a session id (`--session --once`).
 
 Running without `--once` starts an interactive session. Each prompt continues
 from the previous run, so `[state=… turns=…]` counts the whole session and
-`[usage]` accumulates instead of reporting one prompt at a time. Use
-`:validate <changeSetId>` for a guarded validation rerun, or
+`[usage]` accumulates instead of reporting one prompt at a time. In a real terminal
+(where both stdin and stdout are TTYs), the CLI uses a rich presentation with a
+welcome panel, provider/model/streaming status, a `›` input prompt, separate user
+and assistant sections, live Markdown-aware streaming, and command hints. The
+rich presentation is intentionally disabled for pipes, CI, `--json`, `--once`,
+and `--mcp-server`, which keep the stable line-oriented or JSON contracts.
+
+Rich interactive commands are `:help`, `:clear`, `:model`, and `:quit`; `exit`
+and `quit` remain accepted aliases. During a request, `Thinking…` is shown until
+the first token, tool activity, completion, failure, or cancellation, and rapid
+tokens are coalesced into bounded live redraws. The readline echo is the single
+user-input rendering, so the same prompt is not printed again as a separate
+`You` block. Use `:validate <changeSetId>` for a guarded validation rerun, or
 `:cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]`
 for explicit metadata-only evidence cleanup. Cleanup reports removed validations,
 removed change sets, protected applied guards, remaining counts, and the current
-retention summary; it never executes a command or touches workspace files. `Ctrl-C`
-cancels the request that is in flight (through the same abort path the
-desktop uses) and exits with status `130`; it also exits immediately when
-the CLI is idle at the prompt. `exit` or `quit` leaves with status `0`.
+retention summary; it never executes a command or touches workspace files.
+`Ctrl-C` cancels the request that is in flight (through the same abort path the
+desktop uses) and exits with status `130`; it also exits immediately when the CLI
+is idle at the prompt.
 
+For a deterministic plain-text transcript with no terminal control sequences, use
+a pipe, `--once`, or `--json`. Human-readable model/tool text is sanitized before it
+reaches the terminal and obvious credential-shaped values are shown as `[redacted]`;
+`--json` preserves the original successful model data and relies on JSON escaping for control
+characters. Provider error response bodies are treated as untrusted input: credential-shaped
+fields are redacted and the diagnostic body is bounded before it reaches agent memory or a JSON
+error document.
+`NO_COLOR=1` disables color ANSI in rich TTY mode, but cursor movement and clear-line
+sequences required for live redraw remain.
 Human-readable agent runs print the resolved runtime before the first prompt or
 `--once` request:
 
@@ -154,6 +216,12 @@ stdout is a protocol message, so logs (if any) go to stderr:
 ```bash
 node apps/cli/dist/index.js --mcp-server
 ```
+
+Hosts may cancel an active `tools/call` by sending the MCP
+`notifications/cancelled` notification with its request id. The CLI forwards
+that cooperative cancellation signal to built-in tools, including the shell
+executor, so a stopped host request does not remain blocked on a running
+command.
 
 ### Reviewed filesystem writes
 
@@ -263,6 +331,13 @@ and simply reports an empty evidence array.
 
 Configuration is read from the environment:
 
+- `DEV_AGENT_WORKING_DIRECTORY` - default working directory when `--cwd` is not
+  supplied; precedence is `--cwd > DEV_AGENT_WORKING_DIRECTORY > INIT_CWD > process.cwd()`
+- `DEV_AGENT_CONFIG_FILE` - config file path when `--config` is not supplied;
+  relative paths resolve from the final working directory. With `--project-state`
+  and no explicit config path, the project default is
+  `<final-cwd>/.dev-agent/config.json`; otherwise the legacy user default remains
+  `~/.dev-agent/config.json`.
 - `DEV_AGENT_MODEL_PROVIDER` - `ollama` (default), `openai`, `anthropic`, or `gemini`
 - `DEV_AGENT_MODEL` - model name; defaults to `qwen3:4b-instruct` for Ollama
 - `OLLAMA_BASE_URL` - optional Ollama base URL override
@@ -276,8 +351,10 @@ Configuration is read from the environment:
   session files. Without it, memory defaults to `~/.dev-agent/sessions/default.json`
   and `--session <id>` maps to `~/.dev-agent/sessions/<id>.json`
 - `DEV_AGENT_SESSION_DIR` - optional directory holding session files; defaults to
-  `~/.dev-agent/sessions`. Used by `--session`, `--metadata`, `--compact`, and
-  `--session-list` alike, so sessions written by the CLI are the ones listed.
+  `~/.dev-agent/sessions`, or to `<final-cwd>/.dev-agent/sessions` when
+  `--project-state` is present. An explicit `DEV_AGENT_SESSION_DIR` always wins.
+  Used by `--session`, `--metadata`, `--compact`, and `--session-list` alike, so
+  sessions written by the CLI are the ones listed.
 - `DEV_AGENT_MAX_CONTEXT_CHARS` - optional character budget for the conversation
   history sent to the model. Oldest entries are dropped first (never splitting a
   tool call from its results) and the model is told how many were omitted. Unset
@@ -302,6 +379,10 @@ Each entry may also set `timeoutMs` (per-request MCP timeout, default 30000);
 `DEV_AGENT_MCP_TIMEOUT_MS` overrides it for every server. A server that never
 answers now fails fast — `dev-agent --tools` exits 1 with
 `MCP request "initialize" timed out after <n>ms` instead of hanging.
+MCP stdio frames are bounded to 8 MiB by default and are rejected while they
+are being decoded if the UTF-8 payload exceeds that limit. This protects both
+the CLI's MCP client and `--mcp-server` before an oversized JSON frame can
+become an unbounded allocation.
 
 Each configured MCP server contributes tools named `<prefix>:*`. The prefix is
 the server's `name`; a single unnamed server keeps the historical `mcp`, several
@@ -317,9 +398,12 @@ field (`null` when unknown).
 
 ## Configuration file
 
-`~/.dev-agent/config.json` is read on every run. Environment variables and CLI
-flags take precedence over it, so a saved preference never overrides an explicit
-invocation.
+By default `~/.dev-agent/config.json` is read on every run. Use
+`--config <path>` or `DEV_AGENT_CONFIG_FILE` for a project-specific file. The
+precedence is `--config > DEV_AGENT_CONFIG_FILE > ~/.dev-agent/config.json`; a
+relative explicit path is resolved from the final `--cwd` directory. Environment
+variables and CLI flags take precedence over values in the selected file, so a
+saved preference never overrides an explicit invocation.
 
 ```json
 {
@@ -374,7 +458,11 @@ Malformed JSON or an unreadable config file is ignored; an invalid validation po
 
 When MCP servers are configured, dev-agent injects `DEV_AGENT_SESSION_ID` and
 `DEV_AGENT_WORKING_DIRECTORY` into each server process so MCP tools can share
-the same runtime context.
+the same runtime context. The selected project directory is also the MCP
+child's process `cwd` and roots boundary. If a server emits a tools, resources,
+or prompts list-change notification, dev-agent refreshes that server's tools
+and rebuilds the system-prompt metadata; the refreshed prompt/resource list is
+read immediately before the next model turn, without duplicate stale entries.
 
 Example:
 
@@ -388,5 +476,10 @@ conversation history with `FileMemory`, and prints the last assistant answer
 after each prompt. Use `--session` to keep separate project or task histories,
 and `--reset-memory` to clear the current session. The agent context records the
 session id, working directory, provider, CLI version, current task, and last error.
-The working directory is the directory where the CLI was invoked, preserved via
-`INIT_CWD` when running through pnpm scripts.
+The working directory uses the fixed precedence `--cwd`,
+`DEV_AGENT_WORKING_DIRECTORY`, `INIT_CWD`, then `process.cwd()`. The selected
+path is validated before provider or tool initialization, and is passed to all
+built-in tools and configured MCP servers. A path that traverses outside the
+project or follows a symlink outside it is rejected by filesystem, search, and
+code-search tools. The shell tool still intentionally delegates to the
+selected executor; use `--rust-executor` when a restricted runtime is required.

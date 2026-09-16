@@ -30,6 +30,8 @@ export interface AgentLoopOptions {
   readonly model: ModelProvider;
   readonly tools?: ToolCollection;
   readonly systemPrompt?: string;
+  /** Resolves the system prompt immediately before each model turn. */
+  readonly systemPromptProvider?: () => string | undefined;
   readonly maxTurns?: number;
   readonly onTurn?: (turn: number, context: AgentContext) => void;
   readonly onToken?: (token: string, context: AgentContext) => void;
@@ -97,6 +99,7 @@ export class AgentLoop {
   private readonly model: ModelProvider;
   private readonly tools?: ToolCollection;
   private readonly systemPrompt?: string;
+  private readonly systemPromptProvider?: () => string | undefined;
   private readonly maxTurns: number;
   private readonly onTurn?: (turn: number, context: AgentContext) => void;
   private readonly onToken?: (token: string, context: AgentContext) => void;
@@ -127,6 +130,7 @@ export class AgentLoop {
     this.model = options.model;
     this.tools = options.tools;
     this.systemPrompt = options.systemPrompt;
+    this.systemPromptProvider = options.systemPromptProvider;
     this.maxTurns = options.maxTurns ?? 10;
     this.onTurn = options.onTurn;
     this.onToken = options.onToken;
@@ -539,7 +543,8 @@ export class AgentLoop {
   private buildSystemPrompt(context: AgentContext): string {
     const runtime = `Runtime: ${process.platform} / Node ${process.version}`;
     const toolCount = this.tools ? `Available tools: ${this.tools.list().length}` : "Available tools: 0";
-    return [this.systemPrompt, `Session: ${context.sessionId}`, `Working directory: ${context.workingDirectory}`, runtime, toolCount]
+    const configuredPrompt = this.systemPromptProvider?.() ?? this.systemPrompt;
+    return [configuredPrompt, `Session: ${context.sessionId}`, `Working directory: ${context.workingDirectory}`, runtime, toolCount]
       .filter((part): part is string => Boolean(part))
       .join("\n\n");
   }

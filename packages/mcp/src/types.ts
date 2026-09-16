@@ -6,6 +6,8 @@ export interface McpClientConfig {
   readonly rootDirectory?: string;
   /** Per-request timeout in milliseconds. Defaults to 30000. */
   readonly timeoutMs?: number;
+  /** Maximum UTF-8 bytes in one newline-delimited JSON frame. Defaults to 8 MiB. */
+  readonly maxFrameBytes?: number;
 }
 
 export interface McpClientCapabilities {

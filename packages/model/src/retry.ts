@@ -44,6 +44,17 @@ export class ModelRequestError extends Error {
 const DEFAULT_RETRIES = 2;
 const DEFAULT_BASE_DELAY_MS = 250;
 const DEFAULT_MAX_DELAY_MS = 2000;
+const MAX_ERROR_BODY_CHARS = 2000;
+
+const SENSITIVE_KEY_PATTERN =
+  /((?:["']?(?:api[-_ ]?key|access[-_ ]?key|access[-_ ]?token|auth(?:orization)?|cookie|password|passphrase|secret|token|private[-_ ]?key)["']?\s*[:=]\s*)(["']))[^"'\\]*(?:\\.[^"'\\]*)*\2/gi;
+const SENSITIVE_UNQUOTED_KEY_PATTERN =
+  /((?:["']?(?:api[-_ ]?key|access[-_ ]?key|access[-_ ]?token|auth(?:orization)?|cookie|password|passphrase|secret|token|private[-_ ]?key)["']?\s*[:=]\s*))(?!["'])([^"'\s,}\]]+)/gi;
+const BEARER_TOKEN_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const PRIVATE_KEY_PATTERN =
+  /-----BEGIN [A-Z0-9 ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]+ PRIVATE KEY-----/g;
+const TOKEN_SHAPE_PATTERN =
+  /\b(?:sk|pk|gh[pousr]|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b/gi;
 
 /**
  * Runs `operation` until it succeeds, the retry budget is exhausted, or the
@@ -94,14 +105,36 @@ export async function requestWithRetry(
   return withRetry(async () => {
     const response = await perform();
     if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new ModelRequestError(`${label} failed (${response.status}): ${body}`, {
+      const body = summarizeErrorBody(await response.text().catch(() => ""));
+      const detail = body ? `: ${body}` : "";
+      throw new ModelRequestError(`${label} failed (${response.status})${detail}`, {
         status: response.status,
         retryAfterMs: parseRetryAfter(response.headers.get("retry-after")),
       });
     }
     return response;
   }, options);
+}
+
+/**
+ * Provider error responses are untrusted input. Keep enough detail to debug
+ * normal API failures, but do not copy credentials or unbounded response
+ * bodies into agent memory, CLI JSON, or Desktop error events.
+ */
+function summarizeErrorBody(value: string): string {
+  const redacted = value
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
+    .replace(PRIVATE_KEY_PATTERN, "[redacted-private-key]")
+    .replace(SENSITIVE_KEY_PATTERN, "$1$2[redacted]$2")
+    .replace(SENSITIVE_UNQUOTED_KEY_PATTERN, "$1[redacted]")
+    .replace(BEARER_TOKEN_PATTERN, "Bearer [redacted]")
+    .replace(TOKEN_SHAPE_PATTERN, "[redacted-token]")
+    .trim();
+
+  if (redacted.length <= MAX_ERROR_BODY_CHARS) {
+    return redacted;
+  }
+  return `${redacted.slice(0, MAX_ERROR_BODY_CHARS)}…`;
 }
 
 /** 429 and 5xx are worth retrying; other 4xx are not. Network errors are retried. */

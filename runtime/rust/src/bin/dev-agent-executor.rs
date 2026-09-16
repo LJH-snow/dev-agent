@@ -10,7 +10,8 @@ use dev_agent_runtime::proto::dev_agent::executor::{
     HealthCheckResult, Response,
 };
 use dev_agent_runtime::{
-    read_envelope, write_response, LocalExecutor, SandboxError, SandboxExecutor,
+    read_envelope_with_limit, write_response_with_limit, LocalExecutor, SandboxError,
+    SandboxExecutor, DEFAULT_MAX_FRAME_BYTES,
 };
 
 type CancelSenders = Arc<Mutex<HashMap<u32, oneshot::Sender<()>>>>;
@@ -29,18 +30,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pending: CancelSenders = Arc::new(Mutex::new(HashMap::new()));
     let max_concurrent =
         parse_max_concurrent(std::env::var("DEV_AGENT_MAX_CONCURRENT").ok().as_deref());
+    let max_frame_bytes =
+        parse_max_frame_bytes(std::env::var("DEV_AGENT_MAX_FRAME_BYTES").ok().as_deref());
 
     // Requests run concurrently so a cancel envelope can be read while a
     // command is still running. Each run keeps a cancellation sender in
     // `pending`, keyed by its request id, until it finishes.
     loop {
-        let envelope = match read_envelope(&mut reader) {
+        let envelope = match read_envelope_with_limit(&mut reader, max_frame_bytes) {
             Ok(Some(envelope)) => envelope,
             Ok(None) => break,
             Err(err) => {
                 let response = error_response(None, "TRANSPORT_ERROR", err.to_string());
                 let mut out = writer.lock().await;
-                let _ = write_response(&mut *out, &response);
+                let _ = write_response_with_limit(&mut *out, &response, max_frame_bytes);
                 break;
             }
         };
@@ -50,7 +53,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             Some(RequestPayload::Run(run)) => {
                 if at_capacity(&pending, max_concurrent).await {
                     let mut out = writer.lock().await;
-                    let _ = write_response(&mut *out, &capacity_error(request_id, max_concurrent));
+                    let _ = write_response_with_limit(
+                        &mut *out,
+                        &capacity_error(request_id, max_concurrent),
+                        max_frame_bytes,
+                    );
                     continue;
                 }
                 let cancel = register_cancel(&pending, request_id).await;
@@ -69,13 +76,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     finish_request(&pending, request_id).await;
                     let mut out = writer.lock().await;
-                    let _ = write_response(&mut *out, &response);
+                    let _ = write_response_with_limit(&mut *out, &response, max_frame_bytes);
                 });
             }
             Some(RequestPayload::RunSandboxed(request)) => {
                 if at_capacity(&pending, max_concurrent).await {
                     let mut out = writer.lock().await;
-                    let _ = write_response(&mut *out, &capacity_error(request_id, max_concurrent));
+                    let _ = write_response_with_limit(
+                        &mut *out,
+                        &capacity_error(request_id, max_concurrent),
+                        max_frame_bytes,
+                    );
                     continue;
                 }
                 let cancel = register_cancel(&pending, request_id).await;
@@ -100,7 +111,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     finish_request(&pending, request_id).await;
                     let mut out = writer.lock().await;
-                    let _ = write_response(&mut *out, &response);
+                    let _ = write_response_with_limit(&mut *out, &response, max_frame_bytes);
                 });
             }
             Some(RequestPayload::Cancel(cancel)) => {
@@ -122,13 +133,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     })),
                 };
                 let mut out = writer.lock().await;
-                write_response(&mut *out, &response)?;
+                write_response_with_limit(&mut *out, &response, max_frame_bytes)?;
             }
             None => {
                 let response =
                     error_response(request_id, "INVALID_REQUEST", "empty envelope".to_string());
                 let mut out = writer.lock().await;
-                write_response(&mut *out, &response)?;
+                write_response_with_limit(&mut *out, &response, max_frame_bytes)?;
             }
         }
     }
@@ -166,6 +177,16 @@ fn parse_max_concurrent(value: Option<&str>) -> usize {
         .and_then(|trimmed| trimmed.parse::<usize>().ok())
         .filter(|parsed| *parsed > 0)
         .unwrap_or(DEFAULT_MAX_CONCURRENT)
+}
+
+/// Parses the protobuf payload limit, falling back to the transport default
+/// for anything that is not a positive integer.
+fn parse_max_frame_bytes(value: Option<&str>) -> usize {
+    value
+        .map(str::trim)
+        .and_then(|trimmed| trimmed.parse::<usize>().ok())
+        .filter(|parsed| *parsed > 0)
+        .unwrap_or(DEFAULT_MAX_FRAME_BYTES)
 }
 
 async fn finish_request(pending: &CancelSenders, request_id: Option<u32>) {
@@ -219,6 +240,36 @@ mod tests {
         assert_eq!(parse_max_concurrent(Some("0")), DEFAULT_MAX_CONCURRENT);
         assert_eq!(parse_max_concurrent(Some("-2")), DEFAULT_MAX_CONCURRENT);
         assert_eq!(parse_max_concurrent(Some("many")), DEFAULT_MAX_CONCURRENT);
+    }
+
+    #[test]
+    fn parse_max_frame_bytes_accepts_positive_integers() {
+        assert_eq!(parse_max_frame_bytes(Some("4096")), 4096);
+        assert_eq!(parse_max_frame_bytes(Some(" 8192 ")), 8192);
+    }
+
+    #[test]
+    fn parse_max_frame_bytes_falls_back_for_invalid_values() {
+        assert_eq!(
+            parse_max_frame_bytes(None),
+            dev_agent_runtime::DEFAULT_MAX_FRAME_BYTES
+        );
+        assert_eq!(
+            parse_max_frame_bytes(Some("")),
+            dev_agent_runtime::DEFAULT_MAX_FRAME_BYTES
+        );
+        assert_eq!(
+            parse_max_frame_bytes(Some("0")),
+            dev_agent_runtime::DEFAULT_MAX_FRAME_BYTES
+        );
+        assert_eq!(
+            parse_max_frame_bytes(Some("-2")),
+            dev_agent_runtime::DEFAULT_MAX_FRAME_BYTES
+        );
+        assert_eq!(
+            parse_max_frame_bytes(Some("many")),
+            dev_agent_runtime::DEFAULT_MAX_FRAME_BYTES
+        );
     }
 
     #[test]

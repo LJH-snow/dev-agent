@@ -34,12 +34,25 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
 
+      # Rich TTY tests use expect for the controlling pty and pgrep from procps
+      # to signal the child process during the Ctrl-C scenario.
+      - name: Install PTY test dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq expect procps
+
+      - name: Validate CI workflow contracts
+        run: node --test tests/ci-workflow.test.mjs
+
       # The search tool's tests shell out to ripgrep.
       - name: Install ripgrep
         run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+
+      # Verify the installable tarball from a clean npm prefix and an external
+      # project directory before the broader TypeScript gate.
+      - name: CLI package install smoke test
+        run: pnpm package:smoke
 
       # This fixed runner keeps the local TypeScript gate and CI in sync.
       - name: TypeScript release gate

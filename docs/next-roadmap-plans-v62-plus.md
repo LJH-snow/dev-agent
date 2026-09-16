@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**文档状态：计划已建立；当前只确定范围和优先级，尚未授权 speculative runtime 实现。**
+**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；正式 GitHub release 仍需明确授权。**
 
 > v60 完成了文档 source-of-truth 整理，v61 完成了 Windows restricted execution 的
 > feasibility review。v61 的结论是：继续保留 macOS `sandbox-exec`、Linux `bwrap` 和其他
@@ -13,16 +13,20 @@
 
 ## 当前基线
 
-截至 2026-09-14：
+截至 2026-09-16：
 
-- 当前分支为 `main`，工作区干净。
-- v60/v61 文档与 contract 已推送；最近一次普通 CI
-  [34815284519](https://github.com/LJH-snow/dev-agent/actions/runs/34815284519) 的 Rust、
-  TypeScript 和 macOS integration jobs 全部通过。
-- 固定验证已经覆盖 TypeScript workspace、preview、release-gate、release-workflow、
-  documentation contract、Rust unit/doc 和 macOS real-Rust integration。
-- macOS real-Rust integration 已达到 **10/10**；Linux `bwrap` backend 有参数构造测试和
-  条件式 live test，但还没有独立的 hosted Linux integration evidence。
+- v62 Linux `bwrap` hosted integration 已完成，Linux 与 macOS real-Rust integration 均为
+  **10/10、0 skipped**。
+- v63 executor mode metadata 已在 executor、CLI doctor 和 Desktop `/health` 中可见，未改变
+  执行权限语义。
+- v64 release-candidate audit 已完成四平台 build、archive、README、executable bit、checksum
+  与 publish boundary 验证；formal release 仍未执行。
+- CLI Modern TUI v1 及 v1.1 reliability 已完成并通过 CLI 全量测试、TypeScript gate 与
+  PTY 回归；真实 TTY 才使用 rich presentation，pipe/CI/JSON/once/MCP server 保留稳定输出。
+- CLI TUI v1/v1.1 与 v0.1.0 RC hardening 已形成待审查变更集；后续变更仍需遵循
+  先写 RED contract、再做最小实现的边界。
+- 8 小时开发目标已完成：CLI machine-error、provider error-body 和 runtime status
+  hardening 已有回归测试与固定 gate 证据；当前工作区仍是待审查变更集，尚未创建提交。
 - Windows restricted execution 已记录为 **Preserve / NO-GO**，除非未来出现稳定 runner、
   可审计安全原语、完整 negative tests 和明确发布需求。
 
@@ -38,7 +42,7 @@
 
 ---
 
-## v62：Linux `bwrap` hosted live integration（推荐下一步）
+## v62：Linux `bwrap` hosted live integration（已完成）
 
 ### 目标
 
@@ -100,6 +104,12 @@ Linux 与 macOS 的错误文案不同而降低安全断言强度。
 - 失败的 Linux capability 会让 job 失败，而不是被包装成通过。
 - 不引入新的公开 API 或无沙箱 fallback。
 
+### 完成记录
+
+v62 已通过 hosted Linux `bwrap` live integration；macOS 与 Linux real-Rust integration
+均为 **10/10、0 skipped**。本节保留原始动机和验收标准，作为历史决策记录，不再表示
+当前待执行工作。
+
 ---
 
 ## v63：Executor 模式与沙箱状态显式化
@@ -134,7 +144,7 @@ Linux 与 macOS 的错误文案不同而降低安全断言强度。
 
 ---
 
-## v64：Release candidate readiness
+## v64：Release candidate readiness（已完成）
 
 ### 目标
 
@@ -158,7 +168,48 @@ workflow 的构建、打包、checksum 和 artifact 边界。
 
 ### 默认决策
 
-**Preserve current release workflow。** 只有准备正式发布版本时才启动 v64。
+**v64 readiness audit 已完成；formal release 仍保持 gated。** v64 的四平台构建、打包和
+发布边界审计已经完成；只有在获得正式发布授权后，才启动 tag、签名、发布说明和 GitHub
+Release 流程。
+
+---
+
+## CLI Modern TUI v1：交互体验落地（已完成）
+
+### 目标
+
+将 CLI 人类交互从单纯行文本升级为 TTY-only 的终端工作台，同时保持 pipe、CI、JSON、
+`--once`、MCP server、审批、验证和 session memory 语义不变。
+
+### 已交付
+
+- 欢迎面板、provider/model/streaming/session/工作目录状态和 `›` 输入提示；
+- `:help`、`:clear`、`:model`、`:quit`，以及既有 `:validate`、`:cleanup`、`exit`、`quit`；
+- 标题、列表、引用、fenced code 的轻量 Markdown 渲染与流式局部重绘；
+- `NO_COLOR` 可读文本、窄终端宽度保护、stdin EOF 和 Ctrl-C 回归覆盖；
+- CLI 测试、TypeScript gate、documentation contract 与 PTY smoke 证据。
+
+### 决策
+
+**GO / completed.** TUI v1 只改变人类可读的 TTY presentation，不改变 provider 协议、tool
+schema、审批、验证、MCP stdio、JSON 输出或 session schema。
+
+---
+
+## CLI TUI v1.1：流式与输入可靠性（已完成）
+
+### 交付内容
+
+- rich TTY 不再重复打印 readline 已经回显的用户输入；
+- 请求等待首 token 时显示可清理的 `Thinking…`，首 token、tool、完成、错误和 Ctrl-C
+  都能清理临时状态；
+- 流式回答采用有界节流重绘，`finish()` 强制提交最后内容，未闭合 fenced code 仍可见；
+- 非 rich 路径、JSON、`--once`、MCP server、审批、验证和 session memory 语义保持不变。
+
+### 决策
+
+**GO / completed.** 这是 TUI v1 的可靠性收口，不引入第三方终端框架，也不改变 provider、
+tool、approval、validation、MCP 或 session schema。
 
 ---
 
@@ -207,15 +258,27 @@ fallback。详细 proof gap 见
 
 ## 推荐执行顺序
 
-| 顺序 | 阶段 | 默认决策 | 触发条件 |
+| 顺序 | 阶段 | 当前状态 | 触发条件 |
 | --- | --- | --- | --- |
-| 1 | v62 Linux `bwrap` hosted live integration | **GO** | 现在就可以开始 |
-| 2 | v63 Executor mode 显式化 | Preserve/deferred | 用户误解或明确 UX 需求 |
-| 3 | v64 Release candidate readiness | Preserve | 准备正式发布版本 |
-| 4 | v65 Desktop 产品化 UX | Preserve/deferred | 真实 Desktop UX feedback |
-| 5 | Windows backend | NO-GO | runner + primitive + live evidence + target commitment |
+| 1 | v62 Linux `bwrap` hosted live integration | **已完成** | — |
+| 2 | v63 Executor mode 显式化 | **已完成** | — |
+| 3 | v64 Release candidate readiness | **已完成** | — |
+| 4 | CLI Modern TUI v1 | **已完成** | — |
+| 5 | CLI TUI v1.1 reliability | **已完成** | — |
+| 6 | Formal release v0.1.0 | gated / 未授权 | 明确发布授权 |
+| 7 | v65 Desktop 产品化 UX | Preserve/deferred | 真实 Desktop UX feedback |
+| 8 | Windows backend | NO-GO | runner + primitive + live evidence + target commitment |
 
 ## 当前推荐
 
-下一步直接建立 `docs/day-plan-v62.md`，从 Linux `bwrap` capability inventory 和 RED
-workflow contract 开始；不要先做 Windows backend，也不要先做 speculative Desktop UI。
+上一轮 [8 小时安全无人值守并行开发计划](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md)、
+其[进度记录](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md)
+以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
+均已完成。当前 npm 包 `@agent_cli/cli@0.1.3` 已发布，正式 GitHub release 仍需单独授权。
+在没有新的产品决策或真实 Desktop UX trigger 时，保持当前实现和发布边界，不开始
+speculative Desktop UI，也不重新打开 Windows backend。
+
+2026-09-16 已在当前工作区完成保持兼容的 `--project-state` opt-in：它只为明确选择的
+外部项目使用 `<final-cwd>/.dev-agent` 下的 config/session，不改变用户级默认值，也不
+自动迁移历史 session。该变更已随已发布的 npm `0.1.3` 提供；详细步骤和验证记录见
+`superpowers/plans/2026-09-16-project-state-isolation.md`。

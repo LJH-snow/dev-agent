@@ -1,9 +1,12 @@
+#!/usr/bin/env node
+
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { readdir, rename, rm, stat } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -40,7 +43,7 @@ import {
   type ValidationResult,
   type SessionMetadata,
 } from "@dev-agent/agent-core";
-import { createExecutor } from "@dev-agent/executor";
+import { assertWorkingDirectory, createExecutor } from "@dev-agent/executor";
 import {
   createMcpServer,
   McpServerSession,
@@ -49,9 +52,21 @@ import {
   type McpSessionSnapshot,
 } from "@dev-agent/mcp";
 import { colors, colorize } from "./colors.js";
+import { richPromptPrefix, shouldUseRichUi } from "./tui-mode.js";
+import { LiveAssistantRenderer } from "./tui-stream.js";
+import {
+  DEFAULT_COMMAND_HINTS,
+  redactSensitiveText,
+  renderAssistantMessage,
+  renderCommandHints,
+  renderRuntimeStatus,
+  renderWelcome,
+  sanitizeTerminalText,
+} from "./tui-renderer.js";
 import {
   loadConfig,
   parseApprovalMode,
+  resolveConfigPath,
   resolveApprovalMode,
   resolveMaxContextChars,
   resolveMaxTurns,
@@ -86,7 +101,8 @@ import {
   type ValidationPolicy,
 } from "@dev-agent/tools";
 
-const version = "0.1.0";
+const packageMetadata = createRequire(import.meta.url)("../package.json") as { version?: string };
+const version = packageMetadata.version ?? "0.0.0";
 const defaultSystemPrompt =
   "You are dev-agent, a coding agent. Use tools when they help answer the user.";
 
@@ -106,6 +122,7 @@ const PREVIEW_EXCLUSIVE_FLAGS = [
   "--session-delete",
   "--session-rename",
   "--index",
+  "--exclude",
   "--rust-executor",
   "--check-rust",
   "--approval",
@@ -149,6 +166,10 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--session": "one",
   "--session-delete": "one",
   "--index": "one",
+  "--exclude": "one",
+  "--cwd": "one",
+  "--config": "one",
+  "--project-state": "none",
   "--rust-executor": "one",
   "--approval": "one",
   "--session-rename": "two",
@@ -218,16 +239,19 @@ function validatePreviewCliCombination(
 
 export async function main(argv: string[]): Promise<void> {
   const args = argv.slice(2);
+  const jsonOutput = args.includes("--json");
+  const previewEvidence = args.includes("--preview-evidence");
+  const exportEvidence = args.includes("--export-evidence");
+  const jsonErrorOutput = shouldEmitJsonErrorDocument(args);
   const argError = validateCliArgs(args);
   if (argError) {
-    console.error(argError);
+    emitCliError(argError, jsonErrorOutput);
     process.exitCode = 1;
     return;
   }
-  const previewEvidence = args.includes("--preview-evidence");
   const previewCombinationError = validatePreviewCliCombination(args, previewEvidence);
   if (previewCombinationError) {
-    console.error(previewCombinationError);
+    emitCliError(previewCombinationError, jsonErrorOutput);
     process.exitCode = 1;
     return;
   }
@@ -239,7 +263,7 @@ export async function main(argv: string[]): Promise<void> {
   const onceIndex = args.indexOf("--once");
   const oncePrompt = onceIndex >= 0 ? args[onceIndex + 1] : undefined;
   if (onceIndex >= 0 && !oncePrompt) {
-    console.error("--once requires a prompt argument");
+    emitCliError("--once requires a prompt argument", jsonErrorOutput);
     process.exitCode = 1;
     return;
   }
@@ -247,18 +271,16 @@ export async function main(argv: string[]): Promise<void> {
   const sessionIndex = args.indexOf("--session");
   const sessionId = sessionIndex >= 0 ? args[sessionIndex + 1] : undefined;
   if (sessionIndex >= 0 && !sessionId) {
-    console.error("--session requires a session id");
+    emitCliError("--session requires a session id", jsonErrorOutput);
     process.exitCode = 1;
     return;
   }
   const resetMemory = args.includes("--reset-memory");
   const noStream = args.includes("--no-stream");
-  const jsonOutput = args.includes("--json");
   const cleanupEvidence = args.includes("--cleanup-evidence");
-  const exportEvidence = args.includes("--export-evidence");
   const cleanupOptionsResult = parseCliEvidenceCleanupOptions(args, cleanupEvidence);
   if ("error" in cleanupOptionsResult) {
-    console.error(cleanupOptionsResult.error);
+    emitCliError(cleanupOptionsResult.error, jsonErrorOutput);
     process.exitCode = 1;
     return;
   }
@@ -268,18 +290,22 @@ export async function main(argv: string[]): Promise<void> {
     exportEvidence
   );
   if ("error" in auditOptionsResult) {
-    console.error(auditOptionsResult.error);
+    emitCliError(auditOptionsResult.error, jsonErrorOutput);
     process.exitCode = 1;
     return;
   }
   if (cleanupEvidence && exportEvidence) {
-    console.error("--cleanup-evidence and --export-evidence cannot be used together");
+    emitCliError(
+      "--cleanup-evidence and --export-evidence cannot be used together",
+      jsonErrorOutput
+    );
     process.exitCode = 1;
     return;
   }
   if (previewEvidence && (cleanupEvidence || exportEvidence)) {
-    console.error(
-      "--preview-evidence cannot be combined with --cleanup-evidence or --export-evidence"
+    emitCliError(
+      "--preview-evidence cannot be combined with --cleanup-evidence or --export-evidence",
+      jsonErrorOutput
     );
     process.exitCode = 1;
     return;
@@ -287,7 +313,7 @@ export async function main(argv: string[]): Promise<void> {
   const sessionDeleteIndex = args.indexOf("--session-delete");
   const sessionDeleteId = sessionDeleteIndex >= 0 ? args[sessionDeleteIndex + 1] : undefined;
   if (sessionDeleteIndex >= 0 && sessionDeleteId === undefined) {
-    console.error("--session-delete requires a session id");
+    emitCliError("--session-delete requires a session id", jsonErrorOutput);
     process.exitCode = 1;
     return;
   }
@@ -295,23 +321,60 @@ export async function main(argv: string[]): Promise<void> {
   const renameFrom = renameIndex >= 0 ? args[renameIndex + 1] : undefined;
   const renameTo = renameIndex >= 0 ? args[renameIndex + 2] : undefined;
   if (renameIndex >= 0 && (renameFrom === undefined || renameTo === undefined)) {
-    console.error("--session-rename requires both the current and the new session id");
+    emitCliError(
+      "--session-rename requires both the current and the new session id",
+      jsonErrorOutput
+    );
     process.exitCode = 1;
     return;
   }
   const indexIndex = args.indexOf("--index");
   const indexPath = indexIndex >= 0 ? args[indexIndex + 1] : undefined;
   if (indexIndex >= 0 && indexPath === undefined) {
-    console.error("--index requires a directory path");
+    emitCliError("--index requires a directory path", jsonErrorOutput);
     process.exitCode = 1;
     return;
   }
+  const excludePaths = args
+    .flatMap((arg, index) => (arg === "--exclude" ? [args[index + 1]] : []))
+    .filter((path): path is string => path !== undefined);
+  const cwdIndex = args.indexOf("--cwd");
+  const cwdFlag = cwdIndex >= 0 ? args[cwdIndex + 1] : undefined;
+  if (cwdIndex >= 0 && !cwdFlag?.trim()) {
+    emitCliError("--cwd requires a directory path", jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+  const configIndex = args.indexOf("--config");
+  const configFlag = configIndex >= 0 ? args[configIndex + 1] : undefined;
+  if (configIndex >= 0 && !configFlag?.trim()) {
+    emitCliError("--config requires a file path", jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+  const projectState = args.includes("--project-state");
   const normalizedSessionId = normalizeSessionId(sessionId ?? "default");
-  const workingDirectory = resolveWorkingDirectory();
+  const workingDirectory = resolveWorkingDirectory(cwdFlag);
+  assertWorkingDirectory(workingDirectory);
+  if (excludePaths.length > 0 && indexPath === undefined) {
+    emitCliError("--exclude requires --index", jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+  const configPath = resolveConfigPath(
+    configFlag,
+    process.env,
+    homedir(),
+    workingDirectory,
+    projectState
+  );
   const rustIndex = args.indexOf("--rust-executor");
   const rustFlag = rustIndex >= 0 ? args[rustIndex + 1] : undefined;
   if (rustIndex >= 0 && !rustFlag) {
-    console.error("--rust-executor requires a path to the dev-agent-executor binary");
+    emitCliError(
+      "--rust-executor requires a path to the dev-agent-executor binary",
+      jsonErrorOutput
+    );
     process.exitCode = 1;
     return;
   }
@@ -328,13 +391,19 @@ export async function main(argv: string[]): Promise<void> {
   const approvalIndex = args.indexOf("--approval");
   const approvalFlag = approvalIndex >= 0 ? args[approvalIndex + 1] : undefined;
   if (approvalIndex >= 0 && approvalFlag === undefined) {
-    console.error("--approval requires one of: allow, deny-dangerous, ask, review-writes");
+    emitCliError(
+      "--approval requires one of: allow, deny-dangerous, ask, review-writes",
+      jsonErrorOutput
+    );
     process.exitCode = 1;
     return;
   }
   const approvalFlagMode = approvalFlag === undefined ? undefined : parseApprovalMode(approvalFlag);
   if (approvalFlag !== undefined && approvalFlagMode === undefined) {
-    console.error(`Unknown approval mode '${approvalFlag}'. Use allow, deny-dangerous, ask, or review-writes.`);
+    emitCliError(
+      `Unknown approval mode '${approvalFlag}'. Use allow, deny-dangerous, ask, or review-writes.`,
+      jsonErrorOutput
+    );
     process.exitCode = 1;
     return;
   }
@@ -342,10 +411,11 @@ export async function main(argv: string[]): Promise<void> {
   if (args.includes("--mcp-server")) {
     // Expose the built-in tools over MCP instead of running the agent. No model
     // provider is needed, and stdout carries only JSON-RPC frames.
-    const config = loadConfig();
+    const config = loadConfig(configPath, process.env, workingDirectory, projectState);
     await runMcpServer({
       sessionId: normalizedSessionId,
       workingDirectory,
+      projectState,
       rustBinaryPath,
       approvalMode: approvalFlagMode ?? resolveApprovalMode(config),
       approvalConfig: compileApprovalConfig(config.approval),
@@ -354,11 +424,12 @@ export async function main(argv: string[]): Promise<void> {
   }
 
   if (args.includes("--doctor")) {
-    const config = loadConfig();
+    const config = loadConfig(configPath, process.env, workingDirectory, projectState);
     const report = await runDoctor({
       providerId: resolveProviderId(config),
       rustBinaryPath,
-      sessionDir: sessionDir(),
+      sessionDir: sessionDir(workingDirectory, projectState),
+      configPath,
     });
     if (jsonOutput) {
       console.log(JSON.stringify(report, null, 2));
@@ -375,7 +446,7 @@ export async function main(argv: string[]): Promise<void> {
     const id = normalizeSessionId(sessionDeleteId);
     let deleted = false;
     try {
-      await rm(join(sessionDir(), `${id}.json`));
+      await rm(join(sessionDir(workingDirectory, projectState), `${id}.json`));
       deleted = true;
     } catch (error) {
       if (!(isNodeError(error) && error.code === "ENOENT")) {
@@ -393,11 +464,11 @@ export async function main(argv: string[]): Promise<void> {
   if (renameFrom !== undefined && renameTo !== undefined) {
     const from = normalizeSessionId(renameFrom);
     const to = normalizeSessionId(renameTo);
-    const source = join(sessionDir(), `${from}.json`);
-    const target = join(sessionDir(), `${to}.json`);
+    const source = join(sessionDir(workingDirectory, projectState), `${from}.json`);
+    const target = join(sessionDir(workingDirectory, projectState), `${to}.json`);
 
     if (from !== to && existsSync(target)) {
-      console.error(`Session ${to} already exists.`);
+      emitCliError(`Session ${to} already exists.`, jsonErrorOutput);
       process.exitCode = 1;
       return;
     }
@@ -408,7 +479,7 @@ export async function main(argv: string[]): Promise<void> {
       // the old code fell through to "not found" even though the file was
       // there, which reads as data loss.
       if (!existsSync(source)) {
-        console.error(`Session ${from} not found.`);
+        emitCliError(`Session ${from} not found.`, jsonErrorOutput);
         process.exitCode = 1;
         return;
       }
@@ -438,7 +509,9 @@ export async function main(argv: string[]): Promise<void> {
   }
 
   if (indexPath !== undefined) {
-    const report = await indexDirectory(resolve(workingDirectory, indexPath));
+    const indexRoot = resolve(workingDirectory, indexPath);
+    const resolvedExcludes = excludePaths.map((path) => resolve(workingDirectory, path));
+    const report = await indexDirectory(indexRoot, undefined, resolvedExcludes);
     if (jsonOutput) {
       console.log(JSON.stringify(report, null, 2));
     } else {
@@ -451,13 +524,21 @@ export async function main(argv: string[]): Promise<void> {
       if (languages) {
         console.log(`Languages: ${languages}`);
       }
-      console.log(`Index written to ${report.indexPath}`);
+      if (report.excluded > 0) {
+        console.log(`Excluded ${report.excluded} paths`);
+      }
+      for (const warning of report.warnings) {
+        console.warn(
+          `Warning: skipped directory ${safeTerminalText(warning.path)} (${warning.code})`
+        );
+      }
+      console.log(`Index written to ${safeTerminalText(report.indexPath)}`);
     }
     return;
   }
 
   if (previewEvidence) {
-    const memory = createMemory(normalizedSessionId);
+    const memory = createMemory(normalizedSessionId, workingDirectory, projectState);
     try {
       const validations = await memory.validations();
       const changeSets = await memory.changeSets();
@@ -485,7 +566,7 @@ export async function main(argv: string[]): Promise<void> {
   }
 
   if (exportEvidence) {
-    const memory = createMemory(normalizedSessionId);
+    const memory = createMemory(normalizedSessionId, workingDirectory, projectState);
     try {
       const validations = await memory.validations();
       const changeSets = await memory.changeSets();
@@ -520,7 +601,7 @@ export async function main(argv: string[]): Promise<void> {
         );
       } else {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`Evidence export failed: ${message}`);
+        console.error(safeTerminalText(`Evidence export failed: ${message}`));
       }
       process.exitCode = 1;
     }
@@ -528,7 +609,7 @@ export async function main(argv: string[]): Promise<void> {
   }
 
   if (cleanupEvidence) {
-    const memory = createMemory(normalizedSessionId);
+    const memory = createMemory(normalizedSessionId, workingDirectory, projectState);
     try {
       const result = await memory.pruneEvidence(cleanupOptionsResult.options);
       const evidenceSummary = await memory.evidenceSummary();
@@ -543,7 +624,7 @@ export async function main(argv: string[]): Promise<void> {
       if (jsonOutput) {
         console.log(JSON.stringify({ error: message, sessionId: normalizedSessionId }, null, 2));
       } else {
-        console.error(`Evidence cleanup failed: ${message}`);
+        console.error(safeTerminalText(`Evidence cleanup failed: ${message}`));
       }
       process.exitCode = 1;
     }
@@ -552,8 +633,7 @@ export async function main(argv: string[]): Promise<void> {
 
   const mcpSessions: McpServerSession[] = [];
   try {
-    const config = loadConfig();
-    const provider = createProvider(config);
+    const config = loadConfig(configPath, process.env, workingDirectory, projectState);
     const approvalMode = approvalFlagMode ?? resolveApprovalMode(config);
     const questionBox: QuestionBox = {};
     const executor = createExecutor({ rustBinaryPath });
@@ -570,10 +650,19 @@ export async function main(argv: string[]): Promise<void> {
       filesystem instanceof FilesystemTool ? filesystem : undefined
     );
 
-    const mcpSupplement = await registerMcpTools(tools, mcpSessions, {
-      sessionId: normalizedSessionId,
-      workingDirectory,
-    }, config);
+    let mcpSupplement = "";
+    mcpSupplement = await registerMcpTools(
+      tools,
+      mcpSessions,
+      {
+        sessionId: normalizedSessionId,
+        workingDirectory,
+      },
+      config,
+      (updated) => {
+        mcpSupplement = updated;
+      }
+    );
 
     if (args.includes("--tools")) {
       if (jsonOutput) {
@@ -591,14 +680,16 @@ export async function main(argv: string[]): Promise<void> {
         return;
       }
       for (const tool of tools.list()) {
-        console.log(`${tool.name}: ${tool.description}`);
+        console.log(
+          `${safeTerminalText(tool.name)}: ${safeTerminalText(tool.description)}`
+        );
       }
       return;
     }
 
     if (args.includes("--metadata")) {
-      const memory = createMemory(normalizedSessionId);
-      const filePath = memoryFilePath(normalizedSessionId);
+      const memory = createMemory(normalizedSessionId, workingDirectory, projectState);
+      const filePath = memoryFilePath(normalizedSessionId, workingDirectory, projectState);
       const meta = await memory.getMetadata();
       if (!meta && (await isInvalidMemoryFile(filePath, memory))) {
         if (jsonOutput) {
@@ -607,7 +698,9 @@ export async function main(argv: string[]): Promise<void> {
           );
         } else {
           console.error(
-            `Invalid memory file: ${filePath}. Use --reset-memory or --session-delete ${normalizedSessionId} to recover.`
+            safeTerminalText(
+              `Invalid memory file: ${filePath}. Use --reset-memory or --session-delete ${normalizedSessionId} to recover.`
+            )
           );
         }
         process.exitCode = 1;
@@ -627,9 +720,9 @@ export async function main(argv: string[]): Promise<void> {
         return;
       }
       if (meta) {
-        console.log(`Session: ${meta.sessionId}`);
-        console.log(`Created: ${meta.createdAt}`);
-        console.log(`Last active: ${meta.lastActiveAt}`);
+        console.log(`Session: ${safeTerminalText(meta.sessionId)}`);
+        console.log(`Created: ${safeTerminalText(meta.createdAt)}`);
+        console.log(`Last active: ${safeTerminalText(meta.lastActiveAt)}`);
         console.log(`Entries: ${meta.entryCount}`);
         if (meta.usage) {
           console.log(
@@ -644,7 +737,7 @@ export async function main(argv: string[]): Promise<void> {
     }
 
     if (args.includes("--session-list")) {
-      await listSessions(jsonOutput);
+      await listSessions(jsonOutput, workingDirectory, projectState);
       return;
     }
 
@@ -652,11 +745,11 @@ export async function main(argv: string[]): Promise<void> {
     if (compactIndex >= 0) {
       const keepTurns = Number.parseInt(args[compactIndex + 1] ?? "5", 10);
       if (!Number.isInteger(keepTurns) || keepTurns < 1) {
-        console.error("--compact requires a positive integer argument");
+        emitCliError("--compact requires a positive integer argument", jsonErrorOutput);
         process.exitCode = 1;
         return;
       }
-      const memory = createMemory(normalizedSessionId);
+      const memory = createMemory(normalizedSessionId, workingDirectory, projectState);
       const removed = await memory.compact(keepTurns);
       if (jsonOutput) {
         console.log(JSON.stringify({ removed, keptTurns: keepTurns }, null, 2));
@@ -666,17 +759,28 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
 
+    // Provider construction is intentionally delayed until after provider-free
+    // commands. This lets commands such as --tools and --metadata inspect a
+    // project even when its configured provider has no credentials locally.
+    const provider = createProvider(config);
     const streamingEnabled =
       !noStream && !jsonOutput && typeof provider.streamChat === "function";
-    if (!jsonOutput) {
+    const richUi = shouldUseRichUi({
+      stdinIsTTY: process.stdin.isTTY,
+      stdoutIsTTY: process.stdout.isTTY,
+      once: oncePrompt !== undefined,
+      json: jsonOutput,
+      mcpServer: args.includes("--mcp-server"),
+    });
+    if (!jsonOutput && !richUi) {
       console.log(
-        `[runtime] provider=${provider.id} model=${provider.model} streaming=${
+        `[runtime] provider=${safeTerminalText(provider.id)} model=${safeTerminalText(provider.model)} streaming=${
           streamingEnabled ? "enabled" : "disabled"
         }`
       );
     }
 
-    const memory = createMemory(normalizedSessionId);
+    const memory = createMemory(normalizedSessionId, workingDirectory, projectState);
     if (resetMemory) {
       await memory.clear();
     }
@@ -694,15 +798,20 @@ export async function main(argv: string[]): Promise<void> {
             runExplicitValidation(filesystem, validation, context, changeSetId, signal)
         : undefined;
     // Token streaming would interleave with the JSON document.
-    const streaming = new StreamingRun({ enabled: streamingEnabled });
+    const streaming = new StreamingRun({
+      enabled: streamingEnabled,
+      richUi,
+      width: resolveTerminalWidth(),
+    });
     const reviews: ReviewRecord[] = [];
     const validations: ValidationResult[] = [];
     const loop = new AgentLoop({
       model: provider,
       tools,
-      systemPrompt: [defaultSystemPrompt, mcpSupplement]
-        .filter((part) => part.length > 0)
-        .join("\n\n"),
+      systemPromptProvider: () =>
+        [defaultSystemPrompt, mcpSupplement]
+          .filter((part) => part.length > 0)
+          .join("\n\n"),
       maxTurns: resolveMaxTurns(config, 8),
       contextBudget: buildContextBudget(config),
       approval,
@@ -718,9 +827,10 @@ export async function main(argv: string[]): Promise<void> {
         }
         // Nothing may interleave with the JSON document on stdout.
         if (!jsonOutput && outcome.decision === "deny") {
-          process.stdout.write(
-            `${colorize(`[denied] ${request.toolName} ${outcome.reason ?? ""}`.trimEnd(), "yellow")}\n`
-          );
+          const line = `[denied] ${safeTerminalText(request.toolName)} ${safeTerminalText(
+            outcome.reason ?? ""
+          )}`.trimEnd();
+          process.stdout.write(`${richUi ? colorize(line, "yellow") : line}\n`);
         }
       },
       onValidation: (result) => {
@@ -732,17 +842,22 @@ export async function main(argv: string[]): Promise<void> {
       validation,
       onTurn: (turn) => {
         if (!jsonOutput) {
-          if (streaming.isEnabled() && streaming.hasStreamed()) {
-            process.stdout.write("\n");
+          if (richUi) {
+            streaming.commitLive();
+            process.stdout.write(`\n${colorize(`Turn ${turn}`, "dim")}\n`);
+          } else {
+            if (streaming.isEnabled() && streaming.hasStreamed()) {
+              process.stdout.write("\n");
+            }
+            process.stdout.write(`[turn ${turn}]\n`);
           }
-          process.stdout.write(`[turn ${turn}]\n`);
         }
       },
       onToolProgress: (progress) => {
         if (!jsonOutput) {
           const total = progress.total === undefined ? "" : `/${progress.total}`;
           process.stdout.write(
-            `[tool-progress] ${progress.name} ${progress.progress}${total}\n`
+            `[tool-progress] ${safeTerminalText(progress.name)} ${progress.progress}${total}\n`
           );
         }
       },
@@ -750,14 +865,25 @@ export async function main(argv: string[]): Promise<void> {
     });
 
     if (oncePrompt) {
-      await runPrompt(loop, context, streaming, oncePrompt, jsonOutput, {
+      const result = await runPrompt(loop, context, streaming, oncePrompt, jsonOutput, {
         model: provider.model,
         pricing: config.pricing,
       }, reviews, validations);
+      if (result.state.status === "error") {
+        process.exitCode = 1;
+      }
       return;
     }
 
-    await interactive(loop, context, streaming, questionBox, jsonOutput, {
+    await interactive(loop, context, streaming, questionBox, {
+      rich: richUi,
+      provider: provider.id,
+      model: provider.model,
+      streaming: streamingEnabled,
+      sessionId: normalizedSessionId,
+      workingDirectory,
+      width: resolveTerminalWidth(),
+    }, jsonOutput, {
       model: provider.model,
       pricing: config.pricing,
     }, reviews, validations, rerunValidation);
@@ -766,14 +892,32 @@ export async function main(argv: string[]): Promise<void> {
   }
 }
 
-function createMemory(sessionId = "default"): FileMemory {
+function createMemory(
+  sessionId = "default",
+  baseDirectory = process.cwd(),
+  projectState = false
+): FileMemory {
   // Keep this consistent with sessionDir() so sessions written by the CLI are
   // the same ones --session-list and --compact operate on.
-  return new FileMemory({ filePath: memoryFilePath(sessionId) });
+  return new FileMemory({ filePath: memoryFilePath(sessionId, baseDirectory, projectState) });
 }
 
-function memoryFilePath(sessionId = "default"): string {
-  return process.env.DEV_AGENT_MEMORY_FILE ?? join(sessionDir(), `${sessionId}.json`);
+function resolveRuntimePath(value: string | undefined, baseDirectory: string): string | undefined {
+  if (value === undefined || value.trim() === "") {
+    return undefined;
+  }
+  return resolve(baseDirectory, value);
+}
+
+function memoryFilePath(
+  sessionId = "default",
+  baseDirectory = process.cwd(),
+  projectState = false
+): string {
+  return (
+    resolveRuntimePath(process.env.DEV_AGENT_MEMORY_FILE, baseDirectory) ??
+    join(sessionDir(baseDirectory, projectState), `${sessionId}.json`)
+  );
 }
 
 /** True when the file exists but cannot be read back as a memory file. */
@@ -812,6 +956,7 @@ async function assertMcpCallAllowed(
 async function runMcpServer(options: {
   readonly sessionId: string;
   readonly workingDirectory: string;
+  readonly projectState: boolean;
   readonly rustBinaryPath?: string;
   readonly approvalMode: ApprovalMode;
   readonly approvalConfig: CompiledApprovalConfig;
@@ -820,7 +965,7 @@ async function runMcpServer(options: {
   const filesystem = tools.find(
     (tool): tool is FilesystemTool => tool instanceof FilesystemTool
   );
-  const memory = createMemory(options.sessionId);
+  const memory = createMemory(options.sessionId, options.workingDirectory, options.projectState);
   const policy = (() => {
     if (options.approvalMode === "allow") {
       return undefined;
@@ -871,7 +1016,7 @@ async function runMcpServer(options: {
             workingDirectory,
           });
         }
-        return tool.execute(input, { sessionId, workingDirectory });
+        return tool.execute(input, { sessionId, workingDirectory, signal: context?.signal });
       },
     })),
     resources: [
@@ -1038,7 +1183,9 @@ function buildApprovalPolicy(
       }
 
       const reason = typeof outcome === "string" ? undefined : outcome.reason;
-      const question = `${reason ?? "dangerous call"}\nRun ${request.toolName} anyway? [y/N/a] `;
+      const question = `${safeTerminalText(reason ?? "dangerous call")}\nRun ${safeTerminalText(
+        request.toolName
+      )} anyway? [y/N/a] `;
       const answer = questionBox.ask
         ? await questionBox.ask(question)
         : await readLineFromStdin(question);
@@ -1070,7 +1217,9 @@ async function requestReviewedCall(
   }
   const prompt = isReview
     ? formatChangeSetPrompt(request)
-    : `${reason ?? "dangerous call"}\nRun ${request.toolName} anyway? [y/N/a] `;
+    : `${safeTerminalText(reason ?? "dangerous call")}\nRun ${safeTerminalText(
+        request.toolName
+      )} anyway? [y/N/a] `;
   const answer = questionBox.ask
     ? await questionBox.ask(prompt)
     : await readLineFromStdin(prompt);
@@ -1105,16 +1254,18 @@ function reviewAction(request: ApprovalRequest): string {
 function formatChangeSetPrompt(request: ApprovalRequest): string {
   const review = request.review;
   if (!review) {
-    return `Review ${request.toolName} before running? [y/N] `;
+    return `Review ${safeTerminalText(request.toolName)} before running? [y/N] `;
   }
   const files = review.files
     .map((file) => {
-      const diff = file.diff ? `\n${file.diff}` : "\n(no textual changes; hash/existence still checked)";
-      return `${file.path} (+${file.additions}/-${file.deletions})${diff}`;
+      const diff = file.diff
+        ? `\n${safeTerminalText(file.diff)}`
+        : "\n(no textual changes; hash/existence still checked)";
+      return `${safeTerminalText(file.path)} (+${file.additions}/-${file.deletions})${diff}`;
     })
     .join("\n");
   return [
-    `Change set ${review.changeSetId}: ${review.files.length} file(s), +${review.additions}/-${review.deletions}`,
+    `Change set ${safeTerminalText(review.changeSetId)}: ${review.files.length} file(s), +${review.additions}/-${review.deletions}`,
     files,
     "Apply this change? [y/N] ",
   ].join("\n");
@@ -1150,15 +1301,24 @@ function readLineFromStdin(question: string): Promise<string> {
   });
 }
 
-function sessionDir(): string {
-  return process.env.DEV_AGENT_SESSION_DIR ??
-    join(homedir(), ".dev-agent", "sessions");
+function sessionDir(baseDirectory = process.cwd(), projectState = false): string {
+  return (
+    resolveRuntimePath(process.env.DEV_AGENT_SESSION_DIR, baseDirectory) ??
+    (projectState
+      ? join(baseDirectory, ".dev-agent", "sessions")
+      : join(homedir(), ".dev-agent", "sessions"))
+  );
 }
 
-async function listSessions(jsonOutput = false): Promise<void> {
+async function listSessions(
+  jsonOutput = false,
+  baseDirectory = process.cwd(),
+  projectState = false
+): Promise<void> {
+  const directory = sessionDir(baseDirectory, projectState);
   let entries: string[];
   try {
-    entries = await readdir(sessionDir());
+    entries = await readdir(directory);
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
       console.log(jsonOutput ? "[]" : "No sessions found.");
@@ -1181,7 +1341,7 @@ async function listSessions(jsonOutput = false): Promise<void> {
     evidenceSummary?: EvidenceSummary;
   }> = [];
   for (const file of sessionFiles) {
-    const filePath = join(sessionDir(), file);
+    const filePath = join(directory, file);
     try {
       const info = await stat(filePath);
       const memory = new FileMemory({ filePath });
@@ -1216,14 +1376,15 @@ async function listSessions(jsonOutput = false): Promise<void> {
     );
     return;
   }
-  console.log(`Sessions (${rows.length}) in ${sessionDir()}:`);
+  console.log(`Sessions (${rows.length}) in ${safeTerminalText(directory)}:`);
   for (const row of rows) {
+    const file = safeTerminalText(row.file);
     const tokens = row.usage ? `  ${row.usage.totalTokens} tokens` : "";
     const evidence = row.evidenceSummary
       ? `  evidence=${row.evidenceSummary.validations}/${row.evidenceSummary.changeSets} protected=${row.evidenceSummary.protectedChangeSets}`
       : "";
     console.log(
-      `  ${row.file.padEnd(32)} ${String(row.size).padStart(10)} bytes${tokens}${evidence}  ${row.modified.toISOString()}`
+      `  ${file.padEnd(32)} ${String(row.size).padStart(10)} bytes${tokens}${evidence}  ${row.modified.toISOString()}`
     );
   }
 }
@@ -1240,18 +1401,18 @@ async function checkRust(rustBinaryPath: string | undefined): Promise<void> {
 
   const { existsSync } = await import("node:fs");
   if (!existsSync(path)) {
-    console.error(`Rust executor binary not found at ${path}`);
+    console.error(safeTerminalText(`Rust executor binary not found at ${path}`));
     process.exitCode = 1;
     return;
   }
 
   try {
     const healthCheck = await probeRustBinary(path);
-    console.log(`Rust executor binary: ${path}`);
-    console.log(`Runtime version: ${healthCheck.runtimeVersion}`);
-    console.log(`Capabilities: ${healthCheck.capabilities.join(", ")}`);
+    console.log(`Rust executor binary: ${safeTerminalText(path)}`);
+    console.log(`Runtime version: ${safeTerminalText(healthCheck.runtimeVersion)}`);
+    console.log(`Capabilities: ${safeTerminalText(healthCheck.capabilities.join(", "))}`);
   } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
+    console.error(safeTerminalText(error instanceof Error ? error.message : String(error)));
     process.exitCode = 1;
   }
 }
@@ -1266,9 +1427,34 @@ function normalizeSessionId(sessionId: string): string {
   return normalized === "" ? "default" : normalized;
 }
 
-function resolveWorkingDirectory(): string {
-  return process.env.INIT_CWD ??
-    process.cwd();
+export function resolveWorkingDirectory(
+  flagValue?: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  currentDirectory = process.cwd()
+): string {
+  const selected =
+    flagValue ??
+    env.DEV_AGENT_WORKING_DIRECTORY ??
+    env.INIT_CWD ??
+    currentDirectory;
+  return resolve(selected);
+}
+
+function resolveTerminalWidth(): number {
+  const width = process.stdout.columns;
+  return width !== undefined && Number.isFinite(width) && width >= 20
+    ? Math.floor(width)
+    : 80;
+}
+
+interface InteractiveUiOptions {
+  readonly rich: boolean;
+  readonly provider: string;
+  readonly model: string;
+  readonly streaming: boolean;
+  readonly sessionId: string;
+  readonly workingDirectory: string;
+  readonly width: number;
 }
 
 async function interactive(
@@ -1276,6 +1462,7 @@ async function interactive(
   context: AgentContext,
   streaming: StreamingRun,
   questionBox: QuestionBox,
+  ui: InteractiveUiOptions,
   jsonOutput = false,
   cost?: UsageCostOptions,
   reviews: readonly ReviewRecord[] = [],
@@ -1301,6 +1488,9 @@ async function interactive(
   });
   const onSigint = () => {
     interrupted = true;
+    if (ui.rich) {
+      streaming.cleanup();
+    }
     process.stdout.write("\n(interrupted)\n");
     // Cancel whatever is in flight. Without this Ctrl-C only printed a line
     // and the running request kept going.
@@ -1311,11 +1501,34 @@ async function interactive(
     wakeOnInterrupt?.();
   };
   process.on("SIGINT", onSigint);
-  // Publish readiness only after the handler is installed. stdout is piped in
-  // callers, so the banner can be observed before a later listener setup.
-  console.log(
-    "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':validate <changeSetId>' to rerun trusted checks or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
-  );
+
+  const printHeader = (): void => {
+    if (!ui.rich) {
+      // Publish readiness only after the handler is installed. stdout is piped
+      // in callers, so the banner can be observed before a later listener
+      // setup.
+      console.log(
+        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':validate <changeSetId>' to rerun trusted checks or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
+      );
+      return;
+    }
+
+    console.log(
+      renderWelcome({
+        provider: ui.provider,
+        model: ui.model,
+        streaming: ui.streaming,
+        sessionId: ui.sessionId,
+        workingDirectory: ui.workingDirectory,
+        width: ui.width,
+      })
+    );
+    console.log();
+    console.log(renderCommandHints(DEFAULT_COMMAND_HINTS, { width: ui.width }));
+    console.log();
+  };
+
+  printHeader();
 
   // Each prompt continues from the previous run's context, so `turns` and
   // `usage` accumulate across the session instead of restarting every time.
@@ -1323,17 +1536,58 @@ async function interactive(
   try {
     for (;;) {
       const line = await Promise.race([
-        rl.question("> ").catch(() => ""),
+        rl.question(ui.rich ? richPromptPrefix() : "> ").catch(() => ""),
         interrupt.then(() => ""),
       ]);
       if (interrupted) {
         break;
       }
       const prompt = line.trim();
-      if (prompt === "exit" || prompt === "quit") {
+      if (prompt === ":quit" || prompt === "exit" || prompt === "quit") {
         break;
       }
       if (!prompt) {
+        continue;
+      }
+
+      if (prompt === ":help") {
+        if (ui.rich) {
+          console.log(renderCommandHints(DEFAULT_COMMAND_HINTS, { width: ui.width }));
+        } else {
+          console.log(
+            "Commands: :help, :clear, :model, :validate <changeSetId>, :cleanup ..., exit, quit"
+          );
+        }
+        continue;
+      }
+
+      if (prompt === ":clear") {
+        if (ui.rich) {
+          process.stdout.write("\u001b[2J\u001b[H");
+          printHeader();
+        } else {
+          console.log("Clear is available only in an interactive terminal.");
+        }
+        continue;
+      }
+
+      if (prompt === ":model") {
+        if (ui.rich) {
+          console.log(
+            renderRuntimeStatus({
+              provider: ui.provider,
+              model: ui.model,
+              streaming: ui.streaming,
+              width: ui.width,
+            })
+          );
+        } else {
+          console.log(
+            `[runtime] provider=${safeTerminalText(ui.provider)} model=${safeTerminalText(ui.model)} streaming=${
+              ui.streaming ? "enabled" : "disabled"
+            }`
+          );
+        }
         continue;
       }
 
@@ -1344,7 +1598,7 @@ async function interactive(
           true
         );
         if ("error" in parsedCleanup) {
-          console.error(parsedCleanup.error);
+          console.error(safeTerminalText(parsedCleanup.error));
           continue;
         }
         if (!context.memory.pruneEvidence) {
@@ -1363,7 +1617,7 @@ async function interactive(
         } catch (error) {
           if (!interrupted) {
             const message = error instanceof Error ? error.message : String(error);
-            console.error(`Evidence cleanup failed: ${message}`);
+            console.error(safeTerminalText(`Evidence cleanup failed: ${message}`));
           }
         }
         continue;
@@ -1404,7 +1658,7 @@ async function interactive(
         } catch (error) {
           if (!interrupted) {
             const message = error instanceof Error ? error.message : String(error);
-            console.error(`Validation rerun failed: ${message}`);
+            console.error(safeTerminalText(`Validation rerun failed: ${message}`));
           }
         } finally {
           abort = undefined;
@@ -1539,12 +1793,18 @@ export async function runExplicitValidation(
 }
 
 function printValidationResult(result: ValidationResult): void {
-  process.stdout.write(`[validation] ${result.status}: ${result.summary}\n`);
+  process.stdout.write(
+    `[validation] ${safeTerminalText(result.status)}: ${safeTerminalText(
+      result.summary
+    )}\n`
+  );
   for (const check of result.checks) {
-    const detail = check.reason ? ` — ${check.reason}` : "";
-    const command = formatValidationCommand(check.command.executable, check.command.args);
+    const detail = check.reason ? ` — ${safeTerminalText(check.reason)}` : "";
+    const command = safeTerminalText(
+      formatValidationCommand(check.command.executable, check.command.args)
+    );
     process.stdout.write(
-      `  [${check.status}] ${check.id} (${check.durationMs}ms) — ${command}${detail}\n`
+      `  [${safeTerminalText(check.status)}] ${safeTerminalText(check.id)} (${check.durationMs}ms) — ${command}${detail}\n`
     );
   }
 }
@@ -1698,7 +1958,7 @@ function printEvidenceSummary(summary: EvidenceSummary): void {
   console.log(
     `Retention: validations<=${summary.retention.maxValidations} changeSets<=${summary.retention.maxChangeSets}`
   );
-  console.log(`Protected reason: ${summary.protectedChangeSetsReason}.`);
+  console.log(`Protected reason: ${safeTerminalText(summary.protectedChangeSetsReason)}.`);
 }
 
 function printEvidenceCleanupResult(
@@ -1721,7 +1981,7 @@ function printEvidenceCleanupResult(
     );
     return;
   }
-  console.log(`Evidence cleanup for session ${sessionId}:`);
+  console.log(`Evidence cleanup for session ${safeTerminalText(sessionId)}:`);
   console.log(`  Removed validations: ${result.validationsRemoved}`);
   console.log(`  Removed change sets: ${result.changeSetsRemoved}`);
   console.log(`  Protected applied guards: ${result.protectedChangeSets}`);
@@ -1744,8 +2004,18 @@ async function runPrompt(
   signal?: AbortSignal
 ): Promise<AgentContext> {
   streaming.begin();
-  const result = await loop.run(context, prompt, signal ? { signal } : undefined);
+  const result = await loop.run(context, prompt, signal ? { signal } : undefined).catch((error) => {
+    // Keep a rich live block from leaking into the next prompt when a request
+    // is aborted or fails before the normal result rendering path.
+    streaming.finish();
+    throw error;
+  });
   const timing = streaming.finish();
+  if (result.state.status === "error" && jsonOutput) {
+    emitCliError(result.state.lastError ?? "Agent run failed", true);
+    process.exitCode = 1;
+    return result;
+  }
   const entries = await result.memory.entries();
   const persistedValidations = await result.memory.validations?.();
   const persistedChangeSets = await result.memory.changeSets?.();
@@ -1776,12 +2046,18 @@ async function runPrompt(
     return result;
   }
 
-  if (streaming.isEnabled() && streaming.hasStreamed()) {
-    process.stdout.write("\n");
-  } else {
-    if (lastAssistant) {
-      console.log(lastAssistant.content);
+  if (streaming.isRichUi()) {
+    if (!streaming.hasStreamed() && lastAssistant) {
+      console.log(
+        renderAssistantMessage(lastAssistant.content, {
+          width: streaming.width(),
+        })
+      );
     }
+  } else if (streaming.isEnabled() && streaming.hasStreamed()) {
+    process.stdout.write("\n");
+  } else if (lastAssistant) {
+    console.log(safeTerminalText(lastAssistant.content));
   }
   console.log(`[state=${result.state.status} turns=${result.state.turns}]`);
   if (result.usage) {
@@ -1800,6 +2076,27 @@ async function runPrompt(
 
 function formatTimingMs(value: number | undefined): string {
   return value === undefined ? "n/a" : `${Math.max(0, Math.round(value))}ms`;
+}
+
+function safeTerminalText(value: unknown): string {
+  return redactSensitiveText(sanitizeTerminalText(String(value)));
+}
+
+/** Keeps --json failures parseable without changing human-readable stderr. */
+function emitCliError(message: string, jsonOutput: boolean): void {
+  if (jsonOutput) {
+    console.log(JSON.stringify({ error: message }));
+    return;
+  }
+  console.error(safeTerminalText(message));
+}
+
+function shouldEmitJsonErrorDocument(args: readonly string[]): boolean {
+  return (
+    args.includes("--json") &&
+    !args.includes("--preview-evidence") &&
+    !args.includes("--export-evidence")
+  );
 }
 
 /** Trims trailing zeros so small estimates stay readable. */
@@ -1824,16 +2121,35 @@ interface RunTiming {
 
 class StreamingRun {
   private readonly enabled: boolean;
+  private readonly richUi: boolean;
+  private readonly terminalWidth?: number;
+  private readonly liveAssistant?: LiveAssistantRenderer;
   private streamed = false;
+  private thinkingVisible = false;
   private startedAt?: number;
   private firstTokenAt?: number;
 
-  constructor(options: { enabled: boolean }) {
+  constructor(options: { enabled: boolean; richUi?: boolean; width?: number }) {
     this.enabled = options.enabled;
+    this.richUi = options.richUi === true;
+    this.terminalWidth = options.width;
+    this.liveAssistant = this.richUi
+      ? new LiveAssistantRenderer((chunk) => process.stdout.write(chunk), {
+          width: options.width,
+        })
+      : undefined;
   }
 
   isEnabled(): boolean {
     return this.enabled;
+  }
+
+  isRichUi(): boolean {
+    return this.richUi;
+  }
+
+  width(): number | undefined {
+    return this.terminalWidth;
   }
 
   hasStreamed(): boolean {
@@ -1844,9 +2160,15 @@ class StreamingRun {
     this.streamed = false;
     this.startedAt = performance.now();
     this.firstTokenAt = undefined;
+    if (this.richUi) {
+      this.thinkingVisible = true;
+      process.stdout.write(`${colorize("Thinking…", "dim")}\n`);
+    }
   }
 
   finish(): RunTiming {
+    this.clearThinking();
+    this.commitLive();
     const finishedAt = performance.now();
     const startedAt = this.startedAt ?? finishedAt;
     return {
@@ -1858,23 +2180,64 @@ class StreamingRun {
     };
   }
 
+  commitLive(): boolean {
+    if (!this.liveAssistant?.isActive()) {
+      return false;
+    }
+    this.liveAssistant.finish();
+    return true;
+  }
+
+  /** Clean up transient rich-UI state when a run is cancelled by Ctrl-C. */
+  cleanup(): void {
+    this.clearThinking();
+    this.commitLive();
+  }
+
+  private clearThinking(): boolean {
+    if (!this.thinkingVisible) {
+      return false;
+    }
+    // Thinking is rendered on its own line. Move back to it, erase it, and
+    // leave the cursor at column zero for the next stable block.
+    process.stdout.write("\u001b[1A\u001b[2K\r");
+    this.thinkingVisible = false;
+    return true;
+  }
+
   callbacks(): StreamingCallbacks {
     if (!this.enabled) {
       return {};
     }
     return {
       onToken: (token) => {
+        this.clearThinking();
         this.firstTokenAt ??= performance.now();
         this.streamed = true;
-        process.stdout.write(token);
+        if (this.liveAssistant) {
+          this.liveAssistant.append(token);
+        } else {
+          process.stdout.write(safeTerminalText(token));
+        }
       },
       onToolCall: (call) => {
         const preview = previewInput(call.name, call.input);
-        process.stdout.write(`\n${colorize(`[tool] ${call.name}${preview}`, "cyan")}\n`);
+        const clearedThinking = this.clearThinking();
+        const committedLive = this.commitLive();
+        const separator = clearedThinking || committedLive ? "" : "\n";
+        const line = `[tool] ${safeTerminalText(call.name)}${preview}`;
+        process.stdout.write(
+          `${separator}${this.richUi ? colorize(line, "cyan") : line}\n`
+        );
       },
       onToolResult: (result) => {
         const summary = summarizeOutput(result.output);
-        process.stdout.write(`${colorize(`[tool-result] ${result.name}: ${summary}`, "dim")}\n`);
+        this.clearThinking();
+        this.commitLive();
+        const line = `[tool-result] ${safeTerminalText(result.name)}: ${summary}`;
+        process.stdout.write(
+          `${this.richUi ? colorize(line, "dim") : line}\n`
+        );
       },
     };
   }
@@ -1885,7 +2248,7 @@ function previewInput(name: string, input: unknown): string {
     return "";
   }
   try {
-    const text = JSON.stringify(input);
+    const text = safeTerminalText(JSON.stringify(input));
     if (text.length <= 60) {
       return ` ${text}`;
     }
@@ -1896,22 +2259,31 @@ function previewInput(name: string, input: unknown): string {
 }
 
 function summarizeOutput(output: string): string {
-  if (output.length <= 80) {
-    return output;
+  const safeOutput = safeTerminalText(output);
+  if (safeOutput.length <= 80) {
+    return safeOutput;
   }
-  return `${output.slice(0, 77)}...`;
+  return `${safeOutput.slice(0, 77)}...`;
 }
 
 async function registerMcpTools(
   tools: AgentToolRegistry,
   sessions: McpServerSession[],
   runtime: { readonly sessionId: string; workingDirectory: string },
-  config: CliConfig = {}
+  config: CliConfig = {},
+  onSupplementChange?: (supplement: string) => void
 ): Promise<string> {
   const servers = loadMcpServers(config);
-  const resourceLines: McpResourceLine[] = [];
-  const promptLines: McpPromptLine[] = [];
+  const metadataByPrefix = new Map<
+    string,
+    { readonly resources: readonly McpResourceLine[]; readonly prompts: readonly McpPromptLine[] }
+  >();
   const prefixes = assignMcpPrefixes(servers.map((entry) => entry.name));
+  const rebuildSupplement = (): string =>
+    buildMcpSystemPromptSupplement(
+      [...metadataByPrefix.values()].flatMap((metadata) => metadata.resources),
+      [...metadataByPrefix.values()].flatMap((metadata) => metadata.prompts)
+    );
 
   for (const config of servers.entries()) {
     const index = config[0];
@@ -1936,24 +2308,29 @@ async function registerMcpTools(
     const snapshot = await session.connect();
     sessions.push(session);
 
-    registerServerTools(tools, session, prefix, snapshot, resourceLines, promptLines);
+    metadataByPrefix.set(prefix, registerServerTools(tools, session, prefix, snapshot));
     session.onChange((updated) => {
       unregisterServerTools(tools, prefix);
-      registerServerTools(tools, session, prefix, updated, resourceLines, promptLines);
+      metadataByPrefix.set(prefix, registerServerTools(tools, session, prefix, updated));
+      onSupplementChange?.(rebuildSupplement());
     });
   }
 
-  return buildMcpSystemPromptSupplement(resourceLines, promptLines);
+  return rebuildSupplement();
 }
+
+type McpServerPromptMetadata = {
+  readonly resources: McpResourceLine[];
+  readonly prompts: McpPromptLine[];
+};
 
 function registerServerTools(
   tools: AgentToolRegistry,
   session: McpServerSession,
   prefix: string,
-  snapshot: McpSessionSnapshot,
-  resourceLines: McpResourceLine[],
-  promptLines: McpPromptLine[]
-): void {
+  snapshot: McpSessionSnapshot
+): McpServerPromptMetadata {
+  const metadata: McpServerPromptMetadata = { resources: [], prompts: [] };
   const client = sessionForClient(session);
   for (const tool of snapshot.tools) {
     tools.register({
@@ -1970,7 +2347,7 @@ function registerServerTools(
   }
 
   for (const resource of snapshot.resources) {
-    resourceLines.push({
+    metadata.resources.push({
       prefix,
       uri: resource.info.uri,
       name: resource.info.name,
@@ -1995,7 +2372,7 @@ function registerServerTools(
   });
 
   for (const prompt of snapshot.prompts) {
-    promptLines.push({
+    metadata.prompts.push({
       prefix,
       name: prompt.info.name,
       description: prompt.info.description,
@@ -2019,6 +2396,7 @@ function registerServerTools(
       return client.getPrompt(name, args);
     },
   });
+  return metadata;
 }
 
 function unregisterServerTools(tools: AgentToolRegistry, prefix: string): void {
@@ -2218,9 +2596,27 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+function isMainModule(): boolean {
+  const entrypoint = process.argv[1];
+  if (!entrypoint) {
+    return false;
+  }
+  const modulePath = fileURLToPath(import.meta.url);
+  try {
+    // npm exposes bins as symlinks on Unix. Compare canonical paths so the
+    // installed `dev-agent` command starts the same way as `node dist/index.js`.
+    return realpathSync(entrypoint) === realpathSync(modulePath);
+  } catch {
+    return resolve(entrypoint) === resolve(modulePath);
+  }
+}
+
+if (isMainModule()) {
   main(process.argv).catch((error: unknown) => {
-    console.error(error instanceof Error ? error.message : String(error));
+    emitCliError(
+      error instanceof Error ? error.message : String(error),
+      shouldEmitJsonErrorDocument(process.argv.slice(2))
+    );
     process.exitCode = 1;
   });
 }

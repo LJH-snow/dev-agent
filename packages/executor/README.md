@@ -39,6 +39,13 @@ The Rust runtime lives in `runtime/rust` and communicates with TypeScript over
 - Each message is framed as a 4-byte big-endian length prefix followed by the
   protobuf payload.
 
+The transport accepts at most `8 MiB` of protobuf payload per frame by default
+(`DEFAULT_RUST_EXECUTOR_MAX_FRAME_BYTES`). `RustExecutorOptions.maxFrameBytes`
+can lower that boundary; the TypeScript parser rejects an oversized prefix
+before allocating the payload, and the spawned Rust runtime receives the same
+limit through `DEV_AGENT_MAX_FRAME_BYTES` so both directions enforce one
+contract.
+
 `RustExecutor` in `src/rust-executor.ts` implements this boundary on the
 TypeScript side: it spawns the Rust binary, encodes requests, decodes responses,
 and implements both `Executor` and `SandboxExecutor`. It reuses the same
@@ -63,6 +70,9 @@ Both executors terminate gracefully: the command gets SIGTERM first (sent to
 its process group on Unix, so wrappers and grandchildren are included) and
 SIGKILL only if it is still alive after two seconds. Timeouts follow the same
 path.
+Input is written only after stdout/stderr readers are active, so a child that
+echoes a large request cannot deadlock on a full pipe; output is still capped
+per stream and truncation terminates the process tree.
 The runtime also caps in-flight work itself: `DEV_AGENT_MAX_CONCURRENT`
 (default 5) rejects further requests with `CONCURRENCY_LIMIT`, on top of the
 TypeScript-side `maxConcurrentExecutions`.

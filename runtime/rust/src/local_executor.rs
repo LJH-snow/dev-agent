@@ -81,21 +81,10 @@ impl LocalExecutor {
 
         let mut child = command.spawn().map_err(ExecutorError::Io)?;
 
-        if let Some(input) = &request.input {
-            if let Some(stdin) = child.stdin.as_mut() {
-                stdin
-                    .write_all(input.as_bytes())
-                    .await
-                    .map_err(ExecutorError::Io)?;
-            }
-        }
-        if let Some(stdin) = child.stdin.as_mut() {
-            stdin.shutdown().await.ok();
-        }
-
-        // Stream both pipes instead of waiting for the whole output to be
-        // buffered, so a chatty command cannot grow the runtime's memory
-        // without bound.
+        // Stream both pipes before writing stdin. A command is allowed to emit
+        // output while it is reading input; starting the readers first prevents
+        // the child from filling its stdout/stderr pipe and deadlocking the
+        // parent's input write.
         let max_output_bytes = request
             .max_output_bytes
             .map(|value| usize::try_from(value).unwrap_or(usize::MAX))
@@ -112,25 +101,46 @@ impl LocalExecutor {
             truncate_tx,
         ));
 
-        let outcome = match request.timeout_ms {
+        let outcome_result = match request.timeout_ms {
             Some(millis) => {
                 let duration = Duration::from_millis(millis);
                 match timeout(
                     duration,
-                    wait_for_exit(&mut child, &mut truncate_rx, cancel),
+                    run_child_until_exit(
+                        &mut child,
+                        request.input.as_deref(),
+                        &mut truncate_rx,
+                        cancel,
+                    ),
                 )
                 .await
                 {
-                    Ok(outcome) => outcome.map_err(ExecutorError::Io)?,
+                    Ok(outcome) => outcome,
                     Err(_) => {
                         terminate(&mut child).await;
-                        WaitOutcome::TimedOut
+                        Ok(WaitOutcome::TimedOut)
                     }
                 }
             }
-            None => wait_for_exit(&mut child, &mut truncate_rx, cancel)
+            None => {
+                run_child_until_exit(
+                    &mut child,
+                    request.input.as_deref(),
+                    &mut truncate_rx,
+                    cancel,
+                )
                 .await
-                .map_err(ExecutorError::Io)?,
+            }
+        };
+
+        let outcome = match outcome_result {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                terminate(&mut child).await;
+                let _ = join_output(stdout_task).await;
+                let _ = join_output(stderr_task).await;
+                return Err(ExecutorError::Io(error));
+            }
         };
 
         let (stdout_bytes, stdout_truncated) = join_output(stdout_task).await;
@@ -162,6 +172,122 @@ enum WaitOutcome {
     Cancelled,
 }
 
+enum InputOutcome {
+    Completed,
+    Cancelled,
+    Truncated,
+}
+
+enum CancellationSignal {
+    Cancelled,
+    SenderDropped,
+}
+
+enum InputWaitOutcome {
+    Completed,
+    Cancelled,
+    Truncated,
+    SenderDropped,
+}
+
+/// Writes stdin while still observing cancellation and output limits. The
+/// output readers start before this function is called, so a producer/consumer
+/// command cannot deadlock merely because the input is larger than a pipe.
+async fn write_input(
+    child: &mut Child,
+    input: Option<&str>,
+    truncate_rx: &mut mpsc::Receiver<()>,
+    cancel: &mut Option<oneshot::Receiver<()>>,
+) -> std::io::Result<InputOutcome> {
+    let Some(stdin) = child.stdin.as_mut() else {
+        return Ok(InputOutcome::Completed);
+    };
+    let input = input.unwrap_or("");
+    let write = async {
+        if !input.is_empty() {
+            stdin.write_all(input.as_bytes()).await?;
+        }
+        stdin.shutdown().await
+    };
+    tokio::pin!(write);
+
+    let first = {
+        let cancel_wait = cancellation_signal(cancel);
+        tokio::pin!(cancel_wait);
+        tokio::select! {
+            result = &mut write => result.map(|_| InputWaitOutcome::Completed),
+            signal = &mut cancel_wait => Ok(match signal {
+                CancellationSignal::Cancelled => InputWaitOutcome::Cancelled,
+                CancellationSignal::SenderDropped => InputWaitOutcome::SenderDropped,
+            }),
+            signal = truncate_rx.recv() => {
+                if signal.is_some() {
+                    Ok(InputWaitOutcome::Truncated)
+                } else {
+                    // Both readers have already reached EOF, so there is no
+                    // further truncation signal to observe. Finish the write
+                    // and let the normal child wait path decide the status.
+                    write.as_mut().await.map(|_| InputWaitOutcome::Completed)
+                }
+            }
+        }
+    };
+
+    match first? {
+        InputWaitOutcome::SenderDropped => {
+            // A closed cancellation channel means "no cancellation". The
+            // receiver is now completed and cannot be polled again, so clear
+            // it before continuing the original (not restarted) write.
+            *cancel = None;
+            tokio::select! {
+                result = &mut write => result.map(|_| InputOutcome::Completed),
+                signal = truncate_rx.recv() => {
+                    if signal.is_some() {
+                        Ok(InputOutcome::Truncated)
+                    } else {
+                        write.as_mut().await.map(|_| InputOutcome::Completed)
+                    }
+                }
+            }
+        }
+        InputWaitOutcome::Completed => Ok(InputOutcome::Completed),
+        InputWaitOutcome::Cancelled => Ok(InputOutcome::Cancelled),
+        InputWaitOutcome::Truncated => Ok(InputOutcome::Truncated),
+    }
+}
+
+async fn run_child_until_exit(
+    child: &mut Child,
+    input: Option<&str>,
+    truncate_rx: &mut mpsc::Receiver<()>,
+    cancel: Option<oneshot::Receiver<()>>,
+) -> std::io::Result<WaitOutcome> {
+    let mut cancel = cancel;
+    match write_input(child, input, truncate_rx, &mut cancel).await? {
+        InputOutcome::Completed => wait_for_exit(child, truncate_rx, cancel).await,
+        InputOutcome::Cancelled => {
+            terminate(child).await;
+            Ok(WaitOutcome::Cancelled)
+        }
+        InputOutcome::Truncated => {
+            kill_process_tree(child).await;
+            Ok(WaitOutcome::Exited(child.wait().await?))
+        }
+    }
+}
+
+async fn cancellation_signal(cancel: &mut Option<oneshot::Receiver<()>>) -> CancellationSignal {
+    match cancel.as_mut() {
+        Some(receiver) => {
+            if receiver.await.is_ok() {
+                return CancellationSignal::Cancelled;
+            }
+            CancellationSignal::SenderDropped
+        }
+        None => std::future::pending::<CancellationSignal>().await,
+    }
+}
+
 /// Waits for the child to exit, killing it early when a reader reports that the
 /// capture limit was hit or when a cancellation arrives. Without the kill the
 /// child could block forever writing into a pipe nobody reads.
@@ -189,7 +315,7 @@ async fn wait_for_exit(
         status = child.wait() => Ok(WaitOutcome::Exited(status?)),
         signal = truncate_rx.recv() => {
             if signal.is_some() {
-                let _ = child.kill().await;
+                kill_process_tree(child).await;
             }
             Ok(WaitOutcome::Exited(child.wait().await?))
         }
@@ -204,19 +330,48 @@ async fn wait_for_exit(
 /// up, then SIGKILL when it is still alive after the grace period.
 async fn terminate(child: &mut Child) {
     #[cfg(unix)]
+    let process_group_id = child.id();
+
+    #[cfg(unix)]
     {
-        if let Some(pid) = child.id() {
+        if let Some(pid) = process_group_id {
             // The child leads its own group (see `process_group(0)`), so the
-            // group id is its pid.
+            // group id is its pid. The fallback below still handles a runtime
+            // that cannot create a process group.
             unsafe {
                 libc::killpg(pid as libc::pid_t, libc::SIGTERM);
             }
         }
-        if timeout(TERMINATION_GRACE, child.wait()).await.is_ok() {
-            return;
-        }
     }
 
+    match timeout(TERMINATION_GRACE, child.wait()).await {
+        Ok(Ok(_status)) => {
+            // The leader can exit after SIGTERM while a grandchild remains in
+            // the group. Kill the group even on this fast path so cancellation
+            // never leaves descendants holding inherited pipes open.
+            #[cfg(unix)]
+            if let Some(pid) = process_group_id {
+                unsafe {
+                    libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+                }
+            }
+        }
+        _ => {
+            kill_process_tree(child).await;
+        }
+    }
+}
+
+/// Kills the command and every descendant in its dedicated process group.
+async fn kill_process_tree(child: &mut Child) {
+    #[cfg(unix)]
+    if let Some(pid) = child.id() {
+        unsafe {
+            libc::killpg(pid as libc::pid_t, libc::SIGKILL);
+        }
+    }
+    // On non-Unix platforms, or if process-group setup failed, retain the
+    // direct-child fallback. It is harmless after a group kill.
     let _ = child.kill().await;
     let _ = child.wait().await;
 }
@@ -477,5 +632,84 @@ mod tests {
             "expected the grace period to elapse before the kill"
         );
         assert!(started.elapsed() < std::time::Duration::from_secs(6));
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cancellation_kills_grandchildren_in_the_process_group() {
+        let executor = LocalExecutor::new();
+        let directory = tempfile::tempdir().unwrap();
+        let pid_file = directory.path().join("grandchild.pid");
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let watcher_path = pid_file.clone();
+        tokio::spawn(async move {
+            for _ in 0..200 {
+                if watcher_path.exists() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            let _ = sender.send(());
+        });
+
+        let result = executor
+            .run_cancellable(
+                &RunRequest {
+                    command: "/bin/sh".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        "sleep 30 & child=$!; printf '%s' \"$child\" > \"$PID_FILE\"; wait"
+                            .to_string(),
+                    ],
+                    cwd: None,
+                    env: [("PID_FILE".to_string(), pid_file.display().to_string())]
+                        .into_iter()
+                        .collect(),
+                    input: None,
+                    timeout_ms: None,
+                    max_output_bytes: Some(1024),
+                },
+                Some(receiver),
+            )
+            .await;
+        assert!(matches!(result, Err(ExecutorError::Cancelled)));
+
+        let pid: i32 = std::fs::read_to_string(&pid_file).unwrap().parse().unwrap();
+        for _ in 0..200 {
+            let alive = std::process::Command::new("kill")
+                .args(["-0", &pid.to_string()])
+                .stderr(Stdio::null())
+                .status()
+                .map(|status| status.success())
+                .unwrap_or(false);
+            if !alive {
+                return;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+        panic!("grandchild process {pid} survived cancellation");
+    }
+
+    #[tokio::test]
+    async fn local_executor_drains_output_while_writing_large_input() {
+        let executor = LocalExecutor::new();
+        let result = tokio::time::timeout(
+            std::time::Duration::from_secs(8),
+            executor.run(&RunRequest {
+                command: "/bin/sh".to_string(),
+                args: vec!["-c".to_string(), "cat".to_string()],
+                cwd: None,
+                env: std::collections::HashMap::new(),
+                input: Some("x".repeat(2 * 1024 * 1024)),
+                timeout_ms: Some(5_000),
+                max_output_bytes: Some(1024),
+            }),
+        )
+        .await
+        .expect("large input/output should not deadlock")
+        .unwrap();
+
+        assert!(result.bytes_truncated);
+        assert_eq!(result.stdout.len(), 1024);
     }
 }

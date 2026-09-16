@@ -20,12 +20,21 @@ export const GATE_MODES = Object.freeze([
   "integration",
 ]);
 
+export const DEFAULT_STEP_TIMEOUT_MS = 30 * 60 * 1000;
+export const DEFAULT_KILL_GRACE_MS = 5 * 1000;
+
 const FIXED_STEPS = Object.freeze({
   typescript: Object.freeze([
     step("structure", "structure check", "node", ["scripts/check.mjs"]),
     step("build", "TypeScript build", packageManager, ["build"]),
     step("typecheck", "TypeScript typecheck", packageManager, ["typecheck"]),
     step("typescript-test", "TypeScript tests", packageManager, ["test"]),
+    step(
+      "package-smoke",
+      "CLI package install smoke test",
+      packageManager,
+      ["package:smoke"]
+    ),
     step(
       "preview-contract",
       "preview contract tests",
@@ -47,6 +56,12 @@ const FIXED_STEPS = Object.freeze({
       "release workflow contract tests",
       "node",
       ["--test", "tests/release-workflow.test.mjs"]
+    ),
+    step(
+      "ci-workflow-contract",
+      "CI workflow contract tests",
+      "node",
+      ["--test", "tests/ci-workflow.test.mjs"]
     ),
     step(
       "documentation-contract",
@@ -158,7 +173,9 @@ export async function runGatePlanWithReport(plan, execute = runStep, options = {
   for (const currentStep of plan) {
     logger.log(`\n=== ${currentStep.label} ===`);
     const startedAtMs = now();
-    const exitCode = await execute(currentStep);
+    const exitCode = execute === runStep
+      ? await execute(currentStep, options)
+      : await execute(currentStep);
     const finishedAtMs = now();
     const result = {
       id: currentStep.id,
@@ -220,33 +237,71 @@ export async function writeGateReport(report) {
   }
 }
 
-function runStep(currentStep) {
+export function runStep(
+  currentStep,
+  {
+    timeoutMs = DEFAULT_STEP_TIMEOUT_MS,
+    killGraceMs = DEFAULT_KILL_GRACE_MS,
+    spawnProcess = spawn,
+  } = {}
+) {
   return new Promise((resolveExit) => {
-    const child = spawn(currentStep.command, currentStep.args, {
+    const child = spawnProcess(currentStep.command, currentStep.args, {
       cwd: currentStep.cwd,
       env: process.env,
       shell: currentStep.shell,
       stdio: "inherit",
     });
     let settled = false;
+    let timedOut = false;
+    let timeoutHandle;
+    let killHandle;
     const finish = (exitCode) => {
       if (settled) {
         return;
       }
       settled = true;
+      clearTimeout(timeoutHandle);
+      clearTimeout(killHandle);
       resolveExit(exitCode);
     };
+    const terminate = (signal) => {
+      try {
+        child.kill(signal);
+      } catch {
+        // The child may already be gone; the exit event remains authoritative.
+      }
+    };
     child.once("error", (error) => {
-      console.error(`${currentStep.label} could not start: ${error.message}`);
-      finish(1);
+      if (!timedOut) {
+        console.error(`${currentStep.label} could not start: ${error.message}`);
+      }
+      finish(timedOut ? 124 : 1);
     });
     child.once("exit", (exitCode, signal) => {
+      if (timedOut) {
+        finish(124);
+        return;
+      }
       if (exitCode !== null) {
         finish(exitCode);
         return;
       }
       finish(signal ? 128 : 1);
     });
+    timeoutHandle = setTimeout(() => {
+      if (settled) {
+        return;
+      }
+      timedOut = true;
+      console.error(`${currentStep.label} timed out after ${timeoutMs}ms`);
+      killHandle = setTimeout(() => {
+        if (!settled) {
+          terminate("SIGKILL");
+        }
+      }, killGraceMs);
+      terminate("SIGTERM");
+    }, timeoutMs);
   });
 }
 

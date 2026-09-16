@@ -96,3 +96,37 @@ test("RustExecutor surfaces bytesTruncated from the runtime", async () => {
     delete process.env.MOCK_EXECUTOR_BEHAVIOR;
   }
 });
+
+test("RustExecutor rejects an oversized incoming frame before buffering its payload", async () => {
+  const executor = new RustExecutor({
+    binaryPath: join(here, "..", "tests", "oversized-frame-binary.mjs"),
+    maxFrameBytes: 64,
+    requestTimeoutMs: 1000,
+  } as any);
+
+  try {
+    await assert.rejects(
+      executor.run("echo", ["hello"]),
+      /Rust executor frame exceeds maximum of 64 bytes/
+    );
+  } finally {
+    await executor.dispose();
+  }
+});
+
+test("RustExecutor rejects an oversized outgoing frame before writing it", async () => {
+  const executor = new RustExecutor({
+    binaryPath: mockBinary,
+    maxFrameBytes: 8,
+    requestTimeoutMs: 1000,
+  } as any);
+
+  try {
+    await assert.rejects(
+      executor.run("echo", ["hello"]),
+      /Rust executor frame exceeds maximum of 8 bytes/
+    );
+  } finally {
+    await executor.dispose();
+  }
+});
