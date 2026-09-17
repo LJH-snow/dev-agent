@@ -59,7 +59,8 @@ Implemented:
 - `McpServerSession` - higher-level lifecycle wrapper that owns connect /
   reconnect / close and emits a change callback whenever tools, resources, or
   prompts change (including after a `*_list_changed` notification), so the CLI
-  can dynamically re-register tools
+  can dynamically re-register tools; concurrent `reconnect()` calls share one
+  bounded recovery sequence instead of starting duplicate reconnect storms
 
 The `McpClient` interface exposes resources and prompts with structured
 objects, so the agent loop can treat them as first-class capabilities instead

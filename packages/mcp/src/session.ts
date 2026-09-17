@@ -46,6 +46,7 @@ export class McpServerSession {
   private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
   private readonly resourceWatchers = new Map<string, McpResourceWatcher[]>();
   private generation = 0;
+  private reconnectPromise: Promise<McpSessionSnapshot> | undefined;
   private static readonly DEBOUNCE_MS = 500;
 
   constructor(options: McpSessionOptions) {
@@ -95,6 +96,22 @@ export class McpServerSession {
   }
 
   async reconnect(): Promise<McpSessionSnapshot> {
+    if (this.reconnectPromise) {
+      return this.reconnectPromise;
+    }
+
+    const reconnectPromise = this.reconnectWithBackoff();
+    this.reconnectPromise = reconnectPromise;
+    try {
+      return await reconnectPromise;
+    } finally {
+      if (this.reconnectPromise === reconnectPromise) {
+        this.reconnectPromise = undefined;
+      }
+    }
+  }
+
+  private async reconnectWithBackoff(): Promise<McpSessionSnapshot> {
     let lastError: unknown;
     const maxAttempts = 3;
     const backoffMs = [1000, 2000, 4000];

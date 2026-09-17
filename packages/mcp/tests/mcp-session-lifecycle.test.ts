@@ -140,3 +140,35 @@ test("connect skips metadata lists that the server did not advertise", async () 
   assert.deepEqual(snapshot.resources, []);
   assert.deepEqual(snapshot.prompts, []);
 });
+
+test("concurrent reconnect calls share one recovery sequence", async () => {
+  let connectCalls = 0;
+  let closeCalls = 0;
+  const client = createClient({
+    async connect() {
+      connectCalls += 1;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    },
+    async close() {
+      closeCalls += 1;
+    },
+  });
+  const session = new McpServerSession({
+    config: { command: "mock" },
+    client,
+  });
+
+  const [first, second] = await Promise.all([
+    session.reconnect(),
+    session.reconnect(),
+  ]);
+
+  assert.deepEqual(first, second);
+  assert.equal(connectCalls, 1);
+  assert.equal(closeCalls, 1);
+
+  await session.reconnect();
+  assert.equal(connectCalls, 2);
+  assert.equal(closeCalls, 2);
+  await session.close();
+});

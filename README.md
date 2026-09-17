@@ -633,3 +633,4 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
 77. ~~Metadata-only provider/model management commands~~ (done in workspace; release gated)
 78. ~~Incremental index status/refresh/clear with ignore rules and cache diagnostics~~ (done in workspace; release gated)
 79. ~~MCP management probes and Desktop status panel~~ (done in workspace; release gated)
+80. ~~MCP concurrent reconnect single-flight guard~~ (done in workspace; release gated)

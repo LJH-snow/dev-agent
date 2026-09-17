@@ -19,6 +19,7 @@
   只输出 metadata-only 结果，不执行远程 publish。
 - 新增受显式 `--publish` 保护的 `pnpm release:publish` 包装器：预检失败时不会触碰 npm publish，
   发布成功后会复核 registry 中的候选版本。
+- MCP session 的并发 `reconnect()` 现在会合并为单个有界恢复序列，避免多个调用同时关闭、重建和刷新同一 server。
 - 候选包尚未执行远程 npm publish、tag 或 push；发布前仍需恢复 npm 认证并获得单独授权。
 
 ## 2026-09-16（v0.2.x workflow and CI foundation）
