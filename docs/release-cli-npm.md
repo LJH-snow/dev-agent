@@ -1,6 +1,6 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.5` 已发布到 npm，`latest` 指向该版本；`@agent_cli/cli@0.1.6` 是当前发布候选**。2026-09-16 的 `0.1.4` 是上一版发布记录。后续新版本仍需维护者单独授权。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.5` 已发布到 npm，`latest` 指向该版本；`v0.1.6` 已创建正式 GitHub Release，但 `@agent_cli/cli@0.1.6` 尚未发布到 npm**。2026-09-16 的 `0.1.4` 是上一版发布记录。后续新版本仍需维护者单独授权。
 
 ## 已发布版本记录（2026-09-16）
 
@@ -25,6 +25,16 @@
 - `typescript` 经过审计后继续保留为普通 runtime dependency：发布 bundle 会加载其 Node CommonJS 适配层，
   当前没有可靠的 lazy-load 边界，改成 peer/optional 会让 clean install 失败。
 - 仓库根目录 `.npmrc` 已删除；npm token 只保留在用户级 `~/.npmrc`，仓库的 ignore 规则继续生效。
+
+## v0.1.6 GitHub Release 记录（2026-09-17）
+
+- `main` 已推送，tag `v0.1.6` 创建在发布治理提交 `d361381` 上并触发 release workflow。
+- workflow 已成功构建 macOS ARM64/x64 和 Linux x86_64/ARM64 runtime archive，以及 `agent_cli-cli-0.1.6.tgz`。
+- release 包含 4 个 runtime archive、4 个 `.sha256` sidecar、固定的
+  `dev-agent-runtime-manifest.json` 和 CLI tarball；publish job 已验证下载 artifact 和 tag。
+- 正式 release 地址为
+  <https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6>。
+- 本次 GitHub Release 不发布 npm 包；npm registry `latest` 仍指向 `@agent_cli/cli@0.1.5`。
 
 ## 给使用者的安装方式（已发布）
 

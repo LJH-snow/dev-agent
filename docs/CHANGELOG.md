@@ -2,6 +2,10 @@
 
 ## 2026-09-17（`@agent_cli/cli@0.1.6` release candidate）
 - 将 CLI package 升级为 `0.1.6` release candidate；`0.1.5` 仍是 registry `latest`。
+- 创建 tag `v0.1.6`，推送 `main` 和 tag 后触发 release workflow；workflow 成功创建
+  [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6)。
+- Release 包含四平台 runtime archive 与 SHA-256 sidecar、固定 runtime manifest 和 CLI tarball。
+- 本次不发布 npm 包；`@agent_cli/cli@0.1.5` 仍是 npm `latest`。
 - 补齐 npm 包的 `license: "MIT"`、GitHub repository、homepage 和 issues metadata。
 - 审计并确认 `typescript` 是发布 bundle 的必要 runtime dependency，不改为 optional/peer，
   也不引入 lazy-load 边界。

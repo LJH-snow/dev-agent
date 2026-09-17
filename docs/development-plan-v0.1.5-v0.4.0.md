@@ -1,8 +1,8 @@
 # dev-agent 后续开发计划：v0.1.5–v0.4.0
 
 **建立日期：2026-09-16**
-**计划状态：实现完成，0.1.5 已发布，0.1.6 发布候选已准备**
-**当前基线：registry 中的 `@agent_cli/cli@0.1.5` 已发布；工作区候选是 `0.1.6`。**
+**计划状态：实现完成，0.1.5 已发布，v0.1.6 GitHub Release 已完成**
+**当前基线：registry 中的 `@agent_cli/cli@0.1.5` 已发布；GitHub Release 是 `v0.1.6`。**
 
 本文记录 `dev-agent` 在跳过真实用户反馈等待后，按优先级直接推进的产品化与工程化计划。每个阶段都必须先建立可执行的 RED contract 或失败测试，再实现最小完整闭环，最后运行与范围匹配的验证。
 
@@ -259,15 +259,18 @@ dev-agent doctor --json
 - **MCP：** 新增 list/validate/status/test 管理命令；list/validate 是 metadata-only，status/test
   使用有界 stdio capability probe，超时、连接失败、取消和 capability 变化均映射到稳定 reason。
 
-## 发布治理完成记录（2026-09-17）
-
-- `@agent_cli/cli` 升级为 `0.1.6` candidate，补齐 license/repository/homepage/bugs metadata。
-- `npm-release-preflight` 的 metadata contract 现在拒绝缺少或填错上述字段的候选版本。
-- `typescript` 确认为发布 bundle 的必要 runtime dependency；不使用 optional/peer/lazy-load。
-- 仓库根目录 `.npmrc` 已删除，凭证边界收敛到用户级 `~/.npmrc`。
 - **Desktop：** 新增 `/api/status` 与状态面板，展示 executor/runtime/provider/model/approval/
   validation policy/最近 validation result；payload 通过 allowlist 生成，不改变 session、evidence、
   Undo 或 approval schema。
 - **验证与发布边界：** 工作区相关 package tests、CLI 309 项测试、Desktop 84 项测试及最终
   `pnpm verify` 已于 2026-09-17 全部通过；`@agent_cli/cli@0.1.5` 已发布到 npm。本轮没有创建 Git
   tag、执行 Git push 或创建 GitHub Release。
+
+## 发布治理完成记录（2026-09-17）
+
+- `@agent_cli/cli` 升级为 `0.1.6` candidate，补齐 license/repository/homepage/bugs metadata。
+- `npm-release-preflight` 的 metadata contract 现在拒绝缺少或填错上述字段的候选版本。
+- `typescript` 确认为发布 bundle 的必要 runtime dependency；不使用 optional/peer/lazy-load。
+- 仓库根目录 `.npmrc` 已删除，凭证边界收敛到用户级 `~/.npmrc`。
+- 已创建 `v0.1.6` tag 并成功运行 release workflow；GitHub Release 包含四平台 runtime archive、
+  checksum sidecar、固定 runtime manifest 和 CLI tarball。npm 包保持未发布。

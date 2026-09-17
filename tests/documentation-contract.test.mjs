@@ -159,13 +159,10 @@ test("release docs distinguish readiness audit from formal release authorization
     /## v64：Release candidate readiness（已完成）/
   );
   assert.match(nextRoadmap, /v64 readiness audit 已完成；formal release 仍保持 gated/);
+  assert.match(readme, /The `v0\.1\.6` GitHub release flow is complete/);
   assert.match(
     readme,
-    /The maintainer has authorized the `v0\.1\.6` GitHub release flow/
-  );
-  assert.match(
-    readme,
-    /Do not reuse\s+this authorization for another version without a new explicit release decision/
+    /Future\s+versions require a new explicit maintainer release decision/
   );
   assert.match(docsReadme, /release-candidate readiness audit/);
 });

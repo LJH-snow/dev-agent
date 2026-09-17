@@ -88,7 +88,8 @@ The package is built as a self-contained JavaScript CLI bundle and is verified b
 `pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
 wrapper only publishes after that preflight succeeds. As of September 17, 2026,
 `@agent_cli/cli@0.1.5` remains published to npm and is the registry `latest`;
-`0.1.6` is the prepared release candidate with complete npm provenance metadata.
+`@agent_cli/cli@0.1.6` has a formal [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6)
+with runtime artifacts and checksums. The npm candidate has not been published.
 `0.1.4` is an earlier published version. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current candidate.
@@ -187,8 +188,9 @@ Supported targets:
 
 To cut a release (authorized release flow only):
 
-The maintainer has authorized the `v0.1.6` GitHub release flow. Do not reuse
-this authorization for another version without a new explicit release decision.
+The `v0.1.6` GitHub release flow is complete. The workflow built all four runtime
+artifacts and the CLI tarball, verified checksums, and created the release. Future
+versions require a new explicit maintainer release decision.
 
 ```bash
 git tag v0.1.6
@@ -221,8 +223,9 @@ The active post-release implementation sequence is tracked in
 [docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). As of September 17, 2026,
 all six workspace phases in that plan are implemented and verified: project initialization, managed
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
-indexes, and MCP/Desktop status management. The current npm release candidate is
-`@agent_cli/cli@0.1.6`; `0.1.5` remains the published registry `latest`.
+indexes, and MCP/Desktop status management. [`v0.1.6`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6)
+is the current GitHub release; `@agent_cli/cli@0.1.5` remains the published npm
+registry `latest`.
 
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),
