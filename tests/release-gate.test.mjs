@@ -44,6 +44,7 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
     "typecheck",
     "typescript-test",
     "package-smoke",
+    "npm-release-preflight-contract",
     "preview-contract",
     "gate-contract",
     "release-workflow-contract",
@@ -62,6 +63,7 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
       ["pnpm", "typecheck"],
       ["pnpm", "test"],
       ["pnpm", "package:smoke"],
+      ["node", "--test", "tests/npm-release-preflight.test.mjs"],
       [
         "node",
         "--test",
@@ -313,8 +315,9 @@ test("the TypeScript gate includes the lightweight preview contract suite", () =
     shell: false,
     mode: "typescript",
   });
-  assert.equal(plan[previewIndex - 1].id, "package-smoke");
-  assert.equal(plan[previewIndex - 2].id, "typescript-test");
+  assert.equal(plan[previewIndex - 1].id, "npm-release-preflight-contract");
+  assert.equal(plan[previewIndex - 2].id, "package-smoke");
+  assert.equal(plan[previewIndex - 3].id, "typescript-test");
   assert.equal(plan[previewIndex + 1].id, "gate-contract");
 });
 
@@ -344,6 +347,7 @@ test("preview contract failures remain fail-fast and reportable", async () => {
     "typecheck",
     "typescript-test",
     "package-smoke",
+    "npm-release-preflight-contract",
     "preview-contract",
   ]);
   assert.equal(result.report.failedStepId, "preview-contract");

@@ -126,6 +126,7 @@ JavaScript npm 包和 Rust sandbox 是两个独立的发布物：
 以下命令只验证本地候选包，不执行远程发布：
 
 ```bash
+pnpm release:preflight
 pnpm check
 pnpm build
 pnpm typecheck
@@ -133,6 +134,10 @@ pnpm test
 pnpm package:smoke
 pnpm verify
 ```
+
+`pnpm release:preflight` 会检查候选版本与 `docs/release-state.json` 是否一致、候选版本是否高于
+registry 已发布版本、npm 登录状态、registry 版本匹配，以及 `npm pack --dry-run` 是否只包含
+发行 allowlist。它只输出稳定的 metadata-only JSON，不会执行 `npm publish`。
 
 检查 package 内容与元数据：
 

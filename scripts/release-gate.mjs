@@ -36,6 +36,12 @@ const FIXED_STEPS = Object.freeze({
       ["package:smoke"]
     ),
     step(
+      "npm-release-preflight-contract",
+      "npm release preflight contract",
+      "node",
+      ["--test", "tests/npm-release-preflight.test.mjs"]
+    ),
+    step(
       "preview-contract",
       "preview contract tests",
       "node",

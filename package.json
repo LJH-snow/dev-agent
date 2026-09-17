@@ -21,7 +21,8 @@
     "benchmark:evidence": "pnpm --filter @dev-agent/agent-core run build && node --expose-gc scripts/evidence-preview-benchmark.mjs",
     "test:benchmark": "pnpm --filter @dev-agent/agent-core run build && node --test tests/evidence-preview-benchmark.test.mjs",
     "test:preview-parity": "pnpm --filter @dev-agent/agent-core run build && pnpm --filter @agent_cli/cli run build && pnpm --filter @dev-agent/desktop run build && node --test tests/evidence-preview-parity.test.mjs",
-    "package:smoke": "node scripts/cli-package-smoke.mjs"
+    "package:smoke": "node scripts/cli-package-smoke.mjs",
+    "release:preflight": "node scripts/npm-release-preflight.mjs"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

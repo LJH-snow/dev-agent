@@ -15,6 +15,8 @@
 - Desktop 新增 `/api/status` 和状态面板，展示 executor、runtime、provider/model、approval、validation
   policy 与最近 validation result；状态 payload 只允许 metadata，不包含 key、token、路径、源码、命令或原始错误。
 - 本轮完成工作区实现与验证，并将 CLI package 版本整理为 `0.1.5`；registry 仍为已发布的 `0.1.4`。
+- 新增安全的 `pnpm release:preflight`，统一检查候选版本、registry、npm 登录状态和 tarball allowlist；
+  只输出 metadata-only 结果，不执行远程 publish。
 - 候选包尚未执行远程 npm publish、tag 或 push；发布前仍需恢复 npm 认证并获得单独授权。
 
 ## 2026-09-16（v0.2.x workflow and CI foundation）
