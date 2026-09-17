@@ -85,7 +85,8 @@ cache entries are reported without starting a provider or silently falling back 
 
 The package is built as a self-contained JavaScript CLI bundle and is verified by
 `pnpm package:smoke` in a clean npm prefix. Release candidates can be checked with
-`pnpm release:preflight`, which never publishes. As of September 16, 2026,
+`pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
+wrapper only publishes after that preflight succeeds. As of September 16, 2026,
 `@agent_cli/cli@0.1.4` has been published to npm. The workspace now contains the
 `@agent_cli/cli@0.1.5` release candidate with the v0.1.5–v0.4.0 implementation;
 registry publication remains separately gated. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)

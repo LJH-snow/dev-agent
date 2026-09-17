@@ -264,4 +264,5 @@ dev-agent doctor --json
 - **验证与发布边界：** 工作区相关 package tests、CLI 309 项测试、Desktop 84 项测试及最终
   `pnpm verify` 已于 2026-09-17 全部通过；候选包版本已整理为 `@agent_cli/cli@0.1.5`，但本轮
   不自动执行远程 npm publish、tag 或 push。下一步需恢复 npm 认证、复核候选 tarball，并由维护者
-  单独授权发布。发布前可先运行 `pnpm release:preflight`，该命令不会改变 registry。
+  单独授权发布。发布前可先运行 `pnpm release:preflight`，该命令不会改变 registry；预检通过后，
+  仅 `pnpm release:publish -- --publish` 才会触发远程 publish。

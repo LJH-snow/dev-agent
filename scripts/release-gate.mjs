@@ -42,6 +42,12 @@ const FIXED_STEPS = Object.freeze({
       ["--test", "tests/npm-release-preflight.test.mjs"]
     ),
     step(
+      "npm-release-publish-contract",
+      "npm release publish contract",
+      "node",
+      ["--test", "tests/npm-release-publish.test.mjs"]
+    ),
+    step(
       "preview-contract",
       "preview contract tests",
       "node",

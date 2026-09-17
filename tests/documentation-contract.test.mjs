@@ -204,6 +204,7 @@ test("npm CLI docs describe external-directory use and current publication statu
   assert.match(npmRelease, /\.dev-agent\/sessions/);
   assert.match(npmRelease, /npm whoami/);
   assert.match(npmRelease, /pnpm release:preflight/);
+  assert.match(npmRelease, /pnpm release:publish -- --publish/);
   assert.match(npmRelease, cliVersionPattern(publishedCliVersion));
   assert.match(npmRelease, cliVersionPattern(candidateCliVersion));
   assert.match(npmRelease, /published to npm|已发布到 npm/i);

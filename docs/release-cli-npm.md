@@ -137,7 +137,9 @@ pnpm verify
 
 `pnpm release:preflight` 会检查候选版本与 `docs/release-state.json` 是否一致、候选版本是否高于
 registry 已发布版本、npm 登录状态、registry 版本匹配，以及 `npm pack --dry-run` 是否只包含
-发行 allowlist。它只输出稳定的 metadata-only JSON，不会执行 `npm publish`。
+发行 allowlist。它只输出稳定的 metadata-only JSON，不会执行 `npm publish`。预检通过后，只有明确
+传入 `pnpm release:publish -- --publish` 才会执行发布，并在发布后复核候选版本；不带 `--publish`
+时只返回 confirmation-required 结果。
 
 检查 package 内容与元数据：
 

@@ -17,6 +17,8 @@
 - 本轮完成工作区实现与验证，并将 CLI package 版本整理为 `0.1.5`；registry 仍为已发布的 `0.1.4`。
 - 新增安全的 `pnpm release:preflight`，统一检查候选版本、registry、npm 登录状态和 tarball allowlist；
   只输出 metadata-only 结果，不执行远程 publish。
+- 新增受显式 `--publish` 保护的 `pnpm release:publish` 包装器：预检失败时不会触碰 npm publish，
+  发布成功后会复核 registry 中的候选版本。
 - 候选包尚未执行远程 npm publish、tag 或 push；发布前仍需恢复 npm 认证并获得单独授权。
 
 ## 2026-09-16（v0.2.x workflow and CI foundation）
