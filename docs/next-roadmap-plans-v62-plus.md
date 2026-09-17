@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；正式 GitHub release 仍需明确授权。**
+**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、MCP reconnect hardening、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；正式 GitHub release 仍需明确授权。**
 
 > v60 完成了文档 source-of-truth 整理，v61 完成了 Windows restricted execution 的
 > feasibility review。v61 的结论是：继续保留 macOS `sandbox-exec`、Linux `bwrap` 和其他
@@ -25,6 +25,8 @@
   PTY 回归；真实 TTY 才使用 rich presentation，pipe/CI/JSON/once/MCP server 保留稳定输出。
 - CLI TUI v1/v1.1 与 v0.1.0 RC hardening 已形成待审查变更集；后续变更仍需遵循
   先写 RED contract、再做最小实现的边界。
+- MCP session reconnect hardening 已完成：并发 `reconnect()` 调用会共享单个有界恢复序列，
+  不会同时关闭、重建和刷新同一 MCP server。
 - 8 小时开发目标已完成：CLI machine-error、provider error-body 和 runtime status
   hardening 已有回归测试与固定 gate 证据；当前工作区仍是待审查变更集，尚未创建提交。
 - Windows restricted execution 已记录为 **Preserve / NO-GO**，除非未来出现稳定 runner、
@@ -210,6 +212,27 @@ schema、审批、验证、MCP stdio、JSON 输出或 session schema。
 
 **GO / completed.** 这是 TUI v1 的可靠性收口，不引入第三方终端框架，也不改变 provider、
 tool、approval、validation、MCP 或 session schema。
+
+---
+
+## MCP reconnect hardening：并发恢复合并（已完成）
+
+### 目标
+
+避免多个调用方同时对同一个 `McpServerSession` 执行 `reconnect()`，造成重复关闭、重复启动
+和重复刷新同一个 server。
+
+### 已交付
+
+- `McpServerSession` 对正在进行的 reconnect 采用 single-flight promise；并发调用共享同一结果。
+- 原有最多 3 次、1s/2s/4s 退避序列保持不变；单次失败后的 bounded recovery 语义不变。
+- 恢复完成或失败后会释放 single-flight 状态，后续显式 reconnect 仍可重新发起。
+- 新增生命周期回归：并发调用只产生一次 close/connect，后续独立调用仍能重新连接。
+
+### 决策
+
+**GO / completed.** 该 hardening 只收敛 MCP session 生命周期并发，不改变 MCP 协议、tool/resource/prompt
+schema、CLI 输出或 Desktop session 语义。
 
 ---
 
