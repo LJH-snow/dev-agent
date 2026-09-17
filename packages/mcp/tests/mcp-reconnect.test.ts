@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -32,6 +32,30 @@ test("MCP session reconnects with backoff after server fails on first initialize
     assert.equal(session.serverInfo?.name, "flaky");
   } finally {
     await session.close();
+    await rm(stateDir, { recursive: true, force: true });
+  }
+});
+
+test("MCP client coalesces concurrent reconnect calls", async () => {
+  const stateDir = await mkdtemp(join(tmpdir(), "dev-agent-reconnect-"));
+  const startCountFile = join(stateDir, "starts.txt");
+  const client = new McpStdioClient();
+
+  try {
+    await client.connect({
+      command: process.execPath,
+      args: [fakeServer],
+      name: "fake",
+      env: { MCP_START_COUNT_FILE: startCountFile },
+    });
+
+    await Promise.all([client.reconnect(), client.reconnect()]);
+
+    const starts = readFileSync(startCountFile, "utf8").trim().split("\n");
+    assert.equal(starts.length, 2);
+    assert.equal(client.getServerInfo()?.name, "fake");
+  } finally {
+    await client.close();
     await rm(stateDir, { recursive: true, force: true });
   }
 });

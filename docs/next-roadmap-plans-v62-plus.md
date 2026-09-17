@@ -25,7 +25,7 @@
   PTY 回归；真实 TTY 才使用 rich presentation，pipe/CI/JSON/once/MCP server 保留稳定输出。
 - CLI TUI v1/v1.1 与 v0.1.0 RC hardening 已形成待审查变更集；后续变更仍需遵循
   先写 RED contract、再做最小实现的边界。
-- MCP session reconnect hardening 已完成：并发 `reconnect()` 调用会共享单个有界恢复序列，
+- MCP client/session reconnect hardening 已完成：并发 `reconnect()` 调用会共享单个有界恢复序列，
   不会同时关闭、重建和刷新同一 MCP server。
 - 8 小时开发目标已完成：CLI machine-error、provider error-body 和 runtime status
   hardening 已有回归测试与固定 gate 证据；当前工作区仍是待审查变更集，尚未创建提交。
@@ -224,7 +224,7 @@ tool、approval、validation、MCP 或 session schema。
 
 ### 已交付
 
-- `McpServerSession` 对正在进行的 reconnect 采用 single-flight promise；并发调用共享同一结果。
+- `McpStdioClient` 与 `McpServerSession` 对正在进行的 reconnect 采用 single-flight promise；并发调用共享同一结果。
 - 原有最多 3 次、1s/2s/4s 退避序列保持不变；单次失败后的 bounded recovery 语义不变。
 - 恢复完成或失败后会释放 single-flight 状态，后续显式 reconnect 仍可重新发起。
 - 新增生命周期回归：并发调用只产生一次 close/connect，后续独立调用仍能重新连接。

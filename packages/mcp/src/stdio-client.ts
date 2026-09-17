@@ -76,6 +76,7 @@ export class McpStdioClient implements McpClient {
   private maxFrameBytes = DEFAULT_MCP_MAX_FRAME_BYTES;
   private notificationHandlers: NotificationHandler[] = [];
   private closed = false;
+  private reconnectPromise: Promise<void> | undefined;
 
   async connect(config: McpClientConfig): Promise<void> {
     if (this.child) {
@@ -155,6 +156,22 @@ export class McpStdioClient implements McpClient {
   }
 
   async reconnect(): Promise<void> {
+    if (this.reconnectPromise) {
+      return this.reconnectPromise;
+    }
+
+    const reconnectPromise = this.reconnectOnce();
+    this.reconnectPromise = reconnectPromise;
+    try {
+      await reconnectPromise;
+    } finally {
+      if (this.reconnectPromise === reconnectPromise) {
+        this.reconnectPromise = undefined;
+      }
+    }
+  }
+
+  private async reconnectOnce(): Promise<void> {
     const config = this.config;
     if (!config) {
       throw new Error("MCP client has no previous configuration to reconnect");

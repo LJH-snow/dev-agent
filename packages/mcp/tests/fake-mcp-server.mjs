@@ -1,5 +1,10 @@
+import { appendFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
+const startCountFile = process.env.MCP_START_COUNT_FILE;
+if (startCountFile) {
+  appendFileSync(startCountFile, "started\n", "utf8");
+}
 const rl = createInterface({ input: process.stdin });
 
 function send(message) {

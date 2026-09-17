@@ -49,7 +49,8 @@ Implemented:
 - `ping` for basic liveness checks
 - `reconnect()` - closes and re-establishes a session using the stored
   configuration, so a dropped server can be reconnected without recreating the
-  client
+  client; concurrent calls share one in-flight reconnect instead of starting
+  duplicate child processes
 - `onNotification(handler)` - receives server→client notifications:
   `tools/list_changed`, `resources/list_changed`, `prompts/list_changed`,
   `notifications/message`, `notifications/progress`, and
