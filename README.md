@@ -84,19 +84,18 @@ manifest, target, SHA-256, and runtime protocol/version before atomically popula
 cache entries are reported without starting a provider or silently falling back to local.
 
 The package is built as a self-contained JavaScript CLI bundle and is verified by
-`pnpm package:smoke` in a clean npm prefix. Release candidates can be checked with
+`pnpm package:smoke` in a clean npm prefix. New release candidates can be checked with
 `pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
-wrapper only publishes after that preflight succeeds. As of September 16, 2026,
-`@agent_cli/cli@0.1.4` has been published to npm. The workspace now contains the
-`@agent_cli/cli@0.1.5` release candidate with the v0.1.5–v0.4.0 implementation;
-registry publication remains separately gated. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
+wrapper only publishes after that preflight succeeds. As of September 17, 2026,
+`@agent_cli/cli@0.1.5` has been published to npm and is the registry `latest`;
+`0.1.4` is the previous published version. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
-[release state](docs/release-state.json) records which version is published and which local candidate is pending.
+[release state](docs/release-state.json) records the latest published npm version.
 
-The published `@agent_cli/cli@0.1.4` includes the explicit `--project-state` opt-in for
+The published `@agent_cli/cli@0.1.5` includes the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing
-user-level sessions. The local `0.1.5` candidate keeps that compatibility behavior while
-adding the provider, index, MCP, and Desktop status capabilities described below.
+user-level sessions. It also adds the provider, index, MCP, and Desktop status capabilities
+described below.
 
 To exercise the workspace build locally from the repository:
 
@@ -221,10 +220,7 @@ The active post-release implementation sequence is tracked in
 [docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). As of September 17, 2026,
 all six workspace phases in that plan are implemented and verified: project initialization, managed
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
-indexes, and MCP/Desktop status management. The current npm package remains `@agent_cli/cli@0.1.4`,
-while the workspace candidate is `@agent_cli/cli@0.1.5`; the candidate has not been published,
-tagged, or pushed. The latest release preflight found the candidate artifact and registry state ready,
-but npm authentication is currently missing.
+indexes, and MCP/Desktop status management. The current npm package is `@agent_cli/cli@0.1.5`.
 
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),

@@ -2,6 +2,8 @@
 
 ## 2026-09-17（`@agent_cli/cli@0.1.5` release candidate）
 
+- `@agent_cli/cli@0.1.5` 已于 2026-09-17 发布到 npm，`latest` 指向该版本；本次没有创建 Git tag、
+  推送代码或创建 GitHub Release。
 - 新增 `providers list|status|test`、`models list|current`，支持 Ollama、OpenAI、Anthropic、Gemini
   的脱敏配置检查、显式连通性探测、profile/alias 选择和显式 fallback 顺序；fallback 只有在
   `fallback.enabled: true` 时才会切换，并把安全的 provider/model metadata 写回当前运行结果。
@@ -14,13 +16,13 @@
   使用有界 capability probe，超时、连接失败和 capability 变化均返回稳定 reason。
 - Desktop 新增 `/api/status` 和状态面板，展示 executor、runtime、provider/model、approval、validation
   policy 与最近 validation result；状态 payload 只允许 metadata，不包含 key、token、路径、源码、命令或原始错误。
-- 本轮完成工作区实现与验证，并将 CLI package 版本整理为 `0.1.5`；registry 仍为已发布的 `0.1.4`。
+- 本轮完成工作区实现与验证，并将 CLI package 版本整理为 `0.1.5`；registry `latest` 现在指向 `0.1.5`。
 - 新增安全的 `pnpm release:preflight`，统一检查候选版本、registry、npm 登录状态和 tarball allowlist；
   只输出 metadata-only 结果，不执行远程 publish。
 - 新增受显式 `--publish` 保护的 `pnpm release:publish` 包装器：预检失败时不会触碰 npm publish，
   发布成功后会复核 registry 中的候选版本。
 - MCP client/session 的并发 `reconnect()` 现在会合并为单个有界恢复序列，避免多个调用同时关闭、重建和刷新同一 server。
-- 候选包尚未执行远程 npm publish、tag 或 push；发布前仍需恢复 npm 认证并获得单独授权。
+- npm 包已发布；Git tag、push 和 GitHub Release 仍需单独授权。
 
 ## 2026-09-16（v0.2.x workflow and CI foundation）
 

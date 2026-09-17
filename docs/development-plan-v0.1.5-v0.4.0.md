@@ -1,8 +1,8 @@
 # dev-agent 后续开发计划：v0.1.5–v0.4.0
 
 **建立日期：2026-09-16**
-**计划状态：实现完成，0.1.5 发布候选待授权**
-**当前基线：registry 中的 `@agent_cli/cli@0.1.4` 已发布；工作区候选 `@agent_cli/cli@0.1.5` 已完成实现和验证，等待 npm 认证恢复及发布授权。**
+**计划状态：实现完成，0.1.5 已发布**
+**当前基线：registry 中的 `@agent_cli/cli@0.1.5` 已发布。**
 
 本文记录 `dev-agent` 在跳过真实用户反馈等待后，按优先级直接推进的产品化与工程化计划。每个阶段都必须先建立可执行的 RED contract 或失败测试，再实现最小完整闭环，最后运行与范围匹配的验证。
 
@@ -239,7 +239,7 @@ dev-agent doctor --json
 - `config validate` / `config show` 已覆盖非法 JSON、未知字段、provider/model、approval、
   validation policy、pricing、MCP 字段与敏感值不泄露；命令不加载 provider，也不执行 MCP。
 - `--doctor --json` 已增加非路径化的 scope/runtime metadata。
-- v0.1.5 当前只完成工作区实现和验证，尚未提升 npm 版本或重复发布；版本发布需单独决定。
+- v0.1.5 已完成工作区实现、验证和 npm 发布。
 
 ## v0.3.0–v0.4.0 完成记录（2026-09-17）
 
@@ -262,7 +262,5 @@ dev-agent doctor --json
   validation policy/最近 validation result；payload 通过 allowlist 生成，不改变 session、evidence、
   Undo 或 approval schema。
 - **验证与发布边界：** 工作区相关 package tests、CLI 309 项测试、Desktop 84 项测试及最终
-  `pnpm verify` 已于 2026-09-17 全部通过；候选包版本已整理为 `@agent_cli/cli@0.1.5`，但本轮
-  不自动执行远程 npm publish、tag 或 push。下一步需恢复 npm 认证、复核候选 tarball，并由维护者
-  单独授权发布。发布前可先运行 `pnpm release:preflight`，该命令不会改变 registry；预检通过后，
-  仅 `pnpm release:publish -- --publish` 才会触发远程 publish。
+  `pnpm verify` 已于 2026-09-17 全部通过；`@agent_cli/cli@0.1.5` 已发布到 npm。本轮没有创建 Git
+  tag、执行 Git push 或创建 GitHub Release。

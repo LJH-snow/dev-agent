@@ -177,7 +177,7 @@ test("phase labels are distinct from root README roadmap item numbers", () => {
 
 test("npm CLI docs describe external-directory use and current publication status", () => {
   assert.equal(releaseState.package, cliPackage.name);
-  assert.equal(releaseState.status, "candidate");
+  assert.equal(releaseState.status, "published");
   assert.equal(candidateCliVersion, cliPackage.version);
   assert.match(readme, /release-cli-npm\.md/);
   assert.match(readme, /npm install -g @agent_cli\/cli/);

@@ -381,3 +381,10 @@ install smoke 和 registry 复核；本次仍未创建 Git tag 或 GitHub Releas
 通过完整固定 gate、package smoke、registry 复核和全局安装后的
 `dev-agent --session smoke --metadata --json` 验证；`smoke.json` 的 `sessionId` 为
 `smoke`。本次仍未创建 Git tag 或 GitHub Release。
+
+## 后续补充：0.1.5 provider/index/MCP/Desktop 发布（2026-09-17）
+
+在维护者明确授权后，将 `@agent_cli/cli` 升级并发布为 `@agent_cli/cli@0.1.5`。该版本包含
+v0.1.5–v0.4.0 的项目初始化、runtime distribution、review/plan/apply、provider/model、
+索引、MCP 管理和 Desktop 状态能力；npm registry `latest` 指向 `0.1.5`。本次仍未创建 Git
+tag 或 GitHub Release。
