@@ -462,3 +462,156 @@ test("agent loop refreshes a dynamic system prompt on every model turn", async (
   assert.doesNotMatch(capturedPrompts[0], /new MCP prompt/);
   assert.match(capturedPrompts[1], /new MCP prompt/);
 });
+
+test("agent loop fails closed before a tool call when maxTokens is exhausted", async () => {
+  let modelCalls = 0;
+  let toolCalls = 0;
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "should-not-run",
+    description: "Counts tool calls.",
+    async execute() {
+      toolCalls += 1;
+      return "unexpected";
+    },
+  });
+
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return {
+        content: "",
+        toolCalls: [{ id: "call-budget", name: "should-not-run", input: {} }],
+        usage: { promptTokens: 3, completionTokens: 2, totalTokens: 5 },
+      };
+    },
+  };
+
+  const context = createAgentContext("budget-tokens", new InMemoryMemory());
+  const loop = new AgentLoop({ model, tools, budget: { maxTokens: 5 } });
+  const result = await loop.run(context, "use the tool");
+
+  assert.equal(modelCalls, 1);
+  assert.equal(toolCalls, 0);
+  assert.equal(result.state.status, "error");
+  assert.deepEqual(JSON.parse(result.state.lastError ?? "{}"), {
+    code: "budget_exceeded",
+    budget: "maxTokens",
+    phase: "tool",
+    limit: 5,
+    observed: 5,
+  });
+  assert.deepEqual(result.usage, { promptTokens: 3, completionTokens: 2, totalTokens: 5 });
+});
+
+test("agent loop fails closed before the next model call when maxTurns is reached", async () => {
+  let modelCalls = 0;
+  let toolCalls = 0;
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "count",
+    description: "Counts tool calls.",
+    async execute() {
+      toolCalls += 1;
+      return "ok";
+    },
+  });
+
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return { content: "", toolCalls: [{ id: "call-turn", name: "count", input: {} }] };
+    },
+  };
+
+  const context = createAgentContext("budget-turns", new InMemoryMemory());
+  const loop = new AgentLoop({ model, tools, maxTurns: 5, budget: { maxTurns: 1 } });
+  const result = await loop.run(context, "keep going");
+
+  assert.equal(modelCalls, 1);
+  assert.equal(toolCalls, 1);
+  assert.equal(result.state.status, "error");
+  assert.deepEqual(JSON.parse(result.state.lastError ?? "{}"), {
+    code: "budget_exceeded",
+    budget: "maxTurns",
+    phase: "model",
+    limit: 1,
+    observed: 1,
+  });
+});
+
+test("agent loop uses the injected clock to stop before the next model call", async () => {
+  let now = 0;
+  let modelCalls = 0;
+  let toolCalls = 0;
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "advance-time",
+    description: "Advances the test clock.",
+    async execute() {
+      toolCalls += 1;
+      now = 100;
+      return "ok";
+    },
+  });
+
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return modelCalls === 1
+        ? { content: "", toolCalls: [{ id: "call-time", name: "advance-time", input: {} }] }
+        : { content: "done", toolCalls: [] };
+    },
+  };
+
+  const context = createAgentContext("budget-duration", new InMemoryMemory());
+  const loop = new AgentLoop({
+    model,
+    tools,
+    budget: { maxDurationMs: 100, clock: () => now },
+  });
+  const result = await loop.run(context, "advance time");
+
+  assert.equal(modelCalls, 1);
+  assert.equal(toolCalls, 1);
+  assert.equal(result.state.status, "error");
+  assert.deepEqual(JSON.parse(result.state.lastError ?? "{}"), {
+    code: "budget_exceeded",
+    budget: "maxDurationMs",
+    phase: "model",
+    limit: 100,
+    observed: 100,
+  });
+});
+
+test("agent loop reports output overages without starting another call", async () => {
+  let modelCalls = 0;
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return { content: "12345", toolCalls: [] };
+    },
+  };
+
+  const context = createAgentContext("budget-output", new InMemoryMemory());
+  const loop = new AgentLoop({ model, budget: { maxOutputChars: 4 } });
+  const result = await loop.run(context, "write a short answer");
+
+  assert.equal(modelCalls, 1);
+  assert.equal(result.state.status, "error");
+  assert.deepEqual(JSON.parse(result.state.lastError ?? "{}"), {
+    code: "budget_exceeded",
+    budget: "maxOutputChars",
+    phase: "model",
+    limit: 4,
+    observed: 5,
+  });
+});

@@ -347,6 +347,25 @@ test("code-search skips node_modules and dist during a scan", async () => {
   });
 });
 
+test("code-search applies project ignore files and virtual-environment defaults", async () => {
+  await withTempDir("dev-agent-cs-ignore-", async (dir) => {
+    await writeFile(join(dir, ".gitignore"), "generated/\n", "utf8");
+    await mkdir(join(dir, "generated"), { recursive: true });
+    await writeFile(join(dir, "generated", "ignored.ts"), "export const GeneratedSymbol = 1;", "utf8");
+    await mkdir(join(dir, ".venv"), { recursive: true });
+    await writeFile(join(dir, ".venv", "ignored.py"), "def VirtualEnvSymbol():\n    pass\n", "utf8");
+    await writeFile(join(dir, "kept.ts"), "export const KeptSymbol = 1;", "utf8");
+
+    const tool: any = new CodeSearchTool();
+    const result = await tool.execute(
+      { mode: "search", query: "Symbol" },
+      { sessionId: "s", workingDirectory: dir }
+    );
+
+    assert.deepEqual(result.results.map((item) => item.name), ["KeptSymbol"]);
+  });
+});
+
 test("code-search rejects an invalid mode", async () => {
   const tool: any = new CodeSearchTool();
   await assert.rejects(

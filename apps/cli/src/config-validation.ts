@@ -24,10 +24,25 @@ export interface ConfigValidationResult {
 const TOP_LEVEL_FIELDS = new Set([
   "defaultProvider",
   "defaultModel",
+  "defaultProfile",
+  "defaultAlias",
+  "profile",
+  "alias",
   "maxTurns",
   "maxContextChars",
   "summarizeContext",
   "summaryMaxChars",
+  "maxTokens",
+  "maxDurationMs",
+  "maxOutputChars",
+  "budget",
+  "providers",
+  "models",
+  "apiKeys",
+  "baseUrls",
+  "profiles",
+  "aliases",
+  "fallback",
   "validation",
   "validationPolicy",
   "pricing",
@@ -80,6 +95,16 @@ export function validateConfigValue(value: unknown): ConfigValidationResult {
   validatePositiveIntegerField(config, "maxContextChars", diagnostics);
   validateBooleanField(config, "summarizeContext", diagnostics);
   validatePositiveIntegerField(config, "summaryMaxChars", diagnostics);
+  validatePositiveIntegerField(config, "maxTokens", diagnostics);
+  validatePositiveIntegerField(config, "maxDurationMs", diagnostics);
+  validatePositiveIntegerField(config, "maxOutputChars", diagnostics);
+  validateBudget(config, diagnostics);
+  validateStringSelector(config, "defaultProfile", diagnostics);
+  validateStringSelector(config, "defaultAlias", diagnostics);
+  validateStringSelector(config, "profile", diagnostics);
+  validateStringSelector(config, "alias", diagnostics);
+  validateProviderManagement(config, diagnostics);
+  validateProfilesAndAliases(config, diagnostics);
   const nestedPolicy = validateNestedValidationPolicy(config, diagnostics);
   const flatPolicy = validateFlatValidationPolicy(config, diagnostics);
   if (nestedPolicy !== undefined && flatPolicy !== undefined && nestedPolicy !== flatPolicy) {
@@ -165,7 +190,9 @@ function validatePositiveIntegerField(
   config: Record<string, unknown>,
   path: string,
   diagnostics: ConfigDiagnostic[],
+  prefix = "",
 ): void {
+  const diagnosticPath = `${prefix}${path}`;
   if (!hasOwn(config, path)) {
     return;
   }
@@ -173,10 +200,203 @@ function validatePositiveIntegerField(
   if (!isPositiveSafeInteger(value)) {
     addDiagnostic(
       diagnostics,
-      path,
+      diagnosticPath,
       "invalid_positive_integer",
-      `${path} must be a positive integer.`,
+      `${diagnosticPath} must be a positive integer.`,
     );
+  }
+}
+
+function validateStringSelector(
+  config: Record<string, unknown>,
+  path: string,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  if (!hasOwn(config, path)) return;
+  if (typeof config[path] !== "string" || config[path].trim() === "") {
+    addDiagnostic(diagnostics, path, "invalid_string", `${path} must be a non-empty string.`);
+  }
+}
+
+function validateBudget(config: Record<string, unknown>, diagnostics: ConfigDiagnostic[]): void {
+  if (!hasOwn(config, "budget")) return;
+  const value = config.budget;
+  if (!isPlainRecord(value)) {
+    addDiagnostic(diagnostics, "budget", "invalid_type", "budget must be an object.");
+    return;
+  }
+  for (const key of Object.keys(value)) {
+    if (!["maxTurns", "maxTokens", "maxDurationMs", "maxOutputChars"].includes(key)) {
+      addDiagnostic(diagnostics, `budget.${key}`, "unknown_field", "Unknown budget field.");
+    } else {
+      validateNonNegativeIntegerField(value, key, diagnostics, "budget.");
+    }
+  }
+}
+
+function validateProfilesAndAliases(config: Record<string, unknown>, diagnostics: ConfigDiagnostic[]): void {
+  if (hasOwn(config, "profiles")) {
+    const profiles = config.profiles;
+    if (!isPlainRecord(profiles)) {
+      addDiagnostic(diagnostics, "profiles", "invalid_type", "profiles must be an object.");
+    } else {
+      for (const [name, value] of Object.entries(profiles)) {
+        const path = `profiles.${name}`;
+        if (!isPlainRecord(value)) {
+          addDiagnostic(diagnostics, path, "invalid_type", "Profile must be an object.");
+          continue;
+        }
+        for (const key of Object.keys(value)) {
+          if (!["provider", "model", "fallback", "fallbacks"].includes(key)) {
+            addDiagnostic(diagnostics, `${path}.${key}`, "unknown_field", "Unknown profile field.");
+          }
+        }
+        validateOptionalProvider(value, `${path}.provider`, diagnostics);
+        validateOptionalModel(value, "model", `${path}.model`, diagnostics);
+        validateReferenceList(value, "fallback", `${path}.fallback`, diagnostics);
+        validateReferenceList(value, "fallbacks", `${path}.fallbacks`, diagnostics);
+      }
+    }
+  }
+
+  if (hasOwn(config, "aliases")) {
+    const aliases = config.aliases;
+    if (!isPlainRecord(aliases)) {
+      addDiagnostic(diagnostics, "aliases", "invalid_type", "aliases must be an object.");
+    } else {
+      for (const [name, value] of Object.entries(aliases)) {
+        const path = `aliases.${name}`;
+        if (typeof value === "string") {
+          if (value.trim() === "") {
+            addDiagnostic(diagnostics, path, "invalid_string", "Alias must not be empty.");
+          }
+          continue;
+        }
+        if (!isPlainRecord(value)) {
+          addDiagnostic(diagnostics, path, "invalid_type", "Alias must be a string or object.");
+          continue;
+        }
+        for (const key of Object.keys(value)) {
+          if (!["provider", "model", "profile", "alias"].includes(key)) {
+            addDiagnostic(diagnostics, `${path}.${key}`, "unknown_field", "Unknown alias field.");
+          }
+        }
+        validateOptionalProvider(value, `${path}.provider`, diagnostics);
+        validateOptionalModel(value, "model", `${path}.model`, diagnostics);
+        for (const key of ["profile", "alias"] as const) {
+          if (key in value && (typeof value[key] !== "string" || value[key].trim() === "")) {
+            addDiagnostic(diagnostics, `${path}.${key}`, "invalid_string", `${path}.${key} must be a non-empty string.`);
+          }
+        }
+      }
+    }
+  }
+}
+
+function validateOptionalProvider(
+  value: Record<string, unknown>,
+  diagnosticPath: string,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  const key = diagnosticPath.slice(diagnosticPath.lastIndexOf(".") + 1);
+  if (!(key in value)) return;
+  if (typeof value[key] !== "string" || !PROVIDERS.has(value[key]!.trim())) {
+    addDiagnostic(diagnostics, diagnosticPath, "invalid_provider", "Provider is not supported.");
+  }
+}
+
+function validateOptionalModel(
+  value: Record<string, unknown>,
+  key: string,
+  diagnosticPath: string,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  if (!(key in value)) return;
+  if (typeof value[key] !== "string" || value[key]!.trim() === "") {
+    addDiagnostic(diagnostics, diagnosticPath, "invalid_model", "Model must be a non-empty string.");
+  }
+}
+
+function validateReferenceList(
+  value: Record<string, unknown>,
+  key: string,
+  diagnosticPath: string,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  if (!(key in value)) return;
+  const references = value[key];
+  if (!Array.isArray(references) || references.some((entry) => typeof entry !== "string" || entry.trim() === "")) {
+    addDiagnostic(diagnostics, diagnosticPath, "invalid_type", `${diagnosticPath} must be an array of names.`);
+  }
+}
+
+function validateNonNegativeIntegerField(
+  config: Record<string, unknown>,
+  path: string,
+  diagnostics: ConfigDiagnostic[],
+  prefix = "",
+): void {
+  const diagnosticPath = `${prefix}${path}`;
+  if (!hasOwn(config, path)) return;
+  if (!isNonNegativeSafeInteger(config[path])) {
+    addDiagnostic(diagnostics, diagnosticPath, "invalid_non_negative_integer", `${diagnosticPath} must be a non-negative integer.`);
+  }
+}
+
+function validateProviderManagement(config: Record<string, unknown>, diagnostics: ConfigDiagnostic[]): void {
+  for (const field of ["providers", "models", "apiKeys", "baseUrls"] as const) {
+    if (!hasOwn(config, field)) continue;
+    const value = config[field];
+    if (!isPlainRecord(value)) {
+      addDiagnostic(diagnostics, field, "invalid_type", `${field} must be an object.`);
+      continue;
+    }
+    for (const [provider, providerValue] of Object.entries(value)) {
+      if (!PROVIDERS.has(provider)) {
+        addDiagnostic(diagnostics, `${field}.${provider}`, "invalid_provider", "Provider is not supported.");
+        continue;
+      }
+      if (field === "providers") {
+        if (!isPlainRecord(providerValue)) {
+          addDiagnostic(diagnostics, `${field}.${provider}`, "invalid_type", "Provider settings must be an object.");
+          continue;
+        }
+        for (const key of Object.keys(providerValue)) {
+          if (!["enabled", "model", "apiKey", "baseUrl", "models"].includes(key)) {
+            addDiagnostic(diagnostics, `${field}.${provider}.${key}`, "unknown_field", "Unknown provider field.");
+          }
+        }
+        if ("enabled" in providerValue && typeof providerValue.enabled !== "boolean") {
+          addDiagnostic(diagnostics, `${field}.${provider}.enabled`, "invalid_type", "enabled must be a boolean.");
+        }
+        if ("model" in providerValue && (typeof providerValue.model !== "string" || providerValue.model.trim() === "")) {
+          addDiagnostic(diagnostics, `${field}.${provider}.model`, "invalid_model", "model must be a non-empty string.");
+        }
+        if ("models" in providerValue && (!Array.isArray(providerValue.models) || providerValue.models.some((item) => typeof item !== "string" || item.trim() === ""))) {
+          addDiagnostic(diagnostics, `${field}.${provider}.models`, "invalid_type", "models must be an array of non-empty strings.");
+        }
+      } else if (field === "models") {
+        if (!Array.isArray(providerValue) || providerValue.some((item) => typeof item !== "string" || item.trim() === "")) {
+          addDiagnostic(diagnostics, `${field}.${provider}`, "invalid_type", "models must be an array of non-empty strings.");
+        }
+      } else if (typeof providerValue !== "string" || providerValue.trim() === "") {
+        addDiagnostic(diagnostics, `${field}.${provider}`, "invalid_type", `${field} values must be non-empty strings.`);
+      }
+    }
+  }
+
+  if (hasOwn(config, "fallback")) {
+    const fallback = config.fallback;
+    if (!isPlainRecord(fallback)) {
+      addDiagnostic(diagnostics, "fallback", "invalid_type", "fallback must be an object.");
+    } else {
+      if ("enabled" in fallback && typeof fallback.enabled !== "boolean") {
+        addDiagnostic(diagnostics, "fallback.enabled", "invalid_type", "fallback.enabled must be a boolean.");
+      }
+      if ("order" in fallback && (!Array.isArray(fallback.order) || fallback.order.some((item) => typeof item !== "string" || item.trim() === ""))) {
+        addDiagnostic(diagnostics, "fallback.order", "invalid_type", "fallback.order must be an array of names.");
+      }
+    }
   }
 }
 
@@ -543,6 +763,10 @@ function validateMcpEnv(
 
 function isPositiveSafeInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isSafeInteger(value) && value > 0;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

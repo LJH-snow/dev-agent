@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-17（v0.3.0–v0.4.0 workspace implementation）
+
+- 新增 `providers list|status|test`、`models list|current`，支持 Ollama、OpenAI、Anthropic、Gemini
+  的脱敏配置检查、显式连通性探测、profile/alias 选择和显式 fallback 顺序；fallback 只有在
+  `fallback.enabled: true` 时才会切换，并把安全的 provider/model metadata 写回当前运行结果。
+- Agent loop 新增 per-run `turn`、token、duration 和 output 字符预算，预算在下一次 model/tool
+  边界前 fail-closed；超限输出使用稳定的 `budget_exceeded` 结构，不打印密钥或原始 provider 错误。
+- Code Search/index 共享 TypeScript/JavaScript、Python、Rust 扫描范围，新增 `.gitignore`、`.ignore`、
+  默认构建/缓存/虚拟环境目录和显式排除规则；新增 `index status|refresh|clear`，记录 cache hit、
+  error、更新时间和增量 refresh metadata，clear 必须显式 `--confirm`。
+- 新增 metadata-only 的 `mcp list|validate|status|test`；list/validate 不启动 server，status/test
+  使用有界 capability probe，超时、连接失败和 capability 变化均返回稳定 reason。
+- Desktop 新增 `/api/status` 和状态面板，展示 executor、runtime、provider/model、approval、validation
+  policy 与最近 validation result；状态 payload 只允许 metadata，不包含 key、token、路径、源码、命令或原始错误。
+- 本轮完成工作区实现与验证，未提升 npm 版本、未创建 tag、未推送远程，也未发布新的 npm 版本。
+
 ## 2026-09-16（v0.2.x workflow and CI foundation）
 
 - 新增 provider-free `review`、metadata-only `plan/apply` 和跨 CLI 进程的 change-set 重建校验。

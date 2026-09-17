@@ -1,7 +1,12 @@
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import { scanFile, type CodeSymbol } from "@dev-agent/code-intelligence";
+import {
+  createProjectIgnoreMatcher,
+  scanFile,
+  type CodeSymbol,
+  type ProjectIgnoreMatcher,
+} from "@dev-agent/code-intelligence";
 
 export interface IndexWarning {
   readonly kind: "skipped-directory";
@@ -18,6 +23,9 @@ export interface IndexReport {
   readonly symbols: number;
   /** Files whose stored source and symbols were reused because nothing changed. */
   readonly reused: number;
+  readonly cacheHits: number;
+  readonly cacheMisses: number;
+  readonly cacheHitRate: number;
   readonly languages: Readonly<Record<string, number>>;
   /** Number of child directories that could not be enumerated. */
   readonly skipped: number;
@@ -25,6 +33,8 @@ export interface IndexReport {
   readonly warnings: readonly IndexWarning[];
   /** Number of distinct explicit exclude paths that matched a file or directory. */
   readonly excluded: number;
+  readonly errors: number;
+  readonly updatedAt: string;
 }
 
 const DEFAULT_MAX_DEPTH = 8;
@@ -37,6 +47,18 @@ const SKIPPED_DIRECTORIES = new Set([
   ".next",
   ".cache",
   ".dev-agent",
+  ".nox",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".tox",
+  ".turbo",
+  ".venv",
+  "__pycache__",
+  "build",
+  "coverage",
+  "out",
+  "target",
+  "venv",
 ]);
 
 const LANGUAGE_BY_EXTENSION: Readonly<Record<string, string>> = {
@@ -58,6 +80,14 @@ interface IndexFile {
   readonly symbols: CodeSymbol[];
   /** Lets a later scan tell which files changed without re-reading them. */
   readonly signatures: Record<string, FileSignature>;
+  /** Metadata used by `index status`; never contains source or absolute paths. */
+  readonly refresh: {
+    readonly updatedAt: string;
+    readonly cacheHits: number;
+    readonly cacheMisses: number;
+    readonly errors: number;
+    readonly excluded: number;
+  };
 }
 
 interface FileSignature {
@@ -76,10 +106,15 @@ interface FileSignature {
 export async function indexDirectory(
   rootInput: string,
   maxDepth: number = DEFAULT_MAX_DEPTH,
-  excludeInputs: readonly string[] = []
+  excludeInputs: readonly string[] = [],
+  indexPathInput?: string
 ): Promise<IndexReport> {
   const root = resolve(rootInput);
   const excludes = normalizeExcludePaths(root, excludeInputs);
+  const indexPath = indexPathInput === undefined
+    ? join(root, ".dev-agent", "index.json")
+    : resolve(indexPathInput);
+  const ignore = await createProjectIgnoreMatcher(root);
   const info = await stat(root);
   if (!info.isDirectory()) {
     throw new Error(`${root} is not a directory`);
@@ -88,9 +123,20 @@ export async function indexDirectory(
   const signatures = new Map<string, FileSignature>();
   const warnings: IndexWarning[] = [];
   const matchedExcludes = new Set<string>();
-  await collectFiles(root, root, 0, maxDepth, signatures, warnings, matchedExcludes, excludes, true);
+  await collectFiles(
+    root,
+    root,
+    0,
+    maxDepth,
+    signatures,
+    warnings,
+    matchedExcludes,
+    excludes,
+    ignore,
+    true
+  );
 
-  const previous = await readPersistedIndex(root);
+  const previous = await readPersistedIndex(indexPath);
   const previousSymbols = groupSymbolsByFile(previous?.symbols ?? []);
   const files = new Map<string, string>();
   const symbols: CodeSymbol[] = [];
@@ -123,14 +169,24 @@ export async function indexDirectory(
     symbols.push(...scanFile(source, filePath));
   }
 
-  const indexPath = join(root, ".dev-agent", "index.json");
-  await mkdir(join(root, ".dev-agent"), { recursive: true });
+  const updatedAt = new Date().toISOString();
+  const cacheHits = reused;
+  const cacheMisses = Math.max(0, files.size - reused);
+  const errors = warnings.length;
   const payload: IndexFile = {
     version: 1,
     files: Object.fromEntries(files),
     symbols,
     signatures: Object.fromEntries(signatures),
+    refresh: {
+      updatedAt,
+      cacheHits,
+      cacheMisses,
+      errors,
+      excluded: matchedExcludes.size,
+    },
   };
+  await mkdir(dirname(indexPath), { recursive: true });
   await writeFile(indexPath, `${JSON.stringify(payload)}\n`, "utf8");
 
   return {
@@ -139,10 +195,15 @@ export async function indexDirectory(
     files: files.size,
     symbols: symbols.length,
     reused,
+    cacheHits,
+    cacheMisses,
+    cacheHitRate: cacheHits + cacheMisses === 0 ? 1 : cacheHits / (cacheHits + cacheMisses),
     languages: countLanguages(files.keys()),
     skipped: warnings.length,
     warnings,
     excluded: matchedExcludes.size,
+    errors,
+    updatedAt,
   };
 }
 
@@ -155,6 +216,7 @@ async function collectFiles(
   warnings: IndexWarning[],
   matchedExcludes: Set<string>,
   excludes: ReadonlySet<string>,
+  ignore: ProjectIgnoreMatcher,
   isRoot: boolean
 ): Promise<void> {
   if (depth > maxDepth) {
@@ -185,20 +247,24 @@ async function collectFiles(
       continue;
     }
 
+    const relativePath = relative(root, entryPath);
+    if (SKIPPED_DIRECTORIES.has(entry.name) || ignore.isIgnored(relativePath, entry.isDirectory())) {
+      continue;
+    }
+
     if (entry.isDirectory()) {
-      if (!SKIPPED_DIRECTORIES.has(entry.name)) {
-        await collectFiles(
-          join(dir, entry.name),
-          root,
-          depth + 1,
-          maxDepth,
-          signatures,
-          warnings,
-          matchedExcludes,
-          excludes,
-          false
-        );
-      }
+      await collectFiles(
+        join(dir, entry.name),
+        root,
+        depth + 1,
+        maxDepth,
+        signatures,
+        warnings,
+        matchedExcludes,
+        excludes,
+        ignore,
+        false
+      );
       continue;
     }
     if (!entry.isFile()) {
@@ -256,9 +322,9 @@ interface PersistedIndex {
  * Loads the index a previous run wrote. Anything unexpected returns undefined,
  * which makes the caller fall back to a full scan instead of failing.
  */
-async function readPersistedIndex(root: string): Promise<PersistedIndex | undefined> {
+async function readPersistedIndex(indexPath: string): Promise<PersistedIndex | undefined> {
   try {
-    const raw = await readFile(join(root, ".dev-agent", "index.json"), "utf8");
+    const raw = await readFile(indexPath, "utf8");
     const parsed = JSON.parse(raw) as {
       version?: unknown;
       files?: unknown;

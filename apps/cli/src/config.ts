@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 import type { PriceTable } from "@dev-agent/model";
+import type { ProviderManagementConfig } from "./provider-command.js";
 import {
   normalizeValidationPolicySettings,
   resolveValidationPolicy as resolveSharedValidationPolicy,
@@ -10,13 +11,29 @@ import {
   type ValidationPolicySettings,
 } from "@dev-agent/tools";
 
-export interface CliConfig {
+export interface CliConfig extends ProviderManagementConfig {
   readonly defaultProvider?: string;
   readonly defaultModel?: string;
+  readonly defaultProfile?: string;
+  readonly defaultAlias?: string;
+  readonly profile?: string;
+  readonly alias?: string;
   readonly maxTurns?: number;
   readonly maxContextChars?: number;
   readonly summarizeContext?: boolean;
   readonly summaryMaxChars?: number;
+  readonly maxTokens?: number;
+  readonly maxDurationMs?: number;
+  readonly maxOutputChars?: number;
+  readonly budget?: {
+    readonly maxTurns?: number;
+    readonly maxTokens?: number;
+    readonly maxDurationMs?: number;
+    readonly maxOutputChars?: number;
+  };
+  readonly profiles?: unknown;
+  readonly aliases?: unknown;
+  readonly fallback?: unknown;
   readonly validation?: ValidationPolicySettings["validation"];
   readonly validationPolicy?: ValidationPolicy;
   /** USD-per-million-token prices keyed by model-name prefix. */

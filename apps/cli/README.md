@@ -44,6 +44,13 @@ dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
 dev-agent review --cwd /path/to/other-project --json --non-interactive
 dev-agent plan --cwd /path/to/other-project --changes-file changes.json --plan-file plan.json --session ci --json --non-interactive
 dev-agent apply --cwd /path/to/other-project --changes-file changes.json --plan-file plan.json --session ci --json --non-interactive
+# Provider/model and project-index management are provider-free
+dev-agent providers status --cwd /path/to/other-project --json
+dev-agent models current --cwd /path/to/other-project --json
+dev-agent mcp list --cwd /path/to/other-project --project-state --json
+dev-agent mcp status --cwd /path/to/other-project --project-state --json
+dev-agent index refresh --cwd /path/to/other-project --json
+dev-agent index status --cwd /path/to/other-project --json
 ```
 
 The managed runtime is opt-in. `runtime status`, `runtime path`, and `runtime remove`
@@ -173,12 +180,30 @@ Options:
   name") and still reports "not found" when it does not
 - `--index <path>` - scan a directory and write a symbol index to
   `<path>/.dev-agent/index.json`; scans TypeScript/JavaScript/Python/Rust up to
-  depth 8 and skips `node_modules`, `dist`, `.git`, `.next`, `.cache`,
-  `.dev-agent`. Unchanged files are reused from the previous index instead of
-  re-read.
-  `--json` reports `{ path, indexPath, files, symbols, reused, languages }`.
-  The file also records per-file signatures so `code-search` can reuse it and
-  only re-read what changed.
+  depth 8 and skips vendored, build, cache, and virtual-environment directories.
+  Root `.gitignore` and `.ignore` rules are applied before explicit `--exclude`
+  paths. Unchanged files are reused from the previous index instead of re-read.
+  `--json` reports counts, languages, cache reuse, warnings, and update time.
+- `providers list|status|test` - list supported providers, inspect credential/base-URL
+  presence, or run an explicitly requested bounded connectivity probe. `test` never
+  runs by default from a normal agent request and reports stable reasons without
+  returning keys or response bodies.
+- `models list|current` - show configured model candidates and the effective
+  provider/model selection without starting a provider. `--profile <name>` and
+  `--alias <name>` select project profiles; explicit `--provider`/`--model` flags win.
+- `mcp list|validate|status|test` - inspect MCP metadata and configuration. `list`
+  and `validate` never start a server; `status` and `test` perform a bounded
+  capability probe and return only names, counts, latency, and stable failure
+  reasons. No install script is run automatically.
+- `index status|refresh|clear` - inspect a metadata-only index status, refresh the
+  project index (optionally with `--index-file` and repeated `--exclude`), or clear
+  one index file. `clear` requires `--confirm`; `--dry-run` never deletes.
+- `--profile <name>` / `--alias <name>` - choose a configured model profile or
+  alias for a normal agent run. Fallback changes only when `fallback.enabled` is
+  exactly `true`.
+- `--max-turns <n>`, `--max-tokens <n>`, `--max-duration-ms <n>`,
+  `--max-output-chars <n>` - fail closed before the next model/tool call when the
+  selected per-run budget is exhausted.
 - `--version` / `-v` - print the CLI version
 
 Arguments are validated before anything else runs: an unknown flag, a flag that
@@ -448,6 +473,21 @@ when the provider reported token counts. When the config file has a matching
 unpriced runs print no cost, and `--json` carries the same value as a `cost`
 field (`null` when unknown).
 
+## Provider, model, MCP, and index management
+
+The management commands are intentionally separate from a normal agent run. They
+load only sanitized configuration metadata unless the command explicitly requests
+a probe. Provider status checks whether an API key/base URL is present; provider
+tests and MCP `status`/`test` use bounded requests and map failures to stable
+reasons. No key, environment value, command argument, source file, or raw error
+body is included in JSON output.
+
+`index refresh` shares the code-search scanner for TypeScript/JavaScript, Python,
+and Rust. It records signatures and refresh metadata in the index, so subsequent
+searches can reuse unchanged files. Default generated/vendor/cache directories,
+root `.gitignore`, root `.ignore`, and explicit `--exclude` rules are applied in
+that order; `index clear` is confirmation-gated.
+
 ## Configuration file
 
 By default `~/.dev-agent/config.json` is read on every run. Use
@@ -461,7 +501,13 @@ saved preference never overrides an explicit invocation.
 {
   "defaultProvider": "openai",
   "defaultModel": "gpt-4o-mini",
-  "maxTurns": 12,
+  "profiles": {
+    "local": { "provider": "ollama", "model": "qwen3:4b-instruct" },
+    "cloud": { "provider": "openai", "model": "gpt-4o-mini" }
+  },
+  "aliases": { "fast": { "profile": "cloud" } },
+  "fallback": { "enabled": true, "order": ["local", "cloud"] },
+  "budget": { "maxTurns": 12, "maxTokens": 20000, "maxDurationMs": 120000, "maxOutputChars": 100000 },
   "maxContextChars": 120000,
   "validation": { "policy": "default" },
   "pricing": {
@@ -475,13 +521,25 @@ saved preference never overrides an explicit invocation.
 
 - `defaultProvider` / `defaultModel` - used when `DEV_AGENT_MODEL_PROVIDER` /
   `DEV_AGENT_MODEL` are unset.
-- `maxTurns` - agent turn budget; must be a positive integer, otherwise ignored
-  (the default is 8).
+- `maxTurns` - legacy agent turn budget; must be a positive integer, otherwise ignored
+  (the default is 8). `budget.maxTurns`, when present, is enforced at the next
+  model boundary and may be zero for a deliberate fail-closed run.
 - `maxContextChars` - conversation-history budget; used when
   `DEV_AGENT_MAX_CONTEXT_CHARS` is unset. Must be a positive integer, otherwise
   ignored (the default is no budget).
 - `summarizeContext` - when true, trimmed history is summarized rather than
   announced; used when `DEV_AGENT_SUMMARIZE_CONTEXT` is unset.
+- `profiles` / `aliases` - named provider/model selections. A profile may include
+  `fallback`/`fallbacks`; an alias can point to a profile or specify provider/model.
+  Explicit flags outrank environment, config, and the legacy Ollama default.
+- `fallback` - set `enabled` to `true` and provide an ordered profile/alias list to
+  allow bounded provider fallback. Disabled or exhausted fallback preserves the
+  original provider error category and never prints raw credentials.
+- `budget.maxTurns`, `budget.maxTokens`, `budget.maxDurationMs`,
+  `budget.maxOutputChars` - non-negative per-run guardrails. The loop checks them
+  before model/tool calls and emits a stable `budget_exceeded` error.
+- `maxTokens`, `maxDurationMs`, and `maxOutputChars` - legacy top-level budget
+  fields; the nested `budget` form is preferred.
 - `summaryMaxChars` - digest length cap; used when
   `DEV_AGENT_SUMMARY_MAX_CHARS` is unset.
 - `validation.policy` (or `validationPolicy`) - one of the predefined validation

@@ -1,4 +1,10 @@
 import type { AgentState } from "./agent-state.js";
+import {
+  BudgetExceededError,
+  BudgetTracker,
+  formatBudgetError,
+  type AgentLoopBudget,
+} from "./budget.js";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { ApprovalOutcome, ApprovalPolicy, ApprovalPreparation, ApprovalRequest } from "./approval.js";
 import type { AgentContext } from "./context.js";
@@ -33,6 +39,8 @@ export interface AgentLoopOptions {
   /** Resolves the system prompt immediately before each model turn. */
   readonly systemPromptProvider?: () => string | undefined;
   readonly maxTurns?: number;
+  /** Per-run execution limits. Omit to preserve the historical loop behavior. */
+  readonly budget?: AgentLoopBudget;
   readonly onTurn?: (turn: number, context: AgentContext) => void;
   readonly onToken?: (token: string, context: AgentContext) => void;
   readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
@@ -43,6 +51,8 @@ export interface AgentLoopOptions {
   readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
   /** Fired for every model response that reported token usage. */
   readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
+  /** Observes a budget stop without changing the loop result. */
+  readonly onBudgetExceeded?: (error: BudgetExceededError, context: AgentContext) => void;
   /** Decides whether each tool call may run; unset means every call runs. */
   readonly approval?: ApprovalPolicy;
   readonly onApproval?: (
@@ -92,6 +102,7 @@ export interface RunOptions {
 interface RunState {
   readonly context: AgentContext;
   readonly signal?: AbortSignal;
+  readonly budget?: BudgetTracker;
   totalUsage: ChatUsage | undefined;
 }
 
@@ -101,6 +112,7 @@ export class AgentLoop {
   private readonly systemPrompt?: string;
   private readonly systemPromptProvider?: () => string | undefined;
   private readonly maxTurns: number;
+  private readonly budget?: AgentLoopBudget;
   private readonly onTurn?: (turn: number, context: AgentContext) => void;
   private readonly onToken?: (token: string, context: AgentContext) => void;
   private readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
@@ -110,6 +122,7 @@ export class AgentLoop {
   ) => void;
   private readonly onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
   private readonly onUsage?: (usage: ChatUsage, context: AgentContext) => void;
+  private readonly onBudgetExceeded?: (error: BudgetExceededError, context: AgentContext) => void;
   private readonly approval?: ApprovalPolicy;
   private readonly onApproval?: (
     request: ApprovalRequest,
@@ -131,13 +144,18 @@ export class AgentLoop {
     this.tools = options.tools;
     this.systemPrompt = options.systemPrompt;
     this.systemPromptProvider = options.systemPromptProvider;
-    this.maxTurns = options.maxTurns ?? 10;
+    this.budget = options.budget;
+    const configuredMaxTurns = options.maxTurns ?? 10;
+    this.maxTurns = this.budget?.maxTurns === undefined
+      ? configuredMaxTurns
+      : Math.max(configuredMaxTurns, Math.ceil(this.budget.maxTurns) + 1);
     this.onTurn = options.onTurn;
     this.onToken = options.onToken;
     this.onToolCall = options.onToolCall;
     this.onToolProgress = options.onToolProgress;
     this.onToolResult = options.onToolResult;
     this.onUsage = options.onUsage;
+    this.onBudgetExceeded = options.onBudgetExceeded;
     this.approval = options.approval;
     this.onApproval = options.onApproval;
     this.validation = options.validation;
@@ -165,12 +183,14 @@ export class AgentLoop {
     const runState: RunState = {
       context,
       signal: options.signal,
+      budget: this.budget ? new BudgetTracker(this.budget) : undefined,
       totalUsage: context.usage,
     };
 
     try {
       for (let turn = 0; turn < this.maxTurns && !completed; turn += 1) {
         throwIfAborted(options.signal);
+        runState.budget?.beforeModelCall();
         const messages = await this.buildMessages(memory, context, runState);
         const chatOptions = {
           tools: this.buildToolSchemas(),
@@ -182,6 +202,7 @@ export class AgentLoop {
         if (completion.usage) {
           await this.recordUsage(runState, completion.usage);
         }
+        runState.budget?.recordModelOutput(completion.content, completion.usage);
         const toolCalls = completion.toolCalls ?? [];
 
         await memory.append(createMemoryEntry("assistant", completion.content, { toolCalls }));
@@ -193,6 +214,7 @@ export class AgentLoop {
           if (!this.tools) {
             throw new Error(`Agent requested tool "${call.name}" but no tools are configured.`);
           }
+          runState.budget?.beforeToolCall();
           this.onToolCall?.({ name: call.name, input: call.input }, context);
 
           const approvalRequest: ApprovalRequest = {
@@ -234,6 +256,7 @@ export class AgentLoop {
               : undefined,
           };
           const result = await this.runToolSafely(executionCall, toolContext, options.signal);
+          runState.budget?.recordToolOutput(result);
           this.onToolResult?.({ name: call.name, output: result }, context);
           await this.recordAppliedChangeSet(preparation, result, context);
           const validation = await this.validateAppliedChange(
@@ -277,7 +300,18 @@ export class AgentLoop {
         // them, and recording a half-finished turn as an error would be wrong.
         throw error;
       }
-      const message = error instanceof Error ? error.message : String(error);
+      if (error instanceof BudgetExceededError) {
+        try {
+          this.onBudgetExceeded?.(error, context);
+        } catch {
+          // Budget observability must not change the deterministic stop result.
+        }
+      }
+      const message = error instanceof BudgetExceededError
+        ? formatBudgetError(error)
+        : error instanceof Error
+          ? error.message
+          : String(error);
       await memory.append(createMemoryEntry("assistant", `[error] ${message}`));
       updatedAt = new Date().toISOString();
       return {
@@ -349,7 +383,10 @@ export class AgentLoop {
       };
       await this.persistSummary(memory);
       return text;
-    } catch {
+    } catch (error) {
+      if (error instanceof BudgetExceededError) {
+        throw error;
+      }
       // A failed summary must not break the conversation.
       return previous?.text;
     }
@@ -363,6 +400,7 @@ export class AgentLoop {
     const transcript = entries
       .map((entry) => `${entry.role}: ${entry.content}`)
       .join("\n");
+    runState.budget?.beforeModelCall({ countTurn: false });
     const completion = await this.model.chat(
       [
         {
@@ -378,6 +416,7 @@ export class AgentLoop {
     if (completion.usage) {
       await this.recordUsage(runState, completion.usage);
     }
+    runState.budget?.recordModelOutput(completion.content, completion.usage);
     return completion.content.trim();
   }
 

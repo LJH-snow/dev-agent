@@ -36,12 +36,19 @@ import {
   type ApprovalRequester,
   type StreamEvent,
 } from "./chat-session.js";
+import {
+  createDesktopStatus,
+  withDesktopStatusSession,
+  type DesktopStatusSnapshot,
+} from "./status.js";
 
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
   readonly id?: string;
   /** Metadata-only description of the executor backend; absent on legacy fakes. */
   readonly executorMode?: ExecutorMode;
+  /** Returns an allowlisted metadata-only status snapshot for the desktop panel. */
+  readonly getStatus?: () => DesktopStatusSnapshot;
   /** Estimates the USD cost of a usage total with the session's current model. */
   estimateCost?(usage: ChatUsage): number | undefined;
   run(
@@ -161,6 +168,31 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       if (req.method === "GET" && url.pathname === "/health") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ status: "ok", executorMode: defaultSession.executorMode ?? "unknown" }));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/status") {
+        const requestedSessionId = url.searchParams.get("sessionId");
+        const sessionId = normalizeSessionId(requestedSessionId ?? defaultSessionId);
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+
+        const baseStatus =
+          session.getStatus?.() ??
+          createDesktopStatus({
+            sessionId,
+            executorMode: session.executorMode,
+          });
+        const status = withDesktopStatusSession(baseStatus, sessionId, inFlight.has(sessionId));
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        res.end(JSON.stringify(status));
         return;
       }
 

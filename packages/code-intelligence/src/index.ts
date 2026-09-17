@@ -206,3 +206,7 @@ function tokenize(value: string): string[] {
 export * from "./scanner.js";
 export * from "./reference-index.js";
 export * from "./json-file-index.js";
+
+export * from "./index-status.js";
+
+export * from "./project-ignore.js";

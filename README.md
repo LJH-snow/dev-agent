@@ -213,10 +213,11 @@ without starting a model provider.
 ## Current Status
 
 The active post-release implementation sequence is tracked in
-[docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). Project initialization,
-managed Rust runtime distribution, and the review/plan/apply CI foundation are implemented in the
-workspace; the next phases cover provider/model budgets, larger code indexes, MCP management, and
-Desktop execution-state UX.
+[docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). As of September 17, 2026,
+all six workspace phases in that plan are implemented and verified: project initialization, managed
+Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
+indexes, and MCP/Desktop status management. The current npm package remains `@agent_cli/cli@0.1.4`;
+these workspace changes have not been published, tagged, or pushed.
 
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),
@@ -239,7 +240,11 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
 - CLI session isolation and reset via `--session` and `--reset-memory`
 - Rich agent context with session id, working directory, metadata, task, and error state
 - Context-aware built-in tools that run relative to `workingDirectory`
-- `code-search` tool that scans TypeScript/JavaScript symbols in the project
+- `code-search` tool that scans TypeScript/JavaScript/Python/Rust symbols in the project,
+  honoring generated/cache defaults plus root `.gitignore` and `.ignore` rules
+- Provider/model management commands with profile, alias, explicit fallback, and per-run budget guards
+- Metadata-only MCP management commands and a Desktop runtime/provider/approval/validation status panel
+- Index lifecycle commands (`index status|refresh|clear`) with cache-hit, error, and refresh-time metadata
 - MCP server environment injection for session id and working directory
 - TypeScript AST scanner in `@dev-agent/code-intelligence` for functions, classes,
   interfaces, type aliases, enums, methods, properties, variables, and arrow functions
@@ -617,3 +622,7 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
 73. ~~CLI TUI v1.1 streaming and input reliability~~ (done)
 74. ~~CLI machine-error and terminal-output safety hardening~~ (done)
 75. ~~Release-candidate verification and provenance audit~~ (done; formal release remains gated)
+76. ~~Provider/model profiles, aliases, fallback, and budget enforcement~~ (done in workspace; release gated)
+77. ~~Metadata-only provider/model management commands~~ (done in workspace; release gated)
+78. ~~Incremental index status/refresh/clear with ignore rules and cache diagnostics~~ (done in workspace; release gated)
+79. ~~MCP management probes and Desktop status panel~~ (done in workspace; release gated)

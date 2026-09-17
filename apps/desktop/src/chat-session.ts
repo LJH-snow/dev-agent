@@ -47,6 +47,11 @@ import {
   type ValidationPolicySettings,
 } from "@dev-agent/tools";
 import { McpStdioClient, type McpClientConfig } from "@dev-agent/mcp";
+import {
+  createDesktopStatus,
+  type DesktopStatusSnapshot,
+  type DesktopStatusValidationResult,
+} from "./status.js";
 
 export interface StreamEvent {
   readonly type:
@@ -110,6 +115,8 @@ export class ChatSession {
   private readonly summarizeContext: boolean;
   private readonly summaryMaxChars?: number;
   private readonly approvalMode: DesktopApprovalMode;
+  private readonly validationPolicy: ValidationPolicy;
+  private lastValidationResult: DesktopStatusValidationResult = "unknown";
   private readonly compiledApproval: { patterns: readonly RegExp[]; allowlist: readonly string[] };
   private readonly pricing?: PriceTable;
   private readonly mcpServers: readonly McpClientConfig[];
@@ -124,6 +131,7 @@ export class ChatSession {
       ? resolveValidationPolicy(config)
       : parseValidationPolicy(options.validationPolicy);
     this.model = createProvider();
+    this.validationPolicy = validationPolicy;
     const rustBinaryPath = options.rustBinaryPath ?? process.env.DEV_AGENT_RUST_BINARY;
     this.executor = createExecutor({ rustBinaryPath });
     this.executorMode = getExecutorMode(this.executor);
@@ -242,7 +250,10 @@ export class ChatSession {
           },
         }),
       validation: this.validation,
-      onValidation: (result) => emitValidation(emit, this.sessionId, result),
+      onValidation: (result) => {
+        this.lastValidationResult = result.status;
+        emitValidation(emit, this.sessionId, result);
+      },
     });
 
     try {
@@ -336,6 +347,7 @@ export class ChatSession {
       }
     }
 
+    this.lastValidationResult = result.status;
     try {
       await this.memory.recordValidation?.(result);
     } catch {
@@ -426,6 +438,19 @@ export class ChatSession {
 
   get id(): string {
     return this.sessionId;
+  }
+
+  /** Returns the allowlisted metadata exposed by the desktop status panel. */
+  getStatus(): DesktopStatusSnapshot {
+    return createDesktopStatus({
+      sessionId: this.sessionId,
+      executorMode: this.executorMode,
+      providerId: this.model.id,
+      model: this.model.model,
+      approvalMode: this.approvalMode,
+      validationPolicy: this.validationPolicy,
+      validationResult: this.lastValidationResult,
+    });
   }
 
   /** Prices a usage total with this session's model and shared price table. */

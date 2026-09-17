@@ -251,3 +251,35 @@ test("rejects non-JSON values in known fields without serializing them", () => {
   assert.equal(diagnosticAt(result, "defaultModel").code, "invalid_type");
   assert.doesNotMatch(JSON.stringify(result), new RegExp(secret));
 });
+
+test("validates provider profiles, aliases, fallback, and execution budgets", () => {
+  const valid = validateConfigValue({
+    defaultProfile: "local",
+    providers: {
+      ollama: { enabled: true, model: "qwen3:4b-instruct", models: ["qwen3:4b-instruct"] },
+      openai: { baseUrl: "https://api.openai.com/v1" },
+    },
+    profiles: {
+      local: { provider: "ollama", model: "qwen3:4b-instruct", fallbacks: ["cloud"] },
+      cloud: { provider: "openai", model: "gpt-4o-mini" },
+    },
+    aliases: { fast: "local", reliable: { profile: "cloud" } },
+    fallback: { enabled: true, order: ["local", "cloud"] },
+    budget: { maxTurns: 0, maxTokens: 1000, maxDurationMs: 5000, maxOutputChars: 20_000 },
+  });
+  assert.equal(valid.valid, true);
+  assert.deepEqual(valid.diagnostics, []);
+
+  const invalid = validateConfigValue({
+    profiles: { broken: { provider: "not-real", model: "", fallbacks: [""] } },
+    aliases: { broken: { profile: "" } },
+    budget: { maxTurns: -1, extra: true },
+  });
+  assert.equal(invalid.valid, false);
+  assert.equal(diagnosticAt(invalid, "profiles.broken.provider").code, "invalid_provider");
+  assert.equal(diagnosticAt(invalid, "profiles.broken.model").code, "invalid_model");
+  assert.equal(diagnosticAt(invalid, "profiles.broken.fallbacks").code, "invalid_type");
+  assert.equal(diagnosticAt(invalid, "aliases.broken.profile").code, "invalid_string");
+  assert.equal(diagnosticAt(invalid, "budget.maxTurns").code, "invalid_non_negative_integer");
+  assert.equal(diagnosticAt(invalid, "budget.extra").code, "unknown_field");
+});

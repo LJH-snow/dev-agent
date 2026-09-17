@@ -22,9 +22,9 @@
 | v0.1.5 | `dev-agent init`、配置校验、项目初始化 | 最高 | DONE（待版本发布） | 初始化命令、配置命令、项目状态/忽略规则、安全测试 |
 | v0.2.0 | Rust runtime 自动分发与安装 | 最高 | DONE（待版本发布） | 平台 runtime 包、安装/状态命令、校验和、fail-closed 解析 |
 | v0.2.x | `review`、`plan/apply`、CI 非交互模式 | 高 | DONE（待版本发布） | 只读审查、计划与应用边界、稳定退出码/JSON 事件 |
-| v0.3.0 | Provider/model 管理与预算控制 | 中高 | TODO | provider/model 命令、连通性检查、预算与 fallback 策略 |
-| v0.3.x | Code Search 多语言和大型项目优化 | 中 | TODO | ignore 语义、索引状态/增量、更多语言或可插拔扫描器 |
-| v0.4.0 | MCP 管理和 Desktop 状态面板 | 中 | TODO | MCP 管理命令、健康状态、Desktop 执行能力状态展示 |
+| v0.3.0 | Provider/model 管理与预算控制 | 中高 | DONE（待版本发布） | provider/model 命令、连通性检查、预算与 fallback 策略 |
+| v0.3.x | Code Search 多语言和大型项目优化 | 中 | DONE（待版本发布） | ignore 语义、索引状态/增量、更多语言或可插拔扫描器 |
+| v0.4.0 | MCP 管理和 Desktop 状态面板 | 中 | DONE（待版本发布） | MCP 管理命令、健康状态、Desktop 执行能力状态展示 |
 
 ## v0.1.5：项目初始化与配置校验
 
@@ -196,13 +196,15 @@ dev-agent doctor --json
 ## 当前执行项
 
 - [x] 建立本计划文档。
-- [ ] v0.1.5：写 RED contract。
+- [x] v0.1.5：写 RED contract。
 - [x] v0.1.5：实现 `init`、`config validate/show` 和项目初始化。
 - [x] v0.1.5：补齐 CLI、外部目录和安全回归验证。
 - [x] v0.1.5：更新 README、CHANGELOG 和版本计划状态。
 - [x] v0.2.0：Rust runtime 自动分发与安装。
 - [x] v0.2.x：实现 `review`、`plan/apply`、稳定退出码、脱敏 JSON event stream 和非交互 fail-closed 基础。
-- [ ] v0.3.0 及后续阶段：按顺序推进 Provider/model、Code Search 和 MCP/Desktop。
+- [x] v0.3.0：Provider/model 管理、profile/alias/fallback 与预算控制。
+- [x] v0.3.x：Code Search ignore 语义、索引状态、增量 refresh 与大型项目默认排除。
+- [x] v0.4.0：MCP 管理命令与 Desktop metadata-only 状态面板。
 
 ## v0.2.x 完成记录（2026-09-16）
 
@@ -238,3 +240,27 @@ dev-agent doctor --json
   validation policy、pricing、MCP 字段与敏感值不泄露；命令不加载 provider，也不执行 MCP。
 - `--doctor --json` 已增加非路径化的 scope/runtime metadata。
 - v0.1.5 当前只完成工作区实现和验证，尚未提升 npm 版本或重复发布；版本发布需单独决定。
+
+## v0.3.0–v0.4.0 完成记录（2026-09-17）
+
+- **Provider/model 管理：** `providers list|status|test` 与 `models list|current` 已接入显式 CLI
+  路由；四类 provider 均有配置存在性、连通性和失败路径测试。API key、响应 body 和原始
+  provider 异常不会进入结果。
+- **选择与 fallback：** 项目配置支持 profiles、aliases 和显式 fallback order；显式 flags、
+  profile/alias、环境变量、配置和默认值的优先级固定，fallback 未明确启用时不会切换。切换后的
+  provider/model metadata 会写回当前 agent context。
+- **预算：** AgentLoop 在 model/tool 边界前检查 turns、provider token usage、duration 和 output
+  chars；超限不会启动下一次调用，并返回稳定 `budget_exceeded` JSON。已有 pricing/cost estimation
+  保持兼容。
+- **Code Search/index：** 新增可恢复的 index status metadata（files/symbols、signatures、cache
+  hits/misses、errors、更新时间），支持显式 `index refresh/status/clear`、自定义 `--index-file`、
+  confirmation-gated clear、增量 refresh 规划和删除/重命名边界；默认跳过 node_modules、构建产物、
+  缓存、虚拟环境等目录，并应用 root `.gitignore`、`.ignore` 与显式排除规则。
+- **MCP：** 新增 list/validate/status/test 管理命令；list/validate 是 metadata-only，status/test
+  使用有界 stdio capability probe，超时、连接失败、取消和 capability 变化均映射到稳定 reason。
+- **Desktop：** 新增 `/api/status` 与状态面板，展示 executor/runtime/provider/model/approval/
+  validation policy/最近 validation result；payload 通过 allowlist 生成，不改变 session、evidence、
+  Undo 或 approval schema。
+- **验证与发布边界：** 工作区相关 package tests、CLI 309 项测试、Desktop 84 项测试及最终
+  `pnpm verify` 已于 2026-09-17 全部通过；本轮不自动 bump version、tag、push 或 publish npm。
+  下一步如需对外发布，仍需单独授权并先决定版本号、变更日志和发布渠道。

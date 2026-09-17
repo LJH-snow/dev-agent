@@ -42,11 +42,13 @@ import {
   type ValidationAdapter,
   type ValidationResult,
   type SessionMetadata,
+  type AgentLoopBudget,
 } from "@dev-agent/agent-core";
 import { assertWorkingDirectory, createExecutor } from "@dev-agent/executor";
 import {
   createMcpServer,
   McpServerSession,
+  McpStdioClient,
   type McpClient,
   type McpClientConfig,
   type McpSessionSnapshot,
@@ -92,7 +94,12 @@ import {
 import { resolveExecutorSelection, type ExecutorPreference } from "./runtime-selection.js";
 import { executeWorkflowCommand } from "./workflow-command.js";
 import { createNonInteractiveController, EXIT_CODES } from "./non-interactive.js";
+import { executeProviderCommand, type ProviderCommand } from "./provider-command.js";
+import { formatModelSelectionMetadata, resolveModelSelection, type ModelSelection, type ModelSelectionResult } from "./model-profiles.js";
+import { FallbackModelProvider } from "./fallback-provider.js";
+import { executeMcpCommand, type McpManagementResult, type McpProbe } from "./mcp-command.js";
 import { indexDirectory } from "./index-command.js";
+import { clearIndex, getIndexStatus } from "@dev-agent/code-intelligence";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -176,6 +183,7 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--session": "one",
   "--session-delete": "one",
   "--index": "one",
+  "--index-file": "one",
   "--exclude": "one",
   "--cwd": "one",
   "--config": "one",
@@ -185,6 +193,14 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--runtime-version": "one",
   "--runtime-dir": "one",
   "--target": "one",
+  "--provider": "one",
+  "--model": "one",
+  "--profile": "one",
+  "--alias": "one",
+  "--max-turns": "one",
+  "--max-tokens": "one",
+  "--max-duration-ms": "one",
+  "--max-output-chars": "one",
   "--base": "one",
   "--head": "one",
   "--changes-file": "one",
@@ -197,6 +213,7 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--check-rust": "optional",
   "--gitignore": "none",
   "--dry-run": "none",
+  "--confirm": "none",
 };
 
 /**
@@ -208,7 +225,10 @@ type ExplicitCliCommand =
   | { readonly kind: "init" }
   | { readonly kind: "config"; readonly action: "validate" | "show" }
   | { readonly kind: "runtime"; readonly action: "status" | "install" | "path" | "remove" }
-  | { readonly kind: "workflow"; readonly action: "review" | "plan" | "apply" };
+  | { readonly kind: "workflow"; readonly action: "review" | "plan" | "apply" }
+  | { readonly kind: "provider"; readonly resource: "providers" | "models"; readonly action: "list" | "status" | "test" | "current" }
+  | { readonly kind: "mcp"; readonly action: "list" | "status" | "validate" | "test" }
+  | { readonly kind: "index"; readonly action: "status" | "refresh" | "clear" };
 
 function parseExplicitCliCommand(args: readonly string[]): ExplicitCliCommand | undefined {
   if (args[0] === "init") {
@@ -226,6 +246,18 @@ function parseExplicitCliCommand(args: readonly string[]): ExplicitCliCommand | 
   if (args[0] === "review" || args[0] === "plan" || args[0] === "apply") {
     return { kind: "workflow", action: args[0] };
   }
+  if (args[0] === "providers" && (args[1] === "list" || args[1] === "status" || args[1] === "test")) {
+    return { kind: "provider", resource: "providers", action: args[1] };
+  }
+  if (args[0] === "models" && (args[1] === "list" || args[1] === "current")) {
+    return { kind: "provider", resource: "models", action: args[1] };
+  }
+  if (args[0] === "mcp" && (args[1] === "list" || args[1] === "status" || args[1] === "validate" || args[1] === "test")) {
+    return { kind: "mcp", action: args[1] };
+  }
+  if (args[0] === "index" && (args[1] === "status" || args[1] === "refresh" || args[1] === "clear")) {
+    return { kind: "index", action: args[1] };
+  }
   return undefined;
 }
 
@@ -239,6 +271,9 @@ function explicitCommandPrefixLength(args: readonly string[]): number {
   }
   if (command?.kind === "workflow") {
     return 1;
+  }
+  if (command?.kind === "provider" || command?.kind === "mcp" || command?.kind === "index") {
+    return 2;
   }
   return 0;
 }
@@ -326,7 +361,13 @@ function validateExplicitCommandFlags(
           ? new Set(["--runtime-version", "--runtime-dir", "--target", "--json"])
           : command.action === "review"
             ? new Set(["--cwd", "--base", "--head", "--json", "--non-interactive", "--event-stream"])
-            : new Set(["--cwd", "--session", "--changes-file", "--plan-file", "--json", "--non-interactive", "--event-stream"]);
+            : command.kind === "workflow"
+              ? new Set(["--cwd", "--session", "--changes-file", "--plan-file", "--json", "--non-interactive", "--event-stream"])
+              : command.kind === "provider"
+                ? new Set(["--cwd", "--project-state", "--config", "--provider", "--model", "--profile", "--alias", "--json", "--non-interactive"])
+                : command.kind === "mcp"
+                  ? new Set(["--cwd", "--project-state", "--config", "--json", "--non-interactive"])
+                  : new Set(["--cwd", "--index-file", "--exclude", "--json", "--confirm", "--dry-run"]);
   const prefixLength = explicitCommandPrefixLength(args);
   for (const arg of args.slice(prefixLength)) {
     if (arg.startsWith("-") && !allowed.has(arg)) {
@@ -337,7 +378,13 @@ function validateExplicitCommandFlags(
             ? `config ${command.action}`
             : command.kind === "runtime"
               ? `runtime ${command.action}`
-              : command.action;
+              : command.kind === "provider"
+                ? `${command.resource} ${command.action}`
+                : command.kind === "mcp"
+                  ? `mcp ${command.action}`
+                  : command.kind === "index"
+                    ? `index ${command.action}`
+                    : command.action;
       return `${arg} is not supported by ${commandName}.`;
     }
   }
@@ -378,6 +425,131 @@ async function runExplicitCliCommand(
       if (jsonOutput) console.log(output);
       else console.error(output);
       process.exitCode = execution.exitCode;
+    }
+    return;
+  }
+
+  if (command.kind === "provider") {
+    const projectState = args.includes("--project-state");
+    const configPath = resolveConfigPath(
+      flagValue(args, "--config"),
+      process.env,
+      homedir(),
+      workingDirectory,
+      projectState
+    );
+    const config = loadConfig(configPath, process.env, workingDirectory, projectState);
+    const providerCommand: ProviderCommand = {
+      resource: command.resource,
+      action: command.action as ProviderCommand["action"],
+      ...(flagValue(args, "--provider") === undefined
+        ? {}
+        : { provider: flagValue(args, "--provider") }),
+    } as ProviderCommand;
+    const result = await executeProviderCommand(providerCommand, {
+      config,
+      env: process.env,
+      ...(command.resource === "providers" && command.action === "test"
+        ? { fetch: globalThis.fetch }
+        : {}),
+    });
+    if (jsonOutput) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      printProviderCommandResult(result);
+    }
+    const exitCode = providerCommandExitCode(result);
+    if (exitCode !== EXIT_CODES.success) process.exitCode = exitCode;
+    return;
+  }
+
+  if (command.kind === "mcp") {
+    const projectState = args.includes("--project-state");
+    const configPath = resolveConfigPath(
+      flagValue(args, "--config"),
+      process.env,
+      homedir(),
+      workingDirectory,
+      projectState
+    );
+    const config = loadConfig(configPath, process.env, workingDirectory, projectState);
+    const managementConfig = { mcpServers: readMcpManagementEntries(config) };
+    const result = await executeMcpCommand(command.action, {
+      config: managementConfig,
+      ...(command.action === "status" || command.action === "test"
+        ? { connector: createMcpManagementProbe(workingDirectory) }
+        : {}),
+    });
+    if (jsonOutput) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      printMcpCommandResult(result);
+    }
+    const exitCode = mcpCommandExitCode(result);
+    if (exitCode !== EXIT_CODES.success) process.exitCode = exitCode;
+    return;
+  }
+
+  if (command.kind === "index") {
+    const indexFile = resolveIndexFilePath(workingDirectory, flagValue(args, "--index-file"));
+    try {
+      if (command.action === "status") {
+        const result = await getIndexStatus({ indexPath: indexFile });
+        if (jsonOutput) {
+          console.log(JSON.stringify({ command: "index status", ...result }, null, 2));
+        } else {
+          printIndexStatus(result);
+        }
+        if (!result.usable && result.status !== "missing") process.exitCode = EXIT_CODES.config_error;
+        return;
+      }
+
+      if (command.action === "clear") {
+        const result = await clearIndex({
+          indexPath: indexFile,
+          confirm: args.includes("--confirm"),
+          dryRun: args.includes("--dry-run"),
+        });
+        if (jsonOutput) {
+          console.log(JSON.stringify({ command: "index clear", ...result }, null, 2));
+        } else {
+          printIndexClear(result);
+        }
+        if (result.status === "blocked" || result.status === "error") {
+          process.exitCode = result.status === "blocked" ? EXIT_CODES.policy_denied : EXIT_CODES.execution_error;
+        }
+        return;
+      }
+
+      const excludePaths = args
+        .flatMap((arg, index) => (arg === "--exclude" ? [args[index + 1]] : []))
+        .filter((path): path is string => path !== undefined)
+        .map((path) => resolve(workingDirectory, path));
+      const report = await indexDirectory(workingDirectory, undefined, excludePaths, indexFile);
+      const publicReport = {
+        command: "index refresh",
+        files: report.files,
+        symbols: report.symbols,
+        reused: report.reused,
+        cacheHits: report.cacheHits,
+        cacheMisses: report.cacheMisses,
+        cacheHitRate: report.cacheHitRate,
+        languages: report.languages,
+        skipped: report.skipped,
+        warnings: report.warnings,
+        excluded: report.excluded,
+        errors: report.errors,
+        updatedAt: report.updatedAt,
+      };
+      if (jsonOutput) {
+        console.log(JSON.stringify(publicReport, null, 2));
+      } else {
+        console.log(`Indexed ${report.files} files / ${report.symbols} symbols (${report.reused} reused).`);
+        console.log(`Cache hit rate: ${(report.cacheHitRate * 100).toFixed(1)}%; errors: ${report.errors}; updated: ${safeTerminalText(report.updatedAt)}`);
+      }
+    } catch (error) {
+      emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
+      process.exitCode = EXIT_CODES.execution_error;
     }
     return;
   }
@@ -1103,7 +1275,32 @@ export async function main(argv: string[]): Promise<void> {
     // Provider construction is intentionally delayed until after provider-free
     // commands. This lets commands such as --tools and --metadata inspect a
     // project even when its configured provider has no credentials locally.
-    const provider = createProvider(config);
+    let modelSelection: ModelSelectionResult;
+    try {
+      modelSelection = resolveModelSelection({
+        config: config as unknown as { readonly [key: string]: unknown },
+        provider: flagValue(args, "--provider"),
+        model: flagValue(args, "--model"),
+        profile: flagValue(args, "--profile"),
+        alias: flagValue(args, "--alias"),
+        env: process.env,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Model selection failed.";
+      const legacyProvider = flagValue(args, "--provider") ?? process.env.DEV_AGENT_MODEL_PROVIDER ?? config.defaultProvider;
+      const startupMessage = message === "Model provider is not supported." && legacyProvider
+        ? `Unsupported model provider '${legacyProvider}'. Phase 1 supports ollama, openai, anthropic, and gemini.`
+        : message;
+      emitCliError(startupMessage, jsonErrorOutput);
+      // Preserve the legacy startup failure code for the normal agent path.
+      // Explicit provider/config commands use stable typed exit codes.
+      process.exitCode = 1;
+      return;
+    }
+    let activeModelSelection = modelSelection;
+    const provider = createProvider(config, modelSelection, (next) => {
+      activeModelSelection = next;
+    });
     const streamingEnabled =
       !noStream && !jsonOutput && typeof provider.streamChat === "function";
     const richUi = shouldUseRichUi({
@@ -1128,7 +1325,12 @@ export async function main(argv: string[]): Promise<void> {
     const context = createAgentContext("cli", memory, {
       sessionId: normalizedSessionId,
       workingDirectory,
-      metadata: { cliVersion: version, provider: provider.id },
+      metadata: {
+        cliVersion: version,
+        provider: provider.id,
+        model: provider.model,
+        modelSelection: formatModelSelectionMetadata(modelSelection),
+      },
     });
     if (filesystem instanceof FilesystemTool) {
       await restorePersistedChangeSets(filesystem, context);
@@ -1154,6 +1356,7 @@ export async function main(argv: string[]): Promise<void> {
           .filter((part) => part.length > 0)
           .join("\n\n"),
       maxTurns: resolveMaxTurns(config, 8),
+      budget: resolveAgentLoopBudget(config, args),
       contextBudget: buildContextBudget(config),
       approval,
       onApproval: (request, outcome) => {
@@ -1207,8 +1410,9 @@ export async function main(argv: string[]): Promise<void> {
 
     if (oncePrompt) {
       const result = await runPrompt(loop, context, streaming, oncePrompt, jsonOutput, {
-        model: provider.model,
+        model: () => provider.model,
         pricing: config.pricing,
+        selection: () => activeModelSelection,
       }, reviews, validations);
       if (result.state.status === "error") {
         process.exitCode = 1;
@@ -1225,8 +1429,9 @@ export async function main(argv: string[]): Promise<void> {
       workingDirectory,
       width: resolveTerminalWidth(),
     }, jsonOutput, {
-      model: provider.model,
+      model: () => provider.model,
       pricing: config.pricing,
+      selection: () => activeModelSelection,
     }, reviews, validations, rerunValidation);
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
@@ -2046,8 +2251,9 @@ async function interactive(
 }
 
 interface UsageCostOptions {
-  readonly model: string;
+  readonly model: string | (() => string);
   readonly pricing?: PriceTable;
+  readonly selection?: () => ModelSelectionResult;
 }
 
 function createCliValidationAdapter(
@@ -2348,13 +2554,27 @@ async function runPrompt(
   signal?: AbortSignal
 ): Promise<AgentContext> {
   streaming.begin();
-  const result = await loop.run(context, prompt, signal ? { signal } : undefined).catch((error) => {
+  const rawResult = await loop.run(context, prompt, signal ? { signal } : undefined).catch((error) => {
     // Keep a rich live block from leaking into the next prompt when a request
     // is aborted or fails before the normal result rendering path.
     streaming.finish();
     throw error;
   });
   const timing = streaming.finish();
+  const currentSelection = costOptions?.selection?.();
+  const result = currentSelection === undefined
+    ? rawResult
+    : {
+        ...rawResult,
+        metadata: {
+          ...rawResult.metadata,
+          provider: currentSelection.selection.provider,
+          ...(currentSelection.selection.model === undefined
+            ? {}
+            : { model: currentSelection.selection.model }),
+          modelSelection: formatModelSelectionMetadata(currentSelection),
+        },
+      };
   if (result.state.status === "error" && jsonOutput) {
     emitCliError(result.state.lastError ?? "Agent run failed", true);
     process.exitCode = 1;
@@ -2367,9 +2587,14 @@ async function runPrompt(
   const outputValidations = persistedValidations ?? validations;
   const outputChangeSets = persistedChangeSets ?? [];
   const lastAssistant = [...entries].reverse().find((entry) => entry.role === "assistant");
+  const costModel = costOptions === undefined
+    ? undefined
+    : typeof costOptions.model === "function"
+      ? costOptions.model()
+      : costOptions.model;
   const cost =
-    result.usage && costOptions
-      ? estimateCost(result.usage, costOptions.model, costOptions.pricing)
+    result.usage && costModel !== undefined
+      ? estimateCost(result.usage, costModel, costOptions?.pricing)
       : undefined;
 
   if (jsonOutput) {
@@ -2420,6 +2645,119 @@ async function runPrompt(
 
 function formatTimingMs(value: number | undefined): string {
   return value === undefined ? "n/a" : `${Math.max(0, Math.round(value))}ms`;
+}
+
+function readMcpManagementEntries(config: CliConfig): readonly unknown[] {
+  const raw = process.env.DEV_AGENT_MCP_SERVERS?.trim();
+  if (!raw) {
+    return config.mcpServers ?? [];
+  }
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [null];
+  } catch {
+    // Let the management module turn malformed environment input into its
+    // stable invalid_config result without echoing the raw value.
+    return [null];
+  }
+}
+
+function createMcpManagementProbe(workingDirectory: string): McpProbe {
+  return async ({ server }) => {
+    const client = new McpStdioClient();
+    try {
+      await client.connect({ ...server, rootDirectory: workingDirectory });
+      const [tools, resources, prompts] = await Promise.all([
+        client.listTools(),
+        client.listResources(),
+        client.listPrompts(),
+      ]);
+      return {
+        snapshot: {
+          serverInfo: client.getServerInfo(),
+          capabilities: client.getServerCapabilities(),
+          counts: {
+            tools: tools.length,
+            resources: resources.length,
+            prompts: prompts.length,
+          },
+        },
+      };
+    } finally {
+      await client.close().catch(() => undefined);
+    }
+  };
+}
+
+function printMcpCommandResult(result: McpManagementResult): void {
+  if (result.reason) {
+    console.log(`${result.command}: ${result.status} (${result.reason})`);
+  } else {
+    console.log(`${result.command}: ${result.status}`);
+  }
+  for (const server of result.servers) {
+    const latency = server.latencyMs === null ? "n/a" : `${server.latencyMs}ms`;
+    console.log(`- ${safeTerminalText(server.name)}: ${server.state}, latency=${latency}`);
+  }
+}
+
+function mcpCommandExitCode(result: McpManagementResult): number {
+  if (result.ok) return EXIT_CODES.success;
+  if (result.reason === "invalid_config") return EXIT_CODES.config_error;
+  if (result.reason === "timeout" || result.reason === "connection_failed" || result.reason === "probe_failed") {
+    return EXIT_CODES.runtime_unavailable;
+  }
+  return EXIT_CODES.execution_error;
+}
+
+function resolveIndexFilePath(workingDirectory: string, configuredPath: string | undefined): string {
+  return resolve(workingDirectory, configuredPath ?? join(".dev-agent", "index.json"));
+}
+
+function printIndexStatus(result: {
+  readonly status: string;
+  readonly usable: boolean;
+  readonly fileCount: number;
+  readonly symbolCount: number;
+  readonly hasSignatures: boolean;
+  readonly schemaVersion: number | null;
+  readonly cacheHits: number | null;
+  readonly cacheMisses: number | null;
+  readonly cacheHitRate: number | null;
+  readonly errorCount: number;
+  readonly updatedAt: string | null;
+}): void {
+  console.log(`Index: ${result.status} (${result.usable ? "usable" : "not usable"})`);
+  console.log(`Files: ${result.fileCount}; symbols: ${result.symbolCount}; signatures: ${result.hasSignatures ? "yes" : "no"}; schema: ${result.schemaVersion ?? "unknown"}`);
+  const hitRate = result.cacheHitRate === null ? "n/a" : `${(result.cacheHitRate * 100).toFixed(1)}%`;
+  console.log(`Cache: ${hitRate} (${result.cacheHits ?? "n/a"} hits / ${result.cacheMisses ?? "n/a"} misses); errors: ${result.errorCount}; updated: ${result.updatedAt ?? "n/a"}`);
+}
+
+function printIndexClear(result: { readonly status: string; readonly cleared: boolean }): void {
+  console.log(result.cleared ? "Index cleared." : `Index clear: ${result.status}.`);
+}
+
+function printProviderCommandResult(result: { readonly command: string; readonly ok: boolean; readonly providers?: readonly unknown[]; readonly models?: readonly unknown[]; readonly provider?: string | null; readonly model?: string | null; readonly error?: { readonly reason: string; readonly message: string } | null }): void {
+  if (result.error) {
+    console.error(`${result.error.reason}: ${result.error.message}`);
+    return;
+  }
+  if (result.command === "models current") {
+    console.log(`${result.provider ?? "unknown"}/${result.model ?? "unknown"}`);
+    return;
+  }
+  const count = result.providers?.length ?? result.models?.length ?? 0;
+  console.log(`${result.command}: ${count} item${count === 1 ? "" : "s"}`);
+}
+
+function providerCommandExitCode(result: { readonly ok: boolean; readonly command: string; readonly error?: { readonly reason: string } | null; readonly providers?: readonly { readonly state?: string }[] }): number {
+  if (!result.ok) {
+    return result.error?.reason === "invalid_provider" ? EXIT_CODES.usage_error : EXIT_CODES.config_error;
+  }
+  if (result.command === "providers test" && result.providers?.some((provider) => provider.state !== "passed")) {
+    return EXIT_CODES.runtime_unavailable;
+  }
+  return EXIT_CODES.success;
 }
 
 function safeTerminalText(value: unknown): string {
@@ -2856,56 +3194,116 @@ export function assignMcpPrefixes(
   return prefixes;
 }
 
-function createProvider(config: CliConfig = {}): ModelProvider {
-  const providerId = resolveProviderId(config);
-  const model = resolveModel(config);
+function resolveAgentLoopBudget(config: CliConfig, args: readonly string[]): AgentLoopBudget | undefined {
+  const configured = config.budget ?? {};
+  const read = (flag: string, fallback: number | undefined): number | undefined => {
+    const index = args.indexOf(flag);
+    if (index < 0) return fallback;
+    const raw = args[index + 1];
+    const value = raw === undefined ? Number.NaN : Number(raw);
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(`${flag} must be a non-negative integer`);
+    }
+    return value;
+  };
+  const budget: AgentLoopBudget = {
+    maxTurns: read("--max-turns", configured.maxTurns),
+    maxTokens: read("--max-tokens", configured.maxTokens ?? config.maxTokens),
+    maxDurationMs: read("--max-duration-ms", configured.maxDurationMs ?? config.maxDurationMs),
+    maxOutputChars: read("--max-output-chars", configured.maxOutputChars ?? config.maxOutputChars),
+  };
+  return Object.values(budget).some((value) => value !== undefined) ? budget : undefined;
+}
+
+function createProvider(
+  config: CliConfig = {},
+  selection: ModelSelectionResult,
+  onSelectionChange?: (selection: ModelSelectionResult) => void
+): ModelProvider {
+  const createConcreteProvider = (providerSelection: ModelSelection): ModelProvider =>
+    createConcreteModelProvider(config, providerSelection);
+
+  if (!selection.metadata.fallback.enabled) {
+    return createConcreteProvider(selection.selection);
+  }
+
+  return new FallbackModelProvider({
+    config: config as unknown as { readonly [key: string]: unknown },
+    initial: selection,
+    createProvider: createConcreteProvider,
+    onSelectionChange,
+  });
+}
+
+function createConcreteModelProvider(config: CliConfig, selection: ModelSelection): ModelProvider {
+  const providerId = selection.provider;
+  const providerConfig = config.providers?.[providerId as keyof NonNullable<CliConfig["providers"]>];
+  const model = selection.model ?? providerConfig?.model ?? resolveModel(config);
+  const baseUrl = firstNonEmpty(
+    process.env[`DEV_AGENT_${providerId.toUpperCase()}_BASE_URL`],
+    process.env[`${providerId.toUpperCase()}_BASE_URL`],
+    providerConfig?.baseUrl,
+    config.baseUrls?.[providerId as keyof NonNullable<CliConfig["baseUrls"]>],
+  );
+  const apiKey = firstNonEmpty(
+    process.env[`${providerId.toUpperCase()}_API_KEY`],
+    process.env[`DEV_AGENT_${providerId.toUpperCase()}_API_KEY`],
+    providerConfig?.apiKey,
+    config.apiKeys?.[providerId as keyof NonNullable<CliConfig["apiKeys"]>],
+  );
 
   if (providerId === "ollama") {
     return createOllamaProvider({
       model: model ?? "qwen3:4b-instruct",
-      baseUrl: process.env.OLLAMA_BASE_URL,
+      ...(baseUrl ? { baseUrl } : {}),
     });
   }
 
   if (providerId === "openai") {
-    const apiKey = process.env.OPENAI_API_KEY ?? process.env.DEV_AGENT_OPENAI_API_KEY;
     if (!apiKey) {
       throw new Error("OPENAI_API_KEY is required for the openai provider");
     }
     return createOpenAIProvider({
       model: model ?? "gpt-4o-mini",
       apiKey,
-      baseUrl: process.env.OPENAI_BASE_URL,
+      ...(baseUrl ? { baseUrl } : {}),
     });
   }
 
   if (providerId === "anthropic") {
-    const apiKey = process.env.ANTHROPIC_API_KEY ?? process.env.DEV_AGENT_ANTHROPIC_API_KEY;
     if (!apiKey) {
       throw new Error("ANTHROPIC_API_KEY is required for the anthropic provider");
     }
     return createAnthropicProvider({
       model: model ?? "claude-sonnet-4-20250514",
       apiKey,
-      baseUrl: process.env.ANTHROPIC_BASE_URL,
+      ...(baseUrl ? { baseUrl } : {}),
     });
   }
 
   if (providerId === "gemini") {
-    const apiKey = process.env.GEMINI_API_KEY ?? process.env.DEV_AGENT_GEMINI_API_KEY;
     if (!apiKey) {
       throw new Error("GEMINI_API_KEY is required for the gemini provider");
     }
     return createGeminiProvider({
       model: model ?? "gemini-2.0-flash",
       apiKey,
-      baseUrl: process.env.GEMINI_BASE_URL,
+      ...(baseUrl ? { baseUrl } : {}),
     });
   }
 
   throw new Error(
     `Unsupported model provider '${providerId}'. Phase 1 supports ollama, openai, anthropic, and gemini.`
   );
+}
+
+function firstNonEmpty(...values: readonly unknown[]): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim() !== "") {
+      return value.trim();
+    }
+  }
+  return undefined;
 }
 
 function readString(input: unknown, key: string): string {

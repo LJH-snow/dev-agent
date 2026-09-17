@@ -2,9 +2,11 @@ import { readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
+  createProjectIgnoreMatcher,
   InMemoryCodeIndex,
   TypeScriptReferenceIndex,
   type CodeSymbol,
+  type ProjectIgnoreMatcher,
   type SymbolKind,
 } from "@dev-agent/code-intelligence";
 
@@ -34,6 +36,18 @@ const skippedDirectories = new Set([
   ".next",
   ".cache",
   ".dev-agent",
+  ".nox",
+  ".pytest_cache",
+  ".ruff_cache",
+  ".tox",
+  ".turbo",
+  ".venv",
+  "__pycache__",
+  "build",
+  "coverage",
+  "out",
+  "target",
+  "venv",
 ]);
 const defaultMaxDepth = 8;
 const defaultLimit = 50;
@@ -183,7 +197,8 @@ export class CodeSearchTool implements Tool {
    */
   private async loadScan(root: string, maxDepth: number): Promise<CachedScan> {
     const cacheKey = `${root}\u0000${maxDepth}`;
-    const signatures = await collectSignatures(root, 0, maxDepth);
+    const ignore = await createProjectIgnoreMatcher(root);
+    const signatures = await collectSignatures(root, 0, maxDepth, ignore);
     let cached = this.cache.get(cacheKey);
     let replaceBrokenIndex = false;
 
@@ -218,7 +233,7 @@ export class CodeSearchTool implements Tool {
       const scan: CachedScan = { index, signatures, sources, fromDisk: replaceBrokenIndex };
       this.cache.set(cacheKey, scan);
       if (replaceBrokenIndex) {
-        await this.persistScan(root, scan, maxDepth);
+        await this.persistScan(root, scan, maxDepth, ignore);
       }
       return scan;
     }
@@ -257,7 +272,7 @@ export class CodeSearchTool implements Tool {
     }
 
     if (changed > 0 && cached.fromDisk) {
-      await this.persistScan(root, cached, maxDepth);
+      await this.persistScan(root, cached, maxDepth, ignore);
     }
 
     return cached;
@@ -271,7 +286,8 @@ export class CodeSearchTool implements Tool {
   private async persistScan(
     root: string,
     scan: CachedScan,
-    maxDepth: number
+    maxDepth: number,
+    ignore: ProjectIgnoreMatcher
   ): Promise<void> {
     const indexPath = join(root, ".dev-agent", "index.json");
     try {
@@ -287,17 +303,17 @@ export class CodeSearchTool implements Tool {
       const existing = await readPersistedScan(root);
       if (existing) {
         for (const [filePath, source] of existing.sources) {
-          if (!isWithinDepth(root, filePath, maxDepth)) {
+          if (!isWithinDepth(root, filePath, maxDepth) && !ignore.isIgnored(relative(root, filePath))) {
             files.set(filePath, source);
           }
         }
         for (const [filePath, signature] of existing.signatures) {
-          if (!isWithinDepth(root, filePath, maxDepth)) {
+          if (!isWithinDepth(root, filePath, maxDepth) && !ignore.isIgnored(relative(root, filePath))) {
             signatures.set(filePath, signature);
           }
         }
         for (const symbol of existing.index.listSymbols()) {
-          if (!isWithinDepth(root, symbol.filePath, maxDepth)) {
+          if (!isWithinDepth(root, symbol.filePath, maxDepth) && !ignore.isIgnored(relative(root, symbol.filePath))) {
             symbols.push(symbol);
           }
         }
@@ -444,7 +460,9 @@ function parseSymbolKind(value: unknown): SymbolKind {
 async function collectSignatures(
   dir: string,
   depth: number,
-  maxDepth: number
+  maxDepth: number,
+  ignore: ProjectIgnoreMatcher,
+  root: string = dir
 ): Promise<Map<string, FileSignature>> {
   const signatures = new Map<string, FileSignature>();
   if (depth > maxDepth) {
@@ -453,9 +471,14 @@ async function collectSignatures(
 
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
+    const entryPath = join(dir, entry.name);
+    const relativePath = relative(root, entryPath);
+    if (skippedDirectories.has(entry.name) || ignore.isIgnored(relativePath, entry.isDirectory())) {
+      continue;
+    }
     if (entry.isDirectory()) {
       if (!skippedDirectories.has(entry.name)) {
-        const nested = await collectSignatures(join(dir, entry.name), depth + 1, maxDepth);
+        const nested = await collectSignatures(entryPath, depth + 1, maxDepth, ignore, root);
         for (const [filePath, signature] of nested) {
           signatures.set(filePath, signature);
         }
@@ -467,7 +490,7 @@ async function collectSignatures(
       continue;
     }
 
-    const filePath = join(dir, entry.name);
+    const filePath = entryPath;
     try {
       const info = await stat(filePath);
       signatures.set(filePath, { mtimeMs: info.mtimeMs, size: info.size });

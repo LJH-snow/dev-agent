@@ -56,20 +56,32 @@ are accepted, and validation command fields are deliberately not configurable.
 ## How it works
 
 - `src/index.ts` — entry point; starts the server.
-- `src/server.ts` — HTTP server. Serves the static chat UI, exposes `GET /health`,
-  and streams chat responses from `POST /api/chat` as Server-Sent Events.
+- `src/server.ts` — HTTP server. Serves the static chat UI, exposes `GET /health`
+  and the metadata-only `GET /api/status` endpoint, and streams chat responses
+  from `POST /api/chat` as Server-Sent Events.
+- `src/status.ts` — allowlisted status model shared by the server, session, and
+  status panel. It intentionally excludes secrets, absolute paths, source text,
+  command arguments, and raw exception details.
 - `src/chat-session.ts` — builds the `AgentLoop` with the default tools and model
   provider, optionally connects configured MCP stdio servers, and bridges its
   `onToken` / `onToolCall` / `onToolProgress` / `onToolResult` / `onValidation` /
   `onTurn` callbacks to SSE events.
 - `public/index.html` — single-page chat UI (vanilla JS, no build step) that
-  renders streaming tokens live, shows tool call/result activity, and renders
-  validation cards next to reviewed-change Undo actions.
+  renders streaming tokens live, shows tool call/result activity, renders
+  validation cards next to reviewed-change Undo actions, and displays the
+  metadata-only runtime status panel.
 
 ## API
 
-- `GET /` — chat UI.
-- `GET /health` — `{ "status": "ok" }`.
+- `GET /` — chat UI, including the runtime status panel.
+- `GET /health` — lightweight liveness response with the executor mode.
+- `GET /api/status?sessionId=<id>` — metadata-only status for the selected
+  session. The response reports executor, Node runtime, provider, model,
+  approval mode, validation policy, the latest validation result, and whether the
+  session is currently busy.
+  It never returns API keys, environment values, absolute paths, source text,
+  command arguments, or raw provider/tool errors. Unknown sessions return a
+  generic `404` response.
 - `GET /api/sessions` — the default session id plus every session file in
   `DEV_AGENT_SESSION_DIR` (`~/.dev-agent/sessions` by default), newest first.
   Each summary includes a metadata-only `evidenceSummary` with retained counts,

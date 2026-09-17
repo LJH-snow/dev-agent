@@ -136,11 +136,22 @@
     .evidence-preview-label { display: block; color: var(--muted); font-size: 11px; }
     .evidence-preview-value { display: block; margin-top: 3px; font-size: 15px; }
     .evidence-preview-refresh { margin-top: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 5px 9px; border-radius: 7px; }
+    .desktop-status-panel { border-bottom: 1px solid var(--border); padding: 12px 16px; background: var(--assistant-bg); }
+    .desktop-status-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; max-width: 900px; }
+    .desktop-status-title { font-size: 13px; font-weight: 600; }
+    .desktop-status-note { color: var(--muted); font-size: 12px; margin-top: 3px; }
+    .desktop-status-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 10px; max-width: 900px; }
+    .desktop-status-item { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
+    .desktop-status-label { display: block; color: var(--muted); font-size: 11px; }
+    .desktop-status-value { display: block; margin-top: 3px; font-size: 13px; overflow-wrap: anywhere; }
+    .desktop-status-state { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .desktop-status-refresh { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 5px 9px; border-radius: 7px; }
     .empty { color: var(--muted); font-size: 14px; align-self: center; margin-top: 40px; }
     @media (max-width: 720px) {
       header { align-items: flex-start; gap: 8px; }
       header .header-status { gap: 6px 8px; }
       .evidence-preview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .desktop-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
 </head>
@@ -159,6 +170,23 @@
       <span class="status" id="status" role="status" aria-live="polite" aria-atomic="true">idle</span>
     </div>
   </header>
+  <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
+    <div class="desktop-status-header">
+      <div>
+        <div id="desktop-status-title" class="desktop-status-title">Runtime status</div>
+        <div id="desktop-status-note" class="desktop-status-note" role="status">Loading metadata-only status…</div>
+      </div>
+      <button type="button" id="desktop-status-refresh" class="desktop-status-refresh" title="Refresh runtime status">Refresh</button>
+    </div>
+    <div class="desktop-status-grid">
+      <div class="desktop-status-item"><span class="desktop-status-label">Executor</span><strong id="desktop-status-executor" class="desktop-status-value">—</strong><span id="desktop-status-executor-state" class="desktop-status-state">—</span></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">Runtime</span><strong id="desktop-status-runtime" class="desktop-status-value">—</strong><span id="desktop-status-runtime-state" class="desktop-status-state">—</span></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">Provider</span><strong id="desktop-status-provider" class="desktop-status-value">—</strong><span id="desktop-status-provider-state" class="desktop-status-state">—</span></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">Model</span><strong id="desktop-status-model" class="desktop-status-value">—</strong><span id="desktop-status-model-state" class="desktop-status-state">—</span></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">Approval</span><strong id="desktop-status-approval" class="desktop-status-value">—</strong><span id="desktop-status-approval-state" class="desktop-status-state">—</span></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">Validation</span><strong id="desktop-status-validation" class="desktop-status-value">—</strong><span id="desktop-status-validation-state" class="desktop-status-state">—</span></div>
+    </div>
+  </section>
   <section id="evidence-preview" class="evidence-preview" hidden aria-busy="false" aria-labelledby="evidence-preview-title" aria-live="polite">
     <div class="evidence-preview-header">
       <div>
@@ -212,6 +240,20 @@
     const evidencePreviewBytes = document.getElementById("evidence-preview-bytes");
     const evidencePreviewRefreshButton = document.getElementById("evidence-preview-refresh");
     const stopButton = document.getElementById("stop");
+    const desktopStatusNote = document.getElementById("desktop-status-note");
+    const desktopStatusRefreshButton = document.getElementById("desktop-status-refresh");
+    const desktopStatusExecutor = document.getElementById("desktop-status-executor");
+    const desktopStatusExecutorState = document.getElementById("desktop-status-executor-state");
+    const desktopStatusRuntime = document.getElementById("desktop-status-runtime");
+    const desktopStatusRuntimeState = document.getElementById("desktop-status-runtime-state");
+    const desktopStatusProvider = document.getElementById("desktop-status-provider");
+    const desktopStatusProviderState = document.getElementById("desktop-status-provider-state");
+    const desktopStatusModel = document.getElementById("desktop-status-model");
+    const desktopStatusModelState = document.getElementById("desktop-status-model-state");
+    const desktopStatusApproval = document.getElementById("desktop-status-approval");
+    const desktopStatusApprovalState = document.getElementById("desktop-status-approval-state");
+    const desktopStatusValidation = document.getElementById("desktop-status-validation");
+    const desktopStatusValidationState = document.getElementById("desktop-status-validation-state");
 
     let currentAssistant = null;
     let currentToolProgress = null;
@@ -229,6 +271,56 @@
     let evidencePreviewDataRevision = 0;
 
     function setStatus(text) { status.textContent = text; }
+
+    function setDesktopStatusValue(valueElement, stateElement, value, state) {
+      valueElement.textContent = typeof value === "string" && value ? value : "—";
+      stateElement.textContent = typeof state === "string" && state ? state : "—";
+    }
+
+    function isDesktopStatusPayload(payload) {
+      return payload && payload.schemaVersion === 1 && payload.metadataOnly === true
+        && payload.executor && payload.runtime && payload.provider && payload.model
+        && payload.approval && payload.validation;
+    }
+
+    function renderDesktopStatus(payload) {
+      setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, payload.executor.mode, payload.session?.running ? "running" : "idle");
+      setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, payload.runtime.kind + " " + payload.runtime.version, payload.runtime.platform);
+      setDesktopStatusValue(desktopStatusProvider, desktopStatusProviderState, payload.provider.id, payload.provider.state);
+      setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, payload.model.id, payload.model.state);
+      setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, payload.approval.mode, payload.approval.guarded ? "guarded" : "direct");
+      const validationResult = payload.validation.lastResult || "unknown";
+      setDesktopStatusValue(
+        desktopStatusValidation,
+        desktopStatusValidationState,
+        payload.validation.policy,
+        (payload.validation.enabled ? "enabled" : "unknown") + " · last " + validationResult
+      );
+    }
+
+    async function loadDesktopStatus(sessionId) {
+      if (!sessionId) return;
+      desktopStatusRefreshButton.disabled = true;
+      desktopStatusNote.textContent = "Loading metadata-only status…";
+      try {
+        const response = await fetch("/api/status?sessionId=" + encodeURIComponent(sessionId), { cache: "no-store" });
+        if (!response.ok) throw new Error("status unavailable");
+        const payload = await response.json();
+        if (!isDesktopStatusPayload(payload)) throw new Error("invalid status response");
+        renderDesktopStatus(payload);
+        desktopStatusNote.textContent = "Metadata only — no keys, paths, source, or raw errors are shown.";
+      } catch {
+        desktopStatusNote.textContent = "Runtime status unavailable.";
+        setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, "—", "—");
+        setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, "—", "—");
+        setDesktopStatusValue(desktopStatusProvider, desktopStatusProviderState, "—", "—");
+        setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, "—", "—");
+        setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, "—", "—");
+        setDesktopStatusValue(desktopStatusValidation, desktopStatusValidationState, "—", "—");
+      } finally {
+        desktopStatusRefreshButton.disabled = false;
+      }
+    }
 
     function formatCost(value) {
       if (!Number.isFinite(value) || value <= 0) return "0";
@@ -553,8 +645,12 @@
       resetEvidencePreview();
       currentSessionId = sessionSelect.value;
       applySessionUsage(sessionSummaries.get(currentSessionId));
-      await loadHistory(currentSessionId);
+      await Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]);
       setStatus("session " + currentSessionId);
+    });
+
+    desktopStatusRefreshButton.addEventListener("click", () => {
+      if (currentSessionId !== null) loadDesktopStatus(currentSessionId);
     });
 
     previewEvidenceButton.addEventListener("click", () => {
@@ -575,7 +671,7 @@
       totalCost = 0;
       hasCost = false;
       renderUsage();
-      await loadHistory(currentSessionId);
+      await Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]);
       setStatus("new session");
     });
 
@@ -601,7 +697,7 @@
       hasCost = false;
       renderUsage();
       await loadSessions();
-      await loadHistory(currentSessionId);
+      await Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]);
       setStatus("session deleted");
     });
 
@@ -642,7 +738,7 @@
       resetEvidencePreview();
       await loadSessions();
       ensureSessionOption(renamed);
-      await loadHistory(renamed);
+      await Promise.all([loadHistory(renamed), loadDesktopStatus(renamed)]);
       setStatus("session renamed");
     });
 
@@ -929,7 +1025,7 @@
       return output.length > 120 ? output.slice(0, 117) + "..." : output;
     }
 
-    loadSessions().then(() => loadHistory(currentSessionId));
+    loadSessions().then(() => Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]));
   </script>
 </body>
 </html>
