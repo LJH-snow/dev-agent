@@ -90,6 +90,7 @@ import {
   executeRuntimeCommand,
   formatRuntimeCommandResult,
   resolveManagedRuntimeBinary,
+  resolveManagedRuntimeStatus,
 } from "./runtime-command.js";
 import { resolveExecutorSelection, type ExecutorPreference } from "./runtime-selection.js";
 import { executeWorkflowCommand } from "./workflow-command.js";
@@ -827,6 +828,8 @@ export async function main(argv: string[]): Promise<void> {
   // fail-closed: it never installs or silently falls back to local execution.
   const legacyRustBinaryPath = resolveRustBinaryPath(rustFlag ?? rustCheckFlag);
   let rustBinaryPath: string | undefined;
+  let runtimeSelectionSource: "explicit-path" | "runtime" | "environment" | "default-local" =
+    "default-local";
   try {
     const managedRuntimeBinary =
       executorPreference === "rust-sandbox" && legacyRustBinaryPath === undefined
@@ -840,6 +843,9 @@ export async function main(argv: string[]): Promise<void> {
         rustFlag !== undefined ? "flag" : process.env.DEV_AGENT_RUST_BINARY ? "environment" : undefined,
       runtimeBinary: managedRuntimeBinary,
     });
+    if (selection.mode === "rust-sandbox") {
+      runtimeSelectionSource = selection.source === "flag" ? "runtime" : selection.source;
+    }
     rustBinaryPath = selection.mode === "rust-sandbox" ? selection.rustBinaryPath : undefined;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -900,6 +906,9 @@ export async function main(argv: string[]): Promise<void> {
         : projectState
           ? "project"
           : "user",
+      runtimeSource: executorPreference === "local" ? "default-local" : runtimeSelectionSource,
+      managedRuntimeStatus:
+        executorPreference === "local" ? undefined : resolveManagedRuntimeStatus(args),
     });
     if (jsonOutput) {
       console.log(JSON.stringify(report, null, 2));

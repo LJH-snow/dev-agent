@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-17（workspace doctor metadata hardening）
+- `--doctor --json` now separates managed runtime identity from cache state. Runtime
+  version/protocol are shown only from a successful probe or installed managed status;
+  missing, corrupt, and unsupported entries report target/state/reason instead of
+  implying that a runtime exists. Managed status remains provider-free and offline.
+- This change is workspace-only and not part of the already-created `v0.1.6` GitHub
+  Release artifacts.
+
 ## 2026-09-17（`@agent_cli/cli@0.1.6` release candidate）
 - 将 CLI package 升级为 `0.1.6` release candidate；`0.1.5` 仍是 registry `latest`。
 - 创建 tag `v0.1.6`，推送 `main` 和 tag 后触发 release workflow；workflow 成功创建

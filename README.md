@@ -435,7 +435,10 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
 - `dev-agent --doctor` checks Node, `rg`, `protoc`, the Rust runtime binary, the
   provider key, `~/.dev-agent/config.json`, and the session directory, with
   `--json` output and a non-zero exit when something fails. A malformed config
-  is reported as a warning instead of being silently ignored
+  is reported as a warning instead of being silently ignored. Runtime diagnosis
+  is metadata-only: a healthy check may report version/protocol, while missing,
+  corrupt, or unsupported managed cache entries report target/state/reason
+  without binary paths
 - Sessions can be removed: `--session-delete <id>` in the CLI and
   `DELETE /api/sessions/<id>` plus a Delete button in the desktop picker
 - Sessions can be renamed from both surfaces: `--session-rename <old> <new>` in

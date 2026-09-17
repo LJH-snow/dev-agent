@@ -25,9 +25,21 @@ export interface DoctorScope {
 }
 
 export interface DoctorRuntimeSelection {
-  readonly source: "explicit-path" | "default-local";
+  readonly source: "explicit-path" | "runtime" | "environment" | "default-local";
   readonly configured: boolean;
   readonly selectedMode: ExecutorMode;
+  readonly runtimeVersion?: string;
+  readonly protocolVersion?: number;
+  readonly target?: string;
+  readonly state?: "unsupported" | "missing" | "installed" | "corrupt";
+  readonly missingReason?: string;
+}
+
+export interface DoctorManagedRuntimeStatus {
+  readonly state: "unsupported" | "missing" | "installed" | "corrupt";
+  readonly version: string;
+  readonly target?: string;
+  readonly reason?: string;
 }
 
 export interface DoctorReport {
@@ -89,6 +101,9 @@ export interface DoctorOptions {
   readonly configPath?: string;
   readonly projectState?: boolean;
   readonly configSource?: DoctorConfigSource;
+  readonly runtimeSource?: DoctorRuntimeSelection["source"];
+  readonly managedRuntimeVersion?: string;
+  readonly managedRuntimeStatus?: Promise<DoctorManagedRuntimeStatus>;
   readonly env?: NodeJS.ProcessEnv;
   readonly nodeVersion?: string;
   /** Injectable for tests: returns the version banner, or undefined when missing. */
@@ -138,7 +153,8 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
         }
   );
 
-  checks.push(await checkRustRuntime(options));
+  const runtimeCheck = await checkRustRuntime(options);
+  checks.push(runtimeCheck.check);
   checks.push(checkProvider(options.providerId, env));
   checks.push(
     await checkConfig(options.configPath ?? join(homedir(), ".dev-agent", "config.json"))
@@ -149,10 +165,39 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   for (const check of checks) {
     summary[check.status] += 1;
   }
+  let runtimeVersion: string | undefined;
+  let protocolVersion: number | undefined;
+  let target: string | undefined;
+  let state: DoctorRuntimeSelection["state"];
+  let missingReason: string | undefined;
+  if (runtimeCheck.probe?.runtimeVersion) {
+    runtimeVersion = runtimeCheck.probe.runtimeVersion;
+    protocolVersion = runtimeCheck.probe.protocolVersion ?? 0;
+  } else if (options.managedRuntimeStatus) {
+    try {
+      const managed = await options.managedRuntimeStatus;
+      if (managed.state === "installed") {
+        runtimeVersion = managed.version || options.managedRuntimeVersion;
+        protocolVersion = RUST_RUNTIME_PROTOCOL_VERSION;
+      }
+      target = managed.target;
+      state = managed.state;
+      const reason = managedMissingReason(managed);
+      missingReason = reason;
+    } catch (error) {
+      state = "corrupt";
+      missingReason = `runtime_status_unavailable (${doctorErrorCode(error)})`;
+    }
+  }
   const runtime: DoctorRuntimeSelection = {
-    source: options.rustBinaryPath ? "explicit-path" : "default-local",
+    source: options.runtimeSource ?? (options.rustBinaryPath ? "explicit-path" : "default-local"),
     configured: options.rustBinaryPath !== undefined,
     selectedMode: executorMode,
+    ...(runtimeVersion === undefined ? {} : { runtimeVersion }),
+    ...(protocolVersion === undefined ? {} : { protocolVersion }),
+    ...(target === undefined ? {} : { target }),
+    ...(state === undefined ? {} : { state }),
+    ...(missingReason === undefined ? {} : { missingReason }),
   };
   const scope: DoctorScope = {
     workingDirectoryScope: "final-cwd",
@@ -170,9 +215,27 @@ export function printDoctorReport(report: DoctorReport): void {
     );
   }
   if (report.runtime !== undefined) {
-    console.log(
-      `runtime: source=${safeDoctorText(report.runtime.source)} configured=${String(report.runtime.configured)} mode=${safeDoctorText(report.runtime.selectedMode)}`
-    );
+    const runtimeFacts = [
+      `source=${safeDoctorText(report.runtime.source)}`,
+      `configured=${String(report.runtime.configured)}`,
+      `mode=${safeDoctorText(report.runtime.selectedMode)}`,
+      ...(report.runtime.runtimeVersion === undefined
+        ? []
+        : [`version=${safeDoctorText(report.runtime.runtimeVersion)}`]),
+      ...(report.runtime.protocolVersion === undefined
+        ? []
+        : [`protocol=${String(report.runtime.protocolVersion)}`]),
+      ...(report.runtime.target === undefined
+        ? []
+        : [`target=${safeDoctorText(report.runtime.target)}`]),
+      ...(report.runtime.state === undefined
+        ? []
+        : [`state=${safeDoctorText(report.runtime.state)}`]),
+      ...(report.runtime.missingReason === undefined
+        ? []
+        : [`missing-reason=${safeDoctorText(report.runtime.missingReason)}`]),
+    ];
+    console.log(`runtime: ${runtimeFacts.join(" ")}`);
   }
   for (const check of report.checks) {
     console.log(
@@ -248,19 +311,28 @@ async function checkConfig(path: string): Promise<DoctorCheck> {
   return { name: "config", status: "ok", detail: `config file (${summary})` };
 }
 
-async function checkRustRuntime(options: DoctorOptions): Promise<DoctorCheck> {
+interface DoctorRuntimeCheck {
+  readonly check: DoctorCheck;
+  readonly probe?: RustProbeResult;
+}
+
+async function checkRustRuntime(options: DoctorOptions): Promise<DoctorRuntimeCheck> {
   if (!options.rustBinaryPath) {
     return {
-      name: "rust runtime",
-      status: "warn",
-      detail: "not configured; tools run through LocalExecutor without the sandbox",
+      check: {
+        name: "rust runtime",
+        status: "warn",
+        detail: "not configured; tools run through LocalExecutor without the sandbox",
+      },
     };
   }
   if (!existsSync(options.rustBinaryPath)) {
     return {
-      name: "rust runtime",
-      status: "fail",
-      detail: "configured binary not found",
+      check: {
+        name: "rust runtime",
+        status: "fail",
+        detail: "configured binary not found",
+      },
     };
   }
 
@@ -273,23 +345,38 @@ async function checkRustRuntime(options: DoctorOptions): Promise<DoctorCheck> {
     const protocolVersion = probe.protocolVersion ?? 0;
     if (!validation.ok) {
       return {
-        name: "rust runtime",
-        status: "fail",
-        detail: `unsupported runtime contract (version ${probe.runtimeVersion}, protocol version ${protocolVersion}; expected ${validation.expected.releaseVersion}, protocol version ${validation.expected.protocolVersion})`,
+        check: {
+          name: "rust runtime",
+          status: "fail",
+          detail: `unsupported runtime contract (version ${probe.runtimeVersion}, protocol version ${protocolVersion}; expected ${validation.expected.releaseVersion}, protocol version ${validation.expected.protocolVersion})`,
+        },
+        probe,
       };
     }
     return {
-      name: "rust runtime",
-      status: "ok",
-      detail: `available (version ${probe.runtimeVersion}, protocol version ${protocolVersion}, capabilities: ${probe.capabilities.join(", ")})`,
+      check: {
+        name: "rust runtime",
+        status: "ok",
+        detail: `available (version ${probe.runtimeVersion}, protocol version ${protocolVersion}, capabilities: ${probe.capabilities.join(", ")})`,
+      },
+      probe,
     };
   } catch (error) {
     return {
-      name: "rust runtime",
-      status: "fail",
-      detail: `health check failed (${doctorErrorCode(error)})`,
+      check: {
+        name: "rust runtime",
+        status: "fail",
+        detail: `health check failed (${doctorErrorCode(error)})`,
+      },
     };
   }
+}
+
+function managedMissingReason(status: DoctorManagedRuntimeStatus): string | undefined {
+  if (status.state === "missing") return "runtime_not_installed";
+  if (status.state === "unsupported") return status.reason ? status.reason : "unsupported_platform";
+  if (status.state === "corrupt") return status.reason ? `runtime_corrupt: ${status.reason}` : "runtime_corrupt";
+  return undefined;
 }
 
 function checkProvider(providerId: string, env: NodeJS.ProcessEnv): DoctorCheck {

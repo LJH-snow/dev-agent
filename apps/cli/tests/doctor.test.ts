@@ -344,3 +344,70 @@ test("runDoctor reports project scope and runtime selection metadata without pat
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("runDoctor reports managed runtime identity and missing reason without paths", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-runtime-"));
+  try {
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir: dir,
+      configPath: join(dir, "config.json"),
+      runtimeSource: "default-local",
+      managedRuntimeVersion: "0.2.0",
+      managedRuntimeStatus: Promise.resolve({
+        state: "missing",
+        version: "0.2.0",
+        target: "aarch64-apple-darwin",
+      }),
+      env: {},
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+
+    assert.deepEqual(report.runtime, {
+      source: "default-local",
+      configured: false,
+      selectedMode: "local",
+      target: "aarch64-apple-darwin",
+      state: "missing",
+      missingReason: "runtime_not_installed",
+    });
+    assert.doesNotMatch(JSON.stringify(report), new RegExp(escapeRegExp(dir)));
+    assert.doesNotMatch(JSON.stringify(report.runtime), /version|protocol/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("doctor human output includes managed runtime diagnosis without binary paths", async () => {
+  const lines: string[] = [];
+  const originalLog = console.log;
+  console.log = (...values: unknown[]) => {
+    lines.push(values.map((value) => String(value)).join(" "));
+  };
+
+  try {
+    printDoctorReport({
+      executorMode: "local",
+      runtime: {
+        source: "default-local",
+        configured: false,
+        selectedMode: "local",
+        target: "aarch64-apple-darwin",
+        state: "missing",
+        missingReason: "runtime_not_installed",
+      },
+      checks: [],
+      summary: { ok: 0, warn: 0, fail: 0 },
+    });
+  } finally {
+    console.log = originalLog;
+  }
+
+  const output = lines.join("\n");
+  assert.doesNotMatch(output, /version=/);
+  assert.doesNotMatch(output, /protocol=/);
+  assert.match(output, /target=aarch64-apple-darwin/);
+  assert.match(output, /state=missing/);
+  assert.match(output, /missing-reason=runtime_not_installed/);
+  assert.doesNotMatch(output, /binaryPath|dev-agent-executor/);
+});

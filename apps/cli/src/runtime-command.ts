@@ -100,6 +100,23 @@ export async function resolveManagedRuntimeBinary(args: readonly string[]): Prom
   return manager.path(readRuntimeVersion(args), readRuntimeTarget(args));
 }
 
+/** Provides provider-free managed runtime metadata for doctor; never touches the network. */
+export async function resolveManagedRuntimeStatus(args: readonly string[]): Promise<{
+  state: "unsupported" | "missing" | "installed" | "corrupt";
+  version: string;
+  target?: RuntimeTarget;
+  reason?: string;
+}> {
+  const manager = createCliRuntimeManager(args);
+  const status = await manager.status(readRuntimeVersion(args), readRuntimeTarget(args));
+  return {
+    state: status.state,
+    version: status.version,
+    ...(status.target === undefined ? {} : { target: status.target }),
+    ...(status.reason === undefined ? {} : { reason: status.reason }),
+  };
+}
+
 export async function executeRuntimeCommand(
   options: RuntimeCommandOptions
 ): Promise<RuntimeCommandResult> {

@@ -171,7 +171,9 @@ Options:
   runtime binary, the provider API key, `~/.dev-agent/config.json`, and the
   session directory); a missing config is fine, while malformed JSON is reported
   as a warning instead of being silently ignored. Exits 1 when any check fails.
-  Combine with `--json` for `{ checks, summary }`
+  Combine with `--json` for `{ checks, summary }`. The runtime metadata reports
+  the selected source and, without paths, a successful runtime identity or a
+  stable managed-cache diagnosis (target/state/reason).
 - `--session-delete <id>` - delete a stored session file; a missing session is
   reported (`deleted: false` with `--json`) without failing
 - `--session-rename <old> <new>` - rename a stored session; refuses to overwrite
