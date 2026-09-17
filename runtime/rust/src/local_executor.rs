@@ -566,19 +566,53 @@ mod tests {
     #[tokio::test]
     async fn local_executor_cancels_a_running_command() {
         let executor = LocalExecutor::new();
+        let directory = tempfile::tempdir().unwrap();
+        let ready_path = directory.path().join("ready");
+        let cancelled_path = directory.path().join("cancelled");
         let (sender, receiver) = tokio::sync::oneshot::channel();
+        let watcher_path = ready_path.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            for _ in 0..200 {
+                if watcher_path.exists() {
+                    let _ = sender.send(());
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
             let _ = sender.send(());
         });
 
-        let started = std::time::Instant::now();
         let result = executor
-            .run_cancellable(&fake_request("sleep", &["10"]), Some(receiver))
+            .run_cancellable(
+                &RunRequest {
+                    command: "/bin/sh".to_string(),
+                    args: vec![
+                        "-c".to_string(),
+                        "trap 'printf cancelled > \"$CANCELLED_FILE\"; exit 0' TERM; printf ready > \"$READY_FILE\"; while :; do sleep 1; done".to_string(),
+                    ],
+                    cwd: None,
+                    env: [
+                        ("READY_FILE".to_string(), ready_path.display().to_string()),
+                        (
+                            "CANCELLED_FILE".to_string(),
+                            cancelled_path.display().to_string(),
+                        ),
+                    ]
+                    .into_iter()
+                    .collect(),
+                    input: None,
+                    timeout_ms: None,
+                    max_output_bytes: Some(1024),
+                },
+                Some(receiver),
+            )
             .await;
 
         assert!(matches!(result, Err(ExecutorError::Cancelled)));
-        assert!(started.elapsed() < std::time::Duration::from_secs(2));
+        assert_eq!(
+            std::fs::read_to_string(cancelled_path).unwrap(),
+            "cancelled"
+        );
     }
 
     #[tokio::test]
