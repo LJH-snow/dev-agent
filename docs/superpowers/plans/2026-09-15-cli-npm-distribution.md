@@ -388,3 +388,9 @@ install smoke 和 registry 复核；本次仍未创建 Git tag 或 GitHub Releas
 v0.1.5–v0.4.0 的项目初始化、runtime distribution、review/plan/apply、provider/model、
 索引、MCP 管理和 Desktop 状态能力；npm registry `latest` 指向 `0.1.5`。本次仍未创建 Git
 tag 或 GitHub Release。
+
+## 后续补充：0.1.6 GitHub Release tarball 发布（2026-09-17）
+
+`v0.1.6` GitHub Release 中的 `agent_cli-cli-0.1.6.tgz` 已发布到 npm，`latest` 指向
+`@agent_cli/cli@0.1.6`。发布前核对下载 tarball 的 SHA-256 与 GitHub release asset digest；当前工作区
+`@agent_cli/cli@0.1.7` candidate 包含未发布的 doctor metadata 收紧和 Desktop managed runtime status。

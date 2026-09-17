@@ -87,14 +87,16 @@ The package is built as a self-contained JavaScript CLI bundle and is verified b
 `pnpm package:smoke` in a clean npm prefix. New release candidates can be checked with
 `pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
 wrapper only publishes after that preflight succeeds. As of September 17, 2026,
-`@agent_cli/cli@0.1.5` remains published to npm and is the registry `latest`;
-`@agent_cli/cli@0.1.6` has a formal [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6)
-with runtime artifacts and checksums. The npm candidate has not been published.
-`0.1.4` is an earlier published version. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
+`@agent_cli/cli@0.1.6` is published to npm and is the registry `latest`; it is the same
+tarball verified by the formal
+[GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6), which also
+contains runtime artifacts and checksums. The workspace
+`@agent_cli/cli@0.1.7` candidate is unpublished.
+`0.1.5` is an earlier published version. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current candidate.
 
-The published `@agent_cli/cli@0.1.5` includes the explicit `--project-state` opt-in for
+The published `@agent_cli/cli@0.1.6` includes the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing
 user-level sessions. It also adds the provider, index, MCP, and Desktop status capabilities
 described below.
@@ -224,8 +226,8 @@ The active post-release implementation sequence is tracked in
 all six workspace phases in that plan are implemented and verified: project initialization, managed
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
 indexes, and MCP/Desktop status management. [`v0.1.6`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6)
-is the current GitHub release; `@agent_cli/cli@0.1.5` remains the published npm
-registry `latest`.
+is the current GitHub release; `@agent_cli/cli@0.1.6` is the published npm
+registry `latest`, while `0.1.7` is the current workspace candidate.
 
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),

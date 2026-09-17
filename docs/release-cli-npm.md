@@ -1,6 +1,6 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.5` 已发布到 npm，`latest` 指向该版本；`v0.1.6` 已创建正式 GitHub Release，但 `@agent_cli/cli@0.1.6` 尚未发布到 npm**。2026-09-16 的 `0.1.4` 是上一版发布记录。后续新版本仍需维护者单独授权。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.6` 已发布到 npm，`latest` 指向该版本，并且与 `v0.1.6` GitHub Release 中的 CLI tarball 一致**。当前工作区已进入 `@agent_cli/cli@0.1.7` candidate，包含未发布的 doctor metadata 收紧和 Desktop managed runtime status。后续新版本仍需维护者单独授权。
 
 ## 已发布版本记录（2026-09-16）
 
@@ -13,8 +13,12 @@
 
 ## 最新发布检查（2026-09-17）
 
-- `@agent_cli/cli@0.1.5` 已完成 npm 发布；registry 可复核 `npm view @agent_cli/cli@0.1.5 version`。
-- 本轮没有创建 Git tag、执行 Git push 或创建 GitHub Release。
+- `@agent_cli/cli@0.1.6` 已完成 npm 发布；registry 可复核
+  `npm view @agent_cli/cli@0.1.6 version`，`latest` 指向该版本。
+- 发布使用 `v0.1.6` GitHub Release 的 `agent_cli-cli-0.1.6.tgz`，下载后 SHA-256 为
+  `e44d8356001317662876d3dcafc5cac0875135bc048a185ecec1a606c475c706`，与 release asset
+  digest 一致。没有从当前工作区重新打包，避免 npm 包与已发布的 tag 内容漂移。
+- `main` 已推送到 GitHub；本轮没有创建新的 Git tag 或 GitHub Release。
 
 ## 0.1.6 发布候选检查（2026-09-17）
 
@@ -34,7 +38,9 @@
   `dev-agent-runtime-manifest.json` 和 CLI tarball；publish job 已验证下载 artifact 和 tag。
 - 正式 release 地址为
   <https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6>。
-- 本次 GitHub Release 不发布 npm 包；npm registry `latest` 仍指向 `@agent_cli/cli@0.1.5`。
+- 后续 npm 发布使用上述 release tarball；npm registry `latest` 现在指向
+  `@agent_cli/cli@0.1.6`。当前工作区 `@agent_cli/cli@0.1.7` doctor metadata 收紧与
+  Desktop managed runtime status 仍是未发布候选。
 
 ## 给使用者的安装方式（已发布）
 
@@ -97,7 +103,7 @@ DEV_AGENT_CONFIG_FILE=.dev-agent/config.json \
 ```
 
 如果希望一次性为外部项目启用成套的项目级状态，可以在已发布的
-`@agent_cli/cli@0.1.5` 中显式使用 `--project-state`：
+`@agent_cli/cli@0.1.6` 中显式使用 `--project-state`：
 
 ```bash
 dev-agent --cwd /path/to/project --project-state --session project --tools
@@ -114,7 +120,7 @@ session: DEV_AGENT_SESSION_DIR > --project-state 项目默认 > 用户默认
 memory:  DEV_AGENT_MEMORY_FILE > 选定的 session 目录
 ```
 
-`--project-state` 已随已发布的 `@agent_cli/cli@0.1.5` 提供；它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
+`--project-state` 已随已发布的 `@agent_cli/cli@0.1.6` 提供；它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
 `~/.dev-agent/sessions/default.json`。不带该 flag 时，兼容默认仍是
 `~/.dev-agent/config.json` 和 `~/.dev-agent/sessions`。
 

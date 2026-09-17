@@ -4,3 +4,4 @@ export * from "./manager.js";
 export * from "./paths.js";
 export * from "./targets.js";
 export * from "./types.js";
+export * from "./version.js";

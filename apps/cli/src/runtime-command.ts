@@ -5,14 +5,13 @@ import {
   isRuntimeManagerError,
   RuntimeManager,
   type RuntimeTarget,
+  DEFAULT_RUNTIME_VERSION,
 } from "@dev-agent/runtime-manager";
 import {
   probeRustBinary,
   RUST_RUNTIME_PROTOCOL_VERSION,
   validateRustRuntimeContract,
 } from "./doctor.js";
-
-export const DEFAULT_RUNTIME_VERSION = "0.2.0";
 
 type RuntimeAction = "status" | "install" | "path" | "remove";
 
