@@ -1,8 +1,17 @@
 {
   "name": "@agent_cli/cli",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": false,
   "description": "Primary command-line entry point for dev-agent.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LJH-snow/dev-agent.git"
+  },
+  "homepage": "https://github.com/LJH-snow/dev-agent#readme",
+  "bugs": {
+    "url": "https://github.com/LJH-snow/dev-agent/issues"
+  },
   "type": "module",
   "main": "dist/cli.js",
   "exports": {

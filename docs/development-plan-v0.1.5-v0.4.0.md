@@ -1,8 +1,8 @@
 # dev-agent 后续开发计划：v0.1.5–v0.4.0
 
 **建立日期：2026-09-16**
-**计划状态：实现完成，0.1.5 已发布**
-**当前基线：registry 中的 `@agent_cli/cli@0.1.5` 已发布。**
+**计划状态：实现完成，0.1.5 已发布，0.1.6 发布候选已准备**
+**当前基线：registry 中的 `@agent_cli/cli@0.1.5` 已发布；工作区候选是 `0.1.6`。**
 
 本文记录 `dev-agent` 在跳过真实用户反馈等待后，按优先级直接推进的产品化与工程化计划。每个阶段都必须先建立可执行的 RED contract 或失败测试，再实现最小完整闭环，最后运行与范围匹配的验证。
 
@@ -19,12 +19,12 @@
 
 | 阶段 | 内容 | 优先级 | 状态 | 主要交付物 |
 | --- | --- | ---: | --- | --- |
-| v0.1.5 | `dev-agent init`、配置校验、项目初始化 | 最高 | DONE（0.1.5 候选已准备，待版本发布） | 初始化命令、配置命令、项目状态/忽略规则、安全测试 |
-| v0.2.0 | Rust runtime 自动分发与安装 | 最高 | DONE（0.1.5 候选已准备，待版本发布） | 平台 runtime 包、安装/状态命令、校验和、fail-closed 解析 |
-| v0.2.x | `review`、`plan/apply`、CI 非交互模式 | 高 | DONE（0.1.5 候选已准备，待版本发布） | 只读审查、计划与应用边界、稳定退出码/JSON 事件 |
-| v0.3.0 | Provider/model 管理与预算控制 | 中高 | DONE（0.1.5 候选已准备，待版本发布） | provider/model 命令、连通性检查、预算与 fallback 策略 |
-| v0.3.x | Code Search 多语言和大型项目优化 | 中 | DONE（0.1.5 候选已准备，待版本发布） | ignore 语义、索引状态/增量、更多语言或可插拔扫描器 |
-| v0.4.0 | MCP 管理和 Desktop 状态面板 | 中 | DONE（0.1.5 候选已准备，待版本发布） | MCP 管理命令、健康状态、Desktop 执行能力状态展示 |
+| v0.1.5 | `dev-agent init`、配置校验、项目初始化 | 最高 | DONE | 初始化命令、配置命令、项目状态/忽略规则、安全测试 |
+| v0.2.0 | Rust runtime 自动分发与安装 | 最高 | DONE | 平台 runtime 包、安装/状态命令、校验和、fail-closed 解析 |
+| v0.2.x | `review`、`plan/apply`、CI 非交互模式 | 高 | DONE | 只读审查、计划与应用边界、稳定退出码/JSON 事件 |
+| v0.3.0 | Provider/model 管理与预算控制 | 中高 | DONE | provider/model 命令、连通性检查、预算与 fallback 策略 |
+| v0.3.x | Code Search 多语言和大型项目优化 | 中 | DONE | ignore 语义、索引状态/增量、更多语言或可插拔扫描器 |
+| v0.4.0 | MCP 管理和 Desktop 状态面板 | 中 | DONE | MCP 管理命令、健康状态、Desktop 执行能力状态展示 |
 
 ## v0.1.5：项目初始化与配置校验
 
@@ -258,6 +258,13 @@ dev-agent doctor --json
   缓存、虚拟环境等目录，并应用 root `.gitignore`、`.ignore` 与显式排除规则。
 - **MCP：** 新增 list/validate/status/test 管理命令；list/validate 是 metadata-only，status/test
   使用有界 stdio capability probe，超时、连接失败、取消和 capability 变化均映射到稳定 reason。
+
+## 发布治理完成记录（2026-09-17）
+
+- `@agent_cli/cli` 升级为 `0.1.6` candidate，补齐 license/repository/homepage/bugs metadata。
+- `npm-release-preflight` 的 metadata contract 现在拒绝缺少或填错上述字段的候选版本。
+- `typescript` 确认为发布 bundle 的必要 runtime dependency；不使用 optional/peer/lazy-load。
+- 仓库根目录 `.npmrc` 已删除，凭证边界收敛到用户级 `~/.npmrc`。
 - **Desktop：** 新增 `/api/status` 与状态面板，展示 executor/runtime/provider/model/approval/
   validation policy/最近 validation result；payload 通过 allowlist 生成，不改变 session、evidence、
   Undo 或 approval schema。

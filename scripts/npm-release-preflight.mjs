@@ -9,6 +9,9 @@ const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cliRoot = join(repositoryRoot, "apps", "cli");
 const registry = "https://registry.npmjs.org";
 const packageName = "@agent_cli/cli";
+const packageLicense = "MIT";
+const packageRepositoryUrl = "git+https://github.com/LJH-snow/dev-agent.git";
+const packageProjectUrl = "https://github.com/LJH-snow/dev-agent";
 const expectedPackedFiles = Object.freeze([
   "dist/cli.js",
   "dist/cli.js.map",
@@ -31,6 +34,18 @@ export function validateReleaseCandidateMetadata(packageJson, releaseState) {
   }
   if (packageJson?.private !== false) {
     errors.push("package_is_private");
+  }
+  if (packageJson?.license !== packageLicense) {
+    errors.push("package_license_missing_or_invalid");
+  }
+  if (packageJson?.repository?.url !== packageRepositoryUrl) {
+    errors.push("package_repository_missing_or_invalid");
+  }
+  if (packageJson?.homepage !== `${packageProjectUrl}#readme`) {
+    errors.push("package_homepage_missing_or_invalid");
+  }
+  if (packageJson?.bugs?.url !== `${packageProjectUrl}/issues`) {
+    errors.push("package_bugs_missing_or_invalid");
   }
   if (packageJson?.version !== releaseState?.candidateVersion) {
     errors.push("candidate_version_mismatch");

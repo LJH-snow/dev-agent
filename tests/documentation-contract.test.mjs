@@ -159,8 +159,14 @@ test("release docs distinguish readiness audit from formal release authorization
     /## v64：Release candidate readiness（已完成）/
   );
   assert.match(nextRoadmap, /v64 readiness audit 已完成；formal release 仍保持 gated/);
-  assert.match(readme, /Formal release is currently gated and has not been authorized/);
-  assert.match(readme, /To cut a release \(authorized release flow only\)/);
+  assert.match(
+    readme,
+    /The maintainer has authorized the `v0\.1\.6` GitHub release flow/
+  );
+  assert.match(
+    readme,
+    /Do not reuse\s+this authorization for another version without a new explicit release decision/
+  );
   assert.match(docsReadme, /release-candidate readiness audit/);
 });
 
@@ -177,7 +183,7 @@ test("phase labels are distinct from root README roadmap item numbers", () => {
 
 test("npm CLI docs describe external-directory use and current publication status", () => {
   assert.equal(releaseState.package, cliPackage.name);
-  assert.equal(releaseState.status, "published");
+  assert.equal(releaseState.status, "candidate");
   assert.equal(candidateCliVersion, cliPackage.version);
   assert.match(readme, /release-cli-npm\.md/);
   assert.match(readme, /npm install -g @agent_cli\/cli/);

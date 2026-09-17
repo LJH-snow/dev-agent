@@ -6,7 +6,12 @@ import test from "node:test";
 
 type PackageManifest = {
   name?: string;
+  version?: string;
   private?: boolean;
+  license?: string;
+  repository?: { type?: string; url?: string };
+  homepage?: string;
+  bugs?: { url?: string };
   main?: string;
   exports?: unknown;
   bin?: Record<string, string>;
@@ -31,6 +36,13 @@ test("CLI package is publishable and exposes the bundled executable", async () =
 
   assert.equal(manifest.name, "@agent_cli/cli");
   assert.notEqual(manifest.private, true, "the public CLI package must not be private");
+  assert.equal(manifest.license, "MIT");
+  assert.equal(
+    manifest.repository?.url,
+    "git+https://github.com/LJH-snow/dev-agent.git"
+  );
+  assert.equal(manifest.homepage, "https://github.com/LJH-snow/dev-agent#readme");
+  assert.equal(manifest.bugs?.url, "https://github.com/LJH-snow/dev-agent/issues");
   assert.equal(manifest.main, "dist/cli.js");
   assert.equal(manifest.bin?.["dev-agent"], "dist/cli.js");
   assert.equal(manifest.engines?.node, ">=20");

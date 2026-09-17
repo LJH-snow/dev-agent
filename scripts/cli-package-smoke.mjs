@@ -134,6 +134,19 @@ async function main() {
     );
     const installedManifest = JSON.parse(await readFile(installedManifestPath, "utf8"));
     assert.equal(installedManifest.bin?.["dev-agent"], "dist/cli.js");
+    assert.equal(installedManifest.license, "MIT");
+    assert.equal(
+      installedManifest.repository?.url,
+      "git+https://github.com/LJH-snow/dev-agent.git"
+    );
+    assert.equal(
+      installedManifest.homepage,
+      "https://github.com/LJH-snow/dev-agent#readme"
+    );
+    assert.equal(
+      installedManifest.bugs?.url,
+      "https://github.com/LJH-snow/dev-agent/issues"
+    );
     for (const [name, version] of Object.entries(installedManifest.dependencies ?? {})) {
       assert.ok(!String(version).startsWith("workspace:"), `${name} has a workspace runtime dependency`);
     }

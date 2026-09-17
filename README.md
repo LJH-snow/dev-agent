@@ -87,10 +87,11 @@ The package is built as a self-contained JavaScript CLI bundle and is verified b
 `pnpm package:smoke` in a clean npm prefix. New release candidates can be checked with
 `pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
 wrapper only publishes after that preflight succeeds. As of September 17, 2026,
-`@agent_cli/cli@0.1.5` has been published to npm and is the registry `latest`;
-`0.1.4` is the previous published version. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
+`@agent_cli/cli@0.1.5` remains published to npm and is the registry `latest`;
+`0.1.6` is the prepared release candidate with complete npm provenance metadata.
+`0.1.4` is an earlier published version. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
-[release state](docs/release-state.json) records the latest published npm version.
+[release state](docs/release-state.json) records the latest published npm version and current candidate.
 
 The published `@agent_cli/cli@0.1.5` includes the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing
@@ -186,12 +187,12 @@ Supported targets:
 
 To cut a release (authorized release flow only):
 
-Formal release is currently gated and has not been authorized. Do not run the following commands
-until a maintainer explicitly approves the release.
+The maintainer has authorized the `v0.1.6` GitHub release flow. Do not reuse
+this authorization for another version without a new explicit release decision.
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 The workflow can also be run manually (`workflow_dispatch`). This is the v64
@@ -220,7 +221,8 @@ The active post-release implementation sequence is tracked in
 [docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). As of September 17, 2026,
 all six workspace phases in that plan are implemented and verified: project initialization, managed
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
-indexes, and MCP/Desktop status management. The current npm package is `@agent_cli/cli@0.1.5`.
+indexes, and MCP/Desktop status management. The current npm release candidate is
+`@agent_cli/cli@0.1.6`; `0.1.5` remains the published registry `latest`.
 
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),

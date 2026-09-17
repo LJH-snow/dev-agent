@@ -1,6 +1,15 @@
 # Changelog
 
-## 2026-09-17（`@agent_cli/cli@0.1.5` release candidate）
+## 2026-09-17（`@agent_cli/cli@0.1.6` release candidate）
+- 将 CLI package 升级为 `0.1.6` release candidate；`0.1.5` 仍是 registry `latest`。
+- 补齐 npm 包的 `license: "MIT"`、GitHub repository、homepage 和 issues metadata。
+- 审计并确认 `typescript` 是发布 bundle 的必要 runtime dependency，不改为 optional/peer，
+  也不引入 lazy-load 边界。
+- `pnpm release:preflight` 新增 metadata-only 检查，缺少或填错 license/repository/homepage/bugs
+  的候选版本会被拒绝。
+- 移除仓库根目录 `.npmrc`，npm token 只保留在用户级 `~/.npmrc`。
+
+## 2026-09-17（`@agent_cli/cli@0.1.5` published release）
 
 - `@agent_cli/cli@0.1.5` 已于 2026-09-17 发布到 npm，`latest` 指向该版本；本次没有创建 Git tag、
   推送代码或创建 GitHub Release。

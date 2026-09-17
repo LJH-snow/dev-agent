@@ -1,6 +1,6 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.5` 已发布到 npm，`latest` 指向该版本**。2026-09-16 的 `0.1.4` 是上一版发布记录。后续新版本仍需维护者单独授权。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.5` 已发布到 npm，`latest` 指向该版本；`@agent_cli/cli@0.1.6` 是当前发布候选**。2026-09-16 的 `0.1.4` 是上一版发布记录。后续新版本仍需维护者单独授权。
 
 ## 已发布版本记录（2026-09-16）
 
@@ -15,6 +15,16 @@
 
 - `@agent_cli/cli@0.1.5` 已完成 npm 发布；registry 可复核 `npm view @agent_cli/cli@0.1.5 version`。
 - 本轮没有创建 Git tag、执行 Git push 或创建 GitHub Release。
+
+## 0.1.6 发布候选检查（2026-09-17）
+
+- CLI package 已升级到 `0.1.6`，并补齐 `license`、`repository`、`homepage`、`bugs` 和 Node `>=20`
+  metadata；repository URL 固定为本仓库 GitHub 地址。
+- `pnpm release:preflight` 新增 metadata contract：缺少或填错 license/repository/homepage/bugs 的候选版本
+  会被拒绝，不会进入 publish 阶段。
+- `typescript` 经过审计后继续保留为普通 runtime dependency：发布 bundle 会加载其 Node CommonJS 适配层，
+  当前没有可靠的 lazy-load 边界，改成 peer/optional 会让 clean install 失败。
+- 仓库根目录 `.npmrc` 已删除；npm token 只保留在用户级 `~/.npmrc`，仓库的 ignore 规则继续生效。
 
 ## 给使用者的安装方式（已发布）
 
@@ -141,7 +151,8 @@ pnpm verify
 ```
 
 `pnpm release:preflight` 会检查候选版本与 `docs/release-state.json` 是否一致、候选版本是否高于
-registry 已发布版本、npm 登录状态、registry 版本匹配，以及 `npm pack --dry-run` 是否只包含
+registry 已发布版本、license/repository/homepage/bugs metadata、npm 登录状态、registry 版本匹配，
+以及 `npm pack --dry-run` 是否只包含
 发行 allowlist。它只输出稳定的 metadata-only JSON，不会执行 `npm publish`。预检通过后，只有明确
 传入 `pnpm release:publish -- --publish` 才会执行发布，并在发布后复核候选版本；不带 `--publish`
 时只返回 confirmation-required 结果。
