@@ -23,6 +23,7 @@
     "@dev-agent/executor": "workspace:*",
     "@dev-agent/mcp": "workspace:*",
     "@dev-agent/model": "workspace:*",
+    "@dev-agent/runtime-manager": "workspace:*",
     "@dev-agent/tools": "workspace:*"
   },
   "scripts": {

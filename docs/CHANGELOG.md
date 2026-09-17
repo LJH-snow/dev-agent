@@ -1,12 +1,25 @@
 # Changelog
 
-## 2026-09-17（workspace doctor metadata hardening）
+## 2026-09-17（Desktop managed runtime status）
+
+- Desktop `/api/status` now reports the managed Rust runtime state, version,
+  target, and stable reason alongside executor/provider/approval/validation
+  metadata.
+- The summary always exists. `unavailable` is the safe fallback state; only an
+  installed runtime exposes `version`; only supported targets are accepted; and
+  reasons are reduced to stable diagnostics without paths or raw errors.
+- The Desktop runtime panel adds a Managed runtime row. The payload remains
+  metadata-only and does not expose binary paths, keys, tokens, or raw errors.
+- Managed runtime metadata is read offline through `@dev-agent/runtime-manager`;
+  it never starts a provider, MCP server, or runtime binary.
+
+## 2026-09-17（`@agent_cli/cli@0.1.7` release candidate）
 - `--doctor --json` now separates managed runtime identity from cache state. Runtime
   version/protocol are shown only from a successful probe or installed managed status;
   missing, corrupt, and unsupported entries report target/state/reason instead of
   implying that a runtime exists. Managed status remains provider-free and offline.
-- This change is workspace-only and not part of the already-created `v0.1.6` GitHub
-  Release artifacts.
+- This change is only in the `0.1.7` workspace candidate; it is not part of the
+  already-published `0.1.6` npm tarball or `v0.1.6` GitHub Release.
 
 ## 2026-09-17（`@agent_cli/cli@0.1.6` release candidate）
 - 将 CLI package 升级为 `0.1.6` release candidate；`0.1.5` 仍是 registry `latest`。

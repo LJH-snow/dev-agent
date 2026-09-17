@@ -61,7 +61,8 @@ are accepted, and validation command fields are deliberately not configurable.
   from `POST /api/chat` as Server-Sent Events.
 - `src/status.ts` — allowlisted status model shared by the server, session, and
   status panel. It intentionally excludes secrets, absolute paths, source text,
-  command arguments, and raw exception details.
+  command arguments, and raw exception details. The managed-runtime summary is
+  sanitized before serialization, even when injected by a custom host.
 - `src/chat-session.ts` — builds the `AgentLoop` with the default tools and model
   provider, optionally connects configured MCP stdio servers, and bridges its
   `onToken` / `onToolCall` / `onToolProgress` / `onToolResult` / `onValidation` /
@@ -79,6 +80,11 @@ are accepted, and validation command fields are deliberately not configurable.
   session. The response reports executor, Node runtime, provider, model,
   approval mode, validation policy, the latest validation result, and whether the
   session is currently busy.
+  It always includes a managed-runtime summary. `state` is `unsupported`,
+  `missing`, `installed`, `corrupt`, or `unavailable`; `target` is one of the
+  four supported runtime targets, `version` appears only when the installed
+  binary has been verified, and `reason` is a stable diagnostic rather than raw
+  error text.
   It never returns API keys, environment values, absolute paths, source text,
   command arguments, or raw provider/tool errors. Unknown sessions return a
   generic `404` response.

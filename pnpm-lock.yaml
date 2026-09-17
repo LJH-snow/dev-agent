@@ -164,6 +164,9 @@ importers:
       '@dev-agent/model':
         specifier: workspace:*
         version: link:../../packages/model
+      '@dev-agent/runtime-manager':
+        specifier: workspace:*
+        version: link:../../packages/runtime-manager
       '@dev-agent/tools':
         specifier: workspace:*
         version: link:../../packages/tools

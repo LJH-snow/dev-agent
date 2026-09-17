@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createDesktopStatus } from "../dist/status.js";
+import { resolveDesktopManagedRuntimeStatus } from "../dist/managed-runtime.js";
 
 test("desktop status exposes only allowlisted runtime metadata", () => {
   const status = createDesktopStatus({
@@ -13,6 +14,11 @@ test("desktop status exposes only allowlisted runtime metadata", () => {
     approvalMode: "review-writes",
     validationPolicy: "strict",
     validationResult: "passed",
+    managedRuntime: {
+      state: "installed",
+      version: "0.2.0",
+      target: "aarch64-apple-darwin",
+    },
     nodeVersion: "v22.14.0",
     platform: "darwin",
   });
@@ -27,6 +33,11 @@ test("desktop status exposes only allowlisted runtime metadata", () => {
     model: { id: "gpt-4o-mini", state: "ready" },
     approval: { mode: "review-writes", guarded: true },
     validation: { policy: "strict", enabled: true, lastResult: "passed" },
+    managedRuntime: {
+      state: "installed",
+      version: "0.2.0",
+      target: "aarch64-apple-darwin",
+    },
   });
 
   const serialized = JSON.stringify(status);
@@ -57,7 +68,47 @@ test("desktop status redacts path-like and secret-like model labels", () => {
     version: "unknown",
     platform: "unknown",
   });
+  assert.deepEqual(unknownStatus.managedRuntime, {
+    state: "unavailable",
+    reason: "runtime_status_unavailable",
+  });
   assert.equal(unknownStatus.provider.id, "unknown");
   assert.equal(unknownStatus.validation.policy, "fast");
   assert.equal(unknownStatus.validation.lastResult, "unknown");
+});
+
+test("desktop managed runtime status stays metadata-only", async () => {
+  const status = await resolveDesktopManagedRuntimeStatus({
+    version: "0.2.0",
+    runtimeDir: "/definitely/missing/runtime-dir",
+    target: "aarch64-apple-darwin",
+  });
+  assert.equal(status.state, "missing");
+  assert.equal(status.target, "aarch64-apple-darwin");
+  assert.ok(!("version" in status));
+  const serialized = JSON.stringify(status);
+  assert.doesNotMatch(serialized, /api[-_ ]?key|token|secret|Users|home|tmp/i);
+});
+
+test("desktop managed runtime turns runtime errors into stable codes", async () => {
+  const status = await resolveDesktopManagedRuntimeStatus({
+    version: "../not-a-version",
+    runtimeDir: "/definitely/missing/runtime-dir",
+  });
+  assert.deepEqual(status, { state: "unavailable", reason: "INVALID_VERSION" });
+});
+
+test("desktop status sanitizes injected managed runtime data", () => {
+  const status = createDesktopStatus({
+    managedRuntime: {
+      state: "corrupt",
+      version: "/Users/Admin/runtime/0.2.0",
+      target: "/tmp/runtime" as unknown as "aarch64-apple-darwin",
+      reason: "provider exploded at /Users/Admin/runtime/0.2.0",
+    } as never,
+  });
+
+  assert.deepEqual(status.managedRuntime, { state: "corrupt" });
+  const serialized = JSON.stringify(status);
+  assert.doesNotMatch(serialized, /Users|tmp|provider exploded/i);
 });

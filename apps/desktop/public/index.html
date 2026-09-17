@@ -140,7 +140,7 @@
     .desktop-status-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; max-width: 900px; }
     .desktop-status-title { font-size: 13px; font-weight: 600; }
     .desktop-status-note { color: var(--muted); font-size: 12px; margin-top: 3px; }
-    .desktop-status-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin-top: 10px; max-width: 900px; }
+    .desktop-status-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 8px; margin-top: 10px; max-width: 900px; }
     .desktop-status-item { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
     .desktop-status-label { display: block; color: var(--muted); font-size: 11px; }
     .desktop-status-value { display: block; margin-top: 3px; font-size: 13px; overflow-wrap: anywhere; }
@@ -181,6 +181,7 @@
     <div class="desktop-status-grid">
       <div class="desktop-status-item"><span class="desktop-status-label">Executor</span><strong id="desktop-status-executor" class="desktop-status-value">—</strong><span id="desktop-status-executor-state" class="desktop-status-state">—</span></div>
       <div class="desktop-status-item"><span class="desktop-status-label">Runtime</span><strong id="desktop-status-runtime" class="desktop-status-value">—</strong><span id="desktop-status-runtime-state" class="desktop-status-state">—</span></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">Managed runtime</span><strong id="desktop-status-managed-runtime" class="desktop-status-value">—</strong><span id="desktop-status-managed-runtime-state" class="desktop-status-state">—</span></div>
       <div class="desktop-status-item"><span class="desktop-status-label">Provider</span><strong id="desktop-status-provider" class="desktop-status-value">—</strong><span id="desktop-status-provider-state" class="desktop-status-state">—</span></div>
       <div class="desktop-status-item"><span class="desktop-status-label">Model</span><strong id="desktop-status-model" class="desktop-status-value">—</strong><span id="desktop-status-model-state" class="desktop-status-state">—</span></div>
       <div class="desktop-status-item"><span class="desktop-status-label">Approval</span><strong id="desktop-status-approval" class="desktop-status-value">—</strong><span id="desktop-status-approval-state" class="desktop-status-state">—</span></div>
@@ -246,6 +247,8 @@
     const desktopStatusExecutorState = document.getElementById("desktop-status-executor-state");
     const desktopStatusRuntime = document.getElementById("desktop-status-runtime");
     const desktopStatusRuntimeState = document.getElementById("desktop-status-runtime-state");
+    const desktopStatusManagedRuntime = document.getElementById("desktop-status-managed-runtime");
+    const desktopStatusManagedRuntimeState = document.getElementById("desktop-status-managed-runtime-state");
     const desktopStatusProvider = document.getElementById("desktop-status-provider");
     const desktopStatusProviderState = document.getElementById("desktop-status-provider-state");
     const desktopStatusModel = document.getElementById("desktop-status-model");
@@ -286,6 +289,12 @@
     function renderDesktopStatus(payload) {
       setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, payload.executor.mode, payload.session?.running ? "running" : "idle");
       setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, payload.runtime.kind + " " + payload.runtime.version, payload.runtime.platform);
+      setDesktopStatusValue(
+        desktopStatusManagedRuntime,
+        desktopStatusManagedRuntimeState,
+        payload.managedRuntime?.state,
+        payload.managedRuntime?.target ?? payload.managedRuntime?.version
+      );
       setDesktopStatusValue(desktopStatusProvider, desktopStatusProviderState, payload.provider.id, payload.provider.state);
       setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, payload.model.id, payload.model.state);
       setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, payload.approval.mode, payload.approval.guarded ? "guarded" : "direct");
@@ -313,6 +322,7 @@
         desktopStatusNote.textContent = "Runtime status unavailable.";
         setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, "—", "—");
         setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, "—", "—");
+        setDesktopStatusValue(desktopStatusManagedRuntime, desktopStatusManagedRuntimeState, "—", "—");
         setDesktopStatusValue(desktopStatusProvider, desktopStatusProviderState, "—", "—");
         setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, "—", "—");
         setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, "—", "—");

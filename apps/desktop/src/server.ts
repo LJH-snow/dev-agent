@@ -38,9 +38,12 @@ import {
 } from "./chat-session.js";
 import {
   createDesktopStatus,
+  withDesktopManagedRuntime,
   withDesktopStatusSession,
   type DesktopStatusSnapshot,
 } from "./status.js";
+import { resolveDesktopManagedRuntimeStatus } from "./managed-runtime.js";
+import type { DesktopManagedRuntimeStatus } from "./managed-runtime.js";
 
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
@@ -79,6 +82,8 @@ export interface DesktopServerOptions {
   readonly session?: DesktopChatSession;
   /** Builds a session that is not in memory yet. */
   readonly createSession?: (sessionId: string) => DesktopChatSession;
+  /** Injects the managed runtime status for tests and custom hosts. */
+  readonly managedRuntime?: () => Promise<DesktopManagedRuntimeStatus | undefined>;
 }
 
 export interface DesktopSessionSummary {
@@ -188,11 +193,17 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
             executorMode: session.executorMode,
           });
         const status = withDesktopStatusSession(baseStatus, sessionId, inFlight.has(sessionId));
+        const managedRuntime =
+          options.managedRuntime === undefined
+            ? await resolveDesktopManagedRuntimeStatus()
+            : await options.managedRuntime();
+        const payload =
+          managedRuntime === undefined ? status : withDesktopManagedRuntime(status, managedRuntime);
         res.writeHead(200, {
           "content-type": "application/json; charset=utf-8",
           "cache-control": "no-store",
         });
-        res.end(JSON.stringify(status));
+        res.end(JSON.stringify(payload));
         return;
       }
 

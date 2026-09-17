@@ -48,6 +48,9 @@ test("GET /api/status returns the metadata-only desktop status payload", async (
     assert.deepEqual(payload.approval, { mode: "ask", guarded: true });
     assert.deepEqual(payload.validation, { policy: "default", enabled: true, lastResult: "unknown" });
     assert.equal(payload.session.running, false);
+    assert.deepEqual(payload.managedRuntime?.state, "missing");
+    assert.equal(payload.managedRuntime?.version, undefined);
+    assert.equal(payload.managedRuntime?.target, "aarch64-apple-darwin");
 
     const serialized = JSON.stringify(payload);
     assert.doesNotMatch(serialized, /api[-_ ]?key|token|secret|Users|home|tmp|provider exploded/i);
@@ -68,6 +71,33 @@ test("GET /api/status rejects an unknown session without exposing internals", as
   }
 });
 
+test("GET /api/status injects managed runtime metadata safely", async () => {
+  const session = {
+    getStatus: () => createDesktopStatus({ sessionId: "desktop-default" }),
+    async run() {},
+  };
+  const server = createDesktopServer({
+    session,
+    managedRuntime: async () => ({
+      state: "corrupt",
+      version: "/Users/Admin/runtime/0.2.0",
+      target: "/tmp/runtime" as unknown as "aarch64-apple-darwin",
+      reason: "provider exploded at /Users/Admin/runtime/0.2.0",
+    }),
+  });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/status`);
+    assert.equal(response.status, 200);
+    const payload = await response.json() as any;
+    assert.deepEqual(payload.managedRuntime, { state: "corrupt" });
+    const serialized = JSON.stringify(payload);
+    assert.doesNotMatch(serialized, /api[-_ ]?key|token|secret|Users|home|tmp/i);
+  } finally {
+    await close(server);
+  }
+});
+
 test("GET / exposes the runtime status panel", async () => {
   const server = createDesktopServer({ session: { async run() {} } });
   const base = await start(server);
@@ -79,6 +109,7 @@ test("GET / exposes the runtime status panel", async () => {
       "desktop-status-panel",
       "desktop-status-executor",
       "desktop-status-runtime",
+      "desktop-status-managed-runtime",
       "desktop-status-provider",
       "desktop-status-model",
       "desktop-status-approval",

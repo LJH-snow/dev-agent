@@ -2,9 +2,14 @@ import { isAbsolute } from "node:path";
 
 import type { ExecutorMode } from "@dev-agent/executor";
 import type { ModelProviderId } from "@dev-agent/model";
+import { isRuntimeTarget } from "@dev-agent/runtime-manager";
 import type { ValidationPolicy } from "@dev-agent/tools";
 
 import type { DesktopApprovalMode } from "./chat-session.js";
+import type {
+  DesktopManagedRuntimeState,
+  DesktopManagedRuntimeStatus,
+} from "./managed-runtime.js";
 
 export const DESKTOP_STATUS_SCHEMA_VERSION = 1 as const;
 
@@ -46,6 +51,7 @@ export interface DesktopStatusSnapshot {
     readonly enabled: boolean;
     readonly lastResult: DesktopStatusValidationResult;
   };
+  readonly managedRuntime: DesktopManagedRuntimeStatus;
 }
 
 export interface DesktopStatusOptions {
@@ -57,6 +63,7 @@ export interface DesktopStatusOptions {
   readonly approvalMode?: DesktopApprovalMode;
   readonly validationPolicy?: ValidationPolicy;
   readonly validationResult?: DesktopStatusValidationResult;
+  readonly managedRuntime?: DesktopManagedRuntimeStatus;
   readonly nodeVersion?: string;
   readonly platform?: string;
 }
@@ -87,6 +94,30 @@ const runtimePlatforms = new Set([
   "openbsd",
   "sunos",
   "win32",
+]);
+const managedRuntimeStates: readonly DesktopManagedRuntimeState[] = [
+  "unsupported",
+  "missing",
+  "installed",
+  "corrupt",
+  "unavailable",
+];
+const managedRuntimeReasons = new Set([
+  "Runtime target is unsupported",
+  "Runtime version directory could not be inspected",
+  "Runtime version directory is not private",
+  "Runtime cache could not be inspected",
+  "Runtime cache directory is not a private directory",
+  "Runtime completion markers are invalid",
+  "Runtime completion markers are incomplete",
+  "Runtime metadata is invalid",
+  "Runtime metadata is unreadable",
+  "Runtime metadata does not match its cache location",
+  "Runtime completion marker is invalid",
+  "Runtime binary is missing or not executable",
+  "Runtime binary size does not match metadata",
+  "Runtime binary checksum does not match metadata",
+  "Runtime binary could not be inspected",
 ]);
 
 /**
@@ -137,6 +168,7 @@ export function createDesktopStatus(options: DesktopStatusOptions = {}): Desktop
       enabled: validationPolicy !== "unknown",
       lastResult: validationResult,
     },
+    managedRuntime: safeManagedRuntimeStatus(options.managedRuntime),
   };
 }
 
@@ -155,8 +187,80 @@ export function withDesktopStatusSession(
   };
 }
 
+/** Adds managed runtime metadata without changing the session-specific status. */
+export function withDesktopManagedRuntime(
+  status: DesktopStatusSnapshot,
+  managedRuntime: DesktopManagedRuntimeStatus
+): DesktopStatusSnapshot {
+  return { ...status, managedRuntime: safeManagedRuntimeStatus(managedRuntime) };
+}
+
 function allowlisted<T extends string>(value: T | undefined, allowed: readonly T[], fallback: T): T {
   return value !== undefined && allowed.includes(value) ? value : fallback;
+}
+
+function safeManagedRuntimeStatus(
+  input: DesktopManagedRuntimeStatus | undefined
+): DesktopManagedRuntimeStatus {
+  if (!input || !managedRuntimeStates.includes(input.state)) {
+    return { state: "unavailable", reason: "runtime_status_unavailable" };
+  }
+
+  const target = isRuntimeTarget(input.target) ? input.target : undefined;
+  const reason =
+    input.state === "unsupported" || input.state === "corrupt" || input.state === "unavailable"
+      ? safeManagedRuntimeReason(input.reason, input.state)
+      : undefined;
+  const version = input.state === "installed" ? safeManagedRuntimeVersion(input.version) : undefined;
+
+  return {
+    state: input.state,
+    ...(target === undefined ? {} : { target }),
+    ...(version === undefined ? {} : { version }),
+    ...(reason === undefined ? {} : { reason }),
+  };
+}
+
+function safeManagedRuntimeVersion(value: string | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim();
+  return /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:[-+][a-z0-9.-]+)?$/i.test(normalized) &&
+    normalized.length <= 32
+    ? normalized
+    : undefined;
+}
+
+function safeManagedRuntimeReason(
+  value: string | undefined,
+  state: DesktopManagedRuntimeState
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().replace(/[\u0000\r\n\t]/g, " ");
+  if (
+    !normalized ||
+    normalized.length > 128 ||
+    isAbsolute(normalized) ||
+    normalized.includes("/") ||
+    normalized.includes("\\") ||
+    /(?:api[-_ ]?key|access[-_ ]?token|password|secret|bearer|sk-[a-z0-9])/i.test(normalized)
+  ) {
+    return undefined;
+  }
+  if (state === "unavailable") {
+    return normalized === "runtime_status_unavailable" || /^[A-Z][A-Z0-9_]{2,63}$/.test(normalized)
+      ? normalized
+      : "runtime_status_unavailable";
+  }
+  if (state === "unsupported" || state === "corrupt") {
+    return managedRuntimeReasons.has(normalized) || /^[A-Z][A-Z0-9_]{2,63}$/.test(normalized)
+      ? normalized
+      : undefined;
+  }
+  return normalized;
 }
 
 function safeSessionId(value: string | undefined): string {
