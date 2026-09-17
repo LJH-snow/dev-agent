@@ -2,7 +2,7 @@
 
 本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-16，`@agent_cli/cli@0.1.4` 已发布到 npm**。本次发布是在维护者明确授权、已有 npm 认证有效并确认 `agent_cli` organization 权限后执行的。2026-09-17 已准备工作区 `@agent_cli/cli@0.1.5` 候选版本；registry 仍以 `0.1.4` 为准，候选发布需要重新通过 npm 认证和单独授权。
 
-## 当前发布状态（2026-09-16）
+## 已发布版本记录（2026-09-16）
 
 - `npm whoami` 返回 `libai168`，npm Web 2FA 授权已完成。
 - 当前账号是 npm `agent_cli` organization 的 owner；面向用户的包名固定为 `@agent_cli/cli`，不会改动既有的 `@agent-cli/agent-cli`。
@@ -10,6 +10,14 @@
 - 工作区候选版本为 `@agent_cli/cli@0.1.5`，包含 v0.3.0–v0.4.0 的 provider/model、预算、索引、MCP 和 Desktop 状态实现；在远程发布完成前，安装命令仍应使用 registry 中的 `0.1.4`。
 - `0.1.1` 是中间版本：包已进入 registry，但运行时版本横幅仍显示 `0.1.0`；`0.1.2` 修复了从包自身的 `package.json` 读取版本，`0.1.3` 加入项目级状态隔离，`0.1.4` 修复了指定 `--session` 时新建/更新 memory metadata 仍记录为 `default` 的问题。
 - 本次只发布 npm 包；没有创建 Git tag 或 GitHub Release。后续正式 GitHub release 仍需单独走授权的 tag-only workflow。
+
+## 最新候选检查（2026-09-17）
+
+- 工作区候选仍为 `@agent_cli/cli@0.1.5`，registry 中已发布版本仍为 `0.1.4`。
+- 最新 `pnpm release:preflight` 已确认候选元数据、registry 版本和 tarball allowlist 均正常；当前唯一失败项是
+  npm 认证，结果为 `auth_required`，下一步为 `npm_login_required`。
+- 本轮未执行 `npm publish`、Git tag、Git push 或 GitHub Release；`pnpm release:publish -- --publish`
+  仍需在恢复认证后由维护者明确授权执行。
 
 ## 给使用者的安装方式（已发布）
 
