@@ -274,7 +274,7 @@ fallback。详细 proof gap 见
 上一轮 [8 小时安全无人值守并行开发计划](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md)、
 其[进度记录](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md)
 以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
-均已完成。当前 npm 包 `@agent_cli/cli@0.1.4` 已发布，正式 GitHub release 仍需单独授权。
+均已完成。当前 npm 包 `@agent_cli/cli@0.1.4` 已发布，工作区候选版本为 `@agent_cli/cli@0.1.5`；正式 npm/GitHub release 仍需单独授权。
 在没有新的产品决策或真实 Desktop UX trigger 时，保持当前实现和发布边界，不开始
 speculative Desktop UI，也不重新打开 Windows backend。
 

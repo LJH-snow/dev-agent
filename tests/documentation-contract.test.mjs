@@ -21,6 +21,16 @@ const npmRelease = readFileSync(
   new URL("../docs/release-cli-npm.md", import.meta.url),
   "utf8"
 );
+const releaseState = JSON.parse(
+  readFileSync(new URL("../docs/release-state.json", import.meta.url), "utf8")
+);
+const publishedCliVersion = String(releaseState.publishedVersion);
+const candidateCliVersion = String(releaseState.candidateVersion);
+
+function cliVersionPattern(version) {
+  const escaped = version.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
+  return new RegExp(`@agent_cli/cli@${escaped}`);
+}
 const cliDistributionPlan = readFileSync(
   new URL("../docs/superpowers/plans/2026-09-15-cli-npm-distribution.md", import.meta.url),
   "utf8"
@@ -78,6 +88,7 @@ test("documentation index points to the current source-of-truth documents", () =
     "docs/superpowers/plans/2026-09-15-cancellation-boundary-audit.md",
     "docs/superpowers/plans/2026-09-15-overnight-development-goals.md",
     "docs/release-cli-npm.md",
+    "docs/release-state.json",
   ]) {
     assert.ok(readme.includes(link), `README should link to ${link}`);
   }
@@ -112,6 +123,7 @@ test("documentation index points to the current source-of-truth documents", () =
     "superpowers/plans/2026-09-15-cancellation-boundary-audit.md",
     "superpowers/plans/2026-09-15-overnight-development-goals.md",
     "release-cli-npm.md",
+    "release-state.json",
   ]) {
     assert.ok(docsReadme.includes(`](${link})`), `docs/README.md should link to ${link}`);
   }
@@ -164,13 +176,19 @@ test("phase labels are distinct from root README roadmap item numbers", () => {
 });
 
 test("npm CLI docs describe external-directory use and current publication status", () => {
+  assert.equal(releaseState.package, cliPackage.name);
+  assert.equal(releaseState.status, "candidate");
+  assert.equal(candidateCliVersion, cliPackage.version);
   assert.match(readme, /release-cli-npm\.md/);
   assert.match(readme, /npm install -g @agent_cli\/cli/);
   assert.match(readme, /--project-state/);
-  assert.match(readme, new RegExp(`@agent_cli/cli@${String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-  assert.match(nextRoadmap, new RegExp(`当前 npm 包 \`@agent_cli/cli@${String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\` 已发布`));
+  assert.match(readme, cliVersionPattern(publishedCliVersion));
+  assert.match(readme, cliVersionPattern(candidateCliVersion));
+  assert.match(nextRoadmap, new RegExp(`当前 npm 包 \`@agent_cli/cli@${publishedCliVersion.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&")}\` 已发布`));
+  assert.match(nextRoadmap, cliVersionPattern(candidateCliVersion));
   assert.doesNotMatch(nextRoadmap, /当前 npm 包 `@agent_cli\/cli@0\.1\.0` 已发布/);
   assert.match(docsReadme, /release-cli-npm\.md/);
+  assert.match(docsReadme, /release-state\.json/);
   assert.match(cliReadme, /^# @agent_cli\/cli/m);
   assert.match(cliReadme, /npm install -g @agent_cli\/cli/);
   assert.match(cliReadme, /--cwd <path>/);
@@ -185,25 +203,23 @@ test("npm CLI docs describe external-directory use and current publication statu
   assert.match(npmRelease, /\.dev-agent\/config\.json/);
   assert.match(npmRelease, /\.dev-agent\/sessions/);
   assert.match(npmRelease, /npm whoami/);
-  assert.match(
-    npmRelease,
-    new RegExp(`@agent_cli/cli@${String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`)
-  );
+  assert.match(npmRelease, cliVersionPattern(publishedCliVersion));
+  assert.match(npmRelease, cliVersionPattern(candidateCliVersion));
   assert.match(npmRelease, /published to npm|已发布到 npm/i);
-  assert.doesNotMatch(npmRelease, /not been published|尚未发布/i);
+  assert.match(npmRelease, /候选|candidate/i);
   assert.match(npmRelease, /Rust|sandbox/i);
   assert.match(npmRelease, /session/i);
   assert.match(npmRelease, /GitHub Release|release tag|正式发布/i);
 });
 
 test("published CLI version is synchronized across release documentation", () => {
-  assert.match(cliDistributionPlan, new RegExp(`@agent_cli/cli@${String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(cliDistributionPlan, cliVersionPattern(publishedCliVersion));
   assert.doesNotMatch(cliDistributionPlan, /@agent_cli\/cli@0\.1\.0/);
   assert.match(cliDistributionPlan, /本次已获得该授权并单独完成 npm 包发布/);
 });
 
 test("published project-state work is represented in the current npm docs", () => {
-  const escapedVersion = String(cliPackage.version).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const escapedVersion = publishedCliVersion.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
   assert.match(
     readme,
     new RegExp(`published[\\s\\S]*@agent_cli/cli@${escapedVersion}[\\s\\S]*--project-state`, "i")

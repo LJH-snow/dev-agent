@@ -1,12 +1,13 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-16，`@agent_cli/cli@0.1.4` 已发布到 npm**。本次发布是在维护者明确授权、已有 npm 认证有效并确认 `agent_cli` organization 权限后执行的。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-16，`@agent_cli/cli@0.1.4` 已发布到 npm**。本次发布是在维护者明确授权、已有 npm 认证有效并确认 `agent_cli` organization 权限后执行的。2026-09-17 已准备工作区 `@agent_cli/cli@0.1.5` 候选版本；registry 仍以 `0.1.4` 为准，候选发布需要重新通过 npm 认证和单独授权。
 
 ## 当前发布状态（2026-09-16）
 
 - `npm whoami` 返回 `libai168`，npm Web 2FA 授权已完成。
 - 当前账号是 npm `agent_cli` organization 的 owner；面向用户的包名固定为 `@agent_cli/cli`，不会改动既有的 `@agent-cli/agent-cli`。
 - `@agent_cli/cli@0.1.4` 已成功发布，dist-tag 为 `latest`；可用 `npm view @agent_cli/cli@0.1.4 version` 复核，且从 registry clean install 后 `dev-agent --version` 为 `0.1.4`。
+- 工作区候选版本为 `@agent_cli/cli@0.1.5`，包含 v0.3.0–v0.4.0 的 provider/model、预算、索引、MCP 和 Desktop 状态实现；在远程发布完成前，安装命令仍应使用 registry 中的 `0.1.4`。
 - `0.1.1` 是中间版本：包已进入 registry，但运行时版本横幅仍显示 `0.1.0`；`0.1.2` 修复了从包自身的 `package.json` 读取版本，`0.1.3` 加入项目级状态隔离，`0.1.4` 修复了指定 `--session` 时新建/更新 memory metadata 仍记录为 `default` 的问题。
 - 本次只发布 npm 包；没有创建 Git tag 或 GitHub Release。后续正式 GitHub release 仍需单独走授权的 tag-only workflow。
 
@@ -151,4 +152,4 @@ pnpm --filter @agent_cli/cli pack --pack-destination /tmp/agent-cli-pack
 
 本次 `@agent_cli/cli@0.1.4` 已于 2026-09-16 按上述边界完成发布；发布后已全局重新安装，并用
 `--session smoke --metadata --json` 验证 `smoke.json` 的 `sessionId` 为 `smoke` 而不是 `default`。
-该记录不等同于创建 Git tag 或 GitHub Release。
+该记录不等同于创建 Git tag 或 GitHub Release。当前工作区 `0.1.5` 候选也尚未执行远程 npm 发布、tag 或 push。

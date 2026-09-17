@@ -20,7 +20,8 @@ numbered items 62/63/64 in the root README Roadmap.
   records the remaining gated options: formal release preparation, v65 Desktop UX only after a
   concrete trigger, and the Windows backend as NO-GO. The [CLI npm distribution guide](release-cli-npm.md)
   records the clean-install evidence, `--cwd` precedence, config/session isolation, npm preflight,
-  and optional Rust sandbox boundary. The [CLI runtime observability spec](cli-runtime-observability.md),
+  and optional Rust sandbox boundary. The [release state](release-state.json) distinguishes the published
+  registry version from the local release candidate. The [CLI runtime observability spec](cli-runtime-observability.md),
   [CLI runtime implementation plan](superpowers/plans/2026-09-14-cli-runtime-observability.md),
   [CLI TUI v1 spec](cli-tui-v1.md), [CLI TUI v1.1 reliability spec](cli-tui-v1.1-reliability.md),
   [implementation plan](superpowers/plans/2026-09-14-cli-tui-v1.md), and [v1.1 implementation plan](superpowers/plans/2026-09-14-cli-tui-v1.1-reliability.md)

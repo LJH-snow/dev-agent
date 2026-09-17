@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-09-17（v0.3.0–v0.4.0 workspace implementation）
+## 2026-09-17（`@agent_cli/cli@0.1.5` release candidate）
 
 - 新增 `providers list|status|test`、`models list|current`，支持 Ollama、OpenAI、Anthropic、Gemini
   的脱敏配置检查、显式连通性探测、profile/alias 选择和显式 fallback 顺序；fallback 只有在
@@ -14,7 +14,8 @@
   使用有界 capability probe，超时、连接失败和 capability 变化均返回稳定 reason。
 - Desktop 新增 `/api/status` 和状态面板，展示 executor、runtime、provider/model、approval、validation
   policy 与最近 validation result；状态 payload 只允许 metadata，不包含 key、token、路径、源码、命令或原始错误。
-- 本轮完成工作区实现与验证，未提升 npm 版本、未创建 tag、未推送远程，也未发布新的 npm 版本。
+- 本轮完成工作区实现与验证，并将 CLI package 版本整理为 `0.1.5`；registry 仍为已发布的 `0.1.4`。
+- 候选包尚未执行远程 npm publish、tag 或 push；发布前仍需恢复 npm 认证并获得单独授权。
 
 ## 2026-09-16（v0.2.x workflow and CI foundation）
 

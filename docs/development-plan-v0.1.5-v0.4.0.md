@@ -1,8 +1,8 @@
 # dev-agent 后续开发计划：v0.1.5–v0.4.0
 
 **建立日期：2026-09-16**
-**计划状态：执行中**
-**当前基线：`@agent_cli/cli@0.1.4` 已发布到 npm；仓库 `v0.1.4` Tag、GitHub Release workflow、核心验证 gate 和外部项目 smoke 已完成。**
+**计划状态：实现完成，0.1.5 发布候选待授权**
+**当前基线：registry 中的 `@agent_cli/cli@0.1.4` 已发布；工作区候选 `@agent_cli/cli@0.1.5` 已完成实现和验证，等待 npm 认证恢复及发布授权。**
 
 本文记录 `dev-agent` 在跳过真实用户反馈等待后，按优先级直接推进的产品化与工程化计划。每个阶段都必须先建立可执行的 RED contract 或失败测试，再实现最小完整闭环，最后运行与范围匹配的验证。
 
@@ -19,12 +19,12 @@
 
 | 阶段 | 内容 | 优先级 | 状态 | 主要交付物 |
 | --- | --- | ---: | --- | --- |
-| v0.1.5 | `dev-agent init`、配置校验、项目初始化 | 最高 | DONE（待版本发布） | 初始化命令、配置命令、项目状态/忽略规则、安全测试 |
-| v0.2.0 | Rust runtime 自动分发与安装 | 最高 | DONE（待版本发布） | 平台 runtime 包、安装/状态命令、校验和、fail-closed 解析 |
-| v0.2.x | `review`、`plan/apply`、CI 非交互模式 | 高 | DONE（待版本发布） | 只读审查、计划与应用边界、稳定退出码/JSON 事件 |
-| v0.3.0 | Provider/model 管理与预算控制 | 中高 | DONE（待版本发布） | provider/model 命令、连通性检查、预算与 fallback 策略 |
-| v0.3.x | Code Search 多语言和大型项目优化 | 中 | DONE（待版本发布） | ignore 语义、索引状态/增量、更多语言或可插拔扫描器 |
-| v0.4.0 | MCP 管理和 Desktop 状态面板 | 中 | DONE（待版本发布） | MCP 管理命令、健康状态、Desktop 执行能力状态展示 |
+| v0.1.5 | `dev-agent init`、配置校验、项目初始化 | 最高 | DONE（0.1.5 候选已准备，待版本发布） | 初始化命令、配置命令、项目状态/忽略规则、安全测试 |
+| v0.2.0 | Rust runtime 自动分发与安装 | 最高 | DONE（0.1.5 候选已准备，待版本发布） | 平台 runtime 包、安装/状态命令、校验和、fail-closed 解析 |
+| v0.2.x | `review`、`plan/apply`、CI 非交互模式 | 高 | DONE（0.1.5 候选已准备，待版本发布） | 只读审查、计划与应用边界、稳定退出码/JSON 事件 |
+| v0.3.0 | Provider/model 管理与预算控制 | 中高 | DONE（0.1.5 候选已准备，待版本发布） | provider/model 命令、连通性检查、预算与 fallback 策略 |
+| v0.3.x | Code Search 多语言和大型项目优化 | 中 | DONE（0.1.5 候选已准备，待版本发布） | ignore 语义、索引状态/增量、更多语言或可插拔扫描器 |
+| v0.4.0 | MCP 管理和 Desktop 状态面板 | 中 | DONE（0.1.5 候选已准备，待版本发布） | MCP 管理命令、健康状态、Desktop 执行能力状态展示 |
 
 ## v0.1.5：项目初始化与配置校验
 
@@ -262,5 +262,6 @@ dev-agent doctor --json
   validation policy/最近 validation result；payload 通过 allowlist 生成，不改变 session、evidence、
   Undo 或 approval schema。
 - **验证与发布边界：** 工作区相关 package tests、CLI 309 项测试、Desktop 84 项测试及最终
-  `pnpm verify` 已于 2026-09-17 全部通过；本轮不自动 bump version、tag、push 或 publish npm。
-  下一步如需对外发布，仍需单独授权并先决定版本号、变更日志和发布渠道。
+  `pnpm verify` 已于 2026-09-17 全部通过；候选包版本已整理为 `@agent_cli/cli@0.1.5`，但本轮
+  不自动执行远程 npm publish、tag 或 push。下一步需恢复 npm 认证、复核候选 tarball，并由维护者
+  单独授权发布。
