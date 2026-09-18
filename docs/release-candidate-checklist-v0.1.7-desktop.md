@@ -41,6 +41,8 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Desktop session listing is capped at `256` summaries; active/default sessions
   are retained first, with remaining disk summaries added in stable filename
   order.
+- Desktop history responses are capped at `1 MiB`; an oversized transcript
+  returns `413` without exposing the transcript, path, or contents.
 - Desktop always-allow memory is capped per session at `256` keys and
   `512 bytes` per key; oversized or post-limit decisions allow only the current
   call.
@@ -111,11 +113,12 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**27/27**, including the corrected `--project-state` first-release attribution,
+**28/28**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
-session-ID-length-limit, and session-listing-limit contracts.
+session-ID-length-limit, session-listing-limit, and history-response-limit
+contracts.
 
 ## Consolidated gate
 
@@ -231,17 +234,23 @@ Desktop session summaries at `256`. It passed with Desktop **113/113**,
 runtime-manager **15/15**, CLI **314/314**, documentation contracts **27/27**,
 Rust unit/doc tests **54/54**, and real Rust integration **11/11**.
 
+The post-goal-37 history-response audit reran `pnpm verify` after capping
+Desktop history responses at `1 MiB`. It passed with Desktop **114/114**,
+runtime-manager **15/15**, CLI **314/314**, documentation contracts **28/28**,
+Rust unit/doc tests **54/54**, and real Rust integration **11/11**.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **113 tests passed, 0 failed.** The latest regression contracts cover
+Result: **114 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
 rollback joining the active session lifecycle, the fixed JSON request-body
 limit, the fixed session registry count limit, bounded always-allow memory, and
-the fixed static-response size, session-ID length, and session-listing limits.
+the fixed static-response size, session-ID length, session-listing size, and
+history-response size limits.
 
 ```sh
 pnpm build

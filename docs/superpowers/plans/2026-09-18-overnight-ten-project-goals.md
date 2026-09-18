@@ -1248,6 +1248,62 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 37：限制 Desktop history 响应大小
+
+**Status:** IN PROGRESS
+
+**建立时间：** 2026-09-18；Goal 36 收口后继续审计 Desktop 的读取路径，发现
+`GET /api/sessions/<id>/messages` 会把完整 memory session 序列化成 JSON 后
+直接返回，没有固定 response 字节上限。
+
+**范围：**
+
+- 为 Desktop history response 设定固定 `1 MiB` 总字节上限；
+- 超过上限返回稳定 `413`，不回显 session 内容、路径或原始错误；
+- 小型 history 的 messages/validations/changeSets/evidenceSummary 行为不变；
+- 不限制 `/evidence` 已有的 audit limit 机制；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：session 文件序列化后超过 `1 MiB` 时，
+  `/messages` 返回稳定 `413`；
+- RED 阶段证明当前实现返回 `200` 并发送完整 transcript；
+- 在 documentation contract 中断言 README 与 checklist 记录 history response
+  上限；
+- 先确认 RED，再做最小实现。
+- RED proof：无上限实现时，超过 `1 MiB` 的 session transcript 返回 `200`
+  并发送完整 JSON；聚焦运行为 **113 passed / 1 failed**。文档契约为
+  **27 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增分页、裁剪、可配置上限或 history schema 变更；
+- 不回显绝对路径、文件内容或原始错误；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已为 Desktop history response 加入固定 `1 MiB` 上限；
+- 超限 transcript 返回稳定 `413`，不回显内容、路径或原始错误；
+- 小型 history 的 messages/validations/changeSets/evidenceSummary 行为保持；
+- RED 后 Desktop focused tests **114/114**，documentation contract **28/28**；
+  `pnpm verify` 输出 `all selected gates passed`，相关计数为 runtime-manager
+  **15/15**、CLI **314/314**、Rust unit/doc **54/54**、real Rust integration
+  **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

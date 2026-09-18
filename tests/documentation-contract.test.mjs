@@ -361,6 +361,14 @@ test("v0.1.7 documents the Desktop session listing limit", () => {
   assert.match(desktopCandidate, /256/i);
 });
 
+test("v0.1.7 documents the Desktop history response limit", () => {
+  assert.match(desktopReadme, /history response/i);
+  assert.match(desktopReadme, /1 MiB/i);
+  assert.match(desktopReadme, /413/i);
+  assert.match(desktopCandidate, /history response/i);
+  assert.match(desktopCandidate, /1 MiB/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

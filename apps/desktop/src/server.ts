@@ -131,6 +131,7 @@ const activeSessionRequestMessage =
   "a chat, validation, cleanup, or rollback request is already running in this session";
 const maxSessionIdLength = 96;
 const maxSessionListEntries = 256;
+const maxHistoryResponseBytes = 1024 * 1024;
 
 const maxJsonBodyBytes = 1024 * 1024;
 const maxStaticFileBytes = 1024 * 1024;
@@ -275,8 +276,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
         const history = await readHistory(sessionId, filterResult.filters);
+        const serializedHistory = JSON.stringify({ sessionId, ...history });
+        if (Buffer.byteLength(serializedHistory, "utf8") > maxHistoryResponseBytes) {
+          res.writeHead(413, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "history response exceeds the 1 MiB limit" }));
+          return;
+        }
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ sessionId, ...history }));
+        res.end(serializedHistory);
         return;
       }
 

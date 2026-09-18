@@ -1486,6 +1486,47 @@ and real Rust integration **11/11**.
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 36 slice can be committed locally as a separate commit.
 
+## Follow-up Goal 37: bound Desktop history responses
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `1 MiB` response limit to Desktop session history.
+- Returned a stable JSON `413` for oversized transcripts without echoing the
+  transcript, path, contents, or raw error.
+- Preserved message, validation, change-set, and evidence-summary behavior for
+  smaller histories.
+- Documented the history-response limit in the Desktop README and v0.1.7
+  candidate checklist.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **114/114**, documentation contract **28/28**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 37 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 28: Desktop undo-rollback stale safety
 
 **Status:** DONE

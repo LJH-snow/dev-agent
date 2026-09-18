@@ -232,6 +232,43 @@ test("session listing stays within the fixed 256-entry limit", async () => {
   }
 });
 
+test("history response rejects output larger than 1 MiB", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-history-"));
+  const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  try {
+    await writeFile(
+      join(directory, "large.json"),
+      JSON.stringify({
+        version: 1,
+        entries: [
+          {
+            id: "large-entry",
+            role: "user",
+            content: "x".repeat(1024 * 1024 + 1),
+            createdAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+      })
+    );
+    await withServer({ session: { id: "default", async run() {} } }, async (base) => {
+      const res = await fetch(`${base}/api/sessions/large/messages`);
+      assert.equal(res.status, 413);
+      assert.deepEqual(
+        await res.json(),
+        { error: "history response exceeds the 1 MiB limit" }
+      );
+    });
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDirectory;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("a matching fake session emits each event type it is given", async () => {
   const session = fakeSession([
     { type: "turn", data: { turn: 1 } },

@@ -113,6 +113,8 @@ returns `413` without echoing the path, contents, or raw error.
   `changeSetId`, `validationId`, and `status` (`passed`, `failed`, `skipped`, or
   `blocked`) narrow only the evidence arrays without removing messages.
   An invalid `status` returns a structured `400` response.
+  The fixed history response is capped at `1 MiB`; an oversized transcript
+  returns `413` without echoing the transcript, path, or raw error.
   History loading is stale-safe: a new history request aborts the previous
   history request, and a response for a stale request or stale session does not
   render.
