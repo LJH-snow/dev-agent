@@ -2107,3 +2107,47 @@ git diff --check
 - 不引入可配置 provider response 上限；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 54：流式限制 provider 错误响应体
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 53 收口后继续审计 provider 响应路径，发现
+`requestWithRetry` 在构造错误信息前直接调用 `response.text()`；虽然最终
+`summarizeErrorBody` 会截断，但恶意错误响应仍可在截断前占满内存。
+
+**范围：**
+
+- provider 错误响应改为流式有界读取；
+- 固定字节上限 `16 KiB`；
+- 超限时取消 reader，错误信息只保留稳定元数据，不复制超长 body；
+- 保持 2000 字符最终截断、credential redaction、`Retry-After` 和 retry
+  分类语义；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 model contract：超过 `16 KiB` 的非重试错误响应 reject，且错误长度
+  保持有界，reader 已被 cancel；
+- 新增 documentation contract：说明 provider error body 有 `16 KiB` 的
+  streamed read limit；
+- 先运行新增契约确认 RED，再做最小实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/model run build
+pnpm --filter @dev-agent/model run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 HTTP status、retry 分类、`Retry-After` 或 provider wire schema；
+- 不修改 streaming output 边界；
+- 不引入可配置错误体上限；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

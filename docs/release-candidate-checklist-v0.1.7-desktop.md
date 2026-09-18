@@ -91,6 +91,8 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Provider success JSON is read with a streamed bounded reader at `16 MiB`;
   an over-limit non-streaming chat response cancels its stream and rejects
   before provider schemas are parsed.
+- Provider error response reads stop at `16 KiB`; an over-limit error response
+  becomes stable metadata without copying the full body into memory.
 - Managed runtime installation can pass `--runtime-release` to select the GitHub
   release carrying the manifest and archive; the cache identity remains
   `--runtime-version`, and the current default release is `0.1.6`.
@@ -150,7 +152,7 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**44/44**, including the corrected `--project-state` first-release attribution,
+**45/45**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
@@ -158,7 +160,7 @@ public-symlink-containment, root-static-containment, session-ID-length-limit,
 session-listing-limit, history-response-limit, rename-lifecycle, and
 export-response-limit, JSON-object-shape, post-goal-46-preflight,
 streamed-runtime-download-limit, runtime-install-download-limit,
-provider-success-json-limit, runtime-lifecycle-lock,
+provider-success-json-limit, provider-error-read-limit, runtime-lifecycle-lock,
 delete-storage-failure-lock, and decompressed-archive-limit contracts.
 
 ## Consolidated gate
@@ -352,6 +354,11 @@ The post-goal-53 provider-response audit reran the focused gates after adding
 the streamed `16 MiB` provider success JSON limit. The focused run passed with
 model **60/60** and documentation contracts **44/44**. The full gate completed
 with `all selected gates passed`.
+
+The post-goal-54 provider-error audit reran the focused gates after adding the
+streamed `16 KiB` provider error read limit. The focused run passed with model
+**61/61** and documentation contracts **45/45**. The full gate completed with
+`all selected gates passed`.
 
 ## Verification completed
 

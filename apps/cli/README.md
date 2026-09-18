@@ -252,7 +252,8 @@ reaches the terminal and obvious credential-shaped values are shown as `[redacte
 `--json` preserves the original successful model data and relies on JSON escaping for control
 characters. Provider error response bodies are treated as untrusted input: credential-shaped
 fields are redacted and the diagnostic body is bounded before it reaches agent memory or a JSON
-error document.
+error document. Error response reads stop at `16 KiB`; an over-limit error response is
+reported as stable metadata and its stream is cancelled.
 Non-streaming provider success JSON is read with a streamed bounded JSON reader at `16 MiB`;
 an over-limit response is rejected and its reader is cancelled before provider schemas are parsed.
 `NO_COLOR=1` disables color ANSI in rich TTY mode, but cursor movement and clear-line

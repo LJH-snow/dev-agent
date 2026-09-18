@@ -7,6 +7,9 @@
   cancelled before provider schemas are parsed. Existing tool call, usage,
   retry, streaming, and provider error-body redaction behavior remains
   unchanged.
+- Provider error response reads now stop at `16 KiB`; an over-limit error
+  response is reduced to stable metadata and its stream is cancelled before
+  the full body can enter memory.
 
 - `runtime install` now rejects a manifest response larger than `1 MiB` or an
   archive response larger than `16 MiB` with a structured `DOWNLOAD_FAILED`

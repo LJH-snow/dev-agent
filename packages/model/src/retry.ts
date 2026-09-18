@@ -45,6 +45,7 @@ const DEFAULT_RETRIES = 2;
 const DEFAULT_BASE_DELAY_MS = 250;
 const DEFAULT_MAX_DELAY_MS = 2000;
 const MAX_ERROR_BODY_CHARS = 2000;
+const MAX_ERROR_BODY_BYTES = 16 * 1024;
 
 const SENSITIVE_KEY_PATTERN =
   /((?:["']?(?:api[-_ ]?key|access[-_ ]?key|access[-_ ]?token|auth(?:orization)?|cookie|password|passphrase|secret|token|private[-_ ]?key)["']?\s*[:=]\s*)(["']))[^"'\\]*(?:\\.[^"'\\]*)*\2/gi;
@@ -105,7 +106,11 @@ export async function requestWithRetry(
   return withRetry(async () => {
     const response = await perform();
     if (!response.ok) {
-      const body = summarizeErrorBody(await response.text().catch(() => ""));
+      const rawBody = await readBoundedErrorBody(response, MAX_ERROR_BODY_BYTES);
+      const body =
+        rawBody === undefined
+          ? "error response exceeded the 16 KiB read limit"
+          : summarizeErrorBody(rawBody);
       const detail = body ? `: ${body}` : "";
       throw new ModelRequestError(`${label} failed (${response.status})${detail}`, {
         status: response.status,
@@ -114,6 +119,30 @@ export async function requestWithRetry(
     }
     return response;
   }, options);
+}
+
+async function readBoundedErrorBody(
+  response: Response,
+  maxBytes: number
+): Promise<string | undefined> {
+  const reader = response.body?.getReader();
+  if (!reader) return "";
+
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+
+    bytes += value.byteLength;
+    if (bytes > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      return undefined;
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 /**
@@ -231,3 +260,4 @@ function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
 function abortReason(signal: AbortSignal): unknown {
   return signal.reason ?? new Error("The operation was aborted");
 }
+import { Buffer } from "node:buffer";

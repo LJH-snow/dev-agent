@@ -511,6 +511,13 @@ test("provider success JSON responses use streamed bounded readers", () => {
   assert.match(desktopCandidate, /16 MiB/i);
 });
 
+test("provider error bodies use a streamed bounded read limit", () => {
+  assert.match(cliReadme, /16 KiB/i);
+  assert.match(cliReadme, /error response/i);
+  assert.match(desktopCandidate, /16 KiB/i);
+  assert.match(desktopCandidate, /error response/i);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);

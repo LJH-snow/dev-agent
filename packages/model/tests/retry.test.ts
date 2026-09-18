@@ -14,6 +14,37 @@ function jsonResponse(content) {
   });
 }
 
+test("provider error bodies stop reading above the fixed 16 KiB read limit", async () => {
+  let cancelled = false;
+  const readLimit = 16 * 1024;
+  let closeTimer;
+  const body = new ReadableStream({
+    start(controller) {
+      controller.enqueue(Buffer.alloc(readLimit + 1));
+      closeTimer = setTimeout(() => controller.close(), 10);
+    },
+    cancel() {
+      clearTimeout(closeTimer);
+      cancelled = true;
+    },
+  });
+  const provider = createOpenAIProvider({
+    model: "gpt-4o-mini",
+    fetch: async () => new Response(body, { status: 400 }),
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.match(error.message, /16 KiB/);
+      assert.ok(error.message.length < 2_500, `error was ${error.message.length} chars`);
+      return true;
+    }
+  );
+  assert.equal(cancelled, true);
+});
+
 test("a 429 response is retried and honours Retry-After", async () => {
   const responses = [
     new Response("rate limited", { status: 429, headers: { "retry-after": "1" } }),

@@ -1788,6 +1788,58 @@ tests **54/54**, and real Rust integration **11/11**.
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 54: stream bound provider error responses
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a streamed error-body collector bounded at `16 KiB`.
+- Replaced full `response.text()` reads in provider error handling.
+- An over-limit error response is reduced to stable metadata and its reader is
+  cancelled instead of copying the complete body into memory.
+- Preserved the 2000-character final truncation, credential redaction, retry
+  classification, `Retry-After` handling, provider schemas, and streaming.
+- Updated the CLI README, changelog, v0.1.7 candidate checklist, and plan.
+
+**RED contract:**
+
+- Added `provider error bodies stop reading above the fixed 16 KiB read
+  limit` to model contracts.
+- Added `provider error bodies use a streamed bounded read limit` to
+  documentation contracts.
+- RED proof: model focused tests recorded **60 passed / 1 failed** because the
+  error body was read in full and the reader was not cancelled; documentation
+  contracts recorded **44 passed / 1 failed**.
+
+**Files touched:**
+
+- `packages/model/src/retry.ts`
+- `packages/model/tests/retry.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/model run build
+pnpm --filter @dev-agent/model run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: model focused tests **61/61**, documentation contract **45/45**, and
+`pnpm verify` completed with `all selected gates passed`. Focused counts were
+runtime-manager **21/21**, Desktop **127/127**, CLI **314/314**, Rust unit/doc
+tests **54/54**, and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE
