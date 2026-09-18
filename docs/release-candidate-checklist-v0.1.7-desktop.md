@@ -2,8 +2,9 @@
 
 **Date:** 2026-09-18
 
-**Status:** workspace-only candidate; technical gates recorded; no Git tag; no
-push; no npm publish; no GitHub Release.
+**Status:** `0.1.7` has been published to npm and released from tag `v0.1.7`.
+The pre-publication technical gates and workspace-only boundary below are kept
+as historical evidence.
 
 This checklist summarizes the Desktop-facing work prepared during the
 2026-09-18 overnight window. It is not release authorization.
@@ -96,6 +97,9 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Provider streaming lines are buffered with a fixed `1 MiB` limit; an
   over-limit line cancels its stream and rejects before the unbounded buffer
   can grow.
+- Filesystem reads, write/edit snapshots, edit, and patch use a fixed `16 MiB`
+  whole-file read limit; an oversized file rejects before its bytes enter
+  memory, and mutation targets remain unchanged.
 - Managed runtime installation can pass `--runtime-release` to select the GitHub
   release carrying the manifest and archive; the cache identity remains
   `--runtime-version`, and the current default release is `0.1.6`.
@@ -121,7 +125,8 @@ This checklist summarizes the Desktop-facing work prepared during the
 ## Released versus workspace-only
 
 - `@agent_cli/cli@0.1.6` is the published npm version and npm `latest`.
-- `@agent_cli/cli@0.1.7` remains a workspace-only candidate.
+- Before authorization, `@agent_cli/cli@0.1.7` was a workspace-only candidate.
+- It is now published to npm and represented by the `v0.1.7` GitHub Release.
 - The v0.1.6 GitHub Release already contains the four platform runtime
   archives, checksums, fixed manifest, and CLI tarball.
 - Desktop changes prepared in this window are not published and should not be
@@ -149,10 +154,10 @@ regression test, the 2026-09-18 plan/progress evidence, and the documentation
 contract/index updates.
 
 No shared staging index remains for these slices. Maintainers review these
-commits separately and coordinate before combining them. Until that maintainer
-decision is made, keep the candidate workspace-only: no additional push, tag,
-npm publish, or GitHub Release. The release preflight and isolated runtime
-smoke remain technical readiness evidence, not release authorization.
+commits separately and coordinate before combining them. The later **release
+authorization resolved this handoff**: `main` and tag `v0.1.7` were pushed, the
+release workflow passed, npm `0.1.7` was published, and the workspace then
+advanced to the next candidate.
 
 The documentation contract now covers this review boundary and passes
 **45/45**, including the corrected `--project-state` first-release attribution,
@@ -449,7 +454,7 @@ installation and isolated runtime lifecycle against the known release. It does
 not authorize publishing.
 
 
-## Remaining gates before any release decision
+## Historical gates before the release decision
 
 - `pnpm build`
 - `pnpm verify:typescript`
@@ -462,21 +467,35 @@ not authorize publishing.
 - `pnpm verify:integration`
 - `pnpm release:preflight`
 - `git diff --check`
-- Maintainer review and explicit release authorization
+- Maintainer review and explicit release authorization (completed by the user)
 
-## Explicit non-goals
+## Publication evidence
 
-- Do not create a Git tag.
-- Do not push.
-- Do not publish to npm.
-- Do not create a GitHub Release.
+- `pnpm release:preflight` passed with candidate `0.1.7`, published registry
+  `0.1.6`, authenticated npm identity, and five package files.
+- `pnpm release:publish -- --publish` ran after the user's explicit release
+  authorization. The initial registry query briefly lagged, then confirmed
+  `0.1.7` as npm `latest`.
+- Tag `v0.1.7` was created and pushed. Release run
+  `35338225586` completed successfully and created the
+  [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.7).
+
+## Historical explicit non-goals
+
+## Pre-publication boundary
+
+Before release authorization, this slice was workspace-only and the non-goals
+explicitly included no npm publish.
+- No Git tag, push, npm publish, or GitHub Release was performed during the
+  pre-authorization window.
 - Do not modify `~/.npmrc`.
 - Do not infer release readiness from the registry or UI alone.
 
-## Human decisions required
+## Resolved human decisions
 
-1. Decide whether the 0.1.7 candidate should include the committed CLI/runtime
-   release work or defer it to a later candidate.
-2. Confirm the final SemVer/tag and whether the desktop surface should be part
-   of the npm CLI package or a separate desktop distribution.
-3. Approve the release window and rollback owner before any tag or publish.
+1. The committed CLI/runtime and Desktop hardening work was included in the
+   `0.1.7` candidate.
+2. SemVer and tag are `0.1.7` / `v0.1.7`; the npm CLI package remains the user
+   surface and Desktop is not published separately.
+3. The release window was explicitly authorized by the user; npm publish, tag,
+   push, and the GitHub Release workflow completed successfully.

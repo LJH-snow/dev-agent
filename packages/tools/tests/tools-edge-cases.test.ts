@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -388,4 +388,42 @@ test("code-search rejects an invalid symbol kind", async () => {
     () => tool.execute({ mode: "search", query: "x", kind: "namespace" }),
     /code-search kind must be a valid symbol kind/
   );
+});
+
+// ---------------------------------------------------------------------------
+// FilesystemTool oversized reads
+// ---------------------------------------------------------------------------
+
+async function writeOversizeFile(dir, name) {
+  const path = join(dir, name);
+  await writeFile(path, "x".repeat(16 * 1024 * 1024 + 1), "utf8");
+  return path;
+}
+
+test("filesystem read rejects a file above the 16 MiB read limit", async () => {
+  await withTempDir("dev-agent-fs-read-limit-", async (dir) => {
+    const path = await writeOversizeFile(dir, "big.txt");
+    const tool: any = new FilesystemTool();
+
+    await assert.rejects(
+      () => tool.execute({ action: "read", path }),
+      /filesystem file exceeds the 16 MiB read limit/
+    );
+  });
+});
+
+test("filesystem edit rejects a file above the 16 MiB read limit without writing", async () => {
+  await withTempDir("dev-agent-fs-edit-limit-", async (dir) => {
+    const path = await writeOversizeFile(dir, "big.txt");
+    const before = await readFile(path, "utf8");
+    const tool: any = new FilesystemTool();
+
+    await assert.rejects(
+      () => tool.execute({ action: "edit", path, oldText: "x", newText: "y" }),
+      /filesystem file exceeds the 16 MiB read limit/
+    );
+
+    const after = await readFile(path, "utf8");
+    assert.equal(after, before);
+  });
 });

@@ -2212,3 +2212,67 @@ git diff --check
 - 不引入可配置行缓冲上限；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 56：限制 filesystem 工具整文件读取
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 55 收口后继续审计内存边界，发现
+filesystem 工具的 `readFileRange`（read action）和 `readSnapshot`
+（write/edit/patch 等 mutation 的 before/after 快照）都先调用
+`readFile(path)` 把整个文件读入内存，没有大小上限；恶意或失控的
+workspace 文件可以造成无上限内存分配。
+
+**范围：**
+
+- read action 在读取前检查 `fileStat.size`，超过固定 `16 MiB` 时返回
+  稳定错误，不读入文件内容；
+- `readSnapshot` 在读取前检查 `fileStat.size`，超过固定 `16 MiB` 时
+  fail-closed，不读入文件也不执行 mutation；
+- 保持路径解析、workspace 隔离、change-set 校验、hash guard 和成功路径
+  行为不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 tools contract：read action 在超过 `16 MiB` 的文件上 reject，且
+  错误信息不包含文件内容或绝对路径；
+- 新增 tools contract：edit/write/patch 在超过 `16 MiB` 的目标文件上
+  reject，且目标文件不被修改；
+- 新增 documentation contract：说明 filesystem tool 的 `16 MiB` 整文件
+  读取上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：tools focused tests 为 **125 passed / 2 failed**，read 和 edit
+  都会整读文件且不拒绝；文档契约为 **46 passed / 1 failed**。
+
+**完成记录：**
+
+- 新增 `assertReadFileSize` helper 与 `MAX_READ_FILE_BYTES` 常量（
+  `16 MiB`）；
+- `readFileRange`、`editFile`、`patchFile` 和 `readSnapshot` 在读取前
+  检查文件大小，超限返回稳定错误；
+- read action 和 edit/write/patch 的超限文件不再被读入内存，且目标文件
+  不被修改；
+- RED 后 tools focused tests 为 **127/127**，文档契约为 **48/48**；
+- `pnpm verify` 输出 `all selected gates passed`；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/tools run build
+pnpm --filter @dev-agent/tools run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 filesystem 工具的 DTO 或 workspace 隔离语义；
+- 不新增可配置读取上限；
+- 不回显文件内容、绝对路径或原始错误；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

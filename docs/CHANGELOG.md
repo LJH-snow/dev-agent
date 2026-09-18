@@ -1,11 +1,40 @@
 # Changelog
 
-## 2026-09-18（runtime install and remove bounds）
+## 2026-09-18（`@agent_cli/cli@0.1.7` published release）
+
+- Published `@agent_cli/cli@0.1.7` to npm; registry `latest` now points to
+  `0.1.7`.
+- Created and pushed tag `v0.1.7`; the release workflow built and verified four
+  platform runtime archives, checksum sidecars, the checksum-only manifest, and
+  the CLI npm tarball, then created
+  [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.7).
+- The release includes Desktop hardening, managed runtime lifecycle/download
+  bounds, doctor managed-state semantics, `--runtime-release`, and the provider
+  success/error streaming read limits prepared in the candidate checklist.
+
+## 2026-09-18（provider streaming line bound）
 
 - Provider streaming lines are buffered with a fixed `1 MiB` limit; an
   over-limit line cancels its stream and rejects before the unbounded buffer
   can grow. Existing tool call, usage, retry, onToken, trailing-flush, and
   provider schema behavior remains unchanged.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
+## 2026-09-18（filesystem whole-file read limit）
+
+- Filesystem tool whole-file reads (read/edit/patch/snapshot) now stop at
+  `16 MiB`; an over-limit file is rejected with a stable
+  `filesystem file exceeds the 16 MiB read limit` error without being read
+  into memory or modified.
+- Filesystem reads and the file snapshots used by write/edit/patch reject the
+  target before reading bytes. Edit and patch targets remain unchanged when
+  the limit is hit.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
+## 2026-09-18（runtime install and remove bounds）
+
 - Provider non-streaming success JSON is read with a streamed bounded JSON
   reader at `16 MiB`; an over-limit response is rejected and its reader is
   cancelled before provider schemas are parsed. Existing tool call, usage,
@@ -28,8 +57,8 @@
   acting midway through atomic replacement.
 - Runtime archive extraction now limits the decompressed tar payload to `32 MiB`
   so an oversized gzip response cannot allocate unbounded memory.
-- This change is only in the `0.1.7` workspace candidate; it is not part of the
-  already-published `0.1.6` npm tarball or `v0.1.6` GitHub Release.
+- This change is part of the published `0.1.7` npm tarball and `v0.1.7` GitHub
+  Release; it is not part of the earlier `0.1.6` release.
 
 ## 2026-09-17（Desktop managed runtime status）
 

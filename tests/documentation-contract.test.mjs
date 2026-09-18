@@ -168,10 +168,10 @@ test("release docs distinguish readiness audit from formal release authorization
     /## v64：Release candidate readiness（已完成）/
   );
   assert.match(nextRoadmap, /v64 readiness audit 已完成；formal release 仍保持 gated/);
-  assert.match(readme, /The `v0\.1\.6` GitHub release flow is complete/);
+  assert.match(readme, /The `v0\.1\.6` and `v0\.1\.7` GitHub release flows are complete/);
   assert.match(
     readme,
-    /Future\s+versions require a new explicit maintainer release decision/
+    /Future\s+versions require a new explicit maintainer\s+release decision/
   );
   assert.match(docsReadme, /release-candidate readiness audit/);
 });
@@ -258,7 +258,7 @@ test("current overnight and v0.1.7 candidate evidence is indexed", () => {
   }
   assert.match(
     readme,
-    /81\. ~~Managed runtime and Desktop project-surface hardening~~ \(workspace done; release gated\)/
+    /81\. ~~Managed runtime and Desktop project-surface hardening~~ \(done; released in 0\.1\.7\)/
   );
 });
 
@@ -486,6 +486,20 @@ test("v0.1.7 records the post-goal-46 release preflight refresh", () => {
   assert.match(desktopCandidate, /five/i);
 });
 
+test("v0.1.7 release is synchronized across npm, tag, and GitHub", () => {
+  assert.equal(releaseState.publishedVersion, "0.1.7");
+  assert.equal(releaseState.candidateVersion, "0.1.8");
+  assert.equal(releaseState.status, "candidate");
+  assert.equal(cliPackage.version, "0.1.8");
+  assert.match(npmRelease, /v0\.1\.7 GitHub Release 记录/);
+  assert.match(npmRelease, /https:\/\/github\.com\/LJH-snow\/dev-agent\/releases\/tag\/v0\.1\.7/);
+  assert.match(npmRelease, /npm view @agent_cli\/cli@0\.1\.7 version/);
+  assert.match(npmRelease, /registry 查询确认 `0\.1\.7` 已完成发布/);
+  assert.match(desktopCandidate, /Publication evidence/);
+  assert.match(desktopCandidate, /35338225586/);
+  assert.match(readme, /released in 0\.1\.7/);
+});
+
 test("Desktop diagnostic reports are ignored", () => {
   assert.match(gitignore, /apps\/desktop\/report\.\*\.json/);
 });
@@ -523,6 +537,17 @@ test("provider streaming lines use a bounded read limit", () => {
   assert.match(cliReadme, /1 MiB/i);
   assert.match(desktopCandidate, /streaming line/i);
   assert.match(desktopCandidate, /1 MiB/i);
+});
+
+test("filesystem tool documents the 16 MiB whole-file read limit", () => {
+  assert.match(cliReadme, /filesystem[\s\S]*read limit/i);
+  assert.match(cliReadme, /whole-file read limit/i);
+  assert.match(cliReadme, /16 MiB/);
+  assert.match(cliReadme, /mutation targets remain unchanged/i);
+  assert.match(desktopCandidate, /filesystem[\s\S]*read limit/i);
+  assert.match(desktopCandidate, /whole-file read limit/i);
+  assert.match(desktopCandidate, /16 MiB/);
+  assert.match(desktopCandidate, /mutation targets remain unchanged/i);
 });
 
 test("runtime manager documents the install and remove lifecycle lock", () => {

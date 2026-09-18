@@ -26,6 +26,17 @@ import {
 import type { Tool, ToolExecutionContext } from "./index.js";
 import { canonicalWorkingDirectory, resolveWorkspacePath } from "./workspace-path.js";
 
+const MAX_READ_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
+
+async function assertReadFileSize(path: string, maxBytes: number): Promise<void> {
+  const fileStat = await lstat(path);
+  if (fileStat.size > maxBytes) {
+    throw new Error(
+      `filesystem file exceeds the ${maxBytes / (1024 * 1024)} MiB read limit`
+    );
+  }
+}
+
 export type FilesystemMutationAction = "write" | "edit" | "patch" | "mkdir";
 export type FilesystemAction =
   | "read"
@@ -1210,6 +1221,7 @@ async function readSnapshot(path: string): Promise<FileSnapshot> {
       return { exists: true, kind: "directory", mode: fileStat.mode & 0o7777 };
     }
     if (fileStat.isFile()) {
+      await assertReadFileSize(path, MAX_READ_FILE_BYTES);
       return {
         exists: true,
         kind: "file",
@@ -1239,6 +1251,7 @@ async function readFileRange(
   offset: number,
   limit: number
 ): Promise<Record<string, unknown>> {
+  await assertReadFileSize(path, MAX_READ_FILE_BYTES);
   const source = await readFile(path, "utf8");
   const lines = splitLines(source);
   const totalLines = lines.length;
@@ -1291,6 +1304,7 @@ async function editFile(
   oldText: string,
   newText: string
 ): Promise<Record<string, unknown>> {
+  await assertReadFileSize(path, MAX_READ_FILE_BYTES);
   const source = await readFile(path, "utf8");
   const updated = calculateEdit(source, oldText, newText, path);
   await writeFile(path, updated, "utf8");
@@ -1331,6 +1345,7 @@ async function patchFile(
   path: string,
   hunks: readonly PatchHunk[]
 ): Promise<Record<string, unknown>> {
+  await assertReadFileSize(path, MAX_READ_FILE_BYTES);
   const source = await readFile(path, "utf8");
   const working = calculatePatch(source, hunks, path);
   await writeFile(path, working, "utf8");

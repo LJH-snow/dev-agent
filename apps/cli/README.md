@@ -346,6 +346,10 @@ and the `reviews` field records the structured review outcome. In
 `--mcp-server` mode there is no reviewer channel, so `--approval review-writes`
 denies filesystem mutations safely rather than applying them.
 
+Filesystem reads, write/edit snapshots, edit, and patch use a fixed `16 MiB`
+whole-file read limit. An oversized file rejects before its bytes enter memory,
+and mutation targets remain unchanged.
+
 ### Change-set validation
 
 After an approved `review-writes` apply, the CLI derives safe checks from the
