@@ -44,6 +44,14 @@ function checkFor(report, name) {
   return report.checks.find((check) => check.name === name);
 }
 
+function expectedRuntimeExecutorMode() {
+  return process.platform === "darwin"
+    ? "sandboxed-macos"
+    : process.platform === "linux"
+      ? "sandboxed-linux"
+      : "unsupported";
+}
+
 test("runDoctor reports a healthy environment as ok", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-"));
   try {
@@ -104,12 +112,7 @@ test("runDoctor fails when the configured rust binary is missing", async () => {
     });
 
     const rust = checkFor(report, "rust runtime");
-    const expectedMode =
-      process.platform === "darwin"
-        ? "sandboxed-macos"
-        : process.platform === "linux"
-          ? "sandboxed-linux"
-          : "unsupported";
+    const expectedMode = expectedRuntimeExecutorMode();
     assert.equal(report.executorMode, expectedMode);
     assert.equal(rust.status, "fail");
     assert.equal(report.summary.fail, 1);
@@ -405,7 +408,7 @@ test("runDoctor merges managed runtime platform and state with a healthy probe",
     assert.deepEqual(report.runtime, {
       source: "runtime",
       configured: true,
-      selectedMode: "sandboxed-macos",
+      selectedMode: expectedRuntimeExecutorMode(),
       runtimeVersion: "0.2.0",
       protocolVersion: 1,
       target: "aarch64-apple-darwin",
