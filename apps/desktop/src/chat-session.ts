@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 
 import {
@@ -687,10 +687,16 @@ function assignMcpPrefixes(names: readonly (string | undefined)[]): readonly str
 }
 
 /** Reads the shared sections of ~/.dev-agent/config.json. */
+const MAX_CONFIG_FILE_BYTES = 1024 * 1024;
+
 function loadConfigFile(): DesktopConfigFile {
   let raw: string;
   try {
-    raw = readFileSync(join(homedir(), ".dev-agent", "config.json"), "utf8");
+    const path = join(homedir(), ".dev-agent", "config.json");
+    if (statSync(path).size > MAX_CONFIG_FILE_BYTES) {
+      return {};
+    }
+    raw = readFileSync(path, "utf8");
   } catch {
     return {};
   }
