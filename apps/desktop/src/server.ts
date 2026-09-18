@@ -132,6 +132,7 @@ const activeSessionRequestMessage =
 const maxSessionIdLength = 96;
 const maxSessionListEntries = 256;
 const maxHistoryResponseBytes = 1024 * 1024;
+const maxExportResponseBytes = 1024 * 1024;
 
 const maxJsonBodyBytes = 1024 * 1024;
 const maxStaticFileBytes = 1024 * 1024;
@@ -582,20 +583,24 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const metadata = await memory.getMetadata();
         const evidenceSummary = await memory.evidenceSummary();
         const evidence = filterEvidence(validations, changeSets, filterResult.filters);
+        const transcript = renderTranscript(
+          sessionId,
+          entries,
+          metadata,
+          evidence.validations,
+          evidence.changeSets,
+          evidenceSummary
+        );
+        if (Buffer.byteLength(transcript, "utf8") > maxExportResponseBytes) {
+          res.writeHead(413, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "export response exceeds the 1 MiB limit" }));
+          return;
+        }
         res.writeHead(200, {
           "content-type": "text/markdown; charset=utf-8",
           "content-disposition": `attachment; filename="${sessionId}.md"`,
         });
-        res.end(
-          renderTranscript(
-            sessionId,
-            entries,
-            metadata,
-            evidence.validations,
-            evidence.changeSets,
-            evidenceSummary
-          )
-        );
+        res.end(transcript);
         return;
       }
 

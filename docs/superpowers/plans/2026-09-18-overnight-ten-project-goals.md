@@ -1367,6 +1367,63 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 39：限制 Desktop export 响应大小
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 38 收口后继续审计 Desktop 读取路径，发现
+history 已有 `1 MiB` 上限，但 Markdown export 会把完整 session 渲染后直接
+返回，没有固定 response 字节上限。
+
+**范围：**
+
+- 为 Desktop session Markdown export 设定固定 `1 MiB` 总字节上限；
+- 超过上限返回稳定 `413`，不回显 transcript、路径或原始错误；
+- 小型 export 的 Markdown transcript、evidence summary 与 filter 行为不变；
+- 不改变 evidence audit 已有的 limit 机制；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：session 文件渲染为 Markdown 后超过 `1 MiB` 时，
+  `/export` 返回稳定 `413`；RED 阶段证明当前实现返回 `200` 并发送完整
+  transcript；
+- 在 documentation contract 中断言 README 与 checklist 记录 export response
+  上限；
+- 先确认 RED，再做最小实现。
+- RED proof：无上限实现时，超过 `1 MiB` 的 Markdown export 返回 `200`；
+  聚焦运行为 **116 passed / 1 failed**。文档契约为 **29 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增分页、裁剪、可配置上限或 export schema 变更；
+- 不回显绝对路径、文件内容或原始错误；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已为 Desktop Markdown export 加入固定 `1 MiB` response 上限；
+- 超限 export 返回稳定 `413`，不回显 transcript、路径或原始错误；
+- 小型 export 的 Markdown、filters 和 evidence summary 行为保持；
+- RED 后 Desktop focused tests **116/116，1 failed**；文档契约为
+  **29/29，1 failed**。实现后 Desktop focused tests **117/117**，
+  documentation contract **30/30**；`pnpm verify` 输出
+  `all selected gates passed`，相关计数为 runtime-manager **15/15**、CLI
+  **314/314**、Rust unit/doc tests **54/54**、real Rust integration
+  **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

@@ -43,6 +43,8 @@ This checklist summarizes the Desktop-facing work prepared during the
   order.
 - Desktop history responses are capped at `1 MiB`; an oversized transcript
   returns `413` without exposing the transcript, path, or contents.
+- Desktop export responses are capped at `1 MiB`; an oversized Markdown
+  transcript returns `413` without exposing the transcript, path, or contents.
 - Desktop rename rejects an active target and holds both the source and target
   as a lifecycle lock; a concurrent rename returns `409` rather than duplicating
   the source.
@@ -248,18 +250,25 @@ passed with Desktop **116/116**, runtime-manager **15/15**, CLI **314/314**,
 documentation contracts **29/29**, Rust unit/doc tests **54/54**, and real Rust
 integration **11/11**.
 
+The post-goal-39 export-response audit reran `pnpm verify` after capping
+Desktop Markdown export responses at `1 MiB`. It passed with Desktop
+**117/117**, runtime-manager **15/15**, CLI **314/314**, documentation
+contracts **30/30**, Rust unit/doc tests **54/54**, and real Rust integration
+**11/11**.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **116 tests passed, 0 failed.** The latest regression contracts cover
+Result: **117 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
 rollback joining the active session lifecycle, the fixed JSON request-body
 limit, the fixed session registry count limit, bounded always-allow memory, and
 the fixed static-response size, session-ID length, session-listing size,
-history-response size, active rename target, and concurrent rename limits.
+history-response size, export-response size, active rename target, and
+concurrent rename limits.
 
 ```sh
 pnpm build

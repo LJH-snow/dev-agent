@@ -138,6 +138,8 @@ returns `413` without echoing the path, contents, or raw error.
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
   accepts the same `changeSetId`, `validationId`, and `status` filters and adds
   metadata-only change-set evidence and evidence-retention summary sections.
+  The fixed export response is capped at `1 MiB`; an oversized transcript
+  returns `413` without echoing the transcript, path, or raw error.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `tool`, `tool-progress`, `tool-result`, `turn`, `usage`,
   `approval-request`, `approval`, `validation`, `done`, `error`. A
