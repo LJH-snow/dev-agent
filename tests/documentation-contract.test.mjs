@@ -508,3 +508,10 @@ test("desktop delete storage failure releases the lifecycle lock", () => {
   assert.match(desktopCandidate, /release/i);
   assert.match(desktopCandidate, /lifecycle lock/i);
 });
+
+test("runtime manager documents the decompressed archive limit", () => {
+  assert.match(cliReadme, /decompress/i);
+  assert.match(cliReadme, /32 MiB/i);
+  assert.match(desktopCandidate, /decompress/i);
+  assert.match(desktopCandidate, /32 MiB/i);
+});

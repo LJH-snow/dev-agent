@@ -11,6 +11,8 @@
 - Runtime `install` and `remove` now share a per-version lifecycle lock, so a
   concurrent remove waits until the active installation completes instead of
   acting midway through atomic replacement.
+- Runtime archive extraction now limits the decompressed tar payload to `32 MiB`
+  so an oversized gzip response cannot allocate unbounded memory.
 - This change is only in the `0.1.7` workspace candidate; it is not part of the
   already-published `0.1.6` npm tarball or `v0.1.6` GitHub Release.
 

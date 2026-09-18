@@ -3,9 +3,11 @@ import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { gzipSync } from "node:zlib";
 
 // @ts-ignore The RED phase intentionally runs before dist/index.js exists.
 const api = await import("../dist/index.js");
+const archiveModule = await import("../dist/archive.js");
 
 const VERSION = "0.2.0";
 const MANIFEST_RELEASE_VERSION = "0.1.6";
@@ -16,6 +18,7 @@ const TARGET = "aarch64-apple-darwin";
 const OTHER_TARGET = "x86_64-unknown-linux-gnu";
 const MANIFEST_DOWNLOAD_LIMIT = 1024 * 1024;
 const ARCHIVE_DOWNLOAD_LIMIT = 16 * 1024 * 1024;
+const DECOMPRESSED_ARCHIVE_LIMIT = 32 * 1024 * 1024;
 
 function artifactFor(target = TARGET, sha256 = SHA): any {
   const targetInfo = {
@@ -425,6 +428,23 @@ test("rejects a runtime archive above the fixed 16 MiB download limit", async ()
     (error: unknown) => assertRuntimeError(error, "DOWNLOAD_FAILED")
   );
   assert.deepEqual(await readdir(join(root, VERSION)).catch(() => []), []);
+});
+
+test("rejects a runtime archive above the fixed 32 MiB decompressed limit", async () => {
+  const root = await tempRoot();
+  const destination = join(root, "extracted");
+  const bomb = gzipSync(Buffer.alloc(DECOMPRESSED_ARCHIVE_LIMIT + 1), { level: 9 });
+
+  await assert.rejects(
+    () => archiveModule.extractTarGz(bomb, destination),
+    (error: unknown) => {
+      assertRuntimeError(error, "ARCHIVE_INVALID");
+      assert.match((error as { message?: string }).message ?? "", /32 MiB/);
+      return true;
+    }
+  );
+  const destinationExists = await stat(destination).then(() => true).catch(() => false);
+  assert.equal(destinationExists, false);
 });
 
 test("cancellation cleans temporary state and returns a structured cancellation error", async () => {

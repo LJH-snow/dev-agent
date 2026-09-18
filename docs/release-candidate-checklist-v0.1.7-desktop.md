@@ -94,6 +94,9 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Runtime install responses are bounded: manifests are capped at `1 MiB` and
   archives at `16 MiB`; an over-limit response returns a structured
   `DOWNLOAD_FAILED` result before staging or extraction.
+- Runtime archive extraction limits the decompressed tar payload at `32 MiB`,
+  rejecting a gzip bomb with a structured `ARCHIVE_INVALID` result before it
+  can allocate unbounded memory or write extraction files.
 - Runtime install and remove are serialized for the same runtime version; a
   concurrent remove waits until the active installation completes.
 - CLI doctor distinguishes the selected runtime probe identity
@@ -143,15 +146,15 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**41/41**, including the corrected `--project-state` first-release attribution,
+**42/42**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
 public-symlink-containment, root-static-containment, session-ID-length-limit,
 session-listing-limit, history-response-limit, rename-lifecycle, and
 export-response-limit, JSON-object-shape, post-goal-46-preflight,
-runtime-install-download-limit, runtime-lifecycle-lock, and
-delete-storage-failure-lock contracts.
+runtime-install-download-limit, runtime-lifecycle-lock,
+delete-storage-failure-lock, and decompressed-archive-limit contracts.
 
 ## Consolidated gate
 
@@ -327,6 +330,11 @@ The post-goal-50 delete-lock audit reran the focused gates after bounding a
 DELETE storage failure to release its lifecycle lock. The focused run passed
 with Desktop **127/127** and documentation contracts **41/41**. The full gate
 is recorded in the consolidated evidence below.
+
+The post-goal-51 gzip-bound audit reran the focused gates after limiting the
+decompressed runtime tar payload. The focused run passed with runtime-manager
+**19/19** and documentation contracts **42/42**. The full gate is recorded in
+the consolidated evidence below.
 
 ## Verification completed
 

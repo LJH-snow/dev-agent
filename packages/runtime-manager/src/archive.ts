@@ -8,6 +8,7 @@ import { isSafeRelativePath, resolveWithin } from "./security.js";
 
 const TAR_BLOCK_SIZE = 512;
 const ZERO_BLOCK = Buffer.alloc(TAR_BLOCK_SIZE);
+const MAX_DECOMPRESSED_TAR_BYTES = 32 * 1024 * 1024;
 
 function fieldString(buffer: Buffer, start: number, length: number): string {
   return buffer.subarray(start, start + length).toString("utf8").replace(/\0.*$/s, "").trim();
@@ -90,8 +91,14 @@ function archivePath(destination: string, entry: string): string {
 export async function extractTarGz(archive: Uint8Array, destination: string): Promise<void> {
   let tar: Buffer;
   try {
-    tar = gunzipSync(Buffer.from(archive));
-  } catch {
+    tar = gunzipSync(Buffer.from(archive), { maxOutputLength: MAX_DECOMPRESSED_TAR_BYTES });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException | undefined)?.code === "ERR_BUFFER_TOO_LARGE") {
+      throw new RuntimeManagerError(
+        "ARCHIVE_INVALID",
+        "Runtime archive decompresses above the 32 MiB limit"
+      );
+    }
     throw new RuntimeManagerError("ARCHIVE_INVALID", "Runtime archive is not a valid gzip stream");
   }
 
@@ -177,4 +184,3 @@ export async function verifyExecutableFile(filePath: string): Promise<void> {
     throw new RuntimeManagerError("HEALTH_CHECK_FAILED", "Runtime binary is not executable");
   }
 }
-

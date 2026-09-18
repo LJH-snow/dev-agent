@@ -1628,6 +1628,55 @@ Result: Desktop focused tests **127/127**, documentation contract **41/41**,
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 51: bound runtime archive decompression
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `32 MiB` limit to the decompressed runtime tar payload.
+- Passed Node zlib's `maxOutputLength` to `gunzipSync`, so over-limit
+  decompression fails before a full oversized buffer is formed.
+- Returned stable `ARCHIVE_INVALID` metadata for a gzip bomb and preserved the
+  existing message for invalid gzip streams.
+- Updated the CLI README, changelog, and v0.1.7 Desktop candidate checklist.
+
+**RED contract:**
+
+- Added `rejects a runtime archive above the fixed 32 MiB decompressed limit`
+  to runtime-manager contracts.
+- Added `runtime manager documents the decompressed archive limit` to
+  documentation contracts.
+- RED proof: runtime-manager **18 passed / 1 failed**; documentation contract
+  **41 passed / 1 failed**.
+
+**Files touched:**
+
+- `packages/runtime-manager/src/archive.ts`
+- `packages/runtime-manager/tests/runtime-manager.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/runtime-manager run build
+pnpm --filter @dev-agent/runtime-manager run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: runtime-manager focused tests **19/19**, documentation contract
+**42/42**, `pnpm verify` completed with `all selected gates passed`, and
+`git diff --check` passed.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

@@ -1935,7 +1935,7 @@ git diff --check
 
 ### Follow-up 目标 50：释放 Desktop delete 失败后的 lifecycle 锁
 
-**Status:** IN PROGRESS
+**Status:** DONE
 
 **建立时间：** 2026-09-18 Goal 49 收口后审计 Desktop session lifecycle，发现
 `DELETE /api/sessions/<id>` 在 `rm` 抛出非 ENOENT 错误时不会执行 finally
@@ -1973,5 +1973,48 @@ git diff --check
 - 不改变 DELETE schema、active-session 409 语义、rename/rollback 生命周期
   或 session registry limit；
 - 不吞掉不可恢复 storage failure；第二次 DELETE 仍可返回 500，但锁必须释放；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 51：限制 runtime archive 解压后的内存
+
+**Status:** IN PROGRESS
+
+**建立时间：** 2026-09-18 Goal 50 收口后审计 archive 边界，发现 Goal 48
+限制了压缩响应大小，但没有限制 `gunzipSync` 的解压输出；一个小于 16 MiB
+的 gzip 炸弹仍会在解压时请求无上限内存。
+
+**范围：**
+
+- 解压后的 tar payload 固定上限 `32 MiB`；
+- 使用 Node zlib `gunzipSync` 的 `maxOutputLength` 在形成完整 buffer 前
+  fail-closed；
+- 超限返回结构化 `ARCHIVE_INVALID`，不创建 extraction 目录或写入文件；
+- 无效 gzip 仍返回现有 `ARCHIVE_INVALID`；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 runtime-manager archive contract：构造超过 32 MiB 的零数据 gzip
+  fixture，调用 `extractTarGz` 返回 `ARCHIVE_INVALID` 且目标目录不存在；
+- 新增 documentation contract：CLI README 与 candidate checklist 说明固定
+  `32 MiB` decompressed tar limit；
+- 先运行新增契约确认 RED，再做最小实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/runtime-manager run build
+pnpm --filter @dev-agent/runtime-manager run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增可配置解压上限；
+- 不改变 tar path、link、PAX、checksum、entry truncation 和 atomic install
+  语义；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
