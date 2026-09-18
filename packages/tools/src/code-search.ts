@@ -68,6 +68,7 @@ const symbolKinds = new Set<SymbolKind>([
 interface FileSignature {
   readonly mtimeMs: number;
   readonly size: number;
+  readonly ctimeMs?: number;
 }
 
 interface CachedScan {
@@ -194,8 +195,10 @@ export class CodeSearchTool implements Tool {
 
   /**
    * Returns the symbol index and file sources for a scan root, re-reading only
-   * the files whose size or mtime changed since the previous call. Deleted
-   * files are dropped from both the index and the cached sources.
+   * the files whose mtime, size, or ctime changed since the previous call.
+   * Legacy entries without ctime are re-read because mtime and size alone
+   * cannot prove that a file is unchanged. Deleted files are dropped from
+   * both the index and the cached sources.
    */
   private async loadScan(root: string, maxDepth: number): Promise<CachedScan> {
     const cacheKey = `${root}\u0000${maxDepth}`;
@@ -258,7 +261,14 @@ export class CodeSearchTool implements Tool {
 
     for (const [filePath, signature] of signatures) {
       const previous = cached.signatures.get(filePath);
-      if (previous && previous.mtimeMs === signature.mtimeMs && previous.size === signature.size) {
+      if (
+        previous &&
+        previous.ctimeMs !== undefined &&
+        signature.ctimeMs !== undefined &&
+        previous.mtimeMs === signature.mtimeMs &&
+        previous.size === signature.size &&
+        previous.ctimeMs === signature.ctimeMs
+      ) {
         continue;
       }
       const source = await readSource(filePath);
@@ -311,7 +321,11 @@ export class CodeSearchTool implements Tool {
         }
         for (const [filePath, signature] of existing.signatures) {
           if (!isWithinDepth(root, filePath, maxDepth) && !ignore.isIgnored(relative(root, filePath))) {
-            signatures.set(filePath, signature);
+            const normalized = await normalizePreservedSignature(filePath, signature);
+            if (normalized === undefined) {
+              continue;
+            }
+            signatures.set(filePath, normalized);
           }
         }
         for (const symbol of existing.index.listSymbols()) {
@@ -400,6 +414,28 @@ function restrictToDepth(root: string, scan: CachedScan, maxDepth: number): Cach
   }
 
   return { index, sources, signatures, fromDisk: scan.fromDisk };
+}
+
+async function normalizePreservedSignature(
+  filePath: string,
+  signature: FileSignature
+): Promise<FileSignature | undefined> {
+  if (signature.ctimeMs !== undefined) {
+    return signature;
+  }
+  try {
+    const info = await stat(filePath);
+    if (!info.isFile()) {
+      return undefined;
+    }
+    return {
+      mtimeMs: info.mtimeMs,
+      size: info.size,
+      ctimeMs: info.ctimeMs,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 function requireString(value: unknown, field: string): string {
@@ -498,7 +534,11 @@ async function collectSignatures(
       if (info.size > maxScanFileBytes) {
         continue;
       }
-      signatures.set(filePath, { mtimeMs: info.mtimeMs, size: info.size });
+      signatures.set(filePath, {
+        mtimeMs: info.mtimeMs,
+        size: info.size,
+        ctimeMs: info.ctimeMs,
+      });
     } catch {
       // Skip files that disappear or cannot be inspected mid-scan.
     }
@@ -566,9 +606,17 @@ async function readPersistedScan(root: string): Promise<CachedScan | undefined> 
         if (
           isRecord(value) &&
           typeof value.mtimeMs === "number" &&
-          typeof value.size === "number"
+          Number.isFinite(value.mtimeMs) &&
+          typeof value.size === "number" &&
+          Number.isFinite(value.size) &&
+          (value.ctimeMs === undefined ||
+            (typeof value.ctimeMs === "number" && Number.isFinite(value.ctimeMs)))
         ) {
-          signatures.set(filePath, { mtimeMs: value.mtimeMs, size: value.size });
+          signatures.set(filePath, {
+            mtimeMs: value.mtimeMs,
+            size: value.size,
+            ...(value.ctimeMs === undefined ? {} : { ctimeMs: value.ctimeMs }),
+          });
         }
       }
     }

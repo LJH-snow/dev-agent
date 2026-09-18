@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { readdir, rename, rm, stat } from "node:fs/promises";
+import { opendir, readdir, rename, rm, stat } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -51,6 +51,7 @@ import {
   McpStdioClient,
   type McpClient,
   type McpClientConfig,
+  type McpServerResource,
   type McpSessionSnapshot,
 } from "@dev-agent/mcp";
 import { colors, colorize } from "./colors.js";
@@ -1602,17 +1603,7 @@ async function runMcpServer(options: {
         },
       },
       {
-        uri: "dev-agent://workspace",
-        name: "Workspace",
-        description: "Top-level entries of the working directory.",
-        mimeType: "text/plain",
-        async read() {
-          const entries = await readdir(options.workingDirectory, { withFileTypes: true });
-          const lines = entries
-            .sort((left, right) => left.name.localeCompare(right.name))
-            .map((entry) => `${entry.isDirectory() ? "dir " : "file"} ${entry.name}`);
-          return [`working directory: ${options.workingDirectory}`, ...lines].join("\n");
-        },
+        ...createWorkspaceResource(options.workingDirectory),
       },
     ],
     prompts: [
@@ -1660,6 +1651,41 @@ async function runMcpServer(options: {
     workingDirectory: options.workingDirectory,
   });
   await server.start();
+}
+
+export function createWorkspaceResource(workingDirectory: string): McpServerResource {
+  return {
+    uri: "dev-agent://workspace",
+    name: "Workspace",
+    description: "Top-level entries of the working directory.",
+    mimeType: "text/plain",
+    async read(context) {
+      const maxBytes = context?.maxBytes ?? Number.POSITIVE_INFINITY;
+      const header = `working directory: ${workingDirectory}`;
+      let boundedHeader = header;
+      while (Buffer.byteLength(boundedHeader, "utf8") > maxBytes && boundedHeader.length > 0) {
+        boundedHeader = boundedHeader.slice(0, -1);
+      }
+      let text = boundedHeader;
+      if (Buffer.byteLength(text, "utf8") >= maxBytes) {
+        return text;
+      }
+
+      const lines: string[] = [];
+      const directory = await opendir(workingDirectory);
+      for await (const entry of directory) {
+        const line = `${entry.isDirectory() ? "dir " : "file"} ${entry.name}`;
+        const nextLines = [...lines, line].sort((left, right) => left.localeCompare(right));
+        const candidate = [boundedHeader, ...nextLines].join("\n");
+        if (Buffer.byteLength(candidate, "utf8") > maxBytes) {
+          break;
+        }
+        lines.splice(0, lines.length, ...nextLines);
+        text = candidate;
+      }
+      return text;
+    },
+  };
 }
 
 function buildContextBudget(

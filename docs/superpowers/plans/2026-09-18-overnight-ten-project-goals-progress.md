@@ -1212,6 +1212,67 @@ CLI full tests **318/318**, and `pnpm verify` completed with
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 65 slice can be committed locally as a separate commit.
 
+## Follow-up Goal 66: bound `config validate/show` file reads
+
+**Status:** VERIFIED
+
+**Scope completed:**
+
+- `config validate` and `config show` check the selected config file with
+  `stat` before reading it.
+- A file above the fixed `1 MiB` limit returns stable
+  `config_read_error` diagnostics and does not expose its bytes.
+- Missing files still use defaults; valid small files, invalid JSON, redaction,
+  exit codes, and CLI JSON output remain unchanged.
+
+**Files touched:**
+
+- `apps/cli/src/config-command.ts`
+- `apps/cli/tests/config-command.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification on 2026-09-18:**
+
+```sh
+pnpm --filter @agent_cli/cli run test
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+Result: CLI **319/319**, documentation contract **56/56**, and diff check
+passed. This remains workspace-only `0.1.8` candidate work; no tag, push,
+npm publish, GitHub Release, or `~/.npmrc` change was made.
+
+## Follow-up Goal 67: index compatibility and input-boundary closure
+
+**Status:** VERIFIED
+
+**Scope completed:**
+
+- Persisted v1 index readers accept legacy `mtimeMs`/`size` signatures;
+  new writes include numeric `ctimeMs`, and narrow writeback normalizes
+  present legacy signatures without aborting when a preserved file disappears.
+- Runtime completion metadata and `.complete` marker files are checked against
+  a fixed `1 MiB` limit before reading.
+- Desktop session discovery retains only the bounded candidate set needed for
+  the 256-summary response.
+- MCP resources receive an optional UTF-8 byte budget; oversized text keeps the
+  `-32002` boundary, and the built-in workspace resource enumerates without
+  materializing the full directory.
+
+**Verification on 2026-09-18:**
+
+- code-intelligence **43/43**, tools **131/131**, runtime-manager **23/23**;
+- Desktop **131/131**, MCP **65/65**, CLI MCP focused **7/7**;
+- `git diff --check` passed after scoped implementation reviews.
+
+This remains workspace-only candidate work after published `0.1.7`; no tag,
+push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 55/56 candidate sync
 
 **Status:** DONE

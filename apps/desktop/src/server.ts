@@ -1,7 +1,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, readdir, realpath, rename, rm, stat } from "node:fs/promises";
+import { opendir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname, sep } from "node:path";
@@ -1409,13 +1409,6 @@ export async function listSessions(
   knownSessionIds: readonly string[] = []
 ): Promise<DesktopSessionSummary[]> {
   const summaries = new Map<string, DesktopSessionSummary>();
-  let files: string[] = [];
-  try {
-    files = await readdir(sessionsDir());
-  } catch {
-    files = [];
-  }
-
   for (const sessionId of knownSessionIds.slice(0, maxSessionListEntries)) {
     summaries.set(sessionId, {
       sessionId,
@@ -1424,10 +1417,33 @@ export async function listSessions(
     });
   }
 
-  for (const file of files
-    .filter((name) => name.endsWith(".json"))
-    .sort()
-    .slice(0, Math.max(0, maxSessionListEntries - summaries.size))) {
+  const candidateLimit = Math.max(0, maxSessionListEntries - summaries.size);
+  const files: string[] = [];
+  if (candidateLimit > 0) {
+    try {
+      const directory = await opendir(sessionsDir());
+      for await (const entry of directory) {
+        if (!entry.name.endsWith(".json")) {
+          continue;
+        }
+        const insertionIndex = files.findIndex((candidate) => candidate > entry.name);
+        if (insertionIndex < 0) {
+          if (files.length < candidateLimit) {
+            files.push(entry.name);
+          }
+          continue;
+        }
+        files.splice(insertionIndex, 0, entry.name);
+        if (files.length > candidateLimit) {
+          files.pop();
+        }
+      }
+    } catch {
+      // Missing or changing session directories are treated as empty.
+    }
+  }
+
+  for (const file of files) {
     const sessionId = file.slice(0, -".json".length);
     const memory = new FileMemory({ filePath: join(sessionsDir(), file) });
     const metadata = await memory.getMetadata();

@@ -594,6 +594,18 @@ test("cli config documents the 1 MiB stat-before-read limit", () => {
   assert.match(desktopCandidate, /1 MiB/i);
 });
 
+test("config validate/show documents the 1 MiB stat-before-read limit", () => {
+  assert.match(cliReadme, /config validate\/show[\s\S]*1 MiB/i);
+  assert.match(cliReadme, /config validate\/show[\s\S]*stat/i);
+  assert.match(desktopCandidate, /config validate\/show/i);
+  assert.match(desktopCandidate, /1 MiB/i);
+});
+
+test("index status documents legacy signature compatibility", () => {
+  assert.match(cliReadme, /index status[\s\S]*(legacy|compatible|signature)/i);
+  assert.match(desktopCandidate, /index status[\s\S]*(legacy|compatible|signature)/i);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);

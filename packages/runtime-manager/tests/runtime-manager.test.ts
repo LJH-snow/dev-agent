@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -19,6 +19,7 @@ const OTHER_TARGET = "x86_64-unknown-linux-gnu";
 const MANIFEST_DOWNLOAD_LIMIT = 1024 * 1024;
 const ARCHIVE_DOWNLOAD_LIMIT = 16 * 1024 * 1024;
 const DECOMPRESSED_ARCHIVE_LIMIT = 32 * 1024 * 1024;
+const COMPLETION_METADATA_READ_LIMIT = 1024 * 1024;
 
 function artifactFor(target = TARGET, sha256 = SHA): any {
   const targetInfo = {
@@ -580,6 +581,44 @@ test("repeated installation is idempotent and does not redownload a complete run
   assert.equal(second.reused, true);
   assert.equal(second.binaryPath, first.binaryPath);
   assert.equal(archiveCalls, 1);
+});
+
+test("marks a runtime with an oversized completion marker as corrupt", async () => {
+  const root = await tempRoot();
+  const manager = new api.RuntimeManager({
+    runtimeDir: root,
+    platform: "darwin",
+    arch: "arm64",
+    ...makeInstallDependencies(),
+  });
+
+  await manager.install(VERSION);
+  const paths = api.getRuntimePaths(root, VERSION, TARGET);
+  const marker = await readFile(paths.completePath, "utf8");
+  await writeFile(paths.completePath, `${marker}${" ".repeat(COMPLETION_METADATA_READ_LIMIT + 1)}`);
+
+  const status = await manager.status(VERSION, TARGET);
+  assert.equal(status.state, "corrupt");
+  assert.equal(status.reason, "Runtime metadata is unreadable");
+});
+
+test("marks a runtime with oversized install metadata as corrupt", async () => {
+  const root = await tempRoot();
+  const manager = new api.RuntimeManager({
+    runtimeDir: root,
+    platform: "darwin",
+    arch: "arm64",
+    ...makeInstallDependencies(),
+  });
+
+  await manager.install(VERSION);
+  const paths = api.getRuntimePaths(root, VERSION, TARGET);
+  const metadata = await readFile(paths.installMetadataPath, "utf8");
+  await writeFile(paths.installMetadataPath, `${metadata}${" ".repeat(COMPLETION_METADATA_READ_LIMIT + 1)}`);
+
+  const status = await manager.status(VERSION, TARGET);
+  assert.equal(status.state, "corrupt");
+  assert.equal(status.reason, "Runtime metadata is unreadable");
 });
 
 test("remove is isolated to the requested version and target", async () => {

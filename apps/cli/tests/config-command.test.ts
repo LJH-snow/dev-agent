@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import { executeConfigCommand, formatConfigCommandResult } from "../dist/config-command.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
@@ -78,4 +79,35 @@ test("config show returns a redacted effective config without starting a provide
     assert.equal(payload.config.defaultModel, "qwen3:4b-instruct");
     assert.doesNotMatch(result.stdout, /\/Users\/|\/tmp\/|api[_-]?key|token/i);
   });
+});
+
+test("config validate rejects an oversized config without reading its bytes", async () => {
+  const project = await mkdtemp(join(tmpdir(), "dev-agent-config-limit-"));
+  try {
+    await writeFile(
+      join(project, "config.json"),
+      JSON.stringify({
+        defaultProvider: "ollama",
+        padding: "x".repeat(1024 * 1024),
+      }),
+      "utf8"
+    );
+
+    const execution = await executeConfigCommand({
+      command: "validate",
+      configPath: join(project, "config.json"),
+    });
+
+    assert.equal(execution.exitCode, 1);
+    assert.equal(execution.result.valid, false);
+    assert.equal(execution.result.source, "file");
+    assert.deepEqual(
+      execution.result.diagnostics.map((diagnostic) => diagnostic.code),
+      ["config_read_error"]
+    );
+    const formatted = formatConfigCommandResult(execution.result);
+    assert.doesNotMatch(formatted, /\/tmp\/|padding/);
+  } finally {
+    await rm(project, { recursive: true, force: true });
+  }
 });

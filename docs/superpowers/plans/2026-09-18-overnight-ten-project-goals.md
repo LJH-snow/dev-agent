@@ -2765,3 +2765,72 @@ git diff --check
 - 不回显配置内容、路径、凭据或原始错误；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 66：限制 config validate/show 的配置文件读取
+
+**Status:** VERIFIED
+
+**建立时间：** 2026-09-18 Goal 65 收口后继续审计同一配置输入面，发现
+`config validate` / `config show` 对用户指定的 config 文件直接 `readFile`
+整个内容，没有大小上限。
+
+**范围：**
+
+- `executeConfigCommand` 在读取前用 `stat` 检查大小；
+- 超过与 `loadConfig` 相同的固定 `1 MiB` 上限时返回稳定的
+  `config_read_error`，不读入文件内容；
+- 保持 missing config 使用 defaults、无效 JSON、普通读取失败和 redaction
+  行为不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 CLI contract：大于 `1 MiB` 的合法 JSON 配置返回
+  `config_read_error` 且 `valid=false`；
+- 新增 documentation contract：说明 `config validate/show` 使用
+  `1 MiB` stat-before-read 上限；
+- 先运行新增契约确认 RED，再做最小实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @agent_cli/cli run build
+pnpm --filter @agent_cli/cli run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 config schema、CLI 参数、exit code 分类或默认 defaults 行为；
+- 不新增可配置上限；
+- 不回显配置内容、路径、凭据或原始错误；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 67：索引兼容与剩余输入边界收口
+
+**Status:** VERIFIED
+
+**建立时间：** 2026-09-18 Goal 66 验证后，继续处理跨包索引契约和审计中
+可复现的读取边界缺口。
+
+**范围：**
+
+- `index status` 继续读取旧的 `mtimeMs`/`size` 签名；新的索引写入统一带
+  `ctimeMs`，旧签名没有内容指纹时不得复用缓存；
+- Runtime completion metadata、Desktop session listing、MCP resource/workspace
+  reads 在读取或响应构造前保持固定边界；
+- 对外输出保持 metadata-only、无绝对路径、无源码、无原始错误；
+- 不改变公开 CLI/MCP schema，不创建 tag、不 push、不发布 npm、不创建
+  GitHub Release、不修改 `~/.npmrc`。
+
+**验证记录：**
+
+- code-intelligence **43/43**、tools **131/131**；
+- runtime-manager **23/23**、Desktop **131/131**、MCP **65/65**；
+- CLI MCP 焦点 **7/7**，index refresh/status 跨命令 smoke flow 返回
+  `ready`/`usable: true`；
+- 文档契约与全量 gate 在 Task 5 中重新运行。

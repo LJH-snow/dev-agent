@@ -191,6 +191,79 @@ test("resources/read returns the resource contents", async () => {
   assert.equal(response.result.contents[0].text, "session: test\nentries: 2");
 });
 
+test("resource reads receive a byte budget and reject oversized text before framing", async () => {
+  let receivedBudget;
+  const oversized = "é".repeat(81);
+  const server = createMcpServer({
+    tools: [echoTool()],
+    maxFrameBytes: 160,
+    resources: [
+      {
+        uri: "dev-agent://bounded",
+        read: (context?) => {
+          receivedBudget = context?.maxBytes;
+          return `budget: ${context?.maxBytes}`;
+        },
+      },
+      {
+        uri: "dev-agent://oversized",
+        read: () => oversized,
+      },
+    ],
+  });
+
+  const bounded = await request(server, {
+    jsonrpc: "2.0",
+    id: 17,
+    method: "resources/read",
+    params: { uri: "dev-agent://bounded" },
+  });
+  assert.equal(receivedBudget, 160);
+  assert.equal(bounded.result.contents[0].text, "budget: 160");
+
+  const rejected = await request(server, {
+    jsonrpc: "2.0",
+    id: 18,
+    method: "resources/read",
+    params: { uri: "dev-agent://oversized" },
+  });
+  assert.equal(rejected.error.code, -32002);
+  assert.equal(
+    rejected.error.message,
+    `MCP frame exceeds maximum of 160 bytes (received ${Buffer.byteLength(oversized, "utf8")} bytes)`
+  );
+  assert.equal(rejected.result, undefined);
+});
+
+test("resource framing preserves tiny multi-byte budgets", async () => {
+  const maxFrameBytes = 160;
+  const boundedText = "漢字é".repeat(20);
+  let receivedBudget;
+  const server = createMcpServer({
+    tools: [],
+    maxFrameBytes,
+    resources: [
+      {
+        uri: "dev-agent://unicode-bounded",
+        read: (context?) => {
+          receivedBudget = context?.maxBytes;
+          assert.ok(Buffer.byteLength(boundedText, "utf8") <= (context?.maxBytes ?? 0));
+          return boundedText;
+        },
+      },
+    ],
+  });
+
+  const response = await request(server, {
+    jsonrpc: "2.0",
+    id: 19,
+    method: "resources/read",
+    params: { uri: "dev-agent://unicode-bounded" },
+  });
+  assert.equal(receivedBudget, maxFrameBytes);
+  assert.equal(response.error.code, -32002);
+});
+
 test("reading an unknown resource is an invalid-params error", async () => {
   const server = sampleServer();
 

@@ -70,6 +70,7 @@ const INSTALL_METADATA_KEYS = [
 const EMPTY_MARKER = "";
 const maxManifestDownloadBytes = 1024 * 1024;
 const maxArchiveDownloadBytes = 16 * 1024 * 1024;
+const maxCompletionMetadataBytes = 1024 * 1024;
 
 async function collectBoundedResponse(response: Response, maxBytes: number): Promise<Uint8Array> {
   const reader = response.body?.getReader();
@@ -366,6 +367,9 @@ export class RuntimeManager {
       const completeInfo = await lstat(paths.completePath);
       if (!metadataInfo.isFile() || metadataInfo.isSymbolicLink() || !completeInfo.isFile() || completeInfo.isSymbolicLink()) {
         return { state: "corrupt", version, target, reason: "Runtime completion markers are invalid" };
+      }
+      if (metadataInfo.size > maxCompletionMetadataBytes || completeInfo.size > maxCompletionMetadataBytes) {
+        return { state: "corrupt", version, target, reason: "Runtime metadata is unreadable" };
       }
       metadata = parseInstallMetadata(await readFile(paths.installMetadataPath, "utf8"));
       if (!metadata) return { state: "corrupt", version, target, reason: "Runtime metadata is invalid" };

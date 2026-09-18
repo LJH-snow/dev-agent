@@ -7,6 +7,9 @@ import { spawn } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { createMcpServer } from "@dev-agent/mcp";
+import { createWorkspaceResource } from "../dist/index.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
 
@@ -63,10 +66,41 @@ function startHost(child) {
     });
 }
 
+test("workspace resource stays within a tiny UTF-8 budget", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-工作区-"));
+  try {
+    await writeFile(join(dir, "é.txt"), "é\n", "utf8");
+    const resource = createWorkspaceResource(dir);
+    const maxFrameBytes = 32;
+    const text = await resource.read({ maxBytes: maxFrameBytes });
+
+    assert.ok(Buffer.byteLength(text, "utf8") <= maxFrameBytes);
+
+    const server = createMcpServer({
+      tools: [],
+      resources: [resource],
+      maxFrameBytes,
+    });
+    const rawResponse = await server.handleMessage(
+      JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "resources/read",
+        params: { uri: resource.uri },
+      })
+    );
+    const response = JSON.parse(rawResponse);
+    assert.equal(response.error.code, -32002);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("CLI --mcp-server serves its built-in tools to a host over stdio", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-server-"));
   const file = join(dir, "note.txt");
   await writeFile(file, "hello from mcp\n", "utf8");
+  await writeFile(join(dir, "a-note.txt"), "hello from mcp\n", "utf8");
 
   const child = spawn("node", [cliPath, "--mcp-server"], {
     env: {
@@ -127,14 +161,25 @@ test("CLI --mcp-server serves its built-in tools to a host over stdio", async ()
     });
     assert.match(sessionResource.result.contents[0].text, /session: default/);
 
-    const prompts = await send({ jsonrpc: "2.0", id: 7, method: "prompts/list" });
+    const workspaceResource = await send({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "resources/read",
+      params: { uri: "dev-agent://workspace" },
+    });
+    assert.equal(workspaceResource.result.contents[0].uri, "dev-agent://workspace");
+    const workspaceText = workspaceResource.result.contents[0].text;
+    assert.match(workspaceText, /note\.txt/);
+    assert.ok(workspaceText.indexOf("a-note.txt") < workspaceText.indexOf("note.txt"));
+
+    const prompts = await send({ jsonrpc: "2.0", id: 8, method: "prompts/list" });
     const promptNames = prompts.result.prompts.map((prompt) => prompt.name);
     assert.ok(promptNames.includes("review-changes"));
     assert.ok(promptNames.includes("explain-codebase"));
 
     const prompt = await send({
       jsonrpc: "2.0",
-      id: 8,
+      id: 9,
       method: "prompts/get",
       params: { name: "explain-codebase", arguments: { focus: "the executor" } },
     });

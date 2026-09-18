@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-18（index compatibility and bounded input follow-ups）
+
+- `index status` accepts legacy v1 signatures with `mtimeMs` and `size`;
+  new `code-search` writes include `ctimeMs`, and legacy entries without it
+  are not reused without a content fingerprint.
+- Runtime completion metadata and markers are checked against a fixed `1 MiB`
+  size before reading; Desktop session discovery retains only the bounded
+  candidate set; MCP resource readers receive a bounded UTF-8 budget before
+  response framing.
+- These are workspace-only candidate changes after the `0.1.7` release; they
+  are not part of the published npm tarball or `v0.1.7` GitHub Release.
+
+## 2026-09-18（config validate/show file read limit）
+
+- `config validate/show` check config-file sizes with `stat` before reading;
+  files above the fixed `1 MiB` limit fail with a stable `config_read_error`
+  without their bytes entering memory.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
 ## 2026-09-18（CLI config file read limit）
 
 - CLI config files are checked with `stat` before reading; a file above the

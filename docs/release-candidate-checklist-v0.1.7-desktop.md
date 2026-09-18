@@ -110,12 +110,21 @@ is rejected before the file changes.
   scan limit before reading them; smaller files remain indexed.
 A persisted code index above the fixed `16 MiB` read limit is skipped in favor
 of a full scan instead of loading its bytes into memory.
+- `index status` accepts legacy v1 signatures containing only `mtimeMs` and
+  `size`; new index writes include `ctimeMs`, and legacy entries without it are
+  not reused as cache hits without a content fingerprint.
+- Workspace-only follow-up guards now bound runtime completion metadata reads,
+  Desktop session-directory discovery, and MCP resource/workspace text before
+  response framing; these changes are not part of the published `0.1.7`
+  package or release.
 - Plan and apply input files use a fixed `16 MiB` read limit; both commands
   check changes file sizes with `stat` before parsing, `apply` also checks plan
   file sizes before reading, and oversized files return a stable
   `invalid_input_size` config error.
 - The CLI config file is checked with `stat` before reading; a file above
   `1 MiB` is ignored without loading its bytes.
+- `config validate/show` check config files with `stat` before reading; files
+  above `1 MiB` return a stable `config_read_error` without loading their bytes.
 - Managed runtime installation can pass `--runtime-release` to select the GitHub
   release carrying the manifest and archive; the cache identity remains
   `--runtime-version`, and the current default release is `0.1.6`.

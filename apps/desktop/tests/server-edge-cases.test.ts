@@ -433,6 +433,141 @@ test("session listing stays within the fixed 256-entry limit", async () => {
   }
 });
 
+test("session listing bounds oversized directory discovery with deterministic filenames", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-bounded-listing-"));
+  const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  try {
+    await Promise.all(
+      Array.from({ length: 300 }, (_, index) =>
+        writeFile(
+          join(directory, `disk-${String(index).padStart(3, "0")}.json`),
+          JSON.stringify({ version: 1, entries: [] })
+        )
+      )
+    );
+
+    await withServer(
+      {
+        session: {
+          id: "default",
+          async run() {},
+        },
+      },
+      async (base) => {
+        const res = await fetch(`${base}/api/sessions`);
+        const payload: any = await res.json();
+        const ids = payload.sessions.map((session: any) => session.sessionId);
+
+        assert.equal(payload.sessions.length, 256);
+        assert.deepEqual(ids.slice(1), Array.from(
+          { length: 255 },
+          (_, index) => `disk-${String(index).padStart(3, "0")}`
+        ));
+      }
+    );
+
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDirectory;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("session listing keeps a duplicate known and disk session within the response cap", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-duplicate-listing-"));
+  const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  try {
+    await writeFile(join(directory, "default.json"), JSON.stringify({ version: 1, entries: [] }));
+    await Promise.all(
+      Array.from({ length: 299 }, (_, index) =>
+        writeFile(
+          join(directory, `disk-${String(index).padStart(3, "0")}.json`),
+          JSON.stringify({ version: 1, entries: [] })
+        )
+      )
+    );
+
+    await withServer(
+      {
+        session: {
+          id: "default",
+          async run() {},
+        },
+      },
+      async (base) => {
+        const res = await fetch(`${base}/api/sessions`);
+        const payload: any = await res.json();
+        const ids = payload.sessions.map((session: any) => session.sessionId);
+
+        assert.equal(payload.sessions.length, 255);
+        assert.equal(ids.filter((id: string) => id === "default").length, 1);
+        assert.equal(new Set(ids).size, ids.length);
+        assert.ok(ids.includes("disk-253"));
+        assert.ok(!ids.includes("disk-254"));
+      }
+    );
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDirectory;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("session listing tolerates corrupt and missing files within the 256-entry cap", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-corrupt-listing-"));
+  const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  try {
+    await writeFile(join(directory, "disk-000.json"), "{not json");
+    await symlink("missing-session.json", join(directory, "disk-001.json"));
+    await Promise.all(
+      Array.from({ length: 298 }, (_, index) =>
+        writeFile(
+          join(directory, `disk-${String(index + 2).padStart(3, "0")}.json`),
+          JSON.stringify({ version: 1, entries: [] })
+        )
+      )
+    );
+
+    await withServer(
+      {
+        session: {
+          id: "default",
+          async run() {},
+        },
+      },
+      async (base) => {
+        const res = await fetch(`${base}/api/sessions`);
+        const payload: any = await res.json();
+        const corrupt = payload.sessions.find((session: any) => session.sessionId === "disk-000");
+        const missing = payload.sessions.find((session: any) => session.sessionId === "disk-001");
+
+        assert.equal(payload.sessions.length, 256);
+        assert.equal(corrupt.entryCount, 0);
+        assert.equal(corrupt.evidenceSummary, undefined);
+        assert.equal(missing.entryCount, 0);
+        assert.equal(missing.evidenceSummary.validations, 0);
+        assert.equal(missing.evidenceSummary.changeSets, 0);
+      }
+    );
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDirectory;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("history response rejects output larger than 1 MiB", async () => {
   const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-history-"));
   const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;

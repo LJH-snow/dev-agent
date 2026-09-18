@@ -50,6 +50,19 @@ test("getIndexStatus reports metadata for a valid v1 index", async () => {
   assert.equal(status.usable, true);
 });
 
+test("getIndexStatus accepts a legacy v1 signature without ctimeMs", async () => {
+  const status = await getIndexStatus({
+    indexPath: "project/.dev-agent/index.json",
+    readFile: async () => JSON.stringify(validIndex({
+      signatures: { "src/keep.ts": { mtimeMs: 1, size: 2 } },
+    })),
+  });
+
+  assert.equal(status.status, "ready");
+  assert.equal(status.usable, true);
+  assert.equal(status.hasSignatures, true);
+});
+
 test("getIndexStatus reports refresh cache metadata without exposing index contents", async () => {
   const status = await getIndexStatus({
     indexPath: "project/.dev-agent/index.json",
@@ -213,6 +226,27 @@ test("createIncrementalRefreshPlan classifies cache hits, misses, deletes, renam
   assert.equal(result.actions.some((action) => "content" in action), false);
   assert.equal(JSON.stringify(result).includes("export function"), false);
   assert.equal(JSON.stringify(result).includes("/Users/"), false);
+});
+
+test("legacy signatures cannot be cache hits without a content fingerprint", () => {
+  const legacyIndex = {
+    version: 1,
+    files: { "src/keep.ts": "export function keep() {}" },
+    symbols: [{ name: "keep", kind: "function", filePath: "src/keep.ts", line: 1 }],
+    signatures: { "src/keep.ts": { mtimeMs: 1, size: 2 } },
+  };
+  const result = createIncrementalRefreshPlan({
+    indexJson: JSON.stringify(legacyIndex),
+    inventory: [{
+      path: "src/keep.ts",
+      signature: { mtimeMs: 1, size: 2, ctimeMs: 3 },
+    }],
+  });
+
+  assert.equal(result.status, "ready");
+  assert.deepEqual(result.actions, [{ kind: "update", path: "src/keep.ts" }]);
+  assert.equal(result.stats.cacheHits, 0);
+  assert.equal(result.stats.cacheMisses, 1);
 });
 
 test("summarizeIncrementalRefresh is a pure stable statistic function", () => {

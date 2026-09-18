@@ -34,7 +34,7 @@ export interface McpServerResource {
   readonly name?: string;
   readonly description?: string;
   readonly mimeType?: string;
-  read(): Promise<string> | string;
+  read(context?: { readonly maxBytes: number }): Promise<string> | string;
 }
 
 export interface McpServerPromptArgument {
@@ -179,7 +179,8 @@ export function createMcpServer(options: McpServerOptions): McpServer {
         if (!resource) {
           throw new McpServerError(-32602, `unknown resource: ${uri}`);
         }
-        const text = await resource.read();
+        const text = await resource.read({ maxBytes: maxFrameBytes });
+        assertFrameSize(text, maxFrameBytes);
         return {
           contents: [{ uri, mimeType: resource.mimeType ?? "text/plain", text }],
         };
@@ -292,6 +293,9 @@ export function createMcpServer(options: McpServerOptions): McpServer {
       }
       if (error instanceof McpServerError) {
         return errorResponse(id, error.code, error.message);
+      }
+      if (error instanceof McpFrameTooLargeError) {
+        return errorResponse(id, MCP_FRAME_TOO_LARGE_CODE, error.message);
       }
       return errorResponse(id, -32603, error instanceof Error ? error.message : String(error));
     }

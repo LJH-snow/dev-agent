@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 
 import {
   parseAndValidateConfig,
@@ -6,6 +6,8 @@ import {
   type ConfigDiagnostic,
   type ConfigValidationResult,
 } from "./config-validation.js";
+
+const MAX_CONFIG_FILE_BYTES = 1024 * 1024; // 1 MiB
 
 export type ConfigCommandName = "validate" | "show";
 
@@ -37,26 +39,29 @@ export async function executeConfigCommand(
 ): Promise<ConfigCommandExecution> {
   let raw: string | undefined;
   let source: ConfigCommandResult["source"] = "file";
+  const readFailure: ConfigCommandResult = {
+    command: `config ${options.command}`,
+    source: "file",
+    valid: false,
+    diagnostics: [
+      {
+        path: "$",
+        code: "config_read_error",
+        message: "Configuration could not be read.",
+        severity: "error",
+      },
+    ],
+  };
   try {
+    if ((await stat(options.configPath)).size > MAX_CONFIG_FILE_BYTES) {
+      return { result: readFailure, exitCode: 1 };
+    }
     raw = await readFile(options.configPath, "utf8");
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
       source = "defaults";
     } else {
-      const result: ConfigCommandResult = {
-        command: `config ${options.command}`,
-        source: "file",
-        valid: false,
-        diagnostics: [
-          {
-            path: "$",
-            code: "config_read_error",
-            message: "Configuration could not be read.",
-            severity: "error",
-          },
-        ],
-      };
-      return { result, exitCode: 1 };
+      return { result: readFailure, exitCode: 1 };
     }
   }
 

@@ -53,6 +53,11 @@ dev-agent index refresh --cwd /path/to/other-project --json
 dev-agent index status --cwd /path/to/other-project --json
 ```
 
+`index status` accepts both current v1 file signatures and legacy signatures
+that contain only `mtimeMs` and `size`. New index writes include `ctimeMs`;
+legacy entries without `ctimeMs` remain readable but are not reused as cache
+hits unless a content fingerprint is available.
+
 The managed runtime is opt-in. `runtime status`, `runtime path`, and `runtime remove`
 only inspect or change the local cache; they do not load a model provider or connect to
 MCP. `runtime install` downloads only the fixed release manifest and the matching
@@ -76,7 +81,9 @@ add `--dry-run` to preview the initialization. `config validate` checks the
 JSON structure and supported provider, approval, validation, pricing, and MCP
 fields without loading a provider or executing an MCP command. `config show`
 prints the effective project configuration with sensitive-looking values
-redacted. Both config commands support stable `--json` output.
+redacted. `config validate/show` check the file size with `stat` before reading;
+a file above the fixed `1 MiB` limit returns a stable `config_read_error`
+without loading its bytes. Both config commands support stable `--json` output.
 
 `pnpm cli` is a workspace-only developer command; it is not required by an
 installed user. See [`docs/release-cli-npm.md`](../../docs/release-cli-npm.md)

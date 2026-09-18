@@ -28,7 +28,7 @@ async function createMultiLanguageProject({ persisted = true } = {}) {
     const info = await stat(file);
     files[file] = source;
     symbols.push(...scanFile(source, file));
-    signatures[file] = { mtimeMs: info.mtimeMs, size: info.size };
+    signatures[file] = { mtimeMs: info.mtimeMs, size: info.size, ctimeMs: info.ctimeMs };
   }
   if (persisted) {
     await mkdir(join(dir, ".dev-agent"), { recursive: true });
@@ -42,7 +42,7 @@ async function createMultiLanguageProject({ persisted = true } = {}) {
 }
 
 /** A shallow file plus a file two levels down, both present in one index. */
-async function createDepthProject() {
+async function createDepthProject({ legacyDeepSignature = false } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-depth-"));
   const shallowFile = join(dir, "shallow.ts");
   const deepFile = join(dir, "deep", "nested", "deep.ts");
@@ -65,8 +65,10 @@ async function createDepthProject() {
         { name: "deepSymbol", kind: "function", filePath: deepFile, line: 1 },
       ],
       signatures: {
-        [shallowFile]: { mtimeMs: shallowInfo.mtimeMs, size: shallowInfo.size },
-        [deepFile]: { mtimeMs: deepInfo.mtimeMs, size: deepInfo.size },
+        [shallowFile]: { mtimeMs: shallowInfo.mtimeMs, size: shallowInfo.size, ctimeMs: shallowInfo.ctimeMs },
+        [deepFile]: legacyDeepSignature
+          ? { mtimeMs: deepInfo.mtimeMs, size: deepInfo.size }
+          : { mtimeMs: deepInfo.mtimeMs, size: deepInfo.size, ctimeMs: deepInfo.ctimeMs },
       },
     }),
     "utf8"
@@ -77,7 +79,7 @@ async function createDepthProject() {
 /** Writes a project plus a persisted index that claims a symbol the source lacks. */
 async function createProject({
   signatureOverride,
-}: { signatureOverride?: { mtimeMs: number; size: number } } = {}) {
+}: { signatureOverride?: { mtimeMs: number; size: number; ctimeMs?: number } } = {}) {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-persisted-"));
   const file = join(dir, "sample.ts");
   await writeFile(file, SOURCE, "utf8");
@@ -91,7 +93,7 @@ async function createProject({
       files: { [file]: SOURCE },
       symbols: [{ name: "ghostSymbol", kind: "function", filePath: file, line: 1 }],
       signatures: {
-        [file]: signatureOverride ?? { mtimeMs: info.mtimeMs, size: info.size },
+        [file]: signatureOverride ?? { mtimeMs: info.mtimeMs, size: info.size, ctimeMs: info.ctimeMs },
       },
     }),
     "utf8"
@@ -213,7 +215,9 @@ test("a changed scan is written back to the persisted index", async () => {
     assert.ok(names.includes("realSymbol"), "the refreshed symbol should be persisted");
     assert.ok(!names.includes("ghostSymbol"), "the stale symbol should be gone");
     const info = await stat(file);
+    assert.equal(typeof index.signatures[file].mtimeMs, "number");
     assert.equal(index.signatures[file].size, info.size);
+    assert.equal(typeof index.signatures[file].ctimeMs, "number");
     assert.equal(index.files[file], SOURCE);
   } finally {
     await rm(dir, { recursive: true, force: true });
@@ -342,6 +346,59 @@ test("a narrow maxDepth scan keeps deeper index entries on disk", async () => {
     );
     assert.ok(index.files[shallowFile], "the shallow file stays indexed");
     assert.ok(index.files[deepFile], "the deeper file must not be pruned");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a narrow writeback normalizes a preserved legacy signature", async () => {
+  const { dir, shallowFile, deepFile } = await createDepthProject({ legacyDeepSignature: true });
+  const tool: any = new CodeSearchTool();
+  try {
+    await writeFile(shallowFile, "export function shallowChanged() {}\n", "utf8");
+
+    const result = await tool.execute({
+      mode: "search",
+      query: "shallowChanged",
+      path: dir,
+      maxDepth: 1,
+    });
+
+    assert.equal(result.count, 1);
+    assert.equal(tool.getCacheStats().persisted, 1);
+
+    const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
+    assert.equal(typeof index.signatures[deepFile].mtimeMs, "number");
+    assert.equal(typeof index.signatures[deepFile].size, "number");
+    assert.equal(typeof index.signatures[deepFile].ctimeMs, "number");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a narrow writeback preserves changed files when a deleted legacy entry cannot be refreshed", async () => {
+  const { dir, shallowFile, deepFile } = await createDepthProject({ legacyDeepSignature: true });
+  const tool: any = new CodeSearchTool();
+  try {
+    await rm(deepFile, { force: true });
+    await writeFile(shallowFile, "export function shallowChanged() {}\n", "utf8");
+
+    const result = await tool.execute({
+      mode: "search",
+      query: "shallowChanged",
+      path: dir,
+      maxDepth: 1,
+    });
+
+    assert.equal(result.count, 1);
+    assert.equal(tool.getCacheStats().persisted, 1);
+
+    const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
+    assert.equal(index.files[shallowFile], "export function shallowChanged() {}\n");
+    assert.ok(index.symbols.some((symbol) => symbol.name === "shallowChanged"));
+    assert.equal(index.files[deepFile], "export function deepSymbol() {}\n");
+    assert.ok(index.symbols.some((symbol) => symbol.name === "deepSymbol"));
+    assert.equal(index.signatures[deepFile], undefined);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

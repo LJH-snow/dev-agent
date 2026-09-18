@@ -38,17 +38,17 @@ export interface GetIndexStatusOptions {
   readonly expectedSchemaVersion?: number;
 }
 
-interface FileSignature {
+export interface PersistedFileSignature {
   readonly mtimeMs: number;
   readonly size: number;
-  readonly ctimeMs: number;
+  readonly ctimeMs?: number;
 }
 
 interface ParsedIndexDocument {
   readonly version: typeof INDEX_SCHEMA_VERSION;
   readonly files: Readonly<Record<string, string>>;
   readonly symbols: readonly unknown[];
-  readonly signatures?: Readonly<Record<string, FileSignature>>;
+  readonly signatures?: Readonly<Record<string, PersistedFileSignature>>;
   readonly refresh?: {
     readonly updatedAt: string;
     readonly cacheHits: number;
@@ -86,7 +86,7 @@ export interface FileInventoryEntry {
   /** A caller-provided content fingerprint. The fingerprint is never returned by the planner. */
   readonly fingerprint?: string;
   /** Optional stat tuple used to avoid hashing unchanged files. */
-  readonly signature?: FileSignature;
+  readonly signature?: PersistedFileSignature;
   /** A stable filesystem category for an entry that could not be inspected. */
   readonly errorCode?: string;
 }
@@ -434,12 +434,12 @@ function parseIndexDocument(source: unknown, expectedSchemaVersion: number): Par
     return { ok: false, status: "invalid", schemaVersion, errorCode: "invalid_shape" };
   }
 
-  let signatures: Readonly<Record<string, FileSignature>> | undefined;
+  let signatures: Readonly<Record<string, PersistedFileSignature>> | undefined;
   if (value.signatures !== undefined) {
     if (!isRecord(value.signatures)) {
       return { ok: false, status: "invalid", schemaVersion, errorCode: "invalid_shape" };
     }
-    const parsedSignatures: Record<string, FileSignature> = {};
+    const parsedSignatures: Record<string, PersistedFileSignature> = {};
     for (const [path, signature] of Object.entries(value.signatures)) {
       if (!isFileSignature(signature)) {
         return { ok: false, status: "invalid", schemaVersion, errorCode: "invalid_shape" };
@@ -519,6 +519,9 @@ function isCacheHit(
 ): boolean {
   const indexedSignature = document.signatures?.[rawPath];
   if (indexedSignature !== undefined && entry.signature !== undefined) {
+    if (indexedSignature.ctimeMs === undefined || entry.signature.ctimeMs === undefined) {
+      return entry.fingerprint !== undefined && fingerprint(indexedSource) === entry.fingerprint;
+    }
     return signaturesEqual(indexedSignature, entry.signature);
   }
   if (entry.fingerprint === undefined) return false;
@@ -540,7 +543,7 @@ function findRenameCandidate(
   return undefined;
 }
 
-function signaturesEqual(left: FileSignature, right: FileSignature): boolean {
+function signaturesEqual(left: PersistedFileSignature, right: PersistedFileSignature): boolean {
   return left.mtimeMs === right.mtimeMs && left.size === right.size && left.ctimeMs === right.ctimeMs;
 }
 
@@ -581,15 +584,15 @@ function isStringRecord(value: unknown): value is Record<string, string> {
   return isRecord(value) && Object.values(value).every((item) => typeof item === "string");
 }
 
-function isFileSignature(value: unknown): value is FileSignature {
+function isFileSignature(value: unknown): value is PersistedFileSignature {
   return (
     isRecord(value) &&
     typeof value.mtimeMs === "number" &&
     Number.isFinite(value.mtimeMs) &&
     typeof value.size === "number" &&
     Number.isFinite(value.size) &&
-    typeof value.ctimeMs === "number" &&
-    Number.isFinite(value.ctimeMs)
+    (value.ctimeMs === undefined ||
+      (typeof value.ctimeMs === "number" && Number.isFinite(value.ctimeMs)))
   );
 }
 
