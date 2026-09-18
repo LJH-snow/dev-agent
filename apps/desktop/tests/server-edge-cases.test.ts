@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
-import { mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -247,6 +247,23 @@ test("/public/ rejects a response larger than 1 MiB", async () => {
   }
 });
 
+test("/public/ oversized file returns 413 before reading the file", async () => {
+  const filePath = join(process.cwd(), "public", "oversize-unreadable.tmp.html");
+  await writeFile(filePath, "x".repeat(1024 * 1024 + 1));
+  await chmod(filePath, 0o000);
+  try {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/public/oversize-unreadable.tmp.html`);
+      const body: any = await res.json();
+      assert.equal(res.status, 413);
+      assert.match(body.error, /static response exceeds the 1 MiB limit/);
+    });
+  } finally {
+    await chmod(filePath, 0o644);
+    await rm(filePath, { force: true });
+  }
+});
+
 test("chat rejects a normalized session ID longer than 96 characters", async () => {
   const created: string[] = [];
   await withServer(
@@ -339,15 +356,28 @@ test("history rejects an oversized change-set query filter", async () => {
 });
 
 test("evidence audit rejects an oversized validation query filter", async () => {
-  await withServer({}, async (base) => {
-    const res = await fetch(
-      `${base}/api/sessions/default/evidence?validationId=${encodeURIComponent(
-        "v".repeat(97)
-      )}`
-    );
-    assert.equal(res.status, 400);
-    assert.deepEqual(await res.json(), { error: "validationId is too long" });
-  });
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-audit-"));
+  const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  try {
+    await writeFile(join(directory, "default.json"), JSON.stringify({ version: 1, entries: [] }));
+    await withServer({}, async (base) => {
+      const res = await fetch(
+        `${base}/api/sessions/default/evidence?validationId=${encodeURIComponent(
+          "v".repeat(97)
+        )}`
+      );
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { error: "validationId is too long" });
+    });
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDirectory;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("approval rejects an oversized approval ID", async () => {

@@ -1917,6 +1917,108 @@ Result: model focused tests **65/65**, documentation contract **46/46**, and
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 56: bound filesystem whole-file reads
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a shared `assertReadFileSize` helper and `MAX_READ_FILE_BYTES`
+  constant (`16 MiB`) to the filesystem tool.
+- `readFileRange` (read), `editFile`, `patchFile`, and `readSnapshot` check
+  `fileStat.size` before reading; an over-limit file is rejected with a
+  stable error without entering memory or being modified.
+- Preserved workspace isolation, change-set validation, hash guard, and
+  successful paths.
+- Updated the CLI README, changelog, v0.1.7 candidate checklist, and plan.
+
+**RED contract:**
+
+- Added filesystem read and edit contracts for files above `16 MiB`,
+  asserting rejection and file immutability.
+- Added `filesystem tool documents the 16 MiB whole-file read limit` to
+  documentation contracts.
+- RED proof: tools focused tests recorded **125 passed / 2 failed**
+  because both read and edit loaded the whole file without rejection;
+  documentation contracts recorded **46 passed / 1 failed**.
+
+**Files touched:**
+
+- `packages/tools/src/filesystem.ts`
+- `packages/tools/tests/tools-edge-cases.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/tools run build
+pnpm --filter @dev-agent/tools run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: tools focused tests **127/127**, documentation contract **48/48**,
+and `pnpm verify` completed with `all selected gates passed`.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
+## Follow-up Goal 57: desktop static stat-before-read
+
+**Status:** DONE
+
+**Scope completed:**
+
+- `serveFile` now calls `stat` before `readFile`.
+- A non-file target returns `404`; a file above `1 MiB` returns `413`
+  without loading its bytes into memory.
+- The existing post-read size check remains as a safety net for the
+  stat/read window.
+- An oversized file that exists but is unreadable now returns `413` (size
+  limit) instead of `404` (read failure), proving the check happens before
+  the read.
+- Preserved MIME types, symlink containment, and missing-file `404`.
+- Updated the Desktop README, v0.1.7 candidate checklist, and plan.
+
+**RED contract:**
+
+- Added `/public/ oversized file returns 413 before reading the file` using
+  a `chmod 000` file above `1 MiB`.
+- Added `desktop static file serving checks the size before reading` to
+  documentation contracts (strengthened after a false-positive `/stat/i`
+  match against "status").
+- RED proof: Desktop focused tests recorded **127 passed / 1 failed**
+  because the unreadable oversized file returned `404` instead of `413`.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **128/128**, documentation contract **49/49**,
+and `pnpm verify` completed with `all selected gates passed`.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

@@ -2276,3 +2276,62 @@ git diff --check
 - 不回显文件内容、绝对路径或原始错误；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 57：Desktop 静态文件读取前检查大小
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 56 收口后继续审计 Desktop 读取边界，发现
+`serveFile` 先调用 `readFile(filePath)` 把整个文件读入内存，然后才检查
+`maxStaticFileBytes`；一个 `/public/` 下的超大文件仍然会先占满内存再返回
+`413`。
+
+**范围：**
+
+- `serveFile` 在读取前用 `stat` 检查文件大小；
+- 超过固定 `1 MiB` 时直接返回 `413`，不读入文件内容；
+- 保留读后检查作为安全网（stat 与 read 之间的窗口）；
+- 保持 missing-file/path-traversal `404`、MIME 类型和成功路径行为不变；
+- 不新增可配置上限；
+- 更新 Desktop README、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 server contract：`/public/` 下的超大文件在读取前返回 `413`，
+  且不会把完整文件读入内存；
+- 新增 documentation contract：说明 static file 的 `1 MiB` stat-before-read
+  边界；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：Desktop focused tests 为 **127 passed / 1 failed**，
+  chmod 000 的大文件返回 `404` 而不是 `413`（因为 `readFile` 先失败）；
+  文档契约为 **49 passed / 0 failed**（stat 断言因 "status" 误匹配而
+  通过，后续已收紧）。
+
+**完成记录：**
+
+- `serveFile` 先用 `stat` 检查文件大小；非文件返回 `404`，超过 `1 MiB`
+  返回 `413`，均不读入文件内容；
+- 保留读后检查作为 stat/read 窗口的安全网；
+- chmod 000 的大文件现在返回 `413`（大小限制）而不是 `404`（读取
+  失败），证明大小检查发生在读取前；
+- RED 后 Desktop focused tests 为 **128/128**，文档契约为 **49/49**；
+- `pnpm verify` 输出 `all selected gates passed`；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 static 响应的 MIME 类型、404/413 语义或 `1 MiB` 上限值；
+- 不新增可配置上限；
+- 不回显路径、文件内容或原始错误；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

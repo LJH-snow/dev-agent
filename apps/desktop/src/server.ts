@@ -1,7 +1,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, readdir, realpath, rename, rm } from "node:fs/promises";
+import { readFile, readdir, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname, sep } from "node:path";
@@ -1037,6 +1037,24 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 }
 
 async function serveFile(res: ServerResponse, filePath: string, ext: string): Promise<void> {
+  let fileStat;
+  try {
+    fileStat = await stat(filePath);
+  } catch {
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+    return;
+  }
+  if (!fileStat.isFile()) {
+    res.writeHead(404, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
+    return;
+  }
+  if (fileStat.size > maxStaticFileBytes) {
+    res.writeHead(413, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "static response exceeds the 1 MiB limit" }));
+    return;
+  }
   let content: Buffer;
   try {
     content = await readFile(filePath);

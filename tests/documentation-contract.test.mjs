@@ -550,6 +550,14 @@ test("filesystem tool documents the 16 MiB whole-file read limit", () => {
   assert.match(desktopCandidate, /mutation targets remain unchanged/i);
 });
 
+test("desktop static file serving checks the size before reading", () => {
+  assert.match(desktopReadme, /stat.*before reading/i);
+  assert.match(desktopReadme, /1 MiB/);
+  assert.match(desktopReadme, /1 MiB/);
+  assert.match(desktopCandidate, /stat.*before/i);
+  assert.match(desktopCandidate, /1 MiB/);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);

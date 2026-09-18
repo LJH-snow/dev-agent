@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { request } from "node:http";
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -586,15 +587,43 @@ test("concurrent renames of the same source fail closed", async () => {
     try {
       await writeFile(join(dir, "before.json"), JSON.stringify({ version: 1, entries: [] }));
 
-      const request = () =>
-        fetch(`${base}/api/sessions/before/rename`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId: "after" }),
-        });
-      const [first, second] = await Promise.all([request(), request()]);
-      const statuses = [first.status, second.status].sort();
+      const renameBody = JSON.stringify({ sessionId: "after" });
+      const url = new URL(`${base}/api/sessions/before/rename`);
+      let firstRequest!: import("node:http").ClientRequest;
+      const firstResponse = new Promise<import("node:http").IncomingMessage>(
+        (resolve, reject) => {
+          firstRequest = request(
+            {
+              hostname: url.hostname,
+              port: url.port,
+              path: url.pathname,
+              method: "POST",
+              headers: {
+                "content-type": "application/json",
+                "content-length": Buffer.byteLength(renameBody),
+              },
+            },
+            resolve
+          );
+          firstRequest.on("error", reject);
+        }
+      );
+      // Sending headers and a partial body guarantees the server has entered
+      // readJsonBody and acquired the rename lock before the second request.
+      firstRequest.write(renameBody.slice(0, 1));
+      await new Promise((resolve) => setTimeout(resolve, 25));
 
+      const second = await fetch(`${base}/api/sessions/before/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: renameBody,
+      });
+      await second.text();
+
+      firstRequest.write(renameBody.slice(1));
+      firstRequest.end();
+      const first = await firstResponse;
+      const statuses = [first.statusCode, second.status].sort();
       assert.deepEqual(statuses, [200, 409]);
       assert.equal(await exists(join(dir, "before.json")), false);
       assert.equal(await exists(join(dir, "after.json")), true);

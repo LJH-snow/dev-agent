@@ -80,6 +80,8 @@ non-object JSON returns `400 request body must be a JSON object`. A larger body
 returns `413`; the server does not echo the body, path, or raw error.
 Static responses under `/public/` are also capped at `1 MiB`; an oversized file
 returns `413` without echoing the path, contents, or raw error.
+The server checks the file size with `stat` before reading, so an oversized
+static file is rejected without loading its bytes into memory.
 Static symlink requests, including the root static asset, are resolved to real
 paths and must remain inside the real public directory; escaped or broken
 symlinks return a clean `404`.

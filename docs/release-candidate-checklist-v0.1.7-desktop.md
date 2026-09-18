@@ -68,6 +68,8 @@ This checklist summarizes the Desktop-facing work prepared during the
   call.
 - Desktop static responses under `/public/` are capped at `1 MiB`; an
   oversized response returns `413` without exposing the path or contents.
+Static file serving checks the file size with `stat` before reading, so an
+oversized file is rejected without loading its bytes into memory.
 - Desktop `/public/` requests resolve the real request path and real public
   directory; a symlink that escapes or is broken returns `404` without target
   contents or path diagnostics.
