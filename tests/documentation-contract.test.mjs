@@ -285,6 +285,8 @@ test("v0.1.7 documents desktop status stale-response safety", () => {
   assert.match(desktopReadme, /does not render/i);
   assert.match(desktopCandidate, /stale-safe/i);
   assert.match(desktopCandidate, /aborts the previous[\s\S]*status request/i);
+  assert.match(desktopReadme, /history loading is stale-safe/i);
+  assert.match(desktopCandidate, /history loading is stale-safe/i);
 });
 
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {

@@ -283,6 +283,8 @@
     let evidencePreviewDataRevision = 0;
     let desktopStatusRequestId = 0;
     let desktopStatusController = null;
+    let desktopHistoryRequestId = 0;
+    let desktopHistoryController = null;
 
     function setStatus(text) { status.textContent = text; }
 
@@ -572,11 +574,21 @@
     }
 
     async function loadHistory(sessionId) {
+      if (!sessionId) return;
+      const requestId = ++desktopHistoryRequestId;
+      desktopHistoryController?.abort();
+      const controller = new AbortController();
+      desktopHistoryController = controller;
       messages.innerHTML = "";
       currentAssistant = null;
       try {
-        const res = await fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/messages");
+        const res = await fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/messages", {
+          cache: "no-store",
+          signal: controller.signal
+        });
+        if (!res.ok) throw new Error("history unavailable");
         const data = await res.json();
+        if (requestId !== desktopHistoryRequestId || sessionId !== currentSessionId) return;
         const history = data.messages ?? [];
         const validations = data.validations ?? [];
         if (history.length === 0 && validations.length === 0) {
@@ -593,7 +605,13 @@
         }
         for (const validation of validations) appendValidation(validation);
       } catch {
-        // Leave the transcript empty rather than blocking the UI.
+        if (!controller.signal.aborted && requestId === desktopHistoryRequestId && sessionId === currentSessionId) {
+          // Leave the transcript empty rather than blocking the UI.
+        }
+      } finally {
+        if (requestId === desktopHistoryRequestId) {
+          desktopHistoryController = null;
+        }
       }
     }
 

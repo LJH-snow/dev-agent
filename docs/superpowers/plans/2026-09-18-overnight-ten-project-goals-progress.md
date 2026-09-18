@@ -1010,3 +1010,51 @@ CLI **314/314**, documentation contract **17/17**, Rust unit/doc tests
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 25 slice can be committed locally as a separate commit.
+
+## Follow-up Goal 26: Desktop session-history stale-response safety
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a request ID, AbortController, signal, stale request/session guard, and
+  current-request-only cleanup to Desktop session history loading.
+- Preserved the `/api/sessions/<id>/messages` schema and existing transcript,
+  validation, empty-state, and failure behavior.
+- Documented the stale-safe history behavior in the Desktop README and v0.1.7
+  candidate checklist.
+
+**RED contract:**
+
+- Added `GET / guards desktop session history responses against stale sessions`
+  to the Desktop UI contract.
+- First run: **1 failed / 99 passed** because history loading lacked the
+  request ID, AbortController, signal, and stale/session guards.
+- Extended the Desktop stale-response documentation contract to require both
+  status and history safety.
+
+**Files touched:**
+
+- `apps/desktop/public/index.html`
+- `apps/desktop/tests/status-api.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **100/100**, documentation contract **17/17**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 26 slice can be committed locally as a separate commit.

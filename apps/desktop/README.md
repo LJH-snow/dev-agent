@@ -105,6 +105,9 @@ are accepted, and validation command fields are deliberately not configurable.
   `changeSetId`, `validationId`, and `status` (`passed`, `failed`, `skipped`, or
   `blocked`) narrow only the evidence arrays without removing messages.
   An invalid `status` returns a structured `400` response.
+  History loading is stale-safe: a new history request aborts the previous
+  history request, and a response for a stale request or stale session does not
+  render.
 - `DELETE /api/sessions/<id>` — delete a session's memory file and drop it from
   the in-memory registry; unknown ids return `404`.
 - `POST /api/sessions/<id>/rename` — body `{ "sessionId": "new-id" }`; moves the

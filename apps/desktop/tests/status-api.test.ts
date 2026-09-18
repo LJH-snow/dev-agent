@@ -187,6 +187,23 @@ test("GET / guards desktop status responses against stale sessions", async () =>
   }
 });
 
+test("GET / guards desktop session history responses against stale sessions", async () => {
+  const server = createDesktopServer({ session: { async run() {} } });
+  const base = await start(server);
+  try {
+    const html = await (await fetch(`${base}/`)).text();
+    assert.match(html, /let desktopHistoryRequestId = 0/);
+    assert.match(html, /let desktopHistoryController = null/);
+    assert.match(html, /const requestId = \+\+desktopHistoryRequestId/);
+    assert.match(html, /desktopHistoryController\?\.abort\(\)/);
+    assert.match(html, /desktopHistoryController = controller/);
+    assert.match(html, /cache: "no-store", signal: controller\.signal/);
+    assert.match(html, /requestId !== desktopHistoryRequestId \|\| sessionId !== currentSessionId/);
+  } finally {
+    await close(server);
+  }
+});
+
 test("GET /api/status keeps a legacy session executor unknown without internals", async () => {
   const server = createDesktopServer({ session: { async run() {} } });
   const base = await start(server);
