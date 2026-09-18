@@ -273,6 +273,7 @@ test("v0.1.7 candidate records resolved handoff provenance", () => {
   assert.match(desktopCandidate, /Maintainers review these/i);
   assert.match(desktopCandidate, /commits separately/i);
   assert.match(desktopCandidate, /maintainer[\s\S]*decision/i);
+  assert.doesNotMatch(desktopCandidate, /in-progress CLI\/runtime/i);
 });
 
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {

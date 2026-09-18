@@ -225,7 +225,7 @@ not authorize publishing.
 
 ## Human decisions required
 
-1. Decide whether the 0.1.7 candidate should include the in-progress CLI/runtime
+1. Decide whether the 0.1.7 candidate should include the committed CLI/runtime
    release work or defer it to a later candidate.
 2. Confirm the final SemVer/tag and whether the desktop surface should be part
    of the npm CLI package or a separate desktop distribution.
