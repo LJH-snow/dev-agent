@@ -285,3 +285,13 @@ pnpm --filter @agent_cli/cli run test
 ```
 
 该证据不改变原始 Task 2 的 `PRESERVE`/`FIX`/`NEEDS-EVIDENCE` 判断，也不代表主工作树已经合并这些提交。
+
+## 9. 审计后的 Desktop 配置读取修复
+
+后续检查发现，Desktop 端的 `apps/desktop/src/chat-session.ts:loadConfigFile` 是另一条没有复用固定边界的用户配置读取路径。该路径现在已在独立 worktree 中补上 stat-before-read guard：
+
+| Finding | 修复 commit | 变更 | focused evidence |
+| --- | --- | --- | --- |
+| F-09 | `f16cbb2` | `~/.dev-agent/config.json` 超过 1 MiB 时忽略配置并回退到默认 Desktop 配置；新增超大配置回归测试 | Desktop build 通过；新增测试 1/1；`git diff --check` 通过 |
+
+该 commit 与主工作树当前修改不重叠，仍需等待主代理提交其工作后再 cherry-pick。独立 worktree 的完整 Desktop 测试中，除本测试外有两个既有静态资源 404；这两个失败与 F-09 无关，不能据此宣称 Desktop 全量测试通过。
