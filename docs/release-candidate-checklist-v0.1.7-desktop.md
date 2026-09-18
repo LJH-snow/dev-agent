@@ -135,7 +135,7 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**32/32**, including the corrected `--project-state` first-release attribution,
+**37/37**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
@@ -373,6 +373,11 @@ with the same candidate/registry/auth/artifact metadata.
 After the post-goal-22 release-history audit, a read-only preflight refresh
 again passed with candidate `0.1.7`, published registry `0.1.6`, authenticated
 npm identity, and five expected package files.
+
+After the post-goal-45 JSON-object audit, a read-only post-goal-46 preflight
+refresh also passed with candidate `0.1.7`, published registry `0.1.6`, an
+authenticated npm identity, and five expected package files. It remains
+readiness evidence only and does not authorize publishing.
 
 A post-goal-19 runtime smoke refresh also passed with the proxy-aware command,
 reconfirming the isolated CLI package and runtime-release install lifecycle

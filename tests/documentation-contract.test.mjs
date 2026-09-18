@@ -475,3 +475,12 @@ test("release checklist evidence matches the current fixed gate counts", () => {
   assert.doesNotMatch(releaseChecklist, /CLI 全量测试[^\n]*146\/146/);
   assert.doesNotMatch(releaseChecklist, /documentation contract[^\n]*2\/2/);
 });
+
+test("v0.1.7 records the post-goal-46 release preflight refresh", () => {
+  assert.match(desktopCandidate, /post-goal-46/i);
+  assert.match(desktopCandidate, /preflight refresh/i);
+  assert.match(desktopCandidate, /0\.1\.7/);
+  assert.match(desktopCandidate, /0\.1\.6/);
+  assert.match(desktopCandidate, /authenticated/i);
+  assert.match(desktopCandidate, /five/i);
+});

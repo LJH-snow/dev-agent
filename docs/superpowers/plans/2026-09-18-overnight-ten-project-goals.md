@@ -1771,3 +1771,41 @@ git diff --check
   postimage guard；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 46：刷新 Desktop candidate 的只读 preflight 证据
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 45 收口后继续审计，当前没有新的请求边界
+缺口；改为做 release readiness 只读复核，确认安全收口没有改变
+candidate 元数据。
+
+**范围：**
+
+- 运行 `pnpm release:preflight`；
+- 记录 candidate `0.1.7`、published registry `0.1.6`、authenticated npm
+  identity 和五个 candidate package files；
+- 更新 v0.1.7 candidate checklist 与 progress 记录；
+- 明确 preflight 只是 readiness evidence，不是 release authorization。
+
+**RED contract：**
+
+- 在 documentation contract 中新增唯一的 `post-goal-46 release preflight
+  refresh` 断言；
+- 先确认缺失该记录时契约失败，再补充 checklist。
+- RED proof：无 post-goal-46 记录时 documentation contract 为
+  **36 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+pnpm release:preflight
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不修改实现、package version 或 release state；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

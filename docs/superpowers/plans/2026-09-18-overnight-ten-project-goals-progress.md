@@ -1409,6 +1409,44 @@ unit/doc tests **54/54**, and real Rust integration **11/11**.
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 46: refresh Desktop candidate read-only preflight evidence
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Audited the request-boundary work and found no new Desktop endpoint gap.
+- Ran the read-only `pnpm release:preflight`; it passed with candidate
+  `0.1.7`, published registry `0.1.6`, an authenticated npm identity, and
+  five expected package files.
+- Recorded the refresh in the v0.1.7 Desktop candidate checklist and progress.
+
+**RED contract:**
+
+- Added the unique `v0.1.7 records the post-goal-46 release preflight refresh`
+  documentation contract.
+- RED proof: **36 passed / 1 failed** before the checklist record existed.
+
+**Files touched:**
+
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm release:preflight
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+Result: preflight passed, documentation contract **37/37**, and
+`git diff --check` passed.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE
