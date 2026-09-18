@@ -222,6 +222,47 @@ runtime-manager tests（14/14）均通过。当前工作区尚未提交，也没
 
 ## 五、提前完成后新增的目标
 
+### Follow-up 目标 30：让 rollback 加入 active session lifecycle 追踪
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 29 收口后审计 mutation lifecycle，发现
+rollback 会拒绝其他 active request，但自身没有加入 `inFlight`，因此并发的
+rollback、DELETE 或 rename 缺少统一 fail-closed 边界。
+
+**范围：**
+
+- rollback 运行中加入 `inFlight`，结束后只清理本请求；
+- 同一 session 的第二个 rollback 返回 `409`，不重复执行；
+- rollback 运行中 DELETE 和 rename 返回 `409`，且不删除或移动文件；
+- 统一 active-lifecycle 错误语义为 chat、validation、cleanup 或 rollback；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract 测试：并发 rollback 返回 `409` 且释放后可再次 rollback；
+- 新增 server contract 测试：active rollback 时 DELETE 和 rename 返回 `409`；
+- 先确认 RED，再做最小 fail-closed 实现。
+- RED proof：临时移除 rollback 的 `inFlight.add` 后，两条新契约都返回 `200`
+  而非 `409`，聚焦运行为 **19 passed / 2 failed**；随后恢复实现。
+- 测试 helper 使用 Node 内置 `http.request`，并由测试显式阻塞和放行 rollback，
+  避免并发请求的进程/毫秒级调度竞态。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不改变 rollback DTO、postimage hash guard、错误映射或 approval 语义；
+- 不新增 panel、导出入口、绝对路径、原始错误或视觉重设计；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
 ### Follow-up 目标 11：把 runtime release 选择能力写进文档
 
 **建立时间：** 2026-09-18；目标 1–10 完成并进入最终审计后追加。

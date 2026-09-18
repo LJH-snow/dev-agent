@@ -308,6 +308,12 @@ test("v0.1.7 documents active Desktop session lifecycle fail-closed behavior", (
   assert.match(desktopCandidate, /memory file remain intact/i);
 });
 
+test("v0.1.7 documents rollback in active Desktop session lifecycle", () => {
+  assert.match(desktopReadme, /rollback, deletion, and rename fail closed with\s+`409`/i);
+  assert.match(desktopCandidate, /rollback,\s+deletion, or rename/i);
+  assert.match(desktopCandidate, /concurrent rollback/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

@@ -113,12 +113,15 @@ are accepted, and validation command fields are deliberately not configurable.
 - If a chat, validation, or cleanup request is already running in the session,
   deletion fails closed with `409`; the running request and memory file stay
   untouched.
+- While rollback is active, rollback, deletion, and rename fail closed with
+  `409`; chat, validation, and cleanup use the same active-session guard, and
+  the active rollback is the only mutation that runs.
 - `POST /api/sessions/<id>/rename` — body `{ "sessionId": "new-id" }`; moves the
   memory file, answers `409` when the target exists and `404` when the source is
   missing. Renaming to the current id is idempotent (`200` with
   `renamed: false`) when the session exists, and `404` when it does not.
   Rename also fails closed with `409` while the same session has an active
-  chat, validation, or cleanup request.
+  chat, validation, cleanup, or rollback request.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
   accepts the same `changeSetId`, `validationId`, and `status` filters and adds
@@ -152,6 +155,9 @@ are accepted, and validation command fields are deliberately not configurable.
   marked `rolled-back`. Unknown or expired ids return `404`; an in-flight session,
   postimage conflict, or already rolled-back set returns `409`; an unavailable
   rollback implementation returns `501`.
+  A running rollback is tracked in the active session lifecycle: a concurrent
+  rollback, deletion, or rename returns `409` and does not mutate the evidence
+  or memory file.
   Undo loading is stale-safe: a new undo request aborts the previous undo
   request, and a response for a stale request or stale session does not update
   the UI.

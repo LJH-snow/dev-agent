@@ -1,10 +1,14 @@
 import assert from "node:assert/strict";
+import { Agent, request as httpRequest } from "node:http";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { ChatSession } from "../dist/chat-session.js";
 import { createDesktopServer } from "../dist/server.js";
 
-function start(server) {
+function start(server): Promise<string> {
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(0, "127.0.0.1", () => {
@@ -17,6 +21,44 @@ function start(server) {
 
 async function close(server) {
   await new Promise<void>((resolve) => server.close(() => resolve()));
+}
+
+function requestText(
+  url: string,
+  options: { method: string; body?: string }
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const agent = new Agent({ keepAlive: false, maxSockets: Infinity });
+    const request = httpRequest(
+      url,
+      {
+        method: options.method,
+        agent,
+        ...(options.body === undefined
+          ? {}
+          : { headers: { "content-type": "application/json" } }),
+      },
+      (response) => {
+        response.setEncoding("utf8");
+        let body = "";
+        response.on("data", (chunk) => {
+          body += chunk;
+        });
+        response.on("end", () => {
+          agent.destroy();
+          resolve({ status: response.statusCode ?? 0, body });
+        });
+      }
+    );
+    request.on("error", (error) => {
+      agent.destroy();
+      reject(error);
+    });
+    if (options.body !== undefined) {
+      request.write(options.body);
+    }
+    request.end();
+  });
 }
 
 function fakeSession() {
@@ -484,6 +526,127 @@ test("POST /api/changesets/rollback returns 409 while the session is running", a
   } finally {
     release?.();
     await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+test("concurrent rollback returns 409 and releases after the first request", async () => {
+  const calls = [];
+  let started;
+  const active = new Promise((resolve) => {
+    started = resolve;
+  });
+  let release;
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const session = {
+    async run() {},
+    async rollbackChangeSet(changeSetId) {
+      calls.push(changeSetId);
+      started();
+      await blocked;
+      return { ok: true, changeSetId, files: [], additions: 0, deletions: 0 };
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const rollback = requestText(`${base}/api/changesets/rollback`, {
+      method: "POST",
+      body: JSON.stringify({ changeSetId: review.changeSetId }),
+    });
+    await active;
+    const conflict = requestText(`${base}/api/changesets/rollback`, {
+      method: "POST",
+      body: JSON.stringify({ changeSetId: review.changeSetId }),
+    });
+    const conflictResponse = await conflict;
+    assert.equal(conflictResponse.status, 409);
+    assert.match((JSON.parse(conflictResponse.body) as any).error, /rollback/);
+    release();
+    const rollbackResponse = await rollback;
+    assert.deepEqual(JSON.parse(rollbackResponse.body) as any, {
+      ok: true,
+      changeSetId: review.changeSetId,
+      files: [],
+      additions: 0,
+      deletions: 0,
+    });
+    assert.deepEqual(calls, [review.changeSetId]);
+    const next = requestText(`${base}/api/changesets/rollback`, {
+      method: "POST",
+      body: JSON.stringify({ changeSetId: review.changeSetId }),
+    });
+    assert.equal((await next).status, 200);
+    assert.deepEqual(calls, [
+      review.changeSetId,
+      review.changeSetId,
+    ]);
+  } finally {
+    release?.();
+    await close(server);
+  }
+});
+
+test("DELETE and rename return 409 while a rollback is active", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-lifecycle-"));
+  const previousSessionDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  await writeFile(
+    join(directory, "desktop-default.json"),
+    JSON.stringify({ version: 1, entries: [] }),
+    "utf8"
+  );
+  let started;
+  const running = new Promise((resolve) => {
+    started = resolve;
+  });
+  let release;
+  const blocked = new Promise((resolve) => {
+    release = resolve;
+  });
+  const session = {
+    async run() {},
+    async rollbackChangeSet(changeSetId) {
+      started();
+      await blocked;
+      return { ok: true, changeSetId, files: [], additions: 0, deletions: 0 };
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const rollback = requestText(`${base}/api/changesets/rollback`, {
+      method: "POST",
+      body: JSON.stringify({ changeSetId: review.changeSetId }),
+    });
+    await running;
+    const deleted = requestText(`${base}/api/sessions/desktop-default`, {
+      method: "DELETE",
+    });
+    const renamed = requestText(`${base}/api/sessions/desktop-default/rename`, {
+      method: "POST",
+      body: JSON.stringify({ sessionId: "renamed-rollback" }),
+    });
+    const [deletedResponse, renamedResponse] = await Promise.all([
+      deleted,
+      renamed,
+    ]);
+    assert.equal(deletedResponse.status, 409);
+    assert.match((JSON.parse(deletedResponse.body) as any).error, /rollback/);
+    assert.equal(renamedResponse.status, 409);
+    assert.match((JSON.parse(renamedResponse.body) as any).error, /rollback/);
+    release();
+    assert.equal((await rollback).status, 200);
+  } finally {
+    release?.();
+    if (previousSessionDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousSessionDir;
+    }
+    await rm(directory, { recursive: true, force: true });
+    await close(server);
   }
 });
 

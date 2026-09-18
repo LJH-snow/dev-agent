@@ -1129,6 +1129,62 @@ Release remains gated: no Git tag, no push, no npm publish, no GitHub Release,
 and no `~/.npmrc` change. The next human decision is whether to push the
 accumulated local commits and authorize the `v0.1.7` release review window.
 
+## Follow-up Goal 30: rollback joins active session lifecycle
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Tracked a running rollback in the Desktop server's existing `inFlight`
+  session lifecycle.
+- A concurrent rollback now returns `409`, does not invoke rollback again, and
+  the endpoint accepts a new rollback after the first one is released.
+- While rollback is active, `DELETE /api/sessions/<id>` and
+  `POST /api/sessions/<id>/rename` return `409` without mutating evidence or
+  the memory file.
+- Unified the active-session error message across chat, validation, cleanup,
+  and rollback.
+- Documented the rollback lifecycle boundary in the Desktop README and the
+  v0.1.7 candidate checklist.
+
+**RED contract:**
+
+- Added focused contracts for concurrent rollback and for DELETE/rename while
+  rollback is active.
+- Replaced the temporary external `curl` child-process helper with a Node
+  `http.request` helper. The fake rollback now blocks until the test explicitly
+  releases it, removing scheduling sensitivity that appeared when Desktop and
+  CLI tests ran in parallel.
+- RED proof removed only the rollback `inFlight.add` call; the focused run then
+  recorded **19 passed / 2 failed**, with both new contracts returning `200`
+  instead of `409`. The implementation was restored afterward.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **106/106**, documentation contract **21/21**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 30 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 28: Desktop undo-rollback stale safety
 
 **Status:** DONE

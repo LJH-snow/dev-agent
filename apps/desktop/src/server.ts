@@ -125,6 +125,9 @@ const validationStatuses: readonly ValidationStatus[] = [
   "blocked",
 ];
 
+const activeSessionRequestMessage =
+  "a chat, validation, cleanup, or rollback request is already running in this session";
+
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
 const mimeTypes: Record<string, string> = {
@@ -252,14 +255,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (inFlight.has(sessionId)) {
           req.resume();
           res.writeHead(409, { "content-type": "application/json" });
-          res.end(
-            JSON.stringify({ error: "a chat, validation, or cleanup request is already running in this session" })
-          );
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
           return;
         }
         sessions.delete(sessionId);
 
         let deleted = false;
+        inFlight.add(sessionId);
         try {
           await rm(memoryPathFor(sessionId));
           deleted = true;
@@ -308,9 +310,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (inFlight.has(from)) {
           req.resume();
           res.writeHead(409, { "content-type": "application/json" });
-          res.end(
-            JSON.stringify({ error: "a chat, validation, or cleanup request is already running in this session" })
-          );
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
           return;
         }
 
@@ -543,7 +543,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           req.resume();
           res.writeHead(409, { "content-type": "application/json" });
           res.end(
-            JSON.stringify({ error: "a chat request is already running in this session" })
+            JSON.stringify({ error: activeSessionRequestMessage })
           );
           return;
         }
@@ -613,7 +613,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (inFlight.has(sessionId)) {
           res.writeHead(409, { "content-type": "application/json" });
           res.end(
-            JSON.stringify({ error: "a chat or validation request is already running in this session" })
+            JSON.stringify({ error: activeSessionRequestMessage })
           );
           return;
         }
@@ -690,9 +690,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         );
         if (inFlight.has(sessionId)) {
           res.writeHead(409, { "content-type": "application/json" });
-          res.end(
-            JSON.stringify({ error: "a chat, validation, or cleanup request is already running in this session" })
-          );
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
           return;
         }
 
@@ -754,9 +752,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         );
         if (inFlight.has(sessionId)) {
           res.writeHead(409, { "content-type": "application/json" });
-          res.end(
-            JSON.stringify({ error: "a chat request is already running in this session" })
-          );
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
           return;
         }
 
@@ -772,6 +768,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
+        inFlight.add(sessionId);
         try {
           const result = await session.rollbackChangeSet(changeSetId);
           res.writeHead(200, { "content-type": "application/json" });
@@ -781,6 +778,8 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           const status = rollbackErrorStatus(message);
           res.writeHead(status, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: message }));
+        } finally {
+          inFlight.delete(sessionId);
         }
         return;
       }
