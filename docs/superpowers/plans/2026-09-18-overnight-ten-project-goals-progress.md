@@ -1108,3 +1108,23 @@ and real Rust integration **11/11**.
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 27 slice can be committed locally as a separate commit.
+
+## Follow-up goals 25-27 final handoff snapshot
+
+**Status:** PASSED
+
+The branch is `main`, clean, and ahead of `origin/main` by the following local
+commits:
+
+- `32ad8d5 fix: guard desktop status stale responses`
+- `bc10de0 fix: guard desktop session history stale responses`
+- `dcd4066 fix: guard desktop validation rerun stale responses`
+
+Goals 25, 26, and 27 are `DONE`. The latest full audit completed with Desktop
+**101/101**, runtime-manager **15/15**, CLI **314/314**, documentation contract
+**18/18**, Rust unit/doc tests **54/54**, real Rust integration **11/11**, and
+`all selected gates passed`.
+
+Release remains gated: no Git tag, no push, no npm publish, no GitHub Release,
+and no `~/.npmrc` change. The next human decision is whether to push the
+accumulated local commits and authorize the `v0.1.7` release review window.
