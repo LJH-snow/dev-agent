@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-18（workflow plan input file read limit）
+
+- `workflow plan` now uses the same fixed `16 MiB` input file read limit as
+  `workflow apply`; oversized changes files are rejected with
+  `invalid_input_size` before their bytes enter memory.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
 ## 2026-09-18（CLI workflow input file read limit）
 
 - `workflow apply` checks the plan and changes file sizes with `stat` before

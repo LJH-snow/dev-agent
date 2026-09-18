@@ -1190,6 +1190,19 @@ performed for this candidate sync.
 - This is post-release `0.1.8` candidate work and is not part of the published
   `0.1.7` package or GitHub Release.
 
+## Follow-up Goal 61: bound workflow plan changes input
+
+**Status:** DONE
+
+- Reused the fixed `16 MiB` workflow input read limit for `workflow plan` by
+  checking changes file sizes before JSON parsing.
+- Oversized changes inputs return the same stable `invalid_input_size` config
+  error and no plan file is written.
+- CLI focused tests passed **317/317**, and the documentation contract passed
+  **52/52**.
+- This is post-release `0.1.8` candidate work and is not part of the published
+  `0.1.7` package or GitHub Release.
+
 ## Follow-up Goal 40: Desktop public symlink containment
 
 **Status:** DONE

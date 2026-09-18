@@ -723,7 +723,7 @@ git diff --check
 - `pnpm verify` 通过并输出 `all selected gates passed`，相关计数为
   runtime-manager **15/15**、CLI **314/314**、documentation contract
   **17/17**、Rust unit/doc **54/54**、real Rust integration **11/11**；
-- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+- 未创建 tag、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
 ### Follow-up 目标 41：约束 Desktop root static 边界
@@ -2388,6 +2388,60 @@ git diff --check
 **边界：**
 
 - 不改变 code-search 的搜索 DTO 或 workspace 隔离语义；
+- 不新增可配置上限；
+- 不回显文件内容或绝对路径；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 61：限制 workflow plan 的 changes 读取
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 60 收口后继续审计共享输入路径，发现
+`workflow plan` 直接复用 `readChanges`，而 Goal 60 的大小检查只放在
+`executeApply` 中；超大 changes 文件仍会进入 plan 命令的内存。
+
+**范围：**
+
+- 把 `16 MiB` 输入文件大小检查收敛到 `readChanges`；
+- 保持 `apply` 的 plan/changes 预检行为不变；
+- 正常 workflow plan/apply/review 行为和错误分类不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 CLI contract：`workflow plan` 的 changes 文件超过 `16 MiB` 时返回
+  `invalid_input_size`，且不写入 plan 文件；
+- 扩展 documentation contract，要求 `plan` 和 `apply` 输入都说明同一
+  `16 MiB` 上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：CLI focused tests 为 **316 passed / 1 failed**；文档契约目标
+  条目为 **0 passed / 1 failed**。
+
+**完成记录：**
+
+- `readChanges` 现在在解析前执行 `stat` 和固定 `16 MiB` 检查；
+- `workflow plan` 的超大 changes 文件返回 `invalid_input_size` 且不写
+  plan 文件；
+- `workflow apply` 的 plan/changes 检查保持不变；
+- CLI focused tests 为 **317/317**，文档契约为 **52/52**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @agent_cli/cli run build
+pnpm --filter @agent_cli/cli run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 workflow DTO、plan schema 或错误 code；
 - 不新增可配置上限；
 - 不回显文件内容或绝对路径；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改

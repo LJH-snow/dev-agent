@@ -146,7 +146,6 @@ async function executeApply(options: WorkflowCommandOptions): Promise<WorkflowCo
   const resolvedPlan = resolve(options.workingDirectory, planPath);
   const resolvedChanges = resolve(options.workingDirectory, changesPath);
   await assertWorkflowInputSize(resolvedPlan, MAX_WORKFLOW_INPUT_BYTES);
-  await assertWorkflowInputSize(resolvedChanges, MAX_WORKFLOW_INPUT_BYTES);
   const planInput = await readFile(resolvedPlan, "utf8");
   const changes = await readChanges(resolvedChanges);
   const applied = await applyPlan({
@@ -183,6 +182,7 @@ function planErrorExitCode(code: string): number {
 }
 
 async function readChanges(path: string): Promise<readonly FilesystemMutationInput[]> {
+  await assertWorkflowInputSize(path, MAX_WORKFLOW_INPUT_BYTES);
   let parsed: unknown;
   try {
     parsed = JSON.parse(await readFile(path, "utf8"));

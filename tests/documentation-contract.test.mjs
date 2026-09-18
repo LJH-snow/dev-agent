@@ -571,10 +571,10 @@ test("agent memory documents the 16 MiB file read limit", () => {
 });
 
 test("cli workflow documents the 16 MiB input file read limit", () => {
-  assert.match(cliReadme, /workflow input files?[\s\S]*16 MiB/i);
-  assert.match(cliReadme, /workflow input files?[\s\S]*read limit/i);
-  assert.match(desktopCandidate, /workflow input files?[\s\S]*16 MiB/i);
-  assert.match(desktopCandidate, /workflow input files?[\s\S]*read limit/i);
+  assert.match(cliReadme, /plan and apply input files?[\s\S]*16 MiB/i);
+  assert.match(cliReadme, /plan and apply input files?[\s\S]*read limit/i);
+  assert.match(desktopCandidate, /plan and apply input files?[\s\S]*16 MiB/i);
+  assert.match(desktopCandidate, /plan and apply input files?[\s\S]*read limit/i);
 });
 
 test("runtime manager documents the install and remove lifecycle lock", () => {
