@@ -1580,6 +1580,54 @@ Result: runtime-manager focused tests **18/18**, documentation contract
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 50: release Desktop delete lock on storage failure
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Wrapped Desktop DELETE memory removal in the existing lifecycle lock's
+  cleanup boundary.
+- Ensured a non-ENOENT `rm` failure releases `inFlight` instead of leaving the
+  session permanently blocked.
+- Kept the top-level stable `500 request failed` response and did not expose
+  storage paths or raw filesystem diagnostics.
+- Updated the v0.1.7 Desktop candidate checklist and documentation contract.
+
+**RED contract:**
+
+- Added `DELETE releases the lifecycle lock after a storage failure` to the
+  Desktop server contracts.
+- Added `desktop delete storage failure releases the lifecycle lock` to
+  documentation contracts.
+- RED proof: Desktop focused tests **126 passed / 1 failed**; documentation
+  contract **40 passed / 1 failed**. The RED run confirmed the second DELETE
+  returned `409` after the first storage failure.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/multi-session.test.ts`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **127/127**, documentation contract **41/41**,
+`pnpm verify` completed with `all selected gates passed`, and
+`git diff --check` passed.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

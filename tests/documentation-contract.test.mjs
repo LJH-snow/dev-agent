@@ -501,3 +501,10 @@ test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /same runtime version/i);
   assert.match(cliReadme, /serialized/i);
 });
+
+test("desktop delete storage failure releases the lifecycle lock", () => {
+  assert.match(desktopCandidate, /DELETE/i);
+  assert.match(desktopCandidate, /storage failure/i);
+  assert.match(desktopCandidate, /release/i);
+  assert.match(desktopCandidate, /lifecycle lock/i);
+});

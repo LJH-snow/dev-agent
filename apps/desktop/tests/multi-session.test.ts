@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -409,6 +409,36 @@ test("DELETE /api/sessions/<id> returns 404 for an unknown session", async () =>
   try {
     const res = await fetch(`${base}/api/sessions/missing`, { method: "DELETE" });
     assert.equal(res.status, 404);
+  } finally {
+    await close(server);
+    if (previousDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDir;
+    }
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("DELETE releases the lifecycle lock after a storage failure", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-delete-failure-"));
+  const previousDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = dir;
+  const server = createDesktopServer({ session: fakeSession("default") });
+  const base = await start(server);
+
+  try {
+    await mkdir(join(dir, "stuck.json"), { recursive: true });
+
+    const first = await fetch(`${base}/api/sessions/stuck`, { method: "DELETE" });
+    assert.equal(first.status, 500);
+    assert.deepEqual(await first.json(), { error: "request failed" });
+
+    const second = await fetch(`${base}/api/sessions/stuck`, { method: "DELETE" });
+    assert.notEqual(second.status, 409, "the failed delete must release its lock");
+    const body: any = await second.json();
+    assert.equal(body.error, "request failed");
+    assert.doesNotMatch(body.error, /stuck\.json|session dir/i);
   } finally {
     await close(server);
     if (previousDir === undefined) {

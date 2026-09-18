@@ -316,25 +316,29 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
         sessions.delete(sessionId);
 
-        let deleted = false;
         inFlight.add(sessionId);
         try {
-          await rm(memoryPathFor(sessionId));
-          deleted = true;
-        } catch (error) {
-          if (!isNodeError(error) || error.code !== "ENOENT") {
-            throw error;
+          let deleted = false;
+          try {
+            await rm(memoryPathFor(sessionId));
+            deleted = true;
+          } catch (error) {
+            if (!isNodeError(error) || error.code !== "ENOENT") {
+              throw error;
+            }
           }
-        }
 
-        if (!deleted) {
-          res.writeHead(404, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "unknown session" }));
-          return;
-        }
+          if (!deleted) {
+            res.writeHead(404, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "unknown session" }));
+            return;
+          }
 
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ sessionId, deleted: true }));
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ sessionId, deleted: true }));
+        } finally {
+          inFlight.delete(sessionId);
+        }
         return;
       }
 

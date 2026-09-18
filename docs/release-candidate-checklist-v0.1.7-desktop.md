@@ -28,6 +28,9 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Deleting or renaming a Desktop session fails closed with `409` while a chat,
   validation, or cleanup request is running in that session; the active request
   and memory file remain intact.
+- A Desktop DELETE storage failure releases its lifecycle lock; the response
+  remains the stable `500 request failed` boundary and a later request is not
+  permanently blocked by a raw filesystem failure.
 - Running rollback joins the active session lifecycle: a concurrent rollback,
   deletion, or rename fails closed with `409`; the first rollback remains the
   only mutating operation.
@@ -140,14 +143,15 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**40/40**, including the corrected `--project-state` first-release attribution,
+**41/41**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
 public-symlink-containment, root-static-containment, session-ID-length-limit,
 session-listing-limit, history-response-limit, rename-lifecycle, and
 export-response-limit, JSON-object-shape, post-goal-46-preflight,
-runtime-install-download-limit, and runtime-lifecycle-lock contracts.
+runtime-install-download-limit, runtime-lifecycle-lock, and
+delete-storage-failure-lock contracts.
 
 ## Consolidated gate
 
@@ -319,13 +323,18 @@ POST JSON bodies to be objects. The focused run passed with Desktop
 with `all selected gates passed`, runtime-manager **15/15**, CLI **314/314**,
 Rust unit/doc tests **54/54**, and real Rust integration **11/11**.
 
+The post-goal-50 delete-lock audit reran the focused gates after bounding a
+DELETE storage failure to release its lifecycle lock. The focused run passed
+with Desktop **127/127** and documentation contracts **41/41**. The full gate
+is recorded in the consolidated evidence below.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **126 tests passed, 0 failed.** The latest regression contracts cover
+Result: **127 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
 rollback joining the active session lifecycle, the fixed JSON request-body
 limit and JSON-object shape, the fixed session registry count limit, bounded

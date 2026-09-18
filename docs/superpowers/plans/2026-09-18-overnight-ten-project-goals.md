@@ -1891,7 +1891,7 @@ git diff --check
 
 ### Follow-up 目标 49：序列化 runtime install 与 remove
 
-**Status:** IN PROGRESS
+**Status:** DONE
 
 **建立时间：** 2026-09-18 Goal 48 收口后审计 runtime lifecycle，发现
 `install` 有同 version/target 的锁，但 `remove` 没有加入同一 lifecycle
@@ -1930,5 +1930,48 @@ git diff --check
 
 - 不新增 409/error lifecycle 状态，也不改变 RemoveResult schema；
 - 不引入全局跨 version 锁，不改变 manifest/archive URL 或校验语义；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 50：释放 Desktop delete 失败后的 lifecycle 锁
+
+**Status:** IN PROGRESS
+
+**建立时间：** 2026-09-18 Goal 49 收口后审计 Desktop session lifecycle，发现
+`DELETE /api/sessions/<id>` 在 `rm` 抛出非 ENOENT 错误时不会执行 finally
+清理 `inFlight`；同一 id 之后的删除会被永久误报为 active `409`。
+
+**范围：**
+
+- 让 DELETE 的 memory-file 删除失败释放本请求的 lifecycle lock；
+- 失败响应仍走既有顶层 `500 request failed` 边界，不新增 raw error 暴露；
+- 后续 DELETE 不因前一次 storage failure 被永久阻塞；
+- 保持 active request `409`、unknown session `404`、成功删除和 registry
+  行为不变；
+- 更新 v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 server contract：当 session memory 路径是目录导致 `rm` 失败时，
+  第一次 DELETE 返回 `500 request failed`；
+- 第二次 DELETE 不再返回 `409`，且 error 信息不包含存储路径或内部细节；
+- 新增 documentation contract：candidate 说明 delete storage failure 会释放
+  lifecycle lock；
+- 先运行契约确认 RED，再做最小 finally 实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 DELETE schema、active-session 409 语义、rename/rollback 生命周期
+  或 session registry limit；
+- 不吞掉不可恢复 storage failure；第二次 DELETE 仍可返回 500，但锁必须释放；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
