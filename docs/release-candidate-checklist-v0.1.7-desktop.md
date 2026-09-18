@@ -33,6 +33,9 @@ This checklist summarizes the Desktop-facing work prepared during the
   only mutating operation.
 - Desktop POST JSON endpoints reject a request body larger than `1 MiB` with
   `413` without echoing the body, path, or raw error.
+- Desktop POST JSON endpoints require a JSON object body; malformed JSON
+  returns `400 request body must be valid JSON`, and non-object JSON returns
+  `400 request body must be a JSON object`.
 - Desktop's in-memory session registry is capped at `256` total sessions; a
   new unknown chat id after that returns `429` and does not start a run.
 - Desktop request session IDs are capped at `96` normalized characters; a
@@ -304,16 +307,23 @@ full gate completed with `all selected gates passed`, runtime-manager
 **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**, and real Rust
 integration **11/11**.
 
+The post-goal-45 JSON-object audit reran `pnpm verify` after requiring all
+POST JSON bodies to be objects. The focused run passed with Desktop
+**126/126** and documentation contracts **36/36**; the full gate completed
+with `all selected gates passed`, runtime-manager **15/15**, CLI **314/314**,
+Rust unit/doc tests **54/54**, and real Rust integration **11/11**.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **125 tests passed, 0 failed.** The latest regression contracts cover
+Result: **126 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
 rollback joining the active session lifecycle, the fixed JSON request-body
-limit, the fixed session registry count limit, bounded always-allow memory, and
+limit and JSON-object shape, the fixed session registry count limit, bounded
+always-allow memory, and
 the fixed static-response size, session-ID length, change-set-ID length,
 evidence query filters, approval IDs, session-listing size, public symlink
 containment, root static containment, history-response size, export-response

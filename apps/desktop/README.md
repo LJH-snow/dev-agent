@@ -74,7 +74,9 @@ are accepted, and validation command fields are deliberately not configurable.
 
 ## API
 
-All POST JSON endpoints accept at most `1 MiB` of request body. A larger body
+All POST JSON endpoints require a JSON object body and accept at most `1 MiB`
+of request body. Malformed JSON returns `400 request body must be valid JSON`;
+non-object JSON returns `400 request body must be a JSON object`. A larger body
 returns `413`; the server does not echo the body, path, or raw error.
 Static responses under `/public/` are also capped at `1 MiB`; an oversized file
 returns `413` without echoing the path, contents, or raw error.

@@ -1367,6 +1367,48 @@ unit/doc tests **54/54**, and real Rust integration **11/11**.
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 45: bound Desktop JSON body object shape
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added the RED contract for JSON `null` bodies across the seven POST JSON
+  request surfaces.
+- Added the documentation contract for README/checklist coverage of
+  non-object JSON body rejection.
+- Added a shared object-body parser so `/api/chat`, `/api/chat/cancel`,
+  `/api/changesets/validate`, `/api/changesets/cleanup`,
+  `/api/changesets/rollback`, `/api/approval`, and rename return a stable
+  `400` for `null`, arrays, strings, and numbers.
+- Updated the Desktop README and v0.1.7 candidate checklist.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **126/126**, documentation contract **36/36**,
+`pnpm verify` completed with `all selected gates passed`, and `git diff --check`
+passed. Full-gate counts were runtime-manager **15/15**, CLI **314/314**, Rust
+unit/doc tests **54/54**, and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

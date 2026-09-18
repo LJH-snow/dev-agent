@@ -102,6 +102,36 @@ test("POST /api/chat with a malformed JSON body returns 400", async () => {
   });
 });
 
+test("POST JSON endpoints reject non-object JSON bodies", async () => {
+  const paths = [
+    "/api/chat",
+    "/api/chat/cancel",
+    "/api/changesets/validate",
+    "/api/changesets/cleanup",
+    "/api/changesets/rollback",
+    "/api/approval",
+    "/api/sessions/desktop-default/rename",
+  ];
+  const bodies = ["null", "[]", '"text"', "42"];
+  await withServer({}, async (base) => {
+    for (const path of paths) {
+      for (const body of bodies) {
+        const res = await fetch(`${base}${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body,
+        });
+        assert.equal(res.status, 400, `${path} with ${body}`);
+        assert.deepEqual(
+          await res.json(),
+          { error: "request body must be a JSON object" },
+          `${path} with ${body}`
+        );
+      }
+    }
+  });
+});
+
 test("POST /api/chat with an empty body returns 400", async () => {
   await withServer({}, async (base) => {
     const res = await fetch(`${base}/api/chat`, { method: "POST" });

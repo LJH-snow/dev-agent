@@ -393,6 +393,13 @@ test("v0.1.7 documents the Desktop approval ID length limit", () => {
   assert.match(desktopCandidate, /96/i);
 });
 
+test("v0.1.7 documents Desktop non-object JSON body rejection", () => {
+  assert.match(desktopReadme, /non-object/i);
+  assert.match(desktopReadme, /400/i);
+  assert.match(desktopCandidate, /non-object/i);
+  assert.match(desktopCandidate, /400/i);
+});
+
 test("v0.1.7 documents the Desktop session listing limit", () => {
   assert.match(desktopReadme, /session listing/i);
   assert.match(desktopReadme, /256/i);

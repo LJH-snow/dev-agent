@@ -114,6 +114,10 @@ type EvidenceCleanupOptionsResult =
   | { readonly options: EvidencePruneOptions }
   | { readonly error: string };
 
+type JsonObjectParseResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly error: string };
+
 type EvidenceFilters = EvidenceAuditFilters;
 type EvidenceFilterOptions = {
   readonly includeAuditLimits?: boolean;
@@ -360,14 +364,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           if (body === undefined) {
             return;
           }
-          let parsed: { sessionId?: unknown };
-          try {
-            parsed = JSON.parse(body) as { sessionId?: unknown };
-          } catch {
+          const parsedResult = parseJsonObjectBody<{ sessionId?: unknown }>(body);
+          if (!parsedResult.ok) {
             res.writeHead(400, { "content-type": "application/json" });
-            res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+            res.end(JSON.stringify({ error: parsedResult.error }));
             return;
           }
+          const parsed = parsedResult.value;
 
           const normalizedTarget =
             typeof parsed.sessionId === "string"
@@ -634,14 +637,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (body === undefined) {
           return;
         }
-        let parsed: { message?: unknown; sessionId?: unknown };
-        try {
-          parsed = JSON.parse(body) as { message?: unknown; sessionId?: unknown };
-        } catch {
+        const parsedResult = parseJsonObjectBody<{
+          message?: unknown;
+          sessionId?: unknown;
+        }>(body);
+        if (!parsedResult.ok) {
           res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          res.end(JSON.stringify({ error: parsedResult.error }));
           return;
         }
+        const parsed = parsedResult.value;
 
         const message = typeof parsed.message === "string" ? parsed.message.trim() : "";
         if (!message) {
@@ -705,14 +710,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (body === undefined) {
           return;
         }
-        let parsed: { sessionId?: unknown };
-        try {
-          parsed = JSON.parse(body) as { sessionId?: unknown };
-        } catch {
+        const parsedResult = parseJsonObjectBody<{ sessionId?: unknown }>(body);
+        if (!parsedResult.ok) {
           res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          res.end(JSON.stringify({ error: parsedResult.error }));
           return;
         }
+        const parsed = parsedResult.value;
 
         const sessionId = normalizeSessionIdForRequest(
           typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
@@ -739,14 +743,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (body === undefined) {
           return;
         }
-        let parsed: { sessionId?: unknown; changeSetId?: unknown };
-        try {
-          parsed = JSON.parse(body) as { sessionId?: unknown; changeSetId?: unknown };
-        } catch {
+        const parsedResult = parseJsonObjectBody<{
+          sessionId?: unknown;
+          changeSetId?: unknown;
+        }>(body);
+        if (!parsedResult.ok) {
           res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          res.end(JSON.stringify({ error: parsedResult.error }));
           return;
         }
+        const parsed = parsedResult.value;
 
         const changeSetId =
           typeof parsed.changeSetId === "string" ? parsed.changeSetId.trim() : "";
@@ -816,24 +822,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (body === undefined) {
           return;
         }
-        let parsedValue: unknown;
-        try {
-          parsedValue = JSON.parse(body);
-        } catch {
+        const parsedResult = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsedResult.ok) {
           res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          res.end(JSON.stringify({ error: parsedResult.error }));
           return;
         }
-        if (
-          typeof parsedValue !== "object" ||
-          parsedValue === null ||
-          Array.isArray(parsedValue)
-        ) {
-          res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "request body must be a JSON object" }));
-          return;
-        }
-        const parsed = parsedValue as Record<string, unknown>;
+        const parsed = parsedResult.value;
         if (parsed.sessionId !== undefined && typeof parsed.sessionId !== "string") {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "sessionId must be a string" }));
@@ -900,14 +895,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (body === undefined) {
           return;
         }
-        let parsed: { sessionId?: unknown; changeSetId?: unknown };
-        try {
-          parsed = JSON.parse(body) as { sessionId?: unknown; changeSetId?: unknown };
-        } catch {
+        const parsedResult = parseJsonObjectBody<{
+          sessionId?: unknown;
+          changeSetId?: unknown;
+        }>(body);
+        if (!parsedResult.ok) {
           res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          res.end(JSON.stringify({ error: parsedResult.error }));
           return;
         }
+        const parsed = parsedResult.value;
 
         const changeSetId =
           typeof parsed.changeSetId === "string" ? parsed.changeSetId.trim() : "";
@@ -969,14 +966,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (body === undefined) {
           return;
         }
-        let parsed: { id?: unknown; decision?: unknown };
-        try {
-          parsed = JSON.parse(body) as { id?: unknown; decision?: unknown };
-        } catch {
+        const parsedResult = parseJsonObjectBody<{
+          id?: unknown;
+          decision?: unknown;
+        }>(body);
+        if (!parsedResult.ok) {
           res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
+          res.end(JSON.stringify({ error: parsedResult.error }));
           return;
         }
+        const parsed = parsedResult.value;
 
         const id = typeof parsed.id === "string" ? parsed.id : "";
         const decision =
@@ -1258,6 +1257,18 @@ function readJsonBody(
       }
     });
   });
+}
+
+function parseJsonObjectBody<T>(body: string): JsonObjectParseResult<T> {
+  try {
+    const value: unknown = JSON.parse(body);
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return { ok: false, error: "request body must be a JSON object" };
+    }
+    return { ok: true, value: value as T };
+  } catch {
+    return { ok: false, error: "request body must be valid JSON" };
+  }
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

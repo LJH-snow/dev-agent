@@ -1709,3 +1709,65 @@ git diff --check
 - 不改变 approval timeout、disconnect deny 和 postimage guard；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 45：约束 Desktop JSON body 对象形态
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 44 收口后继续审计 Desktop 请求边界，发现
+多数 POST 接口 `JSON.parse` 后直接读取字段，JSON `null` 会抛出 TypeError
+并被外层错误处理转为 `500`；cleanup 已拒绝非对象，但行为不统一。
+
+**范围：**
+
+- 所有 POST JSON endpoint 在读取字段前校验 body 是 JSON object；
+- JSON `null`、数组、字符串和数值返回稳定 `400` 与
+  `request body must be a JSON object`；
+- malformed JSON 仍返回 `400 request body must be valid JSON`；
+- 正常对象、sessionId/message/changeSetId/approval ID 校验和 lifecycle
+  保持不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：向 `/api/chat`、`/api/chat/cancel`、
+  `/api/changesets/validate`、`/api/changesets/cleanup`、
+  `/api/changesets/rollback`、`/api/approval` 和 rename endpoint 发送 JSON
+  `null` 时统一返回 `400`；
+- 在 documentation contract 中断言 README 与 checklist 记录 non-object
+  JSON body 的 `400` 行为；
+- 先确认 RED，再做最小实现。
+- RED proof：无统一 object 校验时，JSON `null` body 返回 `500`；聚焦运行
+  为 **125 passed / 1 failed**。文档契约为 **35 passed / 1 failed**。
+
+**完成记录：**
+
+- 已新增共享 `parseJsonObjectBody` helper，七处 POST JSON route 统一解析
+  和校验；
+- JSON `null`、数组、字符串和数值在读取字段前返回稳定 `400` 与
+  `request body must be a JSON object`；
+- malformed JSON 保持 `400 request body must be valid JSON`；
+- 正常对象、ID/message 校验、1 MiB body limit 和 lifecycle 保持不变；
+- RED 后 Desktop focused tests **125/125，1 failed**；文档契约为
+  **35/35，1 failed**。实现后 Desktop focused tests **126/126**，
+  documentation contract **36/36**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增可配置 schema、DTO 变更、裁剪或 UI 重设计；
+- 不回显 body 内容、路径、文件内容或原始错误；
+- 不改变 JSON body 1 MiB 上限、approval timeout、disconnect deny 和
+  postimage guard；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
