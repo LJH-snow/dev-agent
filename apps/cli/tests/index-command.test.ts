@@ -82,6 +82,62 @@ test("--index writes a symbol index and skips ignored directories", async () => 
   }
 });
 
+test("--index skips supported source files above the fixed 16 MiB read limit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-limit-"));
+  try {
+    await writeFile(join(dir, "small.ts"), "export const keep = 1;\n", "utf8");
+    await writeFile(
+      join(dir, "large.ts"),
+      `export const skip = 1;\n${"x".repeat(16 * 1024 * 1024)}`,
+      "utf8"
+    );
+
+    const result = await runCli(["--index", dir, "--json"]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.files, 1);
+    const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
+    assert.deepEqual(Object.keys(index.files), [join(dir, "small.ts")]);
+    assert.ok(!JSON.stringify(index).includes("skip"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--index ignores an oversized persisted index and rescans its sources", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-persisted-limit-"));
+  const sourcePath = join(dir, "sample.ts");
+  try {
+    await writeFile(sourcePath, "export const real = 1;\n", "utf8");
+    const first = await runCli(["--index", dir, "--json"]);
+    assert.equal(first.code, 0, first.stderr);
+    const indexPath = join(dir, ".dev-agent", "index.json");
+    const index = JSON.parse(await readFile(indexPath, "utf8"));
+    await writeFile(
+      indexPath,
+      JSON.stringify({
+        ...index,
+        symbols: [{ name: "ghost", kind: "variable", filePath: sourcePath, line: 1 }],
+        padding: "x".repeat(16 * 1024 * 1024),
+      }),
+      "utf8"
+    );
+
+    const result = await runCli(["--index", dir, "--json"]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.reused, 0);
+    const refreshed = JSON.parse(await readFile(indexPath, "utf8"));
+    const names = refreshed.symbols.map((symbol) => symbol.name);
+    assert.ok(names.includes("real"));
+    assert.ok(!names.includes("ghost"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("--index excludes repeated paths relative to the final --cwd", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-"));
   try {

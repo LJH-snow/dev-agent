@@ -38,6 +38,7 @@ export interface IndexReport {
 }
 
 const DEFAULT_MAX_DEPTH = 8;
+const MAX_INDEX_INPUT_BYTES = 16 * 1024 * 1024; // 16 MiB
 
 /** Directories that never belong in a source index. */
 const SKIPPED_DIRECTORIES = new Set([
@@ -279,6 +280,9 @@ async function collectFiles(
     const filePath = entryPath;
     try {
       const info = await stat(filePath);
+      if (info.size > MAX_INDEX_INPUT_BYTES) {
+        continue;
+      }
       signatures.set(filePath, {
         mtimeMs: info.mtimeMs,
         size: info.size,
@@ -324,6 +328,10 @@ interface PersistedIndex {
  */
 async function readPersistedIndex(indexPath: string): Promise<PersistedIndex | undefined> {
   try {
+    const info = await stat(indexPath);
+    if (!info.isFile() || info.size > MAX_INDEX_INPUT_BYTES) {
+      return undefined;
+    }
     const raw = await readFile(indexPath, "utf8");
     const parsed = JSON.parse(raw) as {
       version?: unknown;
@@ -395,6 +403,10 @@ function classifyDirectoryError(error: unknown): IndexWarning["code"] {
 
 async function readSource(filePath: string): Promise<string | undefined> {
   try {
+    const info = await stat(filePath);
+    if (!info.isFile() || info.size > MAX_INDEX_INPUT_BYTES) {
+      return undefined;
+    }
     return await readFile(filePath, "utf8");
   } catch {
     return undefined;
