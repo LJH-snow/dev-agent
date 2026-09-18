@@ -81,6 +81,9 @@ returns `413` without echoing the path, contents, or raw error.
 Static symlink requests, including the root static asset, are resolved to real
 paths and must remain inside the real public directory; escaped or broken
 symlinks return a clean `404`.
+A trimmed `changeSetId` passed to rollback or validation rerun may contain at
+most `96` characters; a longer change set ID returns `400` before calling the
+session.
 
 - `GET /` — chat UI, including the runtime status panel.
 - `GET /health` — lightweight liveness response with the executor mode.
@@ -177,6 +180,8 @@ symlinks return a clean `404`.
   marked `rolled-back`. Unknown or expired ids return `404`; an in-flight session,
   postimage conflict, or already rolled-back set returns `409`; an unavailable
   rollback implementation returns `501`.
+  A normalized `changeSetId` may contain at most `96` characters; a longer
+  request ID returns `400` without calling rollback.
   A running rollback is tracked in the active session lifecycle: a concurrent
   rollback, deletion, or rename returns `409` and does not mutate the evidence
   or memory file.
@@ -220,6 +225,8 @@ symlinks return a clean `404`.
   validation DTO plus `sessionId`; unknown ids return `404`, a prepared,
   rolled-back, conflicting, or busy set returns `409`, and an unavailable
   rerunner returns `501`.
+  A normalized `changeSetId` may contain at most `96` characters; a longer
+  request ID returns `400` without calling validation rerun.
   Validation rerun loading is stale-safe: a new rerun request aborts the
   previous rerun request, and a response for a stale request or stale session
   does not update the UI.

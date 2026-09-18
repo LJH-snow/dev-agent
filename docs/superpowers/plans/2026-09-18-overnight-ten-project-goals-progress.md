@@ -1222,6 +1222,58 @@ tests were **19/19**, Desktop tests **120/120**, documentation contracts
 full gate counts were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc
 tests **54/54**, and real Rust integration **11/11**.
 
+## Follow-up Goal 42: bound Desktop change-set IDs
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `96` trimmed-character limit to Desktop request change-set IDs.
+- Returned stable JSON `400` responses with `changeSetId is too long` from
+  both `/api/changesets/validate` and `/api/changesets/rollback`.
+- Prevented oversized IDs from reaching `rerunValidation` or
+  `rollbackChangeSet` on fake or real sessions.
+- Preserved normal UUID handling, session lifecycle guards, error mapping, and
+  response schemas.
+- Documented the change-set-ID length limit in the Desktop README and v0.1.7
+  candidate checklist.
+
+**RED contract:**
+
+- Added contracts that sent a `97`-character `changeSetId` to validation rerun
+  and rollback.
+- RED proved both endpoints returned `200` and called the fake session
+  methods: Desktop focused tests were **120 passed / 2 failed**.
+- Added the documentation contract for the `96`-character limit; RED recorded
+  **32 passed / 1 failed**.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **122/122**, documentation contract **33/33**,
+`pnpm verify` completed with `all selected gates passed`, and `git diff --check`
+passed. Focused counts were runtime-manager **15/15**, CLI **314/314**, Rust
+unit/doc tests **54/54**, and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 42 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

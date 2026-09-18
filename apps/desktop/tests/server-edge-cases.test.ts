@@ -242,6 +242,60 @@ test("chat rejects a normalized session ID longer than 96 characters", async () 
   );
 });
 
+test("validation rerun rejects a change set ID longer than 96 characters", async () => {
+  const rerunCalls: string[] = [];
+  await withServer(
+    {
+      session: {
+        async run() {},
+        async rerunValidation(changeSetId) {
+          rerunCalls.push(changeSetId);
+          return {};
+        },
+      },
+    },
+    async (base) => {
+      const res = await fetch(`${base}/api/changesets/validate`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          changeSetId: "c".repeat(97),
+        }),
+      });
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { error: "changeSetId is too long" });
+      assert.deepEqual(rerunCalls, []);
+    }
+  );
+});
+
+test("rollback rejects a change set ID longer than 96 characters", async () => {
+  const rollbackCalls: string[] = [];
+  await withServer(
+    {
+      session: {
+        async run() {},
+        async rollbackChangeSet(changeSetId) {
+          rollbackCalls.push(changeSetId);
+          return { ok: true, changeSetId };
+        },
+      },
+    },
+    async (base) => {
+      const res = await fetch(`${base}/api/changesets/rollback`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          changeSetId: "c".repeat(97),
+        }),
+      });
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { error: "changeSetId is too long" });
+      assert.deepEqual(rollbackCalls, []);
+    }
+  );
+});
+
 test("session listing stays within the fixed 256-entry limit", async () => {
   const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-listing-"));
   const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;

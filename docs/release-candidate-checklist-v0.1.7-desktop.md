@@ -38,6 +38,9 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Desktop request session IDs are capped at `96` normalized characters; a
   longer chat ID returns `400` without starting a run or creating a registry
   entry.
+- Desktop request change set IDs used by validation rerun and rollback are
+  capped at `96` trimmed characters; a longer ID returns `400` before calling
+  the session.
 - Desktop session listing is capped at `256` summaries; active/default sessions
   are retained first, with remaining disk summaries added in stable filename
   order.
@@ -275,19 +278,27 @@ applying the same real-path containment to `GET /`. It passed with Desktop
 contracts **32/32**, Rust unit/doc tests **54/54**, and real Rust integration
 **11/11**.
 
+The post-goal-42 change-set-ID audit reran `pnpm verify` after rejecting
+validation-rerun and rollback IDs longer than `96` trimmed characters with a
+stable `400`. The focused run passed with Desktop **122/122** and
+documentation contracts **33/33**; the full gate completed with `all selected
+gates passed`, runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests
+**54/54**, and real Rust integration **11/11**.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **120 tests passed, 0 failed.** The latest regression contracts cover
+Result: **122 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
 rollback joining the active session lifecycle, the fixed JSON request-body
 limit, the fixed session registry count limit, bounded always-allow memory, and
-the fixed static-response size, session-ID length, session-listing size,
-public symlink containment, root static containment, history-response size,
-export-response size, active rename target, and concurrent rename limits.
+the fixed static-response size, session-ID length, change-set-ID length,
+session-listing size, public symlink containment, root static containment,
+history-response size, export-response size, active rename target, and
+concurrent rename limits.
 
 ```sh
 pnpm build

@@ -1518,3 +1518,67 @@ git diff --check
 - 普通 static asset 与 `1 MiB` static response limit 保持不变；
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
+
+### Follow-up 目标 42：约束 Desktop change-set ID 长度
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 夜跑窗口结束后继续审计 Desktop 请求边界，发现
+`POST /api/changesets/validate` 和 `POST /api/changesets/rollback` 只对
+`changeSetId` 做 trim 和非空校验，没有固定长度上限。真实 change-set ID 是
+UUID，保守上限沿用 session ID 的 `96` 字符。
+
+**范围：**
+
+- `changeSetId` trim 后必须少于或等于 `96` 字符；
+- validate 和 rollback 对超长 ID 返回稳定 `400`：
+  `changeSetId is too long`；
+- 超长请求不得进入 fake 或真实 session 的 `rerunValidation` /
+  `rollbackChangeSet` 方法；
+- 正常 UUID 与现有 lifecycle、错误映射和响应 schema 不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：validate 发送 97 字符 ID 时返回 `400`，fake
+  `rerunValidation` 不被调用；RED 阶段证明当前实现会调用该方法；
+- 新增 server contract：rollback 发送 97 字符 ID 时返回 `400`，fake
+  `rollbackChangeSet` 不被调用；RED 阶段证明当前实现会调用该方法；
+- 在 documentation contract 中断言 README 与 checklist 记录 change-set ID
+  上限；
+- 先确认 RED，再做最小实现。
+- RED proof：无长度上限时，validate 和 rollback 都返回 `200` 并调用 fake
+  session 方法；聚焦运行为 **120 passed / 2 failed**。文档契约为
+  **32 passed / 1 failed**。
+
+**完成记录：**
+
+- 已为 validate 和 rollback 加入 trim 后 `96` 字符的固定 `changeSetId`
+  上限；
+- 超长 ID 返回稳定 `400` 与 `changeSetId is too long`；
+- 超长请求在进入 session 的 `rerunValidation` 或 `rollbackChangeSet` 前返回；
+- 正常 UUID、错误映射、active lifecycle 和响应 schema 保持不变；
+- RED 后 Desktop focused tests **120/120，2 failed**；文档契约为
+  **32/32，1 failed**。实现后 Desktop focused tests **122/122**，
+  documentation contract **33/33**；
+- `pnpm verify` 输出 `all selected gates passed`，相关计数为 runtime-manager
+  **15/15**、CLI **314/314**、Rust unit/doc tests **54/54**、real Rust
+  integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增可配置上限、输入 schema 变更、分页或 UI 重设计；
+- 不回显 ID 内容、路径、文件内容或原始错误；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

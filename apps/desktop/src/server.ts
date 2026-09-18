@@ -130,6 +130,7 @@ const validationStatuses: readonly ValidationStatus[] = [
 const activeSessionRequestMessage =
   "a chat, validation, cleanup, or rollback request is already running in this session";
 const maxSessionIdLength = 96;
+const maxChangeSetIdLength = 96;
 const maxSessionListEntries = 256;
 const maxHistoryResponseBytes = 1024 * 1024;
 const maxExportResponseBytes = 1024 * 1024;
@@ -753,6 +754,11 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "changeSetId is required" }));
           return;
         }
+        if (changeSetId.length > maxChangeSetIdLength) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "changeSetId is too long" }));
+          return;
+        }
 
         const sessionId = normalizeSessionIdForRequest(
           typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
@@ -907,6 +913,11 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (!changeSetId) {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "changeSetId is required" }));
+          return;
+        }
+        if (changeSetId.length > maxChangeSetIdLength) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "changeSetId is too long" }));
           return;
         }
 
