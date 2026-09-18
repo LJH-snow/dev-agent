@@ -87,6 +87,8 @@ session.
 Evidence query filters for `changeSetId` and `validationId` are also capped at
 `96` trimmed characters; a longer evidence query filter returns `400` without
 selecting evidence.
+An approval request ID may contain at most `96` characters; a longer approval
+ID returns `400` before the approval lookup.
 
 - `GET /` — chat UI, including the runtime status panel.
 - `GET /health` — lightweight liveness response with the executor mode.
@@ -178,7 +180,8 @@ selecting evidence.
   error, so the caller can repeat it safely.
 - `POST /api/approval` — body `{ "id": "...", "decision": "allow" | "deny" }`
   answers an `approval-request` frame; unknown or already answered ids return
-  `404`.
+  `404`. The approval ID is capped at `96` characters; a longer ID returns
+  `400` before looking up a pending approval.
 - `POST /api/changesets/rollback` — body `{ "sessionId": "...",
   "changeSetId": "..." }`; guarded rollback of an applied reviewed change set.
   A successful response is the change-set result and durable evidence is then

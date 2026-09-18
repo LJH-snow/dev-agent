@@ -1650,3 +1650,62 @@ git diff --check
 - 不回显绝对路径、文件内容、过滤器内容或原始错误；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 44：约束 Desktop approval ID 长度
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 43 收口后继续审计 Desktop 输入边界，发现
+`POST /api/approval` 接受任意长度的 `id` 字符串后直接进入 approvals 查找。
+真实 approval ID 是 UUID，保守上限沿用已有 ID 边界的 `96` 字符。
+
+**范围：**
+
+- `/api/approval` 的 `id` 必须少于或等于 `96` 字符；
+- 超长 ID 返回稳定 `400` 与 `approval id is too long`；
+- 超长请求不进入 approvals map 查找，也不会 resolve 任何 approval；
+- 正常 UUID、decision 校验、404、allow/deny/allow-always 行为不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：发送 97 字符 approval ID 时返回 `400`；RED 阶段
+  证明当前实现返回 `404 unknown approval request`；
+- 在 documentation contract 中断言 README 与 checklist 记录 approval ID
+  上限；
+- 先确认 RED，再做最小实现。
+- RED proof：无长度上限时，97 字符 approval ID 返回 `404 unknown approval
+  request`；聚焦运行为 **124 passed / 1 failed**。文档契约为
+  **34 passed / 1 failed**。
+
+**完成记录：**
+
+- 已为 `/api/approval` 加入固定 `96` 字符 ID 上限；
+- 超长 ID 在 approvals map 查找前返回稳定 `400` 与 `approval id is too
+  long`；
+- 正常 UUID、decision 校验、404、allow/deny/allow-always 行为保持不变；
+- RED 后 Desktop focused tests **124/124，1 failed**；文档契约为
+  **34/34，1 failed**。实现后 Desktop focused tests **125/125**，
+  documentation contract **35/35**；
+- `pnpm verify` 输出 `all selected gates passed`，相关计数为
+  runtime-manager **15/15**、CLI **314/314**、Rust unit/doc tests
+  **54/54**、real Rust integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增可配置上限、approval schema 变更或 UI 重设计；
+- 不回显 ID 内容、路径、文件内容或原始错误；
+- 不改变 approval timeout、disconnect deny 和 postimage guard；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

@@ -385,6 +385,14 @@ test("v0.1.7 documents the Desktop evidence query filter limit", () => {
   assert.match(desktopCandidate, /96/i);
 });
 
+test("v0.1.7 documents the Desktop approval ID length limit", () => {
+  assert.match(desktopReadme, /approval id/i);
+  assert.match(desktopReadme, /96/i);
+  assert.match(desktopReadme, /400/i);
+  assert.match(desktopCandidate, /approval id/i);
+  assert.match(desktopCandidate, /96/i);
+});
+
 test("v0.1.7 documents the Desktop session listing limit", () => {
   assert.match(desktopReadme, /session listing/i);
   assert.match(desktopReadme, /256/i);

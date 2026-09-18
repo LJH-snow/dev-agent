@@ -131,6 +131,7 @@ const activeSessionRequestMessage =
   "a chat, validation, cleanup, or rollback request is already running in this session";
 const maxSessionIdLength = 96;
 const maxChangeSetIdLength = 96;
+const maxApprovalIdLength = 96;
 const maxSessionListEntries = 256;
 const maxHistoryResponseBytes = 1024 * 1024;
 const maxExportResponseBytes = 1024 * 1024;
@@ -987,6 +988,11 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (!id || !decision) {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "id and decision are required" }));
+          return;
+        }
+        if (id.length > maxApprovalIdLength) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "approval id is too long" }));
           return;
         }
 

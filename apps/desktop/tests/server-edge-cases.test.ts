@@ -320,6 +320,21 @@ test("evidence audit rejects an oversized validation query filter", async () => 
   });
 });
 
+test("approval rejects an oversized approval ID", async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(`${base}/api/approval`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        id: "a".repeat(97),
+        decision: "allow",
+      }),
+    });
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: "approval id is too long" });
+  });
+});
+
 test("session listing stays within the fixed 256-entry limit", async () => {
   const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-listing-"));
   const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
