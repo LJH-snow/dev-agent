@@ -323,6 +323,14 @@ test("v0.1.7 documents the Desktop JSON request-body limit", () => {
   assert.match(desktopCandidate, /413/i);
 });
 
+test("v0.1.7 documents the Desktop session registry limit", () => {
+  assert.match(desktopReadme, /session registry/i);
+  assert.match(desktopReadme, /256/i);
+  assert.match(desktopReadme, /429/i);
+  assert.match(desktopCandidate, /session registry/i);
+  assert.match(desktopCandidate, /256/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

@@ -959,6 +959,63 @@ git diff --check
 - 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
   `~/.npmrc`。
 
+### Follow-up 目标 32：限制 Desktop 内存 session registry 数量
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 31 收口后最终审计发现 `sessionFor()` 会为
+每个新 chat session id 建立并保留一个内存 session，没有固定 registry 上限。
+
+**范围：**
+
+- 为 Desktop 内存 session registry 设定固定的 `256` 个 session 总上限；
+- 到达上限后，unknown session 的 chat 请求返回稳定 `429`，不创建新 session，
+  也不启动 run；
+- 保持默认 session、已有 session、重用 id、DELETE/rename 与 lifecycle 行为
+  不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：用 injected fake session 填满 `256` 个总 entry 后，
+  第 257 个 unknown chat id 返回 `429`，create/run 计数不再增长；
+- 在 documentation contract 中断言 README 与 checklist 记录 session registry
+  总上限；
+- 先确认 RED，再做最小实现。
+- RED proof：先因 helper 类型错误编译失败，改为现有测试的宽松 emit 类型后，
+  新契约在无上限实现时返回 `200` 而非 `429`，聚焦运行为
+  **107 passed / 1 failed**；文档契约为 **22 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不配置用户可调上限，不增加 panel、导出入口、绝对路径、原始错误或视觉
+  重设计；
+- 不改变 chat/session DTO、validation/approval 语义或错误映射；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已在 `sessionFor()` 加入固定 `256` 上限；registry 满员时 unknown chat 返回
+  `429`，不调用 create/run；
+- 已有 default/id session 在满员时仍可正常 chat，DELETE/rename 释放 registry
+  entry 的既有行为未变；
+- RED 后 Desktop focused tests **108/108**，documentation contract
+  **23/23**；`pnpm verify` 输出 `all selected gates passed`，相关计数为
+  runtime-manager **15/15**、CLI **314/314**、Rust unit/doc **54/54**、real
+  Rust integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

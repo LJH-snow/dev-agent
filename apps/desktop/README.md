@@ -142,8 +142,11 @@ returns `413`; the server does not echo the body, path, or raw error.
   `tool-result`; its `status` is `passed`, `failed`, `skipped`, or `blocked`. A
   denial is also written back to the model as that tool's result.
 - `POST /api/chat` takes an optional `sessionId` (unknown ids are created on
-  first use). The `409` guard is per session: different sessions run
-  concurrently while one session stays serialised.
+  first use). The fixed in-memory session registry holds at most `256` total
+  sessions; a new unknown id after that returns `429` and does not start a run.
+  Existing sessions, including the default one, remain available. The `409`
+  guard is per session: different sessions run concurrently while one session
+  stays serialised.
 - `POST /api/chat/cancel` — body `{ "sessionId": "..." }`. Aborts the run that
   is in flight in that session and answers `{ sessionId, cancelled: true }`;
   the aborted stream still closes with `done { "status": "aborted" }`.

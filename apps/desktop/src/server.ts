@@ -146,6 +146,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const createSession =
     options.createSession ?? ((sessionId: string) => new ChatSession({ sessionId }));
   const sessions = new Map<string, DesktopChatSession>([[defaultSessionId, defaultSession]]);
+  const maxSessionRegistryEntries = 256;
   const inFlight = new Set<string>();
   // One controller per running session, so a cancel request can abort it the
   // same way a dropped connection does.
@@ -155,11 +156,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
 
-  const sessionFor = (sessionId?: string): { id: string; session: DesktopChatSession } => {
+  const sessionFor = (sessionId?: string): { id: string; session: DesktopChatSession } | undefined => {
     const id = normalizeSessionId(sessionId ?? defaultSessionId);
     const existing = sessions.get(id);
     if (existing) {
       return { id, session: existing };
+    }
+    if (sessions.size >= maxSessionRegistryEntries) {
+      return undefined;
     }
     const created = createSession(id);
     sessions.set(id, created);
@@ -543,9 +547,15 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const { id, session } = sessionFor(
+        const resolved = sessionFor(
           typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
         );
+        if (!resolved) {
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "session registry limit reached" }));
+          return;
+        }
+        const { id, session } = resolved;
         if (inFlight.has(id)) {
           // A second run would interleave two histories in the same session.
           req.resume();

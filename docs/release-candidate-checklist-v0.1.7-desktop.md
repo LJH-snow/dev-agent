@@ -33,6 +33,8 @@ This checklist summarizes the Desktop-facing work prepared during the
   only mutating operation.
 - Desktop POST JSON endpoints reject a request body larger than `1 MiB` with
   `413` without echoing the body, path, or raw error.
+- Desktop's in-memory session registry is capped at `256` total sessions; a
+  new unknown chat id after that returns `429` and does not start a run.
 - Desktop session summaries expose safe message/validation/change-set/protected
   guard counts without paths or raw evidence.
 - Evidence preview failures distinguish `404`, `413`, and `400` without
@@ -98,9 +100,10 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**22/22**, including the corrected `--project-state` first-release attribution,
+**23/23**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
-safety plus active session lifecycle, rollback, and JSON-body-limit contracts.
+safety plus active session lifecycle, rollback, JSON-body-limit, and
+session-registry-limit contracts.
 
 ## Consolidated gate
 
@@ -186,16 +189,22 @@ After that consolidated gate and final handoff snapshot, a read-only release
 preflight refresh passed again with candidate `0.1.7`, published registry
 `0.1.6`, authenticated npm identity, and five expected package files.
 
+The post-goal-32 session-registry audit reran `pnpm verify` after capping the
+Desktop in-memory registry at `256` sessions and rejecting a new unknown id
+with `429`. It passed with Desktop **108/108**, runtime-manager **15/15**, CLI
+**314/314**, documentation contracts **23/23**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **107 tests passed, 0 failed.** The latest regression contracts cover
+Result: **108 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
-rollback joining the active session lifecycle, and the fixed JSON request-body
-limit.
+rollback joining the active session lifecycle, the fixed JSON request-body
+limit, and the fixed session registry count limit.
 
 ```sh
 pnpm build

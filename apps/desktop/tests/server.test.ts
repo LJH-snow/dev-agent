@@ -691,6 +691,63 @@ test("POST /api/chat rejects an oversized JSON body", async () => {
   }
 });
 
+test("POST /api/chat rejects a new session after the registry limit", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-session-limit-"));
+  const previousSessionDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  let createdSessions = 0;
+  const server = createDesktopServer({
+    createSession() {
+      createdSessions += 1;
+      return {
+        async run(_message: string, emit: any) {
+          emit({ type: "turn", data: { turn: 1 } });
+          emit({ type: "done", data: { status: "done", turns: 1 } });
+        },
+      };
+    },
+  });
+  const base = await start(server);
+  try {
+    for (let index = 0; index < 255; index += 1) {
+      const response = await fetch(`${base}/api/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message: "fill registry", sessionId: `bounded-${index}` }),
+      });
+      assert.equal(response.status, 200);
+      await response.text();
+    }
+    assert.equal(createdSessions, 255);
+
+    const response = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "one too many", sessionId: "bounded-over" }),
+    });
+    const body: any = await response.json();
+    assert.equal(response.status, 429);
+    assert.match(body.error, /registry limit/);
+    assert.equal(createdSessions, 255);
+
+    const existingResponse = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "still available" }),
+    });
+    assert.equal(existingResponse.status, 200);
+    assert.equal(createdSessions, 255);
+  } finally {
+    if (previousSessionDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousSessionDir;
+    }
+    await rm(directory, { recursive: true, force: true });
+    await close(server);
+  }
+});
+
 test("POST /api/chat streams SSE events", async () => {
   const server = createDesktopServer({ session: fakeSession() });
   const base = await start(server);

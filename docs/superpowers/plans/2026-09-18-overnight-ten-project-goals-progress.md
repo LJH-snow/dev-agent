@@ -1235,6 +1235,63 @@ and real Rust integration **11/11**.
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 31 slice can be committed locally as a separate commit.
 
+## Follow-up Goal 32: bound the Desktop session registry
+
+**Status:** DONE
+
+Opened a bounded follow-up after the Goal 31 audit found that `sessionFor()`
+created and retained an in-memory session for every unknown chat id with no
+fixed count limit. The target is a fixed total limit of `256`, with an
+oversized-registry chat returning a stable `429` before a new run starts. RED
+contracts will be added before implementation.
+
+RED confirmed for the new server contract: after filling the registry with the
+default session plus 255 injected sessions, the 256th new unknown chat id
+returned `200` instead of `429`; Desktop focused tests recorded
+**107 passed / 1 failed**. The documentation contract also failed with
+**22 passed / 1 failed**. The first test draft failed TypeScript compilation
+because its emitted event parameter was over-typed; using the existing loose
+test event type corrected that before the behavioral RED run.
+
+**Scope completed:**
+
+- Added a fixed `256` total-entry limit to the Desktop in-memory session
+  registry.
+- Chat requests for a new unknown id return a stable `429` after the limit and
+  do not create or run a session.
+- Existing sessions, including the default one, continue to work at the limit.
+- Preserved DELETE/rename registry behavior, lifecycle guards, and chat/session
+  DTOs.
+- Documented the session registry limit in the Desktop README and v0.1.7
+  candidate checklist.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **108/108**, documentation contract **23/23**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 32 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 28: Desktop undo-rollback stale safety
 
 **Status:** DONE
