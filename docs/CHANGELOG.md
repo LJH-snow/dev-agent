@@ -2,6 +2,12 @@
 
 ## 2026-09-18（runtime install and remove bounds）
 
+- Provider non-streaming success JSON is read with a streamed bounded JSON
+  reader at `16 MiB`; an over-limit response is rejected and its reader is
+  cancelled before provider schemas are parsed. Existing tool call, usage,
+  retry, streaming, and provider error-body redaction behavior remains
+  unchanged.
+
 - `runtime install` now rejects a manifest response larger than `1 MiB` or an
   archive response larger than `16 MiB` with a structured `DOWNLOAD_FAILED`
   result before writing or extracting files. Default downloaders read these

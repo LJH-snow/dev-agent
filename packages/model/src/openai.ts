@@ -1,3 +1,4 @@
+import { readBoundedJsonResponse } from "./json-response.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
@@ -41,6 +42,8 @@ interface OpenAIResponse {
   }[];
   readonly usage?: OpenAIWireUsage;
 }
+
+const MAX_SUCCESS_JSON_BYTES = 16 * 1024 * 1024;
 
 interface OpenAIStreamToolCallDelta {
   readonly index?: number;
@@ -89,7 +92,7 @@ export class OpenAIProvider implements ModelProvider {
       { ...this.retry, signal: options.signal ?? this.retry?.signal }
     );
 
-    const data = (await response.json()) as OpenAIResponse;
+    const data = await readBoundedJsonResponse<OpenAIResponse>(response, MAX_SUCCESS_JSON_BYTES);
     const usage = parseOpenAIUsage(data.usage);
     const message = data.choices?.[0]?.message;
     if (!message) {

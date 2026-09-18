@@ -88,6 +88,9 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Uncaught Desktop server failures return a stable `500` `request failed`
   response instead of exposing raw diagnostics, paths, or secrets.
 - Evidence preview explains that applied change-set guards stay for validation.
+- Provider success JSON is read with a streamed bounded reader at `16 MiB`;
+  an over-limit non-streaming chat response cancels its stream and rejects
+  before provider schemas are parsed.
 - Managed runtime installation can pass `--runtime-release` to select the GitHub
   release carrying the manifest and archive; the cache identity remains
   `--runtime-version`, and the current default release is `0.1.6`.
@@ -147,7 +150,7 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**43/43**, including the corrected `--project-state` first-release attribution,
+**44/44**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
@@ -155,7 +158,7 @@ public-symlink-containment, root-static-containment, session-ID-length-limit,
 session-listing-limit, history-response-limit, rename-lifecycle, and
 export-response-limit, JSON-object-shape, post-goal-46-preflight,
 streamed-runtime-download-limit, runtime-install-download-limit,
-runtime-lifecycle-lock,
+provider-success-json-limit, runtime-lifecycle-lock,
 delete-storage-failure-lock, and decompressed-archive-limit contracts.
 
 ## Consolidated gate
@@ -344,6 +347,11 @@ passed with runtime-manager **21/21** and documentation contracts **43/43**.
 The full gate completed with `all selected gates passed`, CLI **314/314**,
 Desktop **127/127**, Rust unit/doc tests **54/54**, and real Rust integration
 **11/11**.
+
+The post-goal-53 provider-response audit reran the focused gates after adding
+the streamed `16 MiB` provider success JSON limit. The focused run passed with
+model **60/60** and documentation contracts **44/44**. The full gate completed
+with `all selected gates passed`.
 
 ## Verification completed
 

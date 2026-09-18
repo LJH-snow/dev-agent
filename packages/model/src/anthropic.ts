@@ -1,3 +1,4 @@
+import { readBoundedJsonResponse } from "./json-response.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
@@ -32,6 +33,8 @@ interface AnthropicWireUsage {
   readonly cache_creation_input_tokens?: number;
   readonly cache_read_input_tokens?: number;
 }
+
+const MAX_SUCCESS_JSON_BYTES = 16 * 1024 * 1024;
 
 export class AnthropicProvider implements ModelProvider {
   readonly id = "anthropic" as const;
@@ -85,7 +88,7 @@ export class AnthropicProvider implements ModelProvider {
       { ...this.retry, signal: options.signal ?? this.retry?.signal }
     );
 
-    const data = (await response.json()) as AnthropicResponse;
+    const data = await readBoundedJsonResponse<AnthropicResponse>(response, MAX_SUCCESS_JSON_BYTES);
     const blocks = data.content ?? [];
     return {
       content: blocks

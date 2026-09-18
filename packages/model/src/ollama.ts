@@ -1,3 +1,4 @@
+import { readBoundedJsonResponse } from "./json-response.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
@@ -32,6 +33,8 @@ interface OllamaResponse {
   readonly prompt_eval_count?: number;
   readonly eval_count?: number;
 }
+
+const MAX_SUCCESS_JSON_BYTES = 16 * 1024 * 1024;
 
 export class OllamaProvider implements ModelProvider {
   readonly id = "ollama" as const;
@@ -71,7 +74,7 @@ export class OllamaProvider implements ModelProvider {
       { ...this.retry, signal: options.signal ?? this.retry?.signal }
     );
 
-    const data = (await response.json()) as OllamaResponse;
+    const data = await readBoundedJsonResponse<OllamaResponse>(response, MAX_SUCCESS_JSON_BYTES);
     const usage = parseOllamaUsage(data);
     const message = data.message;
     if (!message) {

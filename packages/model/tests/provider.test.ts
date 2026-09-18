@@ -8,6 +8,28 @@ import {
   createOpenAIProvider,
 } from "../dist/index.js";
 
+const PROVIDER_JSON_LIMIT = 16 * 1024 * 1024;
+
+function oversizedJsonResponse(seed: Record<string, unknown>) {
+  let cancelled = false;
+  const payload = JSON.stringify(seed) + " ".repeat(PROVIDER_JSON_LIMIT + 1);
+  let closeTimer: NodeJS.Timeout | undefined;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(Buffer.from(payload));
+      closeTimer = setTimeout(() => controller.close(), 10);
+    },
+    cancel() {
+      clearTimeout(closeTimer);
+      cancelled = true;
+    },
+  });
+  return {
+    response: new Response(body, { status: 200 }),
+    wasCancelled: () => cancelled,
+  };
+}
+
 test("OpenAI provider sends messages and parses tool calls", async () => {
   let requestBody;
   const fetch = async (url, init) => {
@@ -57,6 +79,25 @@ test("OpenAI provider sends messages and parses tool calls", async () => {
   assert.equal((completion.toolCalls?.[0]?.input as { action: string }).action, "read");
 });
 
+test("rejects an oversized OpenAI success response before full buffering", async () => {
+  const oversized = oversizedJsonResponse({ choices: [] });
+  const provider = createOpenAIProvider({
+    model: "gpt-4.1",
+    apiKey: "secret",
+    fetch: async () => oversized.response,
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.match(error.message, /16 MiB/);
+      return true;
+    }
+  );
+  assert.equal(oversized.wasCancelled(), true);
+});
+
 test("Ollama provider sends chat request and parses tool calls", async () => {
   let requestBody;
   const fetch = async (url, init) => {
@@ -88,6 +129,24 @@ test("Ollama provider sends chat request and parses tool calls", async () => {
   assert.equal(requestBody.messages[0].content, "run ls");
   assert.equal(completion.toolCalls?.[0]?.name, "shell");
   assert.equal((completion.toolCalls?.[0]?.input as { command: string }).command, "ls");
+});
+
+test("rejects an oversized Ollama success response before full buffering", async () => {
+  const oversized = oversizedJsonResponse({ message: {} });
+  const provider = createOllamaProvider({
+    model: "qwen3:4b-instruct",
+    fetch: async () => oversized.response,
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.match(error.message, /16 MiB/);
+      return true;
+    }
+  );
+  assert.equal(oversized.wasCancelled(), true);
 });
 
 test("Anthropic provider sends separate system and maps tool messages", async () => {
@@ -129,6 +188,25 @@ test("Anthropic provider sends separate system and maps tool messages", async ()
   assert.equal(requestBody.messages[2].role, "user");
   assert.equal(requestBody.messages[2].content[0].type, "tool_result");
   assert.equal(completion.toolCalls?.[0]?.name, "search");
+});
+
+test("rejects an oversized Anthropic success response before full buffering", async () => {
+  const oversized = oversizedJsonResponse({ content: [] });
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4-20250514",
+    apiKey: "secret",
+    fetch: async () => oversized.response,
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.match(error.message, /16 MiB/);
+      return true;
+    }
+  );
+  assert.equal(oversized.wasCancelled(), true);
 });
 
 test("Gemini provider sends contents and parses function calls", async () => {
@@ -174,4 +252,23 @@ test("Gemini provider sends contents and parses function calls", async () => {
     (completion.toolCalls?.[0]?.input as { args: string[] }).args[0],
     "status"
   );
+});
+
+test("rejects an oversized Gemini success response before full buffering", async () => {
+  const oversized = oversizedJsonResponse({ candidates: [] });
+  const provider = createGeminiProvider({
+    model: "gemini-2.5-flash",
+    apiKey: "secret",
+    fetch: async () => oversized.response,
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.match(error.message, /16 MiB/);
+      return true;
+    }
+  );
+  assert.equal(oversized.wasCancelled(), true);
 });

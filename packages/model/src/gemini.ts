@@ -1,3 +1,4 @@
+import { readBoundedJsonResponse } from "./json-response.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
@@ -29,6 +30,8 @@ interface GeminiResponse {
   }[];
   readonly usageMetadata?: GeminiWireUsage;
 }
+
+const MAX_SUCCESS_JSON_BYTES = 16 * 1024 * 1024;
 
 interface GeminiWireUsage {
   readonly promptTokenCount?: number;
@@ -98,7 +101,7 @@ export class GeminiProvider implements ModelProvider {
       { ...this.retry, signal: options.signal ?? this.retry?.signal }
     );
 
-    const data = (await response.json()) as GeminiResponse;
+    const data = await readBoundedJsonResponse<GeminiResponse>(response, MAX_SUCCESS_JSON_BYTES);
     const usage = parseGeminiUsage(data.usageMetadata);
     const parts = data.candidates?.[0]?.content?.parts ?? [];
     const toolCalls = parts

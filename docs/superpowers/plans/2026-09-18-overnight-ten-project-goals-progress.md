@@ -1731,6 +1731,63 @@ Focused counts were Desktop **127/127**, CLI **314/314**, Rust unit/doc tests
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 53: stream bound provider JSON responses
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a shared bounded streaming JSON collector for provider responses.
+- Replaced `response.json()` in non-streaming OpenAI, Anthropic, Gemini, and
+  Ollama chat paths.
+- Fixed the success JSON limit at `16 MiB`; an over-limit response cancels its
+  reader and rejects before provider schemas are parsed.
+- Preserved provider wire schemas, tool calls, usage, retry behavior, streaming
+  behavior, and error-body redaction.
+- Updated the CLI README, changelog, v0.1.7 candidate checklist, and plan.
+
+**RED contract:**
+
+- Added one over-limit success-response contract for each provider, asserting
+  rejection and reader cancellation.
+- Added `provider success JSON responses use streamed bounded readers` to
+  documentation contracts.
+- RED proof: model focused tests recorded **56 passed / 4 failed** because all
+  four providers completed full buffering without rejection or cancellation;
+  documentation contracts recorded **43 passed / 1 failed**.
+
+**Files touched:**
+
+- `packages/model/src/json-response.ts`
+- `packages/model/src/openai.ts`
+- `packages/model/src/ollama.ts`
+- `packages/model/src/anthropic.ts`
+- `packages/model/src/gemini.ts`
+- `packages/model/tests/provider.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/model run build
+pnpm --filter @dev-agent/model run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: model focused tests **60/60**, documentation contract **44/44**, and
+`pnpm verify` completed with `all selected gates passed`. Focused counts were
+runtime-manager **21/21**, Desktop **127/127**, CLI **314/314**, Rust unit/doc
+tests **54/54**, and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

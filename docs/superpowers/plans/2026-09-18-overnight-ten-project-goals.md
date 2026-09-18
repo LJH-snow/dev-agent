@@ -2063,3 +2063,47 @@ git diff --check
 - 不引入可配置下载上限；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 53：流式限制 provider 成功 JSON 响应
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 52 收口后继续审计内存边界，发现
+OpenAI、Anthropic、Gemini 和 Ollama 的非流式 chat 均直接调用
+`response.json()`；错误响应已缩减，但成功响应没有固定读取上限。
+
+**范围：**
+
+- 四个 provider 的非流式 chat 成功响应改为流式有界读取后再 JSON 解析；
+- 固定上限 `16 MiB`；
+- 流式读取过程中超过上限即 fail-closed 并取消 reader；
+- 保持 provider schema、tool call、usage、retry、error-body redaction 和
+  streaming 语义；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 model contracts：OpenAI、Anthropic、Gemini 和 Ollama 的非流式
+  成功响应超过 `16 MiB` 时必须 reject，且 reader 已被 cancel；
+- 新增 documentation contract：说明 provider success JSON response 使用
+  streamed bounded reader；
+- 先运行新增契约确认 RED，再做最小实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/model run build
+pnpm --filter @dev-agent/model run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 provider wire schema、URL 或 tool call 语义；
+- 不限制 streaming output 本身；
+- 不引入可配置 provider response 上限；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

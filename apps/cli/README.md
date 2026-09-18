@@ -253,6 +253,8 @@ reaches the terminal and obvious credential-shaped values are shown as `[redacte
 characters. Provider error response bodies are treated as untrusted input: credential-shaped
 fields are redacted and the diagnostic body is bounded before it reaches agent memory or a JSON
 error document.
+Non-streaming provider success JSON is read with a streamed bounded JSON reader at `16 MiB`;
+an over-limit response is rejected and its reader is cancelled before provider schemas are parsed.
 `NO_COLOR=1` disables color ANSI in rich TTY mode, but cursor movement and clear-line
 sequences required for live redraw remain.
 ### Managed Rust runtime

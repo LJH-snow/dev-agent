@@ -503,6 +503,14 @@ test("runtime manager documents streamed bounded downloads", () => {
   assert.match(desktopCandidate, /bounded/i);
 });
 
+test("provider success JSON responses use streamed bounded readers", () => {
+  assert.match(cliReadme, /provider/i);
+  assert.match(cliReadme, /streamed bounded JSON/i);
+  assert.match(cliReadme, /16 MiB/i);
+  assert.match(desktopCandidate, /provider success JSON/i);
+  assert.match(desktopCandidate, /16 MiB/i);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);
