@@ -2448,3 +2448,60 @@ git diff --check
 - 不回显文件内容或绝对路径；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 60：限制 CLI workflow 输入文件读取
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 59 收口后继续审计 CLI 输入边界，发现
+`workflow apply` 对用户指定的 plan 文件和 changes 文件直接 `readFile`
+整个内容，没有大小上限；一个超大输入文件会无上限分配内存。
+
+**范围：**
+
+- `workflow apply` 在读取 plan 文件前用 `stat` 检查大小，超过固定
+  `16 MiB` 时返回稳定的 usage/config 错误，不读入文件内容；
+- `readChanges` 对 changes 文件使用同一上限；
+- 保持正常 workflow apply/review 行为和错误分类不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 CLI contract：超过 `16 MiB` 的 plan 文件返回稳定错误，错误不包含
+  文件内容或路径；
+- 新增 CLI contract：超过 `16 MiB` 的 changes 文件返回稳定错误；
+- 新增 documentation contract：说明 workflow 输入文件的 `16 MiB` 读取
+  上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：CLI focused tests 为 **314 passed / 2 failed**；文档契约的
+  目标条目为 **0 passed / 1 failed**。
+
+**完成记录：**
+
+- `workflow apply` 在读取 plan 和 changes 文件前分别 `stat`；
+- 超过固定 `16 MiB` 输入文件上限时返回 `invalid_input_size`；
+- CLI 将该错误映射为 config error（退出码 4），正常 workflow apply/review
+  行为不变；
+- CLI focused tests 为 **316/316**，文档契约为 **52/52**；
+- 全量 `pnpm verify` 输出 `all selected gates passed`；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @agent_cli/cli run build
+pnpm --filter @agent_cli/cli run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 workflow 的 DTO 或错误分类；
+- 不新增可配置上限；
+- 不回显文件内容或绝对路径；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

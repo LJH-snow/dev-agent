@@ -106,6 +106,9 @@ oversized file is rejected without loading its bytes into memory.
   session files reject before their bytes enter memory.
 - code-search scanner signatures skip source files above a fixed `16 MiB`
   scan limit before reading them; smaller files remain indexed.
+- Workflow input files use a fixed `16 MiB` read limit; `apply` checks the plan
+  and changes file sizes with `stat` before reading and rejects oversized files
+  with a stable `invalid_input_size` config error.
 - Managed runtime installation can pass `--runtime-release` to select the GitHub
   release carrying the manifest and archive; the cache identity remains
   `--runtime-version`, and the current default release is `0.1.6`.

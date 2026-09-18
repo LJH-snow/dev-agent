@@ -1175,6 +1175,21 @@ performed for this candidate sync.
 - This is post-release `0.1.8` candidate work and is not part of the published
   `0.1.7` package or GitHub Release.
 
+## Follow-up Goal 60: bound CLI workflow input reads
+
+**Status:** DONE
+
+- Added a fixed `16 MiB` read limit to `workflow apply` plan and changes input
+  files.
+- Both file sizes are checked with `stat` before reading; oversized inputs
+  return a stable `invalid_input_size` config error without reading their
+  bytes.
+- CLI focused tests passed **316/316**, and the documentation contract passed
+  **52/52**.
+- `pnpm verify` completed with `all selected gates passed`.
+- This is post-release `0.1.8` candidate work and is not part of the published
+  `0.1.7` package or GitHub Release.
+
 ## Follow-up Goal 40: Desktop public symlink containment
 
 **Status:** DONE

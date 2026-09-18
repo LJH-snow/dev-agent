@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-18（CLI workflow input file read limit）
+
+- `workflow apply` checks the plan and changes file sizes with `stat` before
+  reading; files above the fixed `16 MiB` input file read limit return a stable
+  `invalid_input_size` config error without their bytes entering memory.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
 ## 2026-09-18（`@agent_cli/cli@0.1.7` published release）
 
 - Published `@agent_cli/cli@0.1.7` to npm; registry `latest` now points to

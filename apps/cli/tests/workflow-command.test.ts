@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile, spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,6 +10,10 @@ import { fileURLToPath } from "node:url";
 const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
+
+async function fileExists(path: string): Promise<boolean> {
+  return await access(path).then(() => true).catch(() => false);
+}
 
 function runCli(
   args: readonly string[],
@@ -90,5 +94,50 @@ test("non-interactive mode fails closed instead of waiting for stdin", async () 
     assert.equal(result.code, 3);
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.error.code, "needs_input");
+  });
+});
+
+test("workflow apply rejects a plan file above the 16 MiB read limit", async () => {
+  await withProject(async (project) => {
+    const changesPath = join(project, "changes.json");
+    const planPath = join(project, "plan.json");
+    await writeFile(changesPath, JSON.stringify([
+      { action: "write", path: "generated.txt", content: "generated\n" },
+    ]), "utf8");
+    await writeFile(planPath, "x".repeat(16 * 1024 * 1024 + 1), "utf8");
+
+    const applied = await runCli([
+      "apply", "--cwd", project, "--changes-file", "changes.json", "--plan-file", "plan.json", "--session", "ci", "--json", "--non-interactive",
+    ], project);
+    assert.equal(applied.code, 4, "an oversized plan file is a config error");
+    const payload = JSON.parse(applied.stdout);
+    assert.equal(payload.error.code, "invalid_input_size");
+    assert.match(applied.stderr || applied.stdout, /16 MiB read limit/);
+    assert.equal(await fileExists(join(project, "generated.txt")), false);
+  });
+});
+
+test("workflow apply rejects a changes file above the 16 MiB read limit", async () => {
+  await withProject(async (project) => {
+    const changesPath = join(project, "changes.json");
+    const planPath = join(project, "plan.json");
+    await writeFile(changesPath, "x".repeat(16 * 1024 * 1024 + 1), "utf8");
+    await writeFile(planPath, JSON.stringify({
+      sessionId: "ci",
+      workingDirectory: ".",
+      createdAt: new Date().toISOString(),
+      mutations: [
+        { action: "write", path: "generated.txt", content: "generated\n" },
+      ],
+    }), "utf8");
+
+    const applied = await runCli([
+      "apply", "--cwd", project, "--changes-file", "changes.json", "--plan-file", "plan.json", "--session", "ci", "--json", "--non-interactive",
+    ], project);
+    assert.equal(applied.code, 4, "an oversized changes file is a config error");
+    const payload = JSON.parse(applied.stdout);
+    assert.equal(payload.error.code, "invalid_input_size");
+    assert.match(applied.stderr || applied.stdout, /16 MiB read limit/);
+    assert.equal(await fileExists(join(project, "generated.txt")), false);
   });
 });

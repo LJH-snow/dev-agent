@@ -1,4 +1,4 @@
-import { chmod, mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { FilesystemTool, type FilesystemMutationInput } from "@dev-agent/tools";
@@ -9,6 +9,18 @@ import {
   type PlanDocument,
   type PlanResult,
 } from "./plan-command.js";
+
+const MAX_WORKFLOW_INPUT_BYTES = 16 * 1024 * 1024; // 16 MiB
+
+async function assertWorkflowInputSize(path: string, maxBytes: number): Promise<void> {
+  const fileStat = await stat(path);
+  if (fileStat.size > maxBytes) {
+    throw new WorkflowInputError(
+      `The workflow input file exceeds the ${maxBytes / (1024 * 1024)} MiB read limit.`,
+      "invalid_input_size"
+    );
+  }
+}
 import {
   executeReviewCommand,
   formatReviewResult,
@@ -62,7 +74,7 @@ export async function executeWorkflowCommand(
     if (error instanceof WorkflowInputError) {
       const payload = { error: { code: error.code, message: error.message } };
       execution = {
-        exitCode: error.code === "invalid_json" || error.code === "invalid_changes"
+        exitCode: error.code === "invalid_json" || error.code === "invalid_changes" || error.code === "invalid_input_size"
           ? EXIT_CODES.config_error
           : EXIT_CODES.execution_error,
         output: options.jsonOutput
@@ -131,8 +143,12 @@ async function executeApply(options: WorkflowCommandOptions): Promise<WorkflowCo
   const planPath = requiredFlag(options.args, "--plan-file");
   const changesPath = requiredFlag(options.args, "--changes-file");
   if (!planPath || !changesPath) return usageFailure(options, "apply requires --plan-file and --changes-file.");
-  const planInput = await readFile(resolve(options.workingDirectory, planPath), "utf8");
-  const changes = await readChanges(resolve(options.workingDirectory, changesPath));
+  const resolvedPlan = resolve(options.workingDirectory, planPath);
+  const resolvedChanges = resolve(options.workingDirectory, changesPath);
+  await assertWorkflowInputSize(resolvedPlan, MAX_WORKFLOW_INPUT_BYTES);
+  await assertWorkflowInputSize(resolvedChanges, MAX_WORKFLOW_INPUT_BYTES);
+  const planInput = await readFile(resolvedPlan, "utf8");
+  const changes = await readChanges(resolvedChanges);
   const applied = await applyPlan({
     filesystem: new FilesystemTool(),
     plan: planInput,
@@ -219,4 +235,3 @@ class WorkflowInputError extends Error {
     this.code = code;
   }
 }
-
