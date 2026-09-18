@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
-import { rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
@@ -191,6 +192,44 @@ test("chat rejects a normalized session ID longer than 96 characters", async () 
       assert.deepEqual(created, []);
     }
   );
+});
+
+test("session listing stays within the fixed 256-entry limit", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-listing-"));
+  const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  try {
+    await Promise.all(
+      Array.from({ length: 300 }, (_, index) =>
+        writeFile(
+          join(directory, `disk-${String(index).padStart(3, "0")}.json`),
+          JSON.stringify({ version: 1, entries: [] })
+        )
+      )
+    );
+    await withServer(
+      {
+        session: {
+          id: "default",
+          async run() {},
+        },
+      },
+      async (base) => {
+      const res = await fetch(`${base}/api/sessions`);
+      const payload: any = await res.json();
+      assert.equal(payload.sessions.length, 256);
+      const ids = payload.sessions.map((session: any) => session.sessionId);
+      assert.ok(ids.includes("default"));
+      }
+    );
+  } finally {
+    if (previousDirectory === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDirectory;
+    }
+    await rm(directory, { recursive: true, force: true });
+  }
 });
 
 test("a matching fake session emits each event type it is given", async () => {

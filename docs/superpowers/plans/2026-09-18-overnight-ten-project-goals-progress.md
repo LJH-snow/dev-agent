@@ -1445,6 +1445,47 @@ and real Rust integration **11/11**.
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 35 slice can be committed locally as a separate commit.
 
+## Follow-up Goal 36: bound Desktop session listings
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `256`-summary limit to Desktop `/api/sessions`.
+- Retained active/default sessions first, then added disk summaries in stable
+  filename order until the limit.
+- Preserved normal listing, history, audit, export, rename, and DELETE behavior
+  for smaller session directories.
+- Documented the session-listing limit in the Desktop README and v0.1.7
+  candidate checklist.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **113/113**, documentation contract **27/27**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 36 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 28: Desktop undo-rollback stale safety
 
 **Status:** DONE

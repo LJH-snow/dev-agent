@@ -1191,6 +1191,63 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 36：限制 Desktop session 列表扫描
+
+**Status:** IN PROGRESS
+
+**建立时间：** 2026-09-18；Goal 35 收口后继续审计 Desktop 的资源边界，发现
+`GET /api/sessions` 会扫描并解析 session 目录里的每一个 `.json` 文件。内存
+registry 已限制到 `256`，但磁盘上的历史文件数量没有固定列表上限。
+
+**范围：**
+
+- 为 `/api/sessions` 的磁盘 session summary 设定固定 `256` 条上限；
+- active/default session 优先保留，再从稳定的文件名顺序补充磁盘 session；
+- 返回列表总数不超过 `256`，不扫描或解析超过上限的额外磁盘文件；
+- 现有普通目录的 list/history/audit/export 行为不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：目录中有 `300` 个合法 session 文件加一个 default
+  session 时，列表总数为 `256`；
+- RED 阶段证明当前实现返回 `301`，并读取所有磁盘 summary；
+- 在 documentation contract 中断言 README 与 checklist 记录 session listing
+  上限；
+- 先确认 RED，再做最小实现。
+- RED proof：无上限实现时，300 个磁盘 session 加 default 的列表返回 `301`；
+  聚焦运行为 **112 passed / 1 failed**。文档契约为 **26 passed / 1 failed**。
+  首次测试草稿因 fake session 类型签名编译失败，未计入行为 RED；改为显式
+  default session 后获得上述行为 RED。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增分页、可配置上限、绝对路径、原始错误或 UI 重设计；
+- 不改变 session file schema、registry、rename 或 DELETE 行为；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已为 Desktop session listing 加入固定 `256` 条上限；
+- active/default session 保留在结果中，额外磁盘 summary 按稳定文件名顺序
+  补足；
+- RED 后 Desktop focused tests **113/113**，documentation contract **27/27**；
+  `pnpm verify` 输出 `all selected gates passed`，相关计数为 runtime-manager
+  **15/15**、CLI **314/314**、Rust unit/doc **54/54**、real Rust integration
+  **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

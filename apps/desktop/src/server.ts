@@ -130,6 +130,7 @@ const validationStatuses: readonly ValidationStatus[] = [
 const activeSessionRequestMessage =
   "a chat, validation, cleanup, or rollback request is already running in this session";
 const maxSessionIdLength = 96;
+const maxSessionListEntries = 256;
 
 const maxJsonBodyBytes = 1024 * 1024;
 const maxStaticFileBytes = 1024 * 1024;
@@ -1288,7 +1289,18 @@ export async function listSessions(
     files = [];
   }
 
-  for (const file of files.filter((name) => name.endsWith(".json"))) {
+  for (const sessionId of knownSessionIds.slice(0, maxSessionListEntries)) {
+    summaries.set(sessionId, {
+      sessionId,
+      entryCount: 0,
+      evidenceSummary: emptyEvidenceSummary(),
+    });
+  }
+
+  for (const file of files
+    .filter((name) => name.endsWith(".json"))
+    .sort()
+    .slice(0, Math.max(0, maxSessionListEntries - summaries.size))) {
     const sessionId = file.slice(0, -".json".length);
     const memory = new FileMemory({ filePath: join(sessionsDir(), file) });
     const metadata = await memory.getMetadata();
@@ -1300,16 +1312,6 @@ export async function listSessions(
       usage: metadata?.usage,
       evidenceSummary: await memory.evidenceSummary().catch(() => undefined),
     });
-  }
-
-  for (const sessionId of knownSessionIds) {
-    if (!summaries.has(sessionId)) {
-      summaries.set(sessionId, {
-        sessionId,
-        entryCount: 0,
-        evidenceSummary: emptyEvidenceSummary(),
-      });
-    }
   }
 
   return [...summaries.values()].sort((left, right) =>

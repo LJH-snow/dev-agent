@@ -354,6 +354,13 @@ test("v0.1.7 documents the Desktop session ID length limit", () => {
   assert.match(desktopCandidate, /96/i);
 });
 
+test("v0.1.7 documents the Desktop session listing limit", () => {
+  assert.match(desktopReadme, /session listing/i);
+  assert.match(desktopReadme, /256/i);
+  assert.match(desktopCandidate, /session listing/i);
+  assert.match(desktopCandidate, /256/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

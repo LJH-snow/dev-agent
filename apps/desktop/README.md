@@ -99,8 +99,11 @@ returns `413` without echoing the path, contents, or raw error.
   command arguments, or raw provider/tool errors. Unknown sessions return a
   generic `404` response. Unexpected internal failures return a generic `500`
   `request failed` response instead of leaking the thrown diagnostic.
-- `GET /api/sessions` — the default session id plus every session file in
+- `GET /api/sessions` — the default session id plus stored session files from
   `DEV_AGENT_SESSION_DIR` (`~/.dev-agent/sessions` by default), newest first.
+  The fixed session listing holds at most `256` summaries; active/default
+  sessions are retained first, and summaries are then filled in stable filename
+  order.
   Each summary includes a metadata-only `evidenceSummary` with retained counts,
   effective limits, and the number/reason for protected applied guards.
 - `GET /api/sessions/<id>/messages` — the stored transcript of one session,
