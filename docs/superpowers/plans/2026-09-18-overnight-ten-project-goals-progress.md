@@ -1403,6 +1403,48 @@ static response returned `200`, so the test failed while parsing the HTML file
 body; Desktop focused tests recorded **110 passed / 1 failed**. The
 documentation contract recorded **24 passed / 1 failed**.
 
+## Follow-up Goal 35: bound Desktop session IDs
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `96` normalized-character limit to Desktop request session
+  IDs.
+- Returned a stable `400` for an oversized POST chat session ID without
+  starting a run or creating a registry entry.
+- Preserved the default session ID and existing normalize, rename, and
+  lifecycle behavior for IDs within the limit.
+- Documented the session-ID length limit in the Desktop README and v0.1.7
+  candidate checklist.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **112/112**, documentation contract **26/26**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 35 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 28: Desktop undo-rollback stale safety
 
 **Status:** DONE

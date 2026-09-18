@@ -1132,6 +1132,65 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 35：限制 Desktop session ID 长度
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 34 收口后继续审计 session registry，发现
+Desktop status 侧的安全展示逻辑已把 normalized session ID 截断到 `96`
+字符，但 chat API 的 normalize/persist 路径没有长度边界，超长合法字符可
+继续进入 registry 并形成过长的 memory filename。
+
+**范围：**
+
+- 在 Desktop server 的 session ID 请求路径上沿用 `96` 个 normalized
+  characters 的固定上限；
+- POST chat 使用超过上限的 normalized ID 时返回稳定 `400`，不创建
+  registry entry，也不开始 run；
+- 现有 `<= 96` 的 session ID、默认 ID、rename 和 lifecycle 行为不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：`97` 个合法 normalized characters 的 chat session ID
+  返回稳定 `400`；RED 阶段证明它返回 SSE `200` 并把过长 ID 交给
+  `createSession`；
+- 新增 documentation contract：README 与 checklist 记录 `96` 字符 session ID
+  上限；
+- 先确认 RED，再做最小实现。
+- RED proof：无上限实现时，超长 chat session ID 返回 SSE `200`，新契约在
+  断言稳定 `400` 前失败，且过长 ID 已进入 `createSession`；聚焦运行为
+  **111 passed / 1 failed**。文档契约为 **25 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不配置用户可调上限，不重写 normalize、rename 或 registry；
+- 不展示完整超长 ID，不新增绝对路径、原始错误或 UI 重设计；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已在 Desktop request session ID 路径加入固定 `96` normalized characters
+  上限；
+- POST chat 超长 ID 返回稳定 `400`，不开始 run，也不创建 registry entry；
+- 默认 session ID 与现有 `<= 96` 的 normalize/rename/lifecycle 行为保持；
+- RED 后 Desktop focused tests **112/112**，documentation contract **26/26**；
+  `pnpm verify` 输出 `all selected gates passed`，相关计数为 runtime-manager
+  **15/15**、CLI **314/314**、Rust unit/doc **54/54**、real Rust integration
+  **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

@@ -347,6 +347,13 @@ test("v0.1.7 documents the Desktop static response limit", () => {
   assert.match(desktopCandidate, /1 MiB/i);
 });
 
+test("v0.1.7 documents the Desktop session ID length limit", () => {
+  assert.match(desktopReadme, /session id/i);
+  assert.match(desktopReadme, /96/i);
+  assert.match(desktopCandidate, /session id/i);
+  assert.match(desktopCandidate, /96/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

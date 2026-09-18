@@ -168,6 +168,31 @@ test("/public/ rejects a response larger than 1 MiB", async () => {
   }
 });
 
+test("chat rejects a normalized session ID longer than 96 characters", async () => {
+  const created: string[] = [];
+  await withServer(
+    {
+      createSession: (sessionId) => {
+        created.push(sessionId);
+        return fakeSession();
+      },
+    },
+    async (base) => {
+      const res = await fetch(`${base}/api/chat`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          message: "hi",
+          sessionId: "a".repeat(97),
+        }),
+      });
+      assert.equal(res.status, 400);
+      assert.deepEqual(await res.json(), { error: "sessionId is too long" });
+      assert.deepEqual(created, []);
+    }
+  );
+});
+
 test("a matching fake session emits each event type it is given", async () => {
   const session = fakeSession([
     { type: "turn", data: { turn: 1 } },

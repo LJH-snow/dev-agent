@@ -146,6 +146,8 @@ returns `413` without echoing the path, contents, or raw error.
 - `POST /api/chat` takes an optional `sessionId` (unknown ids are created on
   first use). The fixed in-memory session registry holds at most `256` total
   sessions; a new unknown id after that returns `429` and does not start a run.
+  A normalized `sessionId` may contain at most `96` characters; a longer
+  request id returns `400` without starting a run or creating a registry entry.
   Existing sessions, including the default one, remain available. The `409`
   guard is per session: different sessions run concurrently while one session
   stays serialised.

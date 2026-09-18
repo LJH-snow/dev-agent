@@ -129,6 +129,7 @@ const validationStatuses: readonly ValidationStatus[] = [
 
 const activeSessionRequestMessage =
   "a chat, validation, cleanup, or rollback request is already running in this session";
+const maxSessionIdLength = 96;
 
 const maxJsonBodyBytes = 1024 * 1024;
 const maxStaticFileBytes = 1024 * 1024;
@@ -158,6 +159,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const sessionAllowlist = new Map<string, Set<string>>();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
+
+  const normalizeSessionIdForRequest = (
+    sessionId?: string
+  ): string | undefined => {
+    if (sessionId === undefined) {
+      return defaultSessionId;
+    }
+    const id = normalizeSessionId(sessionId ?? defaultSessionId);
+    return id.length > maxSessionIdLength ? undefined : id;
+  };
 
   const sessionFor = (sessionId?: string): { id: string; session: DesktopChatSession } | undefined => {
     const id = normalizeSessionId(sessionId ?? defaultSessionId);
@@ -190,7 +201,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
       if (req.method === "GET" && url.pathname === "/api/status") {
         const requestedSessionId = url.searchParams.get("sessionId");
-        const sessionId = normalizeSessionId(requestedSessionId ?? defaultSessionId);
+        const sessionId = normalizeSessionIdForRequest(requestedSessionId ?? undefined);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         const session = sessions.get(sessionId);
         if (!session) {
           res.writeHead(404, { "content-type": "application/json" });
@@ -245,7 +261,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         url.pathname.endsWith("/messages")
       ) {
         const rawId = url.pathname.slice("/api/sessions/".length, -"/messages".length);
-        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         const filterResult = parseEvidenceFilters(url);
         if ("error" in filterResult) {
           res.writeHead(400, { "content-type": "application/json" });
@@ -260,7 +281,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
       if (req.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {
         const rawId = url.pathname.slice("/api/sessions/".length);
-        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         if (inFlight.has(sessionId)) {
           req.resume();
           res.writeHead(409, { "content-type": "application/json" });
@@ -297,7 +323,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         url.pathname.endsWith("/rename")
       ) {
         const rawId = url.pathname.slice("/api/sessions/".length, -"/rename".length);
-        const from = normalizeSessionId(decodeURIComponent(rawId));
+        const from = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!from) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         const body = await readJsonBody(req, res);
         if (body === undefined) {
           return;
@@ -311,8 +342,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const to =
-          typeof parsed.sessionId === "string" ? normalizeSessionId(parsed.sessionId) : "";
+        const normalizedTarget =
+          typeof parsed.sessionId === "string"
+            ? normalizeSessionIdForRequest(parsed.sessionId)
+            : "";
+        if (normalizedTarget === undefined) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        const to = normalizedTarget;
         if (!to) {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "sessionId is required" }));
@@ -367,7 +406,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           "/api/sessions/".length,
           -"/evidence/preview".length
         );
-        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         const filePath = memoryPathFor(sessionId);
         if (!existsSync(filePath)) {
           res.writeHead(404, { "content-type": "application/json" });
@@ -417,7 +461,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         url.pathname.endsWith("/evidence")
       ) {
         const rawId = url.pathname.slice("/api/sessions/".length, -"/evidence".length);
-        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         const filePath = memoryPathFor(sessionId);
         if (!existsSync(filePath)) {
           res.writeHead(404, { "content-type": "application/json" });
@@ -480,7 +529,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         url.pathname.endsWith("/export")
       ) {
         const rawId = url.pathname.slice("/api/sessions/".length, -"/export".length);
-        const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         const memory = new FileMemory({ filePath: memoryPathFor(sessionId) });
         if (!existsSync(memoryPathFor(sessionId))) {
           res.writeHead(404, { "content-type": "application/json" });
@@ -550,8 +604,17 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const resolved = sessionFor(
+        const sessionId = normalizeSessionIdForRequest(
           typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
+        );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+
+        const resolved = sessionFor(
+          sessionId
         );
         if (!resolved) {
           res.writeHead(429, { "content-type": "application/json" });
@@ -597,9 +660,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const sessionId = normalizeSessionId(
-          typeof parsed.sessionId === "string" ? parsed.sessionId : defaultSessionId
+        const sessionId = normalizeSessionIdForRequest(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
         );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         const controller = runControllers.get(sessionId);
         if (controller) {
           controller.abort();
@@ -634,9 +702,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const sessionId = normalizeSessionId(
-          typeof parsed.sessionId === "string" ? parsed.sessionId : defaultSessionId
+        const sessionId = normalizeSessionIdForRequest(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
         );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         if (inFlight.has(sessionId)) {
           res.writeHead(409, { "content-type": "application/json" });
           res.end(
@@ -715,9 +788,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const sessionId = normalizeSessionId(
-          typeof parsed.sessionId === "string" ? parsed.sessionId : defaultSessionId
+        const sessionId = normalizeSessionIdForRequest(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
         );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         if (inFlight.has(sessionId)) {
           res.writeHead(409, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: activeSessionRequestMessage }));
@@ -780,9 +858,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const sessionId = normalizeSessionId(
-          typeof parsed.sessionId === "string" ? parsed.sessionId : defaultSessionId
+        const sessionId = normalizeSessionIdForRequest(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
         );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
         if (inFlight.has(sessionId)) {
           res.writeHead(409, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: activeSessionRequestMessage }));
