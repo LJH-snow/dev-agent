@@ -2426,7 +2426,9 @@ git diff --check
   plan 文件；
 - `workflow apply` 的 plan/changes 检查保持不变；
 - CLI focused tests 为 **317/317**，文档契约为 **52/52**；
-- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+- 全量 `pnpm verify` 输出 `all selected gates passed`；
+- GitHub Actions run `35346711580` 四个 job 均为绿色；
+- 未创建 tag、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
 **验收命令：**
@@ -2444,7 +2446,7 @@ git diff --check
 - 不改变 workflow DTO、plan schema 或错误 code；
 - 不新增可配置上限；
 - 不回显文件内容或绝对路径；
-- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+- 不创建 tag、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
 
 ### Follow-up 目标 59：限制 agent memory 文件读取

@@ -1200,6 +1200,8 @@ performed for this candidate sync.
   error and no plan file is written.
 - CLI focused tests passed **317/317**, and the documentation contract passed
   **52/52**.
+- `pnpm verify` completed with `all selected gates passed`; GitHub Actions run
+  `35346711580` passed all four jobs.
 - This is post-release `0.1.8` candidate work and is not part of the published
   `0.1.7` package or GitHub Release.
 
