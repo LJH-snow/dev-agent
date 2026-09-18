@@ -266,3 +266,22 @@ DEV_AGENT_SESSION_DIR="$TMP_SESSION_DIR" node "$REPO/apps/cli/dist/index.js" --s
 | N-03 | `packages/tools/src/filesystem.ts`, `packages/runtime-manager/src/manager.ts` | **NEEDS-EVIDENCE** | 需 rollback/cache worst-case benchmark | 保持现有语义，先收集证据 |
 | P-01～P-11 | memory/filesystem read/config/workflow/model/MCP/Desktop HTTP/runtime download/archive/code-search | **PRESERVE** | 现有 focused tests 已覆盖固定边界 | 不重复修改；整合后回归验证 |
 
+
+## 8. 审计后的独立修复证据（不属于原始审计快照）
+
+在原始审计完成后，且确认主工作树没有修改下列文件的情况下，独立 worktree 又完成了三个不重叠的修复。它们仍需由主代理在当前 Task 3 工作合并后决定是否 cherry-pick，并补充候选文档。
+
+| Finding | 修复 commit | 变更 | focused evidence |
+| --- | --- | --- | --- |
+| F-04 | `9bf4883` | `apps/cli/src/index-command.ts` 对源文件和 persisted index 使用固定 16 MiB stat-before-read guard，并在 source read 处再次检查 | `index-command` 17/17；先写 RED 测试，原实现分别收录超大源文件和错误复用 oversized index |
+| F-05 | `b160b20` | `apps/cli/src/doctor.ts` 对 config 检查复用固定 1 MiB read boundary，超限只返回稳定 warning | doctor 16/16；完整 CLI 回归包含该场景 |
+| F-06 | `0a274dc` | `apps/cli/src/project-init.ts` 对现有 `.gitignore` 在计划读取和实际更新读取前使用固定 16 MiB guard | project-init 7/7、project-init-cli 4/4；超限不创建 `.dev-agent` 且不改写原文件 |
+
+上述三个 commit 的合并顺序为：`b160b20` → `0a274dc` → `9bf4883`。合并后的独立 worktree 验证为：
+
+```text
+pnpm --filter @agent_cli/cli run test
+322 tests, 322 passed, 0 failed
+```
+
+该证据不改变原始 Task 2 的 `PRESERVE`/`FIX`/`NEEDS-EVIDENCE` 判断，也不代表主工作树已经合并这些提交。
