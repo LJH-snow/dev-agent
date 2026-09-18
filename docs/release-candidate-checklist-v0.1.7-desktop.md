@@ -56,6 +56,9 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Desktop `/public/` requests resolve the real request path and real public
   directory; a symlink that escapes or is broken returns `404` without target
   contents or path diagnostics.
+- Desktop root static asset and `/public/` requests resolve real paths against
+  the same real public directory; an escaping or broken index symlink returns
+  `404`.
 - Desktop session summaries expose safe message/validation/change-set/protected
   guard counts without paths or raw evidence.
 - Evidence preview failures distinguish `404`, `413`, and `400` without
@@ -121,12 +124,13 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**31/31**, including the corrected `--project-state` first-release attribution,
+**32/32**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
-public-symlink-containment, session-ID-length-limit, session-listing-limit,
-history-response-limit, rename-lifecycle, and export-response-limit contracts.
+public-symlink-containment, root-static-containment, session-ID-length-limit,
+session-listing-limit, history-response-limit, rename-lifecycle, and
+export-response-limit contracts.
 
 ## Consolidated gate
 
@@ -265,19 +269,25 @@ passed with Desktop **119/119**, runtime-manager **15/15**, CLI **314/314**,
 documentation contracts **31/31**, Rust unit/doc tests **54/54**, and real Rust
 integration **11/11**.
 
+The post-goal-41 root-static-containment audit reran `pnpm verify` after
+applying the same real-path containment to `GET /`. It passed with Desktop
+**120/120**, runtime-manager **15/15**, CLI **314/314**, documentation
+contracts **32/32**, Rust unit/doc tests **54/54**, and real Rust integration
+**11/11**.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **119 tests passed, 0 failed.** The latest regression contracts cover
+Result: **120 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
 rollback joining the active session lifecycle, the fixed JSON request-body
 limit, the fixed session registry count limit, bounded always-allow memory, and
 the fixed static-response size, session-ID length, session-listing size,
-public symlink containment, history-response size, export-response size, active
-rename target, and concurrent rename limits.
+public symlink containment, root static containment, history-response size,
+export-response size, active rename target, and concurrent rename limits.
 
 ```sh
 pnpm build

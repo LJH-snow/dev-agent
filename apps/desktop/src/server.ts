@@ -192,7 +192,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
     try {
       if (req.method === "GET" && url.pathname === "/") {
-        await serveFile(res, join(publicDir, "index.html"), ".html");
+        const index = await resolvePublicFile("index.html");
+        if (!index) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "not found" }));
+          return;
+        }
+        await serveFile(res, index.filePath, index.ext);
         return;
       }
 
@@ -611,25 +617,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.writeHead(400).end("invalid path");
           return;
         }
-        try {
-          const [realFilePath, realPublicDir] = await Promise.all([
-            realpath(filePath),
-            realpath(publicDir),
-          ]);
-          if (
-            realFilePath !== realPublicDir &&
-            !realFilePath.startsWith(realPublicDir + sep)
-          ) {
-            res.writeHead(404, { "content-type": "application/json" });
-            res.end(JSON.stringify({ error: "not found" }));
-            return;
-          }
-        } catch {
+        const resolved = await resolvePublicFile(relative);
+        if (!resolved) {
           res.writeHead(404, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "not found" }));
           return;
         }
-        await serveFile(res, filePath, extname(filePath));
+        await serveFile(res, resolved.filePath, resolved.ext);
         return;
       }
 
@@ -1328,6 +1322,32 @@ function renderTranscript(
 
 export function sessionsDir(): string {
   return process.env.DEV_AGENT_SESSION_DIR ?? join(homedir(), ".dev-agent", "sessions");
+}
+
+type ResolvedPublicFile = {
+  readonly filePath: string;
+  readonly ext: string;
+};
+
+async function resolvePublicFile(
+  relative: string
+): Promise<ResolvedPublicFile | undefined> {
+  const filePath = join(publicDir, relative);
+  try {
+    const [realFilePath, realPublicDir] = await Promise.all([
+      realpath(filePath),
+      realpath(publicDir),
+    ]);
+    if (
+      realFilePath !== realPublicDir &&
+      !realFilePath.startsWith(realPublicDir + sep)
+    ) {
+      return undefined;
+    }
+    return { filePath, ext: extname(filePath) };
+  } catch {
+    return undefined;
+  }
 }
 
 export function memoryPathFor(sessionId: string): string {

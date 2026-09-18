@@ -355,6 +355,13 @@ test("v0.1.7 documents Desktop public symlink containment", () => {
   assert.match(desktopCandidate, /public\s+directory/i);
 });
 
+test("v0.1.7 documents Desktop root static containment", () => {
+  assert.match(desktopReadme, /root\s+static\s+asset/i);
+  assert.match(desktopReadme, /real\s+public\s+directory/i);
+  assert.match(desktopCandidate, /root\s+static\s+asset/i);
+  assert.match(desktopCandidate, /real\s+public\s+directory/i);
+});
+
 test("v0.1.7 documents the Desktop session ID length limit", () => {
   assert.match(desktopReadme, /session id/i);
   assert.match(desktopReadme, /96/i);

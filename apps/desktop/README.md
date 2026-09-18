@@ -78,8 +78,9 @@ All POST JSON endpoints accept at most `1 MiB` of request body. A larger body
 returns `413`; the server does not echo the body, path, or raw error.
 Static responses under `/public/` are also capped at `1 MiB`; an oversized file
 returns `413` without echoing the path, contents, or raw error.
-Static symlink requests are resolved to real paths and must remain inside the
-real public directory; escaped or broken symlinks return a clean `404`.
+Static symlink requests, including the root static asset, are resolved to real
+paths and must remain inside the real public directory; escaped or broken
+symlinks return a clean `404`.
 
 - `GET /` — chat UI, including the runtime status panel.
 - `GET /health` — lightweight liveness response with the executor mode.

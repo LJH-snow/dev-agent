@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -64,6 +64,24 @@ test("GET a missing public file returns 404, not 500", async () => {
     const res = await fetch(`${base}/public/definitely-missing.js`);
     assert.equal(res.status, 404);
   });
+});
+
+test("GET / refuses a symlinked index escaping the public directory", async () => {
+  const indexPath = join(process.cwd(), "public", "index.html");
+  const backupPath = `${indexPath}.goal41.tmp`;
+  await rename(indexPath, backupPath);
+  await symlink("../package.json", indexPath);
+  try {
+    await withServer({}, async (base) => {
+      const res = await fetch(base);
+      assert.equal(res.status, 404);
+      const body = await res.text();
+      assert.ok(!body.includes("\"name\""), "must not leak the parent package.json");
+    });
+  } finally {
+    await rm(indexPath, { force: true });
+    await rename(backupPath, indexPath);
+  }
 });
 
 test("GET the public directory itself returns 404, not 500", async () => {

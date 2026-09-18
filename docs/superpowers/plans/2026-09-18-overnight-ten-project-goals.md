@@ -726,6 +726,47 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 41：约束 Desktop root static 边界
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 40 收口后继续审计 static 入口，发现
+`GET /` 直接读取 `join(publicDir, "index.html")`，没有经过 Goal 40 的
+real-path containment。如果 `public/index.html` 本身被 symlink 指向父目录，
+root 页面仍可能绕过 `/public/` 防护。
+
+**范围：**
+
+- `GET /` 读取的 index asset 必须解析 real path 并保持在真实 public 目录内；
+- 逃逸或断链的 index symlink 返回稳定 `404`，不返回目标文件内容；
+- `/public/`、普通 static asset、响应上限和桌面 UI 行为不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：将 `public/index.html` 临时替换为父目录
+  `package.json` 的 symlink 时，`GET /` 返回 `404` 且不包含 package 元数据；
+- 在 documentation contract 中断言 README 与 checklist 记录 root static
+  containment；
+- 先确认 RED，再做最小实现。
+- RED proof：`public/index.html` 临时替换为父目录 `package.json` 的 symlink
+  时，当前实现返回 `200`；聚焦运行为 **18 passed / 1 failed**。文档契约为
+  **31 passed / 1 failed**。
+
+**完成记录：**
+
+- `GET /` 已复用 static real-path resolver；
+- root index 越界或断链 symlink 返回稳定 `404`，不返回目标内容；
+- `/public/` 的 containment、普通 static asset 与 `1 MiB` response limit 保持
+  不变；
+- RED 后聚焦 static 边界测试 **18/18，1 failed**；实现后 **19/19**；
+- documentation contract 实现后为 **32/32**；`pnpm verify` 输出
+  `all selected gates passed`，相关计数为 Desktop **120/120**、runtime-manager
+  **15/15**、CLI **314/314**、Rust unit/doc tests **54/54**、real Rust
+  integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ### Follow-up 目标 29：让运行中的 Desktop session lifecycle fail-closed
 
 **Status:** DONE

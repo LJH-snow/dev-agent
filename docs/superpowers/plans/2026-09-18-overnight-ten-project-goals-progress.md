@@ -1176,6 +1176,52 @@ with `all selected gates passed`. The full gate counts were runtime-manager
 **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**, and real Rust
 integration **11/11**.
 
+## Follow-up Goal 41: Desktop root static containment
+
+**Status:** DONE
+
+**Scope completed:**
+
+- `GET /` now resolves the root index asset with the same static real-path
+  containment used by `/public/`.
+- An escaping or broken symlink at `public/index.html` returns a clean `404`
+  and cannot serve the parent `package.json` from the root route.
+- The public route, normal static assets, response limits, and Desktop UI
+  behavior remain unchanged.
+- Documented the root static containment behavior in the Desktop README and
+  v0.1.7 candidate checklist.
+
+**RED contract:**
+
+- Temporarily replaced `public/index.html` with a symlink to `../package.json`
+  and proved that `GET /` returned `200` before the fix.
+- Added the documentation containment contract for root static assets.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+RED was focused static boundary tests **18/18, 1 failed** and documentation
+contract **31/31, 1 failed**. After implementation, focused static boundary
+tests were **19/19**, Desktop tests **120/120**, documentation contracts
+**32/32**, and `pnpm verify` completed with `all selected gates passed`. The
+full gate counts were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc
+tests **54/54**, and real Rust integration **11/11**.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE
