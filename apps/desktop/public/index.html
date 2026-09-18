@@ -281,6 +281,8 @@
     let evidencePreviewRequestId = 0;
     let evidencePreviewController = null;
     let evidencePreviewDataRevision = 0;
+    let desktopStatusRequestId = 0;
+    let desktopStatusController = null;
 
     function setStatus(text) { status.textContent = text; }
 
@@ -338,17 +340,23 @@
 
     async function loadDesktopStatus(sessionId) {
       if (!sessionId) return;
+      const requestId = ++desktopStatusRequestId;
+      desktopStatusController?.abort();
+      const controller = new AbortController();
+      desktopStatusController = controller;
       desktopStatusRefreshButton.disabled = true;
       desktopStatusRefreshButton.setAttribute("aria-busy", "true");
       desktopStatusNote.textContent = "Loading metadata-only status…";
       try {
-        const response = await fetch("/api/status?sessionId=" + encodeURIComponent(sessionId), { cache: "no-store" });
+        const response = await fetch("/api/status?sessionId=" + encodeURIComponent(sessionId), { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("status unavailable");
         const payload = await response.json();
+        if (requestId !== desktopStatusRequestId || sessionId !== currentSessionId) return;
         if (!isDesktopStatusPayload(payload)) throw new Error("invalid status response");
         renderDesktopStatus(payload);
         desktopStatusNote.textContent = "Metadata only — no keys, paths, source, or raw errors are shown.";
       } catch {
+        if (controller.signal.aborted || requestId !== desktopStatusRequestId || sessionId !== currentSessionId) return;
         desktopStatusNote.textContent = "Runtime status unavailable.";
         setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, "—", "—");
         setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, "—", "—");
@@ -361,8 +369,11 @@
         setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, "—", "—");
         setDesktopStatusValue(desktopStatusValidation, desktopStatusValidationState, "—", "—");
       } finally {
-        desktopStatusRefreshButton.disabled = false;
-        desktopStatusRefreshButton.setAttribute("aria-busy", "false");
+        if (requestId === desktopStatusRequestId) {
+          desktopStatusController = null;
+          desktopStatusRefreshButton.disabled = false;
+          desktopStatusRefreshButton.setAttribute("aria-busy", "false");
+        }
       }
     }
 

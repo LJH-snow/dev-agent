@@ -170,6 +170,23 @@ test("GET / marks runtime status refresh state accessibly", async () => {
   }
 });
 
+test("GET / guards desktop status responses against stale sessions", async () => {
+  const server = createDesktopServer({ session: { async run() {} } });
+  const base = await start(server);
+  try {
+    const html = await (await fetch(`${base}/`)).text();
+    assert.match(html, /let desktopStatusRequestId = 0/);
+    assert.match(html, /let desktopStatusController = null/);
+    assert.match(html, /const requestId = \+\+desktopStatusRequestId/);
+    assert.match(html, /desktopStatusController\?\.abort\(\)/);
+    assert.match(html, /desktopStatusController = controller/);
+    assert.match(html, /cache: "no-store", signal: controller\.signal/);
+    assert.match(html, /requestId !== desktopStatusRequestId \|\| sessionId !== currentSessionId/);
+  } finally {
+    await close(server);
+  }
+});
+
 test("GET /api/status keeps a legacy session executor unknown without internals", async () => {
   const server = createDesktopServer({ session: { async run() {} } });
   const base = await start(server);

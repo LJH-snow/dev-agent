@@ -14,6 +14,8 @@ This checklist summarizes the Desktop-facing work prepared during the
   the already-published 0.1.6 work.
 - Desktop managed runtime states now have fixed user-facing actions.
 - Desktop status refresh exposes an `aria-busy` lifecycle.
+- Desktop status loading is stale-safe: a new request aborts the previous
+  status request, and responses for a stale request or session do not render.
 - Desktop session summaries expose safe message/validation/change-set/protected
   guard counts without paths or raw evidence.
 - Evidence preview failures distinguish `404`, `413`, and `400` without
@@ -79,8 +81,9 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**16/16**, including the corrected `--project-state` first-release attribution
-and the refreshed provenance.
+**17/17**, including the corrected `--project-state` first-release attribution,
+the refreshed provenance, and the Desktop status stale-response safety
+contract.
 
 ## Consolidated gate
 
@@ -119,6 +122,12 @@ stable `500` `request failed` boundary. It passed on the same worktree with
 Desktop **98/98**, runtime-manager **15/15**, CLI **314/314**, documentation
 contracts **16/16**, Rust unit/doc tests **54/54**, and real Rust integration
 **11/11**.
+
+The post-goal-25 stale-response audit reran `pnpm verify` after adding the
+Desktop status request/session guard and its documentation contract. It passed
+on the same worktree with Desktop **99/99**, runtime-manager **15/15**, CLI
+**314/314**, documentation contracts **17/17**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
 
 After that consolidated gate and final handoff snapshot, a read-only release
 preflight refresh passed again with candidate `0.1.7`, published registry

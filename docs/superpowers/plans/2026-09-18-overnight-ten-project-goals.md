@@ -635,6 +635,56 @@ git diff --check
 - 不改写已有历史验证记录；
 - 不做 release 授权。
 
+### Follow-up 目标 25：加固 Desktop status 的过时响应边界
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 24 收口后继续审计 Goal 2 时发现快速切换
+session 的 status 请求缺少 stale guard。
+
+**范围：**
+
+- 为 Desktop status 请求补 request id 和 AbortController；
+- 新 status 请求 abort 旧 status 请求；
+- stale request 或 stale session 的 response 不渲染状态面板；
+- 保持 `/api/status` schema、metadata allowlist 和 managed-runtime 清洗不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 先在 Desktop UI contract 中断言 `desktopStatusRequestId`、abort controller、
+  stale/session guard 和 signal 存在；
+- 再在 documentation contract 中断言 Desktop README 与 candidate checklist 说明
+  stale-safe 语义；
+- 先分别确认 RED，再补最小实现与文档。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不新增 panel、导出入口、绝对路径、原始错误或视觉重设计；
+- 不改变 `/api/status` 公开 schema；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已添加 request ID、AbortController、signal、stale request/session guard，
+  并只清理当前请求的 finally 状态；
+- Desktop UI contract 先确认 RED，随后实现后通过；
+- Desktop focused tests **99/99**；
+- `pnpm verify` 通过并输出 `all selected gates passed`，相关计数为
+  runtime-manager **15/15**、CLI **314/314**、documentation contract
+  **17/17**、Rust unit/doc **54/54**、real Rust integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

@@ -80,6 +80,8 @@ are accepted, and validation command fields are deliberately not configurable.
   session. The response reports executor, Node runtime, provider, model,
   approval mode, validation policy, the latest validation result, and whether the
   session is currently busy.
+  Status loading is stale-safe: a new status request aborts the previous status
+  request, and a response for a stale request or stale session does not render.
   It always includes a managed-runtime summary. `state` is `unsupported`,
   `missing`, `installed`, `corrupt`, or `unavailable`; `target` is one of the
   four supported runtime targets, `version` appears only when the installed

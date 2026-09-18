@@ -18,6 +18,10 @@ const desktopCandidate = readFileSync(
   new URL("../docs/release-candidate-checklist-v0.1.7-desktop.md", import.meta.url),
   "utf8"
 );
+const desktopReadme = readFileSync(
+  new URL("../apps/desktop/README.md", import.meta.url),
+  "utf8"
+);
 const cliPackage = JSON.parse(
   readFileSync(new URL("../apps/cli/package.json", import.meta.url), "utf8")
 );
@@ -274,6 +278,13 @@ test("v0.1.7 candidate records resolved handoff provenance", () => {
   assert.match(desktopCandidate, /commits separately/i);
   assert.match(desktopCandidate, /maintainer[\s\S]*decision/i);
   assert.doesNotMatch(desktopCandidate, /in-progress CLI\/runtime/i);
+});
+
+test("v0.1.7 documents desktop status stale-response safety", () => {
+  assert.match(desktopReadme, /stale-safe/i);
+  assert.match(desktopReadme, /does not render/i);
+  assert.match(desktopCandidate, /stale-safe/i);
+  assert.match(desktopCandidate, /aborts the previous[\s\S]*status request/i);
 });
 
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
