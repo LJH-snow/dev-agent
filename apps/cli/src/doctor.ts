@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -112,6 +112,7 @@ export interface DoctorOptions {
 }
 
 const MIN_NODE_MAJOR = 20;
+const MAX_CONFIG_FILE_BYTES = 1024 * 1024; // 1 MiB
 
 export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   const env = options.env ?? process.env;
@@ -281,6 +282,13 @@ const CONFIG_SECTIONS = [
 async function checkConfig(path: string): Promise<DoctorCheck> {
   let raw: string;
   try {
+    if ((await stat(path)).size > MAX_CONFIG_FILE_BYTES) {
+      return {
+        name: "config",
+        status: "warn",
+        detail: "config file exceeds the 1 MiB read limit; the file is ignored",
+      };
+    }
     raw = await readFile(path, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {

@@ -171,6 +171,33 @@ test("runDoctor lists the recognised sections of a valid config", async () => {
   }
 });
 
+test("runDoctor warns and ignores a config file above the 1 MiB read limit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-"));
+  const configPath = join(dir, "config.json");
+  await writeFile(
+    configPath,
+    JSON.stringify({ defaultProvider: "ollama", padding: "x".repeat(1024 * 1024) }),
+    "utf8"
+  );
+  try {
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir: dir,
+      configPath,
+      env: {},
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+
+    const config = checkFor(report, "config");
+    assert.equal(config.status, "warn");
+    assert.match(config.detail, /1 MiB read limit/);
+    assert.match(config.detail, /ignored/);
+    assert.doesNotMatch(config.detail, new RegExp(escapeRegExp(configPath)));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("runDoctor warns about a malformed config", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-"));
   const configPath = join(dir, "config.json");
