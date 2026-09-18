@@ -685,6 +685,54 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 28：加固 Desktop undo rollback 的过时响应边界
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 27 收口后审计 approval/Undo 请求，发现旧
+session 的 rollback 响应可在切换 session 后触发 `markEvidencePreviewStale()`。
+
+**范围：**
+
+- 为 undo rollback 请求补 request ID、AbortController 和 signal；
+- stale request 或 stale session 的 rollback 响应不更新 undo 状态、不标记
+  evidence preview 过时；
+- 保持 `/api/changesets/rollback` schema、409/404/501 文案和 postimage guard
+  行为不变。
+
+**RED contract：**
+
+- 先在 Desktop UI contract 中断言 `desktopUndoRequestId`、abort controller、
+  stale/session guard 和 signal 存在；
+- 确认 RED 后，再做最小实现并更新文档。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不新增 panel、导出入口、绝对路径、原始错误或视觉重设计；
+- 不改变 rollback DTO、session schema 或 endpoint 行为；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已添加 request ID、AbortController、signal、stale request/session guard，
+  并只清理当前请求的 controller；
+- Desktop UI contract 先确认 RED，随后实现后通过；
+- Desktop focused tests **102/102**；
+- `pnpm verify` 通过并输出 `all selected gates passed`，相关计数为
+  runtime-manager **15/15**、CLI **314/314**、documentation contract
+  **19/19**、Rust unit/doc **54/54**、real Rust integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ### Follow-up 目标 27：加固 Desktop validation rerun 的过时响应边界
 
 **Status:** DONE

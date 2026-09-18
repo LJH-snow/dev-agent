@@ -147,6 +147,9 @@ are accepted, and validation command fields are deliberately not configurable.
   marked `rolled-back`. Unknown or expired ids return `404`; an in-flight session,
   postimage conflict, or already rolled-back set returns `409`; an unavailable
   rollback implementation returns `501`.
+  Undo loading is stale-safe: a new undo request aborts the previous undo
+  request, and a response for a stale request or stale session does not update
+  the UI.
 - `POST /api/changesets/cleanup` — body `{ "sessionId": "...",
   "maxValidations": 3, "maxChangeSets": 10, "removeRolledBack": true }`; all
   fields except `sessionId` are optional. It changes only the selected session's

@@ -1128,3 +1128,53 @@ Goals 25, 26, and 27 are `DONE`. The latest full audit completed with Desktop
 Release remains gated: no Git tag, no push, no npm publish, no GitHub Release,
 and no `~/.npmrc` change. The next human decision is whether to push the
 accumulated local commits and authorize the `v0.1.7` release review window.
+
+## Follow-up Goal 28: Desktop undo-rollback stale safety
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a request ID, AbortController, signal, stale request/session guard, and
+  current-request-only cleanup to Desktop undo rollback requests.
+- Preserved the `/api/changesets/rollback` schema, change-set DTO rendering,
+  and existing `409`/`404`/`501` state copy.
+- Prevented stale rollback responses from updating undo status or marking the
+  current evidence preview stale.
+- Documented the stale-safe undo behavior in the Desktop README and v0.1.7
+  candidate checklist.
+
+**RED contract:**
+
+- Added `GET / guards desktop undo rollback responses against stale sessions`
+  to the Desktop UI contract.
+- Added `v0.1.7 documents desktop undo rollback stale safety` to the
+  documentation contract.
+- First Desktop run: **1 failed / 101 passed** because undo loading lacked the
+  request ID, AbortController, signal, and stale/session guards.
+
+**Files touched:**
+
+- `apps/desktop/public/index.html`
+- `apps/desktop/tests/validation.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **102/102**, documentation contract **19/19**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 28 slice can be committed locally as a separate commit.

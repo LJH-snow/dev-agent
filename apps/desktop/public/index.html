@@ -287,6 +287,8 @@
     let desktopHistoryController = null;
     let desktopValidationRerunRequestId = 0;
     let desktopValidationRerunController = null;
+    let desktopUndoRequestId = 0;
+    let desktopUndoController = null;
 
     function setStatus(text) { status.textContent = text; }
 
@@ -723,13 +725,19 @@
       undoStatus.className = "undo-status";
       const sessionId = approvalEntry.sessionId;
       undo.addEventListener("click", async () => {
+        const requestId = ++desktopUndoRequestId;
+        desktopUndoController?.abort();
+        const controller = new AbortController();
+        desktopUndoController = controller;
         undo.disabled = true;
         try {
           const res = await fetch("/api/changesets/rollback", {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ sessionId, changeSetId }),
+            signal: controller.signal,
           });
+          if (requestId !== desktopUndoRequestId || sessionId !== currentSessionId) return;
           if (res.ok) {
             undoStatus.textContent = "Undone";
             markEvidencePreviewStale();
@@ -743,8 +751,14 @@
             undoStatus.textContent = "Undo failed";
           }
         } catch {
-          undo.disabled = false;
-          undoStatus.textContent = "Undo failed";
+          if (!controller.signal.aborted && requestId === desktopUndoRequestId && sessionId === currentSessionId) {
+            undo.disabled = false;
+            undoStatus.textContent = "Undo failed";
+          }
+        } finally {
+          if (requestId === desktopUndoRequestId) {
+            desktopUndoController = null;
+          }
         }
       });
       actions.append(undo, undoStatus);

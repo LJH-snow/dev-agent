@@ -327,6 +327,23 @@ test("GET / guards desktop validation rerun responses against stale sessions", a
   }
 });
 
+test("GET / guards desktop undo rollback responses against stale sessions", async () => {
+  const server = createDesktopServer({ session: { async run() {} } });
+  const base = await start(server);
+  try {
+    const html = await (await fetch(`${base}/`)).text();
+    assert.match(html, /let desktopUndoRequestId = 0/);
+    assert.match(html, /let desktopUndoController = null/);
+    assert.match(html, /const requestId = \+\+desktopUndoRequestId/);
+    assert.match(html, /desktopUndoController\?\.abort\(\)/);
+    assert.match(html, /desktopUndoController = controller/);
+    assert.match(html, /signal: controller\.signal/);
+    assert.match(html, /requestId !== desktopUndoRequestId \|\| sessionId !== currentSessionId/);
+  } finally {
+    await close(server);
+  }
+});
+
 test("ChatSession reruns trusted validation with a fresh attempt id and preserves evidence", async () => {
   const workspace = await createGitWorkspace();
   const provider = await startStubProvider("changed\n");

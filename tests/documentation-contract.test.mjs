@@ -295,6 +295,12 @@ test("v0.1.7 documents desktop validation rerun stale safety", () => {
   assert.match(desktopCandidate, /stale request or session[\s\S]*update the UI/i);
 });
 
+test("v0.1.7 documents desktop undo rollback stale safety", () => {
+  assert.match(desktopReadme, /undo loading is stale-safe/i);
+  assert.match(desktopCandidate, /undo rollback loading is stale-safe/i);
+  assert.match(desktopCandidate, /stale request or session[\s\S]*update the UI/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);
