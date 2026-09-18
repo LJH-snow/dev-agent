@@ -1,6 +1,6 @@
 {
   "name": "@agent_cli/cli",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": false,
   "description": "Primary command-line entry point for dev-agent.",
   "license": "MIT",

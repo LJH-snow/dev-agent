@@ -86,17 +86,17 @@ cache entries are reported without starting a provider or silently falling back 
 The package is built as a self-contained JavaScript CLI bundle and is verified by
 `pnpm package:smoke` in a clean npm prefix. New release candidates can be checked with
 `pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
-wrapper only publishes after that preflight succeeds. As of September 17, 2026,
-`@agent_cli/cli@0.1.6` is published to npm and is the registry `latest`; it is the same
+wrapper only publishes after that preflight succeeds. As of September 18, 2026,
+`@agent_cli/cli@0.1.7` is published to npm and is the registry `latest`; it is the same
 tarball verified by the formal
-[GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6), which also
+[GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.7), which also
 contains runtime artifacts and checksums. The workspace
-`@agent_cli/cli@0.1.7` candidate is unpublished.
-`0.1.5` is an earlier published version. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
+`@agent_cli/cli@0.1.8` candidate is unpublished.
+`0.1.6` is an earlier published version. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current candidate.
 
-The published `@agent_cli/cli@0.1.6` includes the explicit `--project-state` opt-in for
+The published `@agent_cli/cli@0.1.7` includes the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing
 user-level sessions. It also adds the provider, index, MCP, and Desktop status capabilities
 described below.
@@ -190,9 +190,10 @@ Supported targets:
 
 To cut a release (authorized release flow only):
 
-The `v0.1.6` GitHub release flow is complete. The workflow built all four runtime
-artifacts and the CLI tarball, verified checksums, and created the release. Future
-versions require a new explicit maintainer release decision.
+The `v0.1.6` and `v0.1.7` GitHub release flows are complete. Each workflow built
+all four runtime artifacts and the corresponding CLI tarball, verified checksums,
+and created the release. Future versions require a new explicit maintainer
+release decision.
 
 ```bash
 git tag v0.1.6
@@ -222,12 +223,12 @@ without starting a model provider.
 ## Current Status
 
 The active post-release implementation sequence is tracked in
-[docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). As of September 17, 2026,
+[docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). As of September 18, 2026,
 all six workspace phases in that plan are implemented and verified: project initialization, managed
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
-indexes, and MCP/Desktop status management. [`v0.1.6`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6)
-is the current GitHub release; `@agent_cli/cli@0.1.6` is the published npm
-registry `latest`, while `0.1.7` is the current workspace candidate.
+indexes, and MCP/Desktop status management. [`v0.1.7`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.7)
+is the current GitHub release; `@agent_cli/cli@0.1.7` is the published npm
+registry `latest`, while `0.1.8` is the current workspace candidate.
 
 The [2026-09-18 overnight plan](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
 its [progress record](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
@@ -645,4 +646,4 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
 78. ~~Incremental index status/refresh/clear with ignore rules and cache diagnostics~~ (done in workspace; release gated)
 79. ~~MCP management probes and Desktop status panel~~ (done in workspace; release gated)
 80. ~~MCP concurrent reconnect single-flight guard~~ (done in workspace; release gated)
-81. ~~Managed runtime and Desktop project-surface hardening~~ (workspace done; release gated)
+81. ~~Managed runtime and Desktop project-surface hardening~~ (done; released in 0.1.7)

@@ -1,8 +1,8 @@
 # dev-agent 后续开发计划：v0.1.5–v0.4.0
 
 **建立日期：2026-09-16**
-**计划状态：实现完成，0.1.6 已发布，v0.1.6 GitHub Release 已完成**
-**当前基线：registry 中的 `@agent_cli/cli@0.1.6` 已发布；GitHub Release 是 `v0.1.6`。**
+**计划状态：实现完成，0.1.7 已发布，v0.1.7 GitHub Release 已完成**
+**当前基线：registry 中的 `@agent_cli/cli@0.1.7` 已发布；GitHub Release 是 `v0.1.7`。**
 
 本文记录 `dev-agent` 在跳过真实用户反馈等待后，按优先级直接推进的产品化与工程化计划。每个阶段都必须先建立可执行的 RED contract 或失败测试，再实现最小完整闭环，最后运行与范围匹配的验证。
 
@@ -275,5 +275,5 @@ dev-agent doctor --json
 - 已创建 `v0.1.6` tag 并成功运行 release workflow；GitHub Release 包含四平台 runtime archive、
   checksum sidecar、固定 runtime manifest 和 CLI tarball。
 - `@agent_cli/cli@0.1.6` 已从 GitHub Release tarball 发布到 npm，registry `latest` 指向该版本。
-  当前工作区 `0.1.7` candidate 包含未发布的 doctor managed-runtime metadata 收紧和
+  `0.1.7` 已发布并创建 GitHub Release；当前工作区进入 `0.1.8` candidate。
   Desktop managed runtime status。

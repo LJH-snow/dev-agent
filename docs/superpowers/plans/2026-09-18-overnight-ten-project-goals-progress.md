@@ -1129,6 +1129,28 @@ Release remains gated: no Git tag, no push, no npm publish, no GitHub Release,
 and no `~/.npmrc` change. The next human decision is whether to push the
 accumulated local commits and authorize the `v0.1.7` release review window.
 
+## Follow-up Goal 55/56 candidate sync
+
+**Status:** DONE
+
+Goal 55 added the fixed `1 MiB` provider streaming line buffer limit, and Goal
+56 added the fixed `16 MiB` filesystem whole-file read limit. Both focused
+suites passed (**65/65** for model and **127/127** for tools), and the
+documentation contract passed **48/48**.
+
+The final combined verification was run again after the 0.1.7 publication:
+
+```sh
+pnpm verify
+git diff --check
+```
+
+Result: **all selected gates passed.** The current worktree records npm and
+GitHub Release `0.1.7` as published, advances the workspace candidate to
+`0.1.8`, and keeps Goals 55/56 as post-release candidate work rather than
+attributing them to `0.1.7`. No new tag, npm publish, or GitHub Release was
+performed for this candidate sync.
+
 ## Follow-up Goal 40: Desktop public symlink containment
 
 **Status:** DONE

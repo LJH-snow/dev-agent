@@ -1,6 +1,6 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.6` 已发布到 npm，`latest` 指向该版本，并且与 `v0.1.6` GitHub Release 中的 CLI tarball 一致**。当前工作区已进入 `@agent_cli/cli@0.1.7` candidate，包含未发布的 doctor metadata 收紧、runtime release 选择/隔离 smoke 和 Desktop managed runtime status。后续新版本仍需维护者单独授权。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-18，`@agent_cli/cli@0.1.7` 已发布到 npm，`latest` 指向该版本，并且与 `v0.1.7` GitHub Release 中的 CLI tarball 一致**。当前工作区已进入 `@agent_cli/cli@0.1.8` candidate；后续新版本仍需维护者单独授权。
 
 ## 已发布版本记录（2026-09-16）
 
@@ -19,6 +19,16 @@
   `e44d8356001317662876d3dcafc5cac0875135bc048a185ecec1a606c475c706`，与 release asset
   digest 一致。没有从当前工作区重新打包，避免 npm 包与已发布的 tag 内容漂移。
 - `main` 已推送到 GitHub；本轮没有创建新的 Git tag 或 GitHub Release。
+
+## 最新发布检查（2026-09-18）
+
+- `@agent_cli/cli@0.1.7` 已完成 npm 发布；registry 可复核
+  `npm view @agent_cli/cli@0.1.7 version`，`latest` 指向该版本。
+- `pnpm release:preflight` 在发布前确认 candidate `0.1.7`、registry published `0.1.6`、
+  authenticated npm identity 和五个 package files。
+- 受确认保护的 `pnpm release:publish -- --publish` 执行发布。npm 首次返回后 registry
+  packument 短暂仍显示 `0.1.6`，随后的 registry 查询确认 `0.1.7` 已完成发布。
+- `main` 已推送到 GitHub，tag `v0.1.7` 已推送并触发 release workflow。
 
 ## 0.1.6 发布候选检查（2026-09-17）
 
@@ -39,8 +49,17 @@
 - 正式 release 地址为
   <https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6>。
 - 后续 npm 发布使用上述 release tarball；npm registry `latest` 现在指向
-  `@agent_cli/cli@0.1.6`。当前工作区 `@agent_cli/cli@0.1.7` doctor metadata 收紧、
-  runtime release 选择/隔离 smoke 与 Desktop managed runtime status 仍是未发布候选。
+  `@agent_cli/cli@0.1.6`。当前工作区进入 `@agent_cli/cli@0.1.8` candidate。
+
+## v0.1.7 GitHub Release 记录（2026-09-18）
+
+- tag `v0.1.7` 创建在发布前的 latest `main` commit 上并触发 release workflow。
+- workflow 已成功构建 macOS ARM64/x64 和 Linux x86_64/ARM64 runtime archive，以及
+  `agent_cli-cli-0.1.7.tgz`。
+- release 包含 4 个 runtime archive、4 个 `.sha256` sidecar、固定的
+  `dev-agent-runtime-manifest.json` 和 CLI tarball；publish job 已验证 tag 和 artifacts。
+- 正式 release 地址为
+  <https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.7>。
 
 ## 给使用者的安装方式（已发布）
 
@@ -120,7 +139,7 @@ session: DEV_AGENT_SESSION_DIR > --project-state 项目默认 > 用户默认
 memory:  DEV_AGENT_MEMORY_FILE > 选定的 session 目录
 ```
 
-`--project-state` 已随已发布的 `@agent_cli/cli@0.1.6` 提供；它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
+`--project-state` 已随已发布的 `@agent_cli/cli@0.1.7` 提供；它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
 `~/.dev-agent/sessions/default.json`。不带该 flag 时，兼容默认仍是
 `~/.dev-agent/config.json` 和 `~/.dev-agent/sessions`。
 

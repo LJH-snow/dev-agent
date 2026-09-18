@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、MCP reconnect hardening、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；`v0.1.6` GitHub release 与 npm 发布已完成。**
+**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、MCP reconnect hardening、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；`v0.1.7` GitHub release 与 npm 发布已完成。**
 
 > v60 完成了文档 source-of-truth 整理，v61 完成了 Windows restricted execution 的
 > feasibility review。v61 的结论是：继续保留 macOS `sandbox-exec`、Linux `bwrap` 和其他
@@ -21,12 +21,12 @@
   执行权限语义。
 - v64 release-candidate audit 已完成四平台 build、archive、README、executable bit、checksum
   与 publish boundary 验证；formal release 仍未执行。
-- `v0.1.6` GitHub Release 已创建并通过 artifact/checksum 验证；同一 CLI tarball 已发布到
-  npm，`latest` 指向 `@agent_cli/cli@0.1.6`。当前工作区进入 `@agent_cli/cli@0.1.7` candidate，包含
-  未发布的 doctor managed-runtime metadata 收紧和 Desktop managed-runtime status。
+- `v0.1.6` and `v0.1.7` GitHub Releases 已创建并通过 artifact/checksum 验证；`0.1.7`
+  CLI tarball 已发布到 npm，`latest` 指向 `@agent_cli/cli@0.1.7`。当前工作区进入
+  `@agent_cli/cli@0.1.8` candidate。
 - 2026-09-18 的 runtime candidate 另有 `--runtime-release`：安装时显式选择承载
   runtime manifest/archive 的 GitHub release，并附带 `pnpm runtime:smoke` 隔离验证；
-  该能力仍在 `0.1.7` workspace candidate 中，尚未发布。
+  该能力已随 `v0.1.7` 发布。
 - CLI Modern TUI v1 及 v1.1 reliability 已完成并通过 CLI 全量测试、TypeScript gate 与
   PTY 回归；真实 TTY 才使用 rich presentation，pipe/CI/JSON/once/MCP server 保留稳定输出。
 - CLI TUI v1/v1.1 与 v0.1.0 RC hardening 已形成待审查变更集；后续变更仍需遵循
@@ -303,9 +303,9 @@ fallback。详细 proof gap 见
 上一轮 [8 小时安全无人值守并行开发计划](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md)、
 其[进度记录](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md)
 以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
-均已完成。当前 npm 包 `@agent_cli/cli@0.1.6` 已发布；`v0.1.6` 的 GitHub Release 已完成，
+均已完成。当前 npm 包 `@agent_cli/cli@0.1.7` 已发布；`v0.1.7` 的 GitHub Release 已完成，
 四平台 runtime、checksum sidecar、manifest 和 CLI tarball 已上传。npm registry `latest`
-指向 `0.1.6`。当前 `@agent_cli/cli@0.1.7` workspace candidate 仍未发布。
+指向 `0.1.7`。当前 `@agent_cli/cli@0.1.8` workspace candidate 仍未发布。
 在没有新的产品决策或真实 Desktop UX trigger 时，保持当前实现和发布边界，不开始
 speculative Desktop UI，也不重新打开 Windows backend。
 
