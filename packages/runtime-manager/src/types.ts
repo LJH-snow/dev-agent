@@ -119,6 +119,8 @@ export interface RuntimeManagerOptions {
 
 export interface InstallOptions {
   readonly target?: RuntimeTarget;
+  /** The GitHub release carrying the runtime assets, which can differ from the runtime identity. */
+  readonly manifestReleaseVersion?: string;
   readonly manifest?: RuntimeManifest | ManifestPayload;
   readonly signal?: AbortSignal;
 }

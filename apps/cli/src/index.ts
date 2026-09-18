@@ -192,6 +192,7 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--rust-executor": "one",
   "--executor": "one",
   "--runtime-version": "one",
+  "--runtime-release": "one",
   "--runtime-dir": "one",
   "--target": "one",
   "--provider": "one",
@@ -359,7 +360,7 @@ function validateExplicitCommandFlags(
       : command.kind === "config"
         ? new Set(["--cwd", "--project-state", "--config", "--json"])
         : command.kind === "runtime"
-          ? new Set(["--runtime-version", "--runtime-dir", "--target", "--json"])
+          ? new Set(["--runtime-version", "--runtime-release", "--runtime-dir", "--target", "--json"])
           : command.action === "review"
             ? new Set(["--cwd", "--base", "--head", "--json", "--non-interactive", "--event-stream"])
             : command.kind === "workflow"
@@ -795,7 +796,12 @@ export async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  const hasManagedRuntimeFlag = ["--runtime-version", "--runtime-dir", "--target"].some((flag) =>
+  const hasManagedRuntimeFlag = [
+    "--runtime-version",
+    "--runtime-release",
+    "--runtime-dir",
+    "--target",
+  ].some((flag) =>
     args.includes(flag)
   );
   if (hasManagedRuntimeFlag && executorPreference !== "rust-sandbox") {

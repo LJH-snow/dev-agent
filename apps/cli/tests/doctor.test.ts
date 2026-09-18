@@ -378,6 +378,45 @@ test("runDoctor reports managed runtime identity and missing reason without path
   }
 });
 
+test("runDoctor merges managed runtime platform and state with a healthy probe", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-runtime-"));
+  try {
+    const binaryPath = join(dir, "dev-agent-executor");
+    await writeFile(binaryPath, "executable", { mode: 0o700 });
+    const report = await runDoctor({
+      providerId: "ollama",
+      rustBinaryPath: binaryPath,
+      sessionDir: join(dir, "sessions"),
+      runtimeSource: "runtime",
+      managedRuntimeStatus: Promise.resolve({
+        state: "installed",
+        version: "0.2.0",
+        target: "aarch64-apple-darwin",
+      }),
+      env: {},
+      commandVersion: async (command) => `${command} 1.0.0`,
+      probeRust: async () => ({
+        runtimeVersion: "0.2.0",
+        protocolVersion: 1,
+        capabilities: ["run"],
+      }),
+    });
+
+    assert.deepEqual(report.runtime, {
+      source: "runtime",
+      configured: true,
+      selectedMode: "sandboxed-macos",
+      runtimeVersion: "0.2.0",
+      protocolVersion: 1,
+      target: "aarch64-apple-darwin",
+      state: "installed",
+    });
+    assert.doesNotMatch(JSON.stringify(report), new RegExp(escapeRegExp(dir)));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("doctor human output includes managed runtime diagnosis without binary paths", async () => {
   const lines: string[] = [];
   const originalLog = console.log;

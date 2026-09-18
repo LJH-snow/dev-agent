@@ -8,6 +8,7 @@ import test from "node:test";
 const api = await import("../dist/index.js");
 
 const VERSION = "0.2.0";
+const MANIFEST_RELEASE_VERSION = "0.1.6";
 const OTHER_VERSION = "0.2.1";
 const REPOSITORY = "LJH-snow/dev-agent";
 const SHA = "a".repeat(64);
@@ -265,6 +266,36 @@ test("installs with fixed URLs, checksum, executable bit, health, and atomic com
   assert.equal(await manager.path(VERSION, TARGET), result.binaryPath);
   assert.equal((await stat(result.binaryPath)).isFile(), true);
   assert.notEqual((await stat(result.binaryPath)).mode & 0o111, 0);
+  assert.equal((await manager.status(VERSION, TARGET)).state, "installed");
+  assert.deepEqual((await readdir(join(root, VERSION, TARGET))).sort(), [
+    ".complete",
+    "dev-agent-executor",
+    "install.json",
+  ]);
+});
+
+test("installs a runtime from the official release that carries its manifest", async () => {
+  const root = await tempRoot();
+  const calls: string[] = [];
+  const manager = new api.RuntimeManager({
+    runtimeDir: root,
+    platform: "darwin",
+    arch: "arm64",
+    ...makeInstallDependencies({
+      manifest: manifestFor({ releaseVersion: MANIFEST_RELEASE_VERSION }),
+      onManifestDownload: (version) => calls.push(`manifest:${version}`),
+      onArchiveDownload: (url) => calls.push(`archive:${url}`),
+    }),
+  });
+
+  const result = await manager.install(VERSION, {
+    manifestReleaseVersion: MANIFEST_RELEASE_VERSION,
+  });
+  assert.deepEqual(calls, [
+    `manifest:${MANIFEST_RELEASE_VERSION}`,
+    `archive:https://github.com/LJH-snow/dev-agent/releases/download/v${MANIFEST_RELEASE_VERSION}/dev-agent-executor-aarch64-apple-darwin.tar.gz`,
+  ]);
+  assert.equal(result.binaryPath, api.getRuntimePaths(root, VERSION, TARGET).binaryPath);
   assert.equal((await manager.status(VERSION, TARGET)).state, "installed");
   assert.deepEqual((await readdir(join(root, VERSION, TARGET))).sort(), [
     ".complete",

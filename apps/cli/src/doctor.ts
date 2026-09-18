@@ -173,6 +173,16 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   if (runtimeCheck.probe?.runtimeVersion) {
     runtimeVersion = runtimeCheck.probe.runtimeVersion;
     protocolVersion = runtimeCheck.probe.protocolVersion ?? 0;
+    if (options.managedRuntimeStatus) {
+      try {
+        const managed = await options.managedRuntimeStatus;
+        target = managed.target;
+        state = managed.state;
+      } catch (error) {
+        state = "corrupt";
+        missingReason = `runtime_status_unavailable (${doctorErrorCode(error)})`;
+      }
+    }
   } else if (options.managedRuntimeStatus) {
     try {
       const managed = await options.managedRuntimeStatus;

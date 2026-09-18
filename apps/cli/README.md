@@ -38,7 +38,7 @@ dev-agent config validate --cwd /path/to/other-project --project-state --json
 dev-agent config show --cwd /path/to/other-project --project-state --json
 # Explicitly inspect and install the managed Rust runtime when sandboxing is needed
 dev-agent runtime status --runtime-version 0.2.0 --json
-dev-agent runtime install --runtime-version 0.2.0
+dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6
 dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
 # Provider-free CI workflows
 dev-agent review --cwd /path/to/other-project --json --non-interactive
@@ -135,7 +135,8 @@ Options:
 - `--compact <n>` - compact the selected session, keeping the `n` most recent turns
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--executor <local|rust-sandbox>` - explicitly select the local executor or an already-installed managed Rust runtime; `rust-sandbox` fails if no matching runtime is installed
-- `--runtime-version <version>` - select the managed Rust runtime release when used with `--executor rust-sandbox`
+- `--runtime-version <version>` - select the managed Rust runtime identity when used with `--executor rust-sandbox`
+- `--runtime-release <version>` - select the GitHub release that carries the runtime manifest and archive during `runtime install`. It defaults to `0.1.6` and may differ from `--runtime-version`; the local cache remains keyed by the runtime identity
 - `--runtime-dir <path>` - override the managed runtime cache directory for the current invocation
 - `runtime status|install|path|remove` - inspect, install, locate, or remove a managed Rust runtime; add `--target <target>` to scope lifecycle operations
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary
@@ -254,10 +255,26 @@ The npm package contains the JavaScript CLI only. Runtime installation is explic
 
 ```bash
 dev-agent runtime status --runtime-version 0.2.0 --json
-dev-agent runtime install --runtime-version 0.2.0 --json
+dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6 --json
 dev-agent runtime path --runtime-version 0.2.0 --json
 dev-agent runtime remove --runtime-version 0.2.0 --json
 ```
+
+The runtime identity and the release that carries its manifest/archive are
+normally separate concepts. When adding a new runtime identity without a new
+GitHub release, pass both flags so installation can find the manifest in the
+known release while storing the installed binary under the requested runtime
+version. In this repository, `pnpm runtime:smoke` also runs the additional
+package-install and isolated runtime lifecycle check.
+
+If the host routes GitHub traffic through `HTTP_PROXY`/`HTTPS_PROXY`, enable
+Node's environment proxy support before downloading:
+
+```bash
+NODE_USE_ENV_PROXY=1 pnpm runtime:smoke -- --skip-build
+```
+
+`--skip-build` is appropriate only after the workspace has already been built.
 
 A normal run remains local unless `--executor rust-sandbox` or the legacy
 `DEV_AGENT_RUST_BINARY`/`--rust-executor` path selects the Rust executor. Managed

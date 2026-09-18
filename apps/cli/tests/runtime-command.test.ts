@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
+const runtimeCommand = await import("../dist/runtime-command.js");
 
 function runCli(
   args: readonly string[],
@@ -100,6 +101,50 @@ test("runtime path fails closed without an installed runtime", async () => {
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.error.code, "RUNTIME_NOT_INSTALLED");
     assert.equal("path" in payload.error, false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("runtime release parsing keeps carrying release separate from runtime identity", () => {
+  assert.equal(runtimeCommand.readRuntimeManifestRelease([]), "0.1.6");
+  assert.equal(
+    runtimeCommand.readRuntimeManifestRelease(["--runtime-release", "0.1.7"]),
+    "0.1.7"
+  );
+  assert.equal(
+    runtimeCommand.readRuntimeManifestRelease(["--runtime-release", "  "]),
+    "0.1.6"
+  );
+});
+
+test("runtime status accepts the release flag without leaking carrier metadata", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dev-agent-runtime-release-cli-"));
+  try {
+    const result = await runCli(
+      [
+        "runtime",
+        "status",
+        "--runtime-version",
+        "0.2.0",
+        "--runtime-release",
+        "0.1.6",
+        "--runtime-dir",
+        join(root, "runtimes"),
+        "--json",
+      ],
+      root
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.version, "0.2.0");
+    assert.equal(payload.state, "missing");
+    assert.equal("release" in payload, false);
+    assert.equal("manifestRelease" in payload, false);
+    assert.equal("manifestReleaseVersion" in payload, false);
+    assert.equal("path" in payload, false);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

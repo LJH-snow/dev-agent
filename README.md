@@ -69,7 +69,7 @@ dev-agent --version
 dev-agent --cwd /path/to/other-project --index . --json
 dev-agent --session other-project --once "list files in the current directory"
 dev-agent runtime status --runtime-version 0.2.0 --json
-dev-agent runtime install --runtime-version 0.2.0
+dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6
 dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
 # Provider-free CI workflows
 dev-agent review --cwd /path/to/other-project --json --non-interactive
@@ -215,7 +215,7 @@ cargo build --release --bin dev-agent-executor
 
 Point the CLI or desktop app at it with `--rust-executor <path>` or
 `DEV_AGENT_RUST_BINARY`. For released binaries, the CLI can instead use
-`dev-agent runtime install --runtime-version 0.2.0` followed by
+`dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6` followed by
 `--executor rust-sandbox`; `runtime status|path|remove` provide cache diagnostics
 without starting a model provider.
 

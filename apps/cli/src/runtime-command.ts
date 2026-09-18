@@ -15,6 +15,9 @@ import {
 
 type RuntimeAction = "status" | "install" | "path" | "remove";
 
+/** The official release currently carries runtime 0.2.0 assets. */
+export const DEFAULT_RUNTIME_RELEASE_VERSION = "0.1.6";
+
 export interface RuntimeCommandOptions {
   readonly action: RuntimeAction;
   readonly args: readonly string[];
@@ -34,6 +37,10 @@ function flagValue(args: readonly string[], flag: string): string | undefined {
 export function readRuntimeVersion(args: readonly string[]): string {
   const value = flagValue(args, "--runtime-version")?.trim();
   return value || DEFAULT_RUNTIME_VERSION;
+}
+
+export function readRuntimeManifestRelease(args: readonly string[]): string {
+  return flagValue(args, "--runtime-release")?.trim() || DEFAULT_RUNTIME_RELEASE_VERSION;
 }
 
 export function readRuntimeDirectory(args: readonly string[]): string | undefined {
@@ -160,7 +167,10 @@ export async function executeRuntimeCommand(
       };
     }
 
-    const installed = await manager.install(version, target === undefined ? {} : { target });
+    const installed = await manager.install(version, {
+      ...(target === undefined ? {} : { target }),
+      manifestReleaseVersion: readRuntimeManifestRelease(options.args),
+    });
     return {
       exitCode: 0,
       payload: commandPayload(options.action, version, {

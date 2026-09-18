@@ -372,7 +372,8 @@ export class RuntimeManager {
       return { version, target, binaryPath: existing.binaryPath, reused: true };
     }
 
-    const manifest = await this.loadManifest(version, options);
+    const manifestReleaseVersion = options.manifestReleaseVersion ?? version;
+    const manifest = await this.loadManifest(manifestReleaseVersion, options);
     const artifact = findArtifact(manifest, target);
     this.ensureNotCancelled(options.signal);
 
@@ -385,7 +386,7 @@ export class RuntimeManager {
       const extractedDir = join(temporaryDir, "extracted");
       let archive: Uint8Array;
       try {
-        archive = ensureUint8Array(await this.archiveDownloader(getArtifactDownloadUrl(version, artifact), options.signal));
+        archive = ensureUint8Array(await this.archiveDownloader(getArtifactDownloadUrl(manifestReleaseVersion, artifact), options.signal));
       } catch (error) {
         this.ensureNotCancelled(options.signal, error);
         throw new RuntimeManagerError("DOWNLOAD_FAILED", "Runtime archive download failed");

@@ -1,6 +1,6 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.6` 已发布到 npm，`latest` 指向该版本，并且与 `v0.1.6` GitHub Release 中的 CLI tarball 一致**。当前工作区已进入 `@agent_cli/cli@0.1.7` candidate，包含未发布的 doctor metadata 收紧和 Desktop managed runtime status。后续新版本仍需维护者单独授权。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-17，`@agent_cli/cli@0.1.6` 已发布到 npm，`latest` 指向该版本，并且与 `v0.1.6` GitHub Release 中的 CLI tarball 一致**。当前工作区已进入 `@agent_cli/cli@0.1.7` candidate，包含未发布的 doctor metadata 收紧、runtime release 选择/隔离 smoke 和 Desktop managed runtime status。后续新版本仍需维护者单独授权。
 
 ## 已发布版本记录（2026-09-16）
 
@@ -39,8 +39,8 @@
 - 正式 release 地址为
   <https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.6>。
 - 后续 npm 发布使用上述 release tarball；npm registry `latest` 现在指向
-  `@agent_cli/cli@0.1.6`。当前工作区 `@agent_cli/cli@0.1.7` doctor metadata 收紧与
-  Desktop managed runtime status 仍是未发布候选。
+  `@agent_cli/cli@0.1.6`。当前工作区 `@agent_cli/cli@0.1.7` doctor metadata 收紧、
+  runtime release 选择/隔离 smoke 与 Desktop managed runtime status 仍是未发布候选。
 
 ## 给使用者的安装方式（已发布）
 

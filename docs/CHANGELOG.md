@@ -14,6 +14,12 @@
   it never starts a provider, MCP server, or runtime binary.
 
 ## 2026-09-17（`@agent_cli/cli@0.1.7` release candidate）
+- `runtime install` 新增 `--runtime-release <version>`，允许 manifest/archive 所在的
+  GitHub release 与 `--runtime-version` 表示的 runtime identity 不同；当前默认为
+  `0.1.6`，本地缓存仍按 runtime identity 保存。
+- 新增 `pnpm runtime:smoke`，在本地隔离环境中验证打包安装、runtime status/install/
+  path/doctor/remove 生命周期。该能力属于 `0.1.7` workspace candidate，尚未随 npm
+  package 发布。
 - `--doctor --json` now separates managed runtime identity from cache state. Runtime
   version/protocol are shown only from a successful probe or installed managed status;
   missing, corrupt, and unsupported entries report target/state/reason instead of

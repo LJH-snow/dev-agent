@@ -24,6 +24,9 @@
 - `v0.1.6` GitHub Release 已创建并通过 artifact/checksum 验证；同一 CLI tarball 已发布到
   npm，`latest` 指向 `@agent_cli/cli@0.1.6`。当前工作区进入 `@agent_cli/cli@0.1.7` candidate，包含
   未发布的 doctor managed-runtime metadata 收紧和 Desktop managed-runtime status。
+- 2026-09-18 的 runtime candidate 另有 `--runtime-release`：安装时显式选择承载
+  runtime manifest/archive 的 GitHub release，并附带 `pnpm runtime:smoke` 隔离验证；
+  该能力仍在 `0.1.7` workspace candidate 中，尚未发布。
 - CLI Modern TUI v1 及 v1.1 reliability 已完成并通过 CLI 全量测试、TypeScript gate 与
   PTY 回归；真实 TTY 才使用 rich presentation，pipe/CI/JSON/once/MCP server 保留稳定输出。
 - CLI TUI v1/v1.1 与 v0.1.0 RC hardening 已形成待审查变更集；后续变更仍需遵循
