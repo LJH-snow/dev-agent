@@ -35,6 +35,9 @@ This checklist summarizes the Desktop-facing work prepared during the
   `413` without echoing the body, path, or raw error.
 - Desktop's in-memory session registry is capped at `256` total sessions; a
   new unknown chat id after that returns `429` and does not start a run.
+- Desktop always-allow memory is capped per session at `256` keys and
+  `512 bytes` per key; oversized or post-limit decisions allow only the current
+  call.
 - Desktop session summaries expose safe message/validation/change-set/protected
   guard counts without paths or raw evidence.
 - Evidence preview failures distinguish `404`, `413`, and `400` without
@@ -100,10 +103,10 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**23/23**, including the corrected `--project-state` first-release attribution,
+**24/24**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
-safety plus active session lifecycle, rollback, JSON-body-limit, and
-session-registry-limit contracts.
+safety plus active session lifecycle, rollback, JSON-body-limit,
+session-registry-limit, and always-allow-limit contracts.
 
 ## Consolidated gate
 
@@ -195,16 +198,23 @@ with `429`. It passed with Desktop **108/108**, runtime-manager **15/15**, CLI
 **314/314**, documentation contracts **23/23**, Rust unit/doc tests **54/54**,
 and real Rust integration **11/11**.
 
+The post-goal-33 approval-memory audit reran `pnpm verify` after capping
+per-session always-allow memory at `256` keys and `512 bytes` per key. It
+passed with Desktop **110/110**, runtime-manager **15/15**, CLI **314/314**,
+documentation contracts **24/24**, Rust unit/doc tests **54/54**, and real Rust
+integration **11/11**.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **108 tests passed, 0 failed.** The latest regression contracts cover
+Result: **110 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
 rollback joining the active session lifecycle, the fixed JSON request-body
-limit, and the fixed session registry count limit.
+limit, the fixed session registry count limit, and bounded always-allow
+memory.
 
 ```sh
 pnpm build

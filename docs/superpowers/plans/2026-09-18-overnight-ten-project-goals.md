@@ -1016,6 +1016,67 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 33：限制 Desktop always-allow registry
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 32 收口后继续审计内存 registry，发现
+每个 session 的 always-allow key `Set` 仍会随不同审批 key 无限增长，且单条
+key 长度也没有上限。
+
+**范围：**
+
+- 为每个 Desktop session 的 always-allow registry 设定固定 `256` 条上限；
+- 单条 allow key 超过 `512 UTF-8 bytes` 时只保留本次 allow，不写入 registry；
+- 满员后新的 allow-always 请求仍允许本次工具调用，但不被记住；
+- 已记住的 key 在满员后仍继续自动允许；
+- 不改变 approval 请求/响应 DTO、UI 或 approval 语义；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：一次 chat run 内记住 `256` 个短 key 后，已有 key 无需
+  再次审批；第 `257` 个 allow-always key 允许当前调用但不被记住，重复调用时
+  再次产生 approval request；
+- 新增 contract：超过 `512 bytes` 的 allow-always key 允许当前调用但不被
+  记住；
+- 先确认 RED，再做最小实现。
+- RED proof：无上限实现时，entry-limit 契约记录 `257` 次而非 `258` 次审批
+  请求，oversized-key 契约记录 `1` 次而非 `2` 次；聚焦运行为
+  **108 passed / 2 failed**。文档契约为 **23 passed / 1 failed**。首次测试
+  草稿因把 fake run 放在 server options 而不是 `session` 下编译失败，修正后
+  才获得行为 RED。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不配置用户可调上限，不新增 panel、导出入口、绝对路径、原始错误或视觉
+  重设计；
+- 不改变 rollback、validation、session lifecycle 或 HTTP DTO；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已为每个 session 加入 `256` 条 always-allow key 上限和 `512 UTF-8 bytes`
+  单 key 上限；
+- 满员或 oversized key 的 allow-always 只允许当前调用；已记住的 key 仍自动
+  允许；
+- RED 后 Desktop focused tests **110/110**，documentation contract
+  **24/24**；`pnpm verify` 输出 `all selected gates passed`，相关计数为
+  runtime-manager **15/15**、CLI **314/314**、Rust unit/doc **54/54**、real
+  Rust integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

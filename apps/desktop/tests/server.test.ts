@@ -748,6 +748,107 @@ test("POST /api/chat rejects a new session after the registry limit", async () =
   }
 });
 
+test("Desktop always-allow registry stays within its entry limit", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-approval-limit-"));
+  const previousSessionDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  const server = createDesktopServer({ session: {
+    async run(_message: string, emit: any, options: any = {}) {
+      const requestApproval = options.requestApproval;
+      for (let index = 0; index < 256; index += 1) {
+        await requestApproval({
+          tool: "shell",
+          input: { command: `command-${index}` },
+          key: `approval-key-${index}`,
+        });
+      }
+      await requestApproval({
+        tool: "shell",
+        input: { command: "command-0" },
+        key: "approval-key-0",
+      });
+      await requestApproval({
+        tool: "shell",
+        input: { command: "command-over" },
+        key: "approval-key-over",
+      });
+      await requestApproval({
+        tool: "shell",
+        input: { command: "command-over" },
+        key: "approval-key-over",
+      });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+  }});
+  const base = await start(server);
+  try {
+    const chat = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "bound approval memory" }),
+    });
+    let approvalRequests = 0;
+    await readSse(chat, async (event) => {
+      if (event.type !== "approval-request") return;
+      approvalRequests += 1;
+      await fetch(`${base}/api/approval`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: event.data.id, decision: "allow-always" }),
+      });
+    });
+    assert.equal(approvalRequests, 258);
+  } finally {
+    if (previousSessionDir === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousSessionDir;
+    }
+    await rm(directory, { recursive: true, force: true });
+    await close(server);
+  }
+});
+
+test("Desktop oversized always-allow keys are not remembered", async () => {
+  const server = createDesktopServer({ session: {
+    async run(_message: string, emit: any, options: any = {}) {
+      const requestApproval = options.requestApproval;
+      await requestApproval({
+        tool: "shell",
+        input: { command: "large-command" },
+        key: "k".repeat(513),
+      });
+      await requestApproval({
+        tool: "shell",
+        input: { command: "large-command" },
+        key: "k".repeat(513),
+      });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+  }});
+  const base = await start(server);
+  try {
+    const chat = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "large approval key" }),
+    });
+    let approvalRequests = 0;
+    await readSse(chat, async (event) => {
+      if (event.type !== "approval-request") return;
+      approvalRequests += 1;
+      await fetch(`${base}/api/approval`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id: event.data.id, decision: "allow-always" }),
+      });
+    });
+    assert.equal(approvalRequests, 2);
+  } finally {
+    await close(server);
+  }
+});
+
 test("POST /api/chat streams SSE events", async () => {
   const server = createDesktopServer({ session: fakeSession() });
   const base = await start(server);

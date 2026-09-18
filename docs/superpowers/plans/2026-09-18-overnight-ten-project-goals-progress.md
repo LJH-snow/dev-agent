@@ -1292,6 +1292,64 @@ and real Rust integration **11/11**.
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 32 slice can be committed locally as a separate commit.
 
+## Follow-up Goal 33: bound Desktop always-allow memory
+
+**Status:** DONE
+
+Opened a bounded follow-up after the Goal 32 audit found that per-session
+always-allow key sets could still grow without a fixed entry or key-byte
+limit. The target is a fixed `256` entry limit per session and a fixed
+`512 UTF-8 byte` key limit. Oversized or post-limit allow-always decisions
+will permit only the current call; existing remembered keys remain automatic.
+
+RED confirmed for both new server contracts. Without a limit, the entry-limit
+contract saw **257** approval requests instead of **258**, and the oversized-key
+contract saw **1** instead of **2**; Desktop focused tests recorded
+**108 passed / 2 failed**. The documentation contract recorded
+**23 passed / 1 failed**. The first test draft failed TypeScript compilation
+because the fake run was placed at server-options level instead of under
+`session`; correcting the injection produced the behavioral RED run.
+
+**Scope completed:**
+
+- Added a fixed `256` entry limit to each Desktop session's always-allow
+  registry.
+- Added a fixed `512 UTF-8 byte` limit to each remembered approval key.
+- Oversized and post-limit allow-always decisions permit only the current call
+  and are not remembered.
+- Existing remembered keys continue to auto-approve later calls.
+- Preserved approval DTOs, UI, rollback, validation, and session lifecycle
+  behavior.
+- Documented the always-allow memory limit in the Desktop README and v0.1.7
+  candidate checklist.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **110/110**, documentation contract **24/24**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 33 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 28: Desktop undo-rollback stale safety
 
 **Status:** DONE

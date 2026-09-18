@@ -331,6 +331,14 @@ test("v0.1.7 documents the Desktop session registry limit", () => {
   assert.match(desktopCandidate, /256/i);
 });
 
+test("v0.1.7 documents the Desktop always-allow registry limit", () => {
+  assert.match(desktopReadme, /always-allow/i);
+  assert.match(desktopReadme, /256/i);
+  assert.match(desktopReadme, /512 bytes/i);
+  assert.match(desktopCandidate, /always-allow/i);
+  assert.match(desktopCandidate, /512 bytes/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

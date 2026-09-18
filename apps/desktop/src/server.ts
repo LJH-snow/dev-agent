@@ -105,6 +105,8 @@ export interface DesktopHistoryMessage {
 }
 
 type ApprovalDecision = "allow" | "deny" | "allow-always";
+const maxApprovalKeysPerSession = 256;
+const maxApprovalKeyBytes = 512;
 type EvidenceFilterResult =
   | { readonly filters: EvidenceFilters; readonly limits?: EvidenceAuditLimits }
   | { readonly error: string };
@@ -959,8 +961,13 @@ async function streamChat(
           }
           if (prompt.key) {
             const set = sessionAllowlist.get(sessionId) ?? new Set<string>();
-            set.add(prompt.key);
-            sessionAllowlist.set(sessionId, set);
+            if (
+              set.size < maxApprovalKeysPerSession &&
+              Buffer.byteLength(prompt.key, "utf8") <= maxApprovalKeyBytes
+            ) {
+              set.add(prompt.key);
+              sessionAllowlist.set(sessionId, set);
+            }
           }
           return "allow";
         });

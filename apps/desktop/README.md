@@ -292,7 +292,10 @@ focused view is needed.
 With `DEV_AGENT_APPROVAL=ask`, a flagged tool call renders an Allow/Deny prompt
 in the conversation and the run waits for the click. "Always allow" remembers
 the command + subcommand key for the rest of the session, so `npm test` and
-`npm test -- --watch` only ask once. The decision is echoed as an `approval`
+`npm test -- --watch` only ask once. Each session remembers at most `256`
+short always-allow keys, and only keys of at most `512 bytes`; an oversized or
+post-limit decision allows the current call but is not remembered. Existing
+remembered keys stay automatic. The decision is echoed as an `approval`
 frame, and a denial is written back to the model as the tool's result so it can
 pick another path.
 
