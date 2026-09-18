@@ -108,6 +108,8 @@ Memory file writes enforce the same `16 MiB` write limit; an oversized write
 is rejected before the file changes.
 - code-search scanner signatures skip source files above a fixed `16 MiB`
   scan limit before reading them; smaller files remain indexed.
+A persisted code index above the fixed `16 MiB` read limit is skipped in favor
+of a full scan instead of loading its bytes into memory.
 - Plan and apply input files use a fixed `16 MiB` read limit; both commands
   check changes file sizes with `stat` before parsing, `apply` also checks plan
   file sizes before reading, and oversized files return a stable

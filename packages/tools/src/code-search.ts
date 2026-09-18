@@ -52,6 +52,7 @@ const skippedDirectories = new Set([
 const defaultMaxDepth = 8;
 const defaultLimit = 50;
 const maxScanFileBytes = 16 * 1024 * 1024;
+const maxPersistedIndexBytes = 16 * 1024 * 1024; // 16 MiB
 const modes: readonly Mode[] = ["search", "references", "definition"];
 const symbolKinds = new Set<SymbolKind>([
   "function",
@@ -528,7 +529,12 @@ async function isFile(path: string): Promise<boolean> {
  */
 async function readPersistedScan(root: string): Promise<CachedScan | undefined> {
   try {
-    const raw = await readFile(join(root, ".dev-agent", "index.json"), "utf8");
+    const indexPath = join(root, ".dev-agent", "index.json");
+    const info = await stat(indexPath);
+    if (info.size > maxPersistedIndexBytes) {
+      return undefined;
+    }
+    const raw = await readFile(indexPath, "utf8");
     const parsed = JSON.parse(raw) as {
       version?: unknown;
       files?: unknown;

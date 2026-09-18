@@ -2562,6 +2562,62 @@ git diff --check
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
 
+### Follow-up 目标 63：限制 persisted code index 读取
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 62 收口后继续审计索引边界，发现
+code-search 的 `readPersistedScan` 直接 `readFile` 整个
+`.dev-agent/index.json`，没有大小上限；超大持久化索引会无上限分配内存。
+
+**范围：**
+
+- `readPersistedScan` 在读取前用 `stat` 检查大小，超过固定 `16 MiB`
+  时返回 undefined（回退到全量扫描），不读入文件内容；
+- 保持正常 persisted index 加载和损坏索引回退行为不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 tools contract：超过 `16 MiB` 的 persisted index 文件返回
+  undefined 回退到全量扫描，且不读入文件内容；
+- 新增 documentation contract：说明 persisted code index 的 `16 MiB`
+  读取上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：tools focused tests 为 **128 passed / 1 failed**，超大
+  persisted index 的 ghost symbol 仍然被加载；文档契约为
+  **54 passed / 0 failed**。
+
+**完成记录：**
+
+- 新增 `maxPersistedIndexBytes` 常量（`16 MiB`）；
+- `readPersistedScan` 在读取前用 `stat` 检查文件大小，超过 `16 MiB`
+  返回 undefined，回退到全量扫描；
+- 超大 persisted index 的 ghost symbol 不再被加载；
+- RED 后 tools focused tests 为 **129/129**，文档契约为 **54/54**；
+- `pnpm verify` 输出 `all selected gates passed`；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/tools run build
+pnpm --filter @dev-agent/tools run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 persisted index 的 DTO 或回退语义；
+- 不新增可配置上限；
+- 不回显文件内容或绝对路径；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
 ### Follow-up 目标 60：限制 CLI workflow 输入文件读取
 
 **Status:** DONE

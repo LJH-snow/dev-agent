@@ -527,6 +527,8 @@ root `.gitignore`, root `.ignore`, and explicit `--exclude` rules are applied in
 that order. The scanner skips source files above the fixed `16 MiB` scan limit
 before reading them; smaller files remain indexed. `index clear` is
 confirmation-gated.
+A persisted code index above the fixed `16 MiB` read limit is skipped in favor
+of a full scan instead of loading its bytes into memory.
 
 ## Configuration file
 

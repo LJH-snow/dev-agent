@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-18（persisted code index read limit）
+
+- A persisted code index above the fixed `16 MiB` read limit is skipped in
+  favor of a full scan instead of loading its bytes into memory.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
 ## 2026-09-18（agent memory write limit）
 
 - Persisted agent memory writes enforce the same fixed `16 MiB` limit as

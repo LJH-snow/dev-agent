@@ -1254,6 +1254,54 @@ Result: agent-core focused tests **131/131**, documentation contract
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 63: bound persisted code index reads
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `16 MiB` stat-before-read limit to `readPersistedScan`.
+- A persisted code index above the limit is skipped in favor of a full scan
+  instead of loading its bytes into memory.
+- Preserved normal persisted-index loading and corrupted-index fallback.
+- Updated the CLI README, changelog, v0.1.7 candidate checklist, and plan.
+
+**RED contract:**
+
+- Added `an oversized persisted index is skipped in favor of a full scan` to
+  tools contracts.
+- Added `persisted code index documents the 16 MiB read limit` to
+  documentation contracts.
+- RED proof: tools focused tests recorded **128 passed / 1 failed**
+  because the ghost symbol from an oversized persisted index was loaded;
+  documentation contracts recorded **54 passed / 0 failed**.
+
+**Files touched:**
+
+- `packages/tools/src/code-search.ts`
+- `packages/tools/tests/code-search-persisted.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/tools run build
+pnpm --filter @dev-agent/tools run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: tools focused tests **129/129**, documentation contract **54/54**,
+and `pnpm verify` completed with `all selected gates passed`.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 40: Desktop public symlink containment
 
 **Status:** DONE

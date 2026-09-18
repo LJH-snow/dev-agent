@@ -575,6 +575,11 @@ test("agent memory documents the 16 MiB file write limit", () => {
   assert.match(desktopCandidate, /memory file[\s\S]*write limit/i);
 });
 
+test("persisted code index documents the 16 MiB read limit", () => {
+  assert.match(cliReadme, /persisted[\s\S]*16 MiB/);
+  assert.match(desktopCandidate, /persisted[\s\S]*16 MiB/);
+});
+
 test("cli workflow documents the 16 MiB input file read limit", () => {
   assert.match(cliReadme, /plan and apply input files?[\s\S]*16 MiB/i);
   assert.match(cliReadme, /plan and apply input files?[\s\S]*read limit/i);

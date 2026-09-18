@@ -367,3 +367,33 @@ test("a deleted deep file is removed when the scan covers its depth", async () =
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("an oversized persisted index is skipped in favor of a full scan", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-persisted-oversize-"));
+  const file = join(dir, "sample.ts");
+  try {
+    await writeFile(file, SOURCE, "utf8");
+    const info = await stat(file);
+    const oversizedSource = SOURCE + "x".repeat(16 * 1024 * 1024);
+    await mkdir(join(dir, ".dev-agent"), { recursive: true });
+    await writeFile(
+      join(dir, ".dev-agent", "index.json"),
+      JSON.stringify({
+        version: 1,
+        files: { [file]: oversizedSource },
+        symbols: [{ name: "ghostSymbol", kind: "function", filePath: file, line: 1 }],
+        signatures: { [file]: { mtimeMs: info.mtimeMs, size: info.size } },
+      }),
+      "utf8"
+    );
+    const tool: any = new CodeSearchTool();
+
+    const ghost = await tool.execute({ mode: "search", query: "ghostSymbol", path: dir });
+    assert.equal(ghost.count, 0, "symbols from an oversized persisted index must not load");
+
+    const real = await tool.execute({ mode: "search", query: "realSymbol", path: dir });
+    assert.ok(real.count >= 1, "a full scan still indexes the real source");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
