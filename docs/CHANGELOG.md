@@ -40,6 +40,13 @@
 - This is a new workspace candidate change after the `0.1.7` release; it is not
   part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
 
+## 2026-09-18（agent memory file read limit）
+
+- Persisted agent memory files are rejected above a fixed `16 MiB` before
+  their bytes are read into memory.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
 ## 2026-09-18（runtime install and remove bounds）
 
 - Provider non-streaming success JSON is read with a streamed bounded JSON

@@ -2392,3 +2392,59 @@ git diff --check
 - 不回显文件内容或绝对路径；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 59：限制 agent memory 文件读取
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 58 收口后继续审计共享数据边界，发现
+agent-core 的 `FileMemory.readEntries` 和 `readMemoryFile` 都直接
+`readFile` 整个 JSON 文件，没有大小上限；Desktop 的 history、session
+listing、evidence preview 和 CLI 的 session 数据都经过该路径，超大
+memory 文件会无上限分配内存。
+
+**范围：**
+
+- `readEntries` 和 `readMemoryFile` 在读取前用 `stat` 检查文件大小，
+  超过固定 `16 MiB` 时返回稳定错误；
+- 保持路径解析、workspace 隔离、正常读取和写入行为不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 agent-core contract：超过 `16 MiB` 的 memory 文件在 `entries()`
+  或 `readMemoryFile` 调用时 reject，且错误不包含文件内容；
+- 新增 documentation contract：说明 agent memory 文件的 `16 MiB` 读取
+  上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：agent-core focused tests 为 **129 passed / 1 failed**；文档
+  契约为 **50 passed / 1 failed**。
+
+**完成记录：**
+
+- 新增 `MAX_MEMORY_FILE_BYTES`（`16 MiB`）；
+- `readEntries` 和 `readMemoryFile` 在读取前检查文件大小；
+- `entries()` 与 `getMetadata()` 的超限 memory 文件都 reject；
+- 正常读取、写入、missing-file 和 DTO 行为不变；
+- RED 后 agent-core focused tests 为 **130/130**，文档契约为 **51/51**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/agent-core run build
+pnpm --filter @dev-agent/agent-core run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 memory DTO 或写入语义（写入上限为后续目标）；
+- 不新增可配置上限；
+- 不回显文件内容或绝对路径；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

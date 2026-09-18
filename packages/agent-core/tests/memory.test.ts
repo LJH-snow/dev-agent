@@ -1190,3 +1190,23 @@ test("metadata audit limit rejection does not mutate source evidence", () => {
   );
   assert.deepEqual({ validations, changeSets, summary }, inputSnapshot);
 });
+
+test("file memory rejects a memory file above the 16 MiB read limit", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "huge.json");
+    writeFileSync(
+      filePath,
+      JSON.stringify({ version: 1, entries: [{ role: "user", content: "x".repeat(16 * 1024 * 1024) }] }),
+      "utf8"
+    );
+    const memory = new FileMemory({ filePath });
+
+    await assert.rejects(
+      () => memory.entries(),
+      /memory file exceeds the 16 MiB read limit/
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

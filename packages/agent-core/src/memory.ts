@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, win32 } from "node:path";
 
 import type { ChatMessage, ChatUsage, ToolCall } from "@dev-agent/model";
@@ -8,6 +8,17 @@ import type {
   ValidationResult,
   ValidationStatus,
 } from "./validation.js";
+
+const MAX_MEMORY_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
+
+async function assertMemoryFileSize(path: string, maxBytes: number): Promise<void> {
+  const fileStat = await stat(path);
+  if (fileStat.size > maxBytes) {
+    throw new Error(
+      `memory file exceeds the ${maxBytes / (1024 * 1024)} MiB read limit`
+    );
+  }
+}
 import { addUsage } from "./usage.js";
 
 export interface MemoryEntry extends ChatMessage {
@@ -524,6 +535,7 @@ export class FileMemory implements AgentMemory {
   private async readEntries(): Promise<MemoryEntry[]> {
     let raw: string;
     try {
+      await assertMemoryFileSize(this.filePath, MAX_MEMORY_FILE_BYTES);
       raw = await readFile(this.filePath, "utf8");
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") {
@@ -574,6 +586,7 @@ export class FileMemory implements AgentMemory {
   }
 
   private async readMemoryFile(): Promise<MemoryFile> {
+    await assertMemoryFileSize(this.filePath, MAX_MEMORY_FILE_BYTES);
     const raw = await readFile(this.filePath, "utf8");
     const parsed: unknown = JSON.parse(raw);
     if (!isMemoryFile(parsed)) {

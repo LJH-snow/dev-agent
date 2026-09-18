@@ -349,6 +349,8 @@ denies filesystem mutations safely rather than applying them.
 Filesystem reads, write/edit snapshots, edit, and patch use a fixed `16 MiB`
 whole-file read limit. An oversized file rejects before its bytes enter memory,
 and mutation targets remain unchanged.
+Persisted memory files use the same fixed `16 MiB` read limit; oversized session
+files are rejected before their bytes enter memory.
 
 ### Change-set validation
 

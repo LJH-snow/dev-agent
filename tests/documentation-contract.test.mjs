@@ -565,6 +565,11 @@ test("code-search documents the 16 MiB scan limit", () => {
   assert.match(desktopCandidate, /scan limit/i);
 });
 
+test("agent memory documents the 16 MiB file read limit", () => {
+  assert.match(cliReadme, /memory file[\s\S]*16 MiB/);
+  assert.match(desktopCandidate, /memory file[\s\S]*16 MiB/);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);

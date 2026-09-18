@@ -102,6 +102,8 @@ oversized file is rejected without loading its bytes into memory.
 - Filesystem reads, write/edit snapshots, edit, and patch use a fixed `16 MiB`
   whole-file read limit; an oversized file rejects before its bytes enter
   memory, and mutation targets remain unchanged.
+- Persisted agent memory files use a fixed `16 MiB` read limit; oversized
+  session files reject before their bytes enter memory.
 - code-search scanner signatures skip source files above a fixed `16 MiB`
   scan limit before reading them; smaller files remain indexed.
 - Managed runtime installation can pass `--runtime-release` to select the GitHub

@@ -1164,6 +1164,17 @@ performed for this candidate sync.
 - This is post-release `0.1.8` candidate work and is not part of the published
   `0.1.7` package or GitHub Release.
 
+## Follow-up Goal 59: bound agent memory reads
+
+**Status:** DONE
+
+- Added a fixed `16 MiB` read limit to persisted agent memory files.
+- Both history reads and metadata reads reject oversized files before reading
+  their bytes.
+- Agent-core focused tests passed **130/130**.
+- This is post-release `0.1.8` candidate work and is not part of the published
+  `0.1.7` package or GitHub Release.
+
 ## Follow-up Goal 40: Desktop public symlink containment
 
 **Status:** DONE
