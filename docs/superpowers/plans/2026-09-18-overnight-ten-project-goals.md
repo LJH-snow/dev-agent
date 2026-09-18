@@ -685,6 +685,55 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 29：让运行中的 Desktop session lifecycle fail-closed
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 28 收口后审计 session lifecycle，发现
+DELETE 和 rename 允许作用于 active run，可能造成运行 session 的半删除或
+路径切换。
+
+**范围：**
+
+- `DELETE /api/sessions/<id>` 在 chat/validation/cleanup 运行中返回 `409`；
+- `POST /api/sessions/<id>/rename` 在同一运行状态下返回 `409`；
+- 请求不删除文件、不切换内存路径、不中断当前 run；
+- 保留 idle session 的删除、幂等 rename 和冲突行为；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract 测试：active run 时 DELETE 与 rename 返回 `409`；
+- 确认 RED 后，再做最小 fail-closed 实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不新增 panel、导出入口、绝对路径、原始错误或视觉重设计；
+- 不改变 chat/validation/cleanup/rollback 的公开 schema；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已为 active session 的 DELETE 和 rename 添加 `inFlight` fail-closed guard，
+  稳定返回 `409` 且先于文件删除、路径切换和 registry mutation；
+- 新增 active DELETE/rename server contract，并确认 RED 后恢复最小实现；
+  RED 期间 focused 结果为 **2 failed / 102 passed**；
+- Desktop focused tests **104/104**，documentation contract **20/20**；
+- `pnpm verify` 通过并输出 `all selected gates passed`，相关计数为
+  runtime-manager **15/15**、CLI **314/314**、Rust unit/doc **54/54**、
+  real Rust integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ### Follow-up 目标 28：加固 Desktop undo rollback 的过时响应边界
 
 **Status:** DONE

@@ -544,3 +544,83 @@ test("unknown route returns 404", async () => {
     await close(server);
   }
 });
+
+test("DELETE an active Desktop session returns 409 without ending the chat", async () => {
+  let release;
+  let started;
+  const running = new Promise((resolve) => {
+    started = resolve;
+  });
+  const session = {
+    async run(_message, emit) {
+      emit({ type: "turn", data: { turn: 1 } });
+      started();
+      await new Promise((resolve) => {
+        release = resolve;
+      });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const chat = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "keep running" }),
+    });
+    await running;
+    const response = await fetch(`${base}/api/sessions/desktop-default`, {
+      method: "DELETE",
+    });
+    assert.equal(response.status, 409);
+    const body: any = await response.json();
+    assert.match(body.error, /already running/);
+    release();
+    await chat.text();
+  } finally {
+    release?.();
+    await close(server);
+  }
+});
+
+test("rename an active Desktop session returns 409 without ending the chat", async () => {
+  let release;
+  let started;
+  const running = new Promise((resolve) => {
+    started = resolve;
+  });
+  const session = {
+    async run(_message, emit) {
+      emit({ type: "turn", data: { turn: 1 } });
+      started();
+      await new Promise((resolve) => {
+        release = resolve;
+      });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const chat = await fetch(`${base}/api/chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ message: "keep running" }),
+    });
+    await running;
+    const response = await fetch(`${base}/api/sessions/desktop-default/rename`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "renamed-active" }),
+    });
+    assert.equal(response.status, 409);
+    const body: any = await response.json();
+    assert.match(body.error, /already running/);
+    release();
+    await chat.text();
+  } finally {
+    release?.();
+    await close(server);
+  }
+});

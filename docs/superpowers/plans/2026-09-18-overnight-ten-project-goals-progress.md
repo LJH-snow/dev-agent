@@ -1178,3 +1178,54 @@ and real Rust integration **11/11**.
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 28 slice can be committed locally as a separate commit.
+
+## Follow-up Goal 29: active Desktop session lifecycle fail-closed safety
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added `inFlight` guards to `DELETE /api/sessions/<id>` and
+  `POST /api/sessions/<id>/rename`.
+- Active DELETE and rename requests now return a stable `409` before the
+  memory file is deleted, the path is switched, or the session registry is
+  changed.
+- Preserved idle-session delete behavior, target-conflict handling, and
+  idempotent rename behavior.
+- Documented the fail-closed lifecycle behavior in the Desktop README and
+  v0.1.7 candidate checklist.
+
+**RED contract:**
+
+- Added `DELETE an active Desktop session returns 409 without ending the chat`
+  and `rename an active Desktop session returns 409 without ending the chat`
+  to the Desktop server contract.
+- RED proof removed the two `inFlight` guards; the focused run then recorded
+  **2 failed / 102 passed**, with both active operations returning `404`
+  instead of `409`. The guards were restored afterward.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **104/104**, documentation contract **20/20**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 29 slice can be committed locally as a separate commit.

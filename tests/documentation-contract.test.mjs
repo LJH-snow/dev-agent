@@ -301,6 +301,13 @@ test("v0.1.7 documents desktop undo rollback stale safety", () => {
   assert.match(desktopCandidate, /stale request or session[\s\S]*update the UI/i);
 });
 
+test("v0.1.7 documents active Desktop session lifecycle fail-closed behavior", () => {
+  assert.match(desktopReadme, /deletion fails closed with `409`/i);
+  assert.match(desktopReadme, /rename also fails closed with `409`/i);
+  assert.match(desktopCandidate, /deleting or renaming a desktop session fails closed with `409`/i);
+  assert.match(desktopCandidate, /memory file remain intact/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

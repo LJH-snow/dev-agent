@@ -249,6 +249,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       if (req.method === "DELETE" && url.pathname.startsWith("/api/sessions/")) {
         const rawId = url.pathname.slice("/api/sessions/".length);
         const sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        if (inFlight.has(sessionId)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({ error: "a chat, validation, or cleanup request is already running in this session" })
+          );
+          return;
+        }
         sessions.delete(sessionId);
 
         let deleted = false;
@@ -294,6 +302,15 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (!to) {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "sessionId is required" }));
+          return;
+        }
+
+        if (inFlight.has(from)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({ error: "a chat, validation, or cleanup request is already running in this session" })
+          );
           return;
         }
 

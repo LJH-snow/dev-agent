@@ -25,6 +25,9 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Desktop undo rollback loading is stale-safe: a new request aborts the
   previous undo request, and responses for a stale request or session do not
   update the UI.
+- Deleting or renaming a Desktop session fails closed with `409` while a chat,
+  validation, or cleanup request is running in that session; the active request
+  and memory file remain intact.
 - Desktop session summaries expose safe message/validation/change-set/protected
   guard counts without paths or raw evidence.
 - Evidence preview failures distinguish `404`, `413`, and `400` without
@@ -90,9 +93,9 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**19/19**, including the corrected `--project-state` first-release attribution,
+**20/20**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
-safety contracts.
+safety plus active session lifecycle contracts.
 
 ## Consolidated gate
 
@@ -155,6 +158,12 @@ stale-response guard to Desktop undo requests. It passed with Desktop
 **102/102**, runtime-manager **15/15**, CLI **314/314**, documentation
 contracts **19/19**, Rust unit/doc tests **54/54**, and real Rust integration
 **11/11**.
+
+The post-goal-29 session-lifecycle audit reran `pnpm verify` after making
+active Desktop session deletion and rename fail closed with `409`. It passed
+with Desktop **104/104**, runtime-manager **15/15**, CLI **314/314**,
+documentation contracts **20/20**, Rust unit/doc tests **54/54**, and real Rust
+integration **11/11**.
 
 After that consolidated gate and final handoff snapshot, a read-only release
 preflight refresh passed again with candidate `0.1.7`, published registry

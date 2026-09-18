@@ -110,10 +110,15 @@ are accepted, and validation command fields are deliberately not configurable.
   render.
 - `DELETE /api/sessions/<id>` — delete a session's memory file and drop it from
   the in-memory registry; unknown ids return `404`.
+- If a chat, validation, or cleanup request is already running in the session,
+  deletion fails closed with `409`; the running request and memory file stay
+  untouched.
 - `POST /api/sessions/<id>/rename` — body `{ "sessionId": "new-id" }`; moves the
   memory file, answers `409` when the target exists and `404` when the source is
   missing. Renaming to the current id is idempotent (`200` with
   `renamed: false`) when the session exists, and `404` when it does not.
+  Rename also fails closed with `409` while the same session has an active
+  chat, validation, or cleanup request.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
   accepts the same `changeSetId`, `validationId`, and `status` filters and adds
