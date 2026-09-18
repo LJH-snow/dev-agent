@@ -128,6 +128,8 @@ const validationStatuses: readonly ValidationStatus[] = [
 const activeSessionRequestMessage =
   "a chat, validation, cleanup, or rollback request is already running in this session";
 
+const maxJsonBodyBytes = 1024 * 1024;
+
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
 const mimeTypes: Record<string, string> = {
@@ -289,7 +291,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       ) {
         const rawId = url.pathname.slice("/api/sessions/".length, -"/rename".length);
         const from = normalizeSessionId(decodeURIComponent(rawId));
-        const body = await readBody(req);
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
         let parsed: { sessionId?: unknown };
         try {
           parsed = JSON.parse(body) as { sessionId?: unknown };
@@ -518,7 +523,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "POST" && url.pathname === "/api/chat") {
-        const body = await readBody(req);
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
         let parsed: { message?: unknown; sessionId?: unknown };
         try {
           parsed = JSON.parse(body) as { message?: unknown; sessionId?: unknown };
@@ -563,7 +571,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "POST" && url.pathname === "/api/chat/cancel") {
-        const body = await readBody(req);
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
         let parsed: { sessionId?: unknown };
         try {
           parsed = JSON.parse(body) as { sessionId?: unknown };
@@ -589,7 +600,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "POST" && url.pathname === "/api/changesets/validate") {
-        const body = await readBody(req);
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
         let parsed: { sessionId?: unknown; changeSetId?: unknown };
         try {
           parsed = JSON.parse(body) as { sessionId?: unknown; changeSetId?: unknown };
@@ -653,7 +667,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "POST" && url.pathname === "/api/changesets/cleanup") {
-        const body = await readBody(req);
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
         let parsedValue: unknown;
         try {
           parsedValue = JSON.parse(body);
@@ -729,7 +746,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "POST" && url.pathname === "/api/changesets/rollback") {
-        const body = await readBody(req);
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
         let parsed: { sessionId?: unknown; changeSetId?: unknown };
         try {
           parsed = JSON.parse(body) as { sessionId?: unknown; changeSetId?: unknown };
@@ -785,7 +805,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "POST" && url.pathname === "/api/approval") {
-        const body = await readBody(req);
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
         let parsed: { id?: unknown; decision?: unknown };
         try {
           parsed = JSON.parse(body) as { id?: unknown; decision?: unknown };
@@ -1024,12 +1047,41 @@ function waitForApproval(
   });
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
+function readJsonBody(
+  req: IncomingMessage,
+  res: ServerResponse
+): Promise<string | undefined> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    req.on("data", (chunk: Buffer) => chunks.push(chunk));
-    req.on("error", reject);
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+    let bytes = 0;
+    let overflowed = false;
+    req.on("data", (chunk: Buffer) => {
+      if (overflowed) {
+        return;
+      }
+      bytes += chunk.length;
+      if (bytes > maxJsonBodyBytes) {
+        overflowed = true;
+        res.writeHead(413, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({ error: "request body exceeds the 1 MiB limit" })
+        );
+        req.destroy();
+        resolve(undefined);
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("error", (error) => {
+      if (!overflowed) {
+        reject(error);
+      }
+    });
+    req.on("end", () => {
+      if (!overflowed) {
+        resolve(Buffer.concat(chunks).toString("utf8"));
+      }
+    });
   });
 }
 

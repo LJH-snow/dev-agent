@@ -918,6 +918,47 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 31：给 Desktop JSON 请求体加上限
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 30 收口后最终审计发现 Desktop 的 POST JSON
+`readBody` 没有总字节上限，而 SSE 已有 `DEV_AGENT_SSE_MAX_BYTES` 缓存上限，
+两者缺少同样的资源边界。
+
+**范围：**
+
+- 为 Desktop 的 POST JSON 请求体加固定总字节上限；
+- 超限请求返回稳定 `413`，不回显 body、路径或原始错误；
+- 保持 malformed/empty/unknown-session 的既有状态语义；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：超过上限的 `POST /api/chat` 返回 `413`，且不会启动
+  session run；
+- 在 documentation contract 中断言 Desktop README 与 v0.1.7 candidate checklist
+  记录请求体上限；
+- 先确认 RED，再做最小实现。
+- RED proof：临时把上限放大为 `Number.MAX_SAFE_INTEGER` 后，oversized body 契约
+  返回 `400` 而非 `413`；文档契约此时为 **21 passed / 1 failed**。随后恢复
+  `1 MiB` 并补文档。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不改变 JSON DTO、session schema、validation/approval 语义或错误映射；
+- 不新增 panel、导出入口、绝对路径、原始错误或视觉重设计；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

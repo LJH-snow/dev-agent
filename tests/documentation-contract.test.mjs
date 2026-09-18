@@ -314,6 +314,15 @@ test("v0.1.7 documents rollback in active Desktop session lifecycle", () => {
   assert.match(desktopCandidate, /concurrent rollback/i);
 });
 
+test("v0.1.7 documents the Desktop JSON request-body limit", () => {
+  assert.match(desktopReadme, /1 MiB/i);
+  assert.match(desktopReadme, /request body/i);
+  assert.match(desktopReadme, /413/i);
+  assert.match(desktopCandidate, /1 MiB/i);
+  assert.match(desktopCandidate, /request body/i);
+  assert.match(desktopCandidate, /413/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

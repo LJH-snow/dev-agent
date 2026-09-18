@@ -31,6 +31,8 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Running rollback joins the active session lifecycle: a concurrent rollback,
   deletion, or rename fails closed with `409`; the first rollback remains the
   only mutating operation.
+- Desktop POST JSON endpoints reject a request body larger than `1 MiB` with
+  `413` without echoing the body, path, or raw error.
 - Desktop session summaries expose safe message/validation/change-set/protected
   guard counts without paths or raw evidence.
 - Evidence preview failures distinguish `404`, `413`, and `400` without
@@ -96,9 +98,9 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**21/21**, including the corrected `--project-state` first-release attribution,
+**22/22**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
-safety plus active session lifecycle and rollback contracts.
+safety plus active session lifecycle, rollback, and JSON-body-limit contracts.
 
 ## Consolidated gate
 
@@ -174,6 +176,12 @@ Desktop **106/106**, runtime-manager **15/15**, CLI **314/314**, documentation
 contracts **21/21**, Rust unit/doc tests **54/54**, and real Rust integration
 **11/11**.
 
+The post-goal-31 JSON-body-limit audit reran `pnpm verify` after bounding all
+Desktop POST JSON request bodies at `1 MiB`. It passed with Desktop
+**107/107**, runtime-manager **15/15**, CLI **314/314**, documentation
+contracts **22/22**, Rust unit/doc tests **54/54**, and real Rust integration
+**11/11**.
+
 After that consolidated gate and final handoff snapshot, a read-only release
 preflight refresh passed again with candidate `0.1.7`, published registry
 `0.1.6`, authenticated npm identity, and five expected package files.
@@ -184,9 +192,10 @@ preflight refresh passed again with candidate `0.1.7`, published registry
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **106 tests passed, 0 failed.** The latest regression contracts cover
+Result: **107 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
-and rollback joining the active session lifecycle.
+rollback joining the active session lifecycle, and the fixed JSON request-body
+limit.
 
 ```sh
 pnpm build

@@ -1185,6 +1185,56 @@ and real Rust integration **11/11**.
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 30 slice can be committed locally as a separate commit.
 
+## Follow-up Goal 31: bound Desktop JSON request bodies
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `1 MiB` limit to the shared Desktop POST JSON body reader.
+- Oversized bodies return a stable `413` without echoing the body, path, or raw
+  error.
+- Kept malformed/empty/unknown-session status behavior and JSON DTOs unchanged.
+- Documented the request-body limit in the Desktop README and v0.1.7 candidate
+  checklist.
+
+**RED contract:**
+
+- Added a Desktop server contract asserting that an oversized `POST /api/chat`
+  body returns `413` and never starts the session run.
+- Added a documentation contract for the same boundary in the Desktop README and
+  candidate checklist.
+- RED proof temporarily set the limit to `Number.MAX_SAFE_INTEGER`; the focused
+  server contract returned `400` instead of `413`, and the documentation
+  contract recorded **21 passed / 1 failed**. The `1 MiB` limit and docs were
+  restored afterward.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **107/107**, documentation contract **22/22**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 31 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 28: Desktop undo-rollback stale safety
 
 **Status:** DONE

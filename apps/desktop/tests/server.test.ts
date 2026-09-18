@@ -665,6 +665,32 @@ test("POST /api/chat rejects empty message", async () => {
   }
 });
 
+test("POST /api/chat rejects an oversized JSON body", async () => {
+  const calls: string[] = [];
+  const session = {
+    async run(message: string) {
+      calls.push(message);
+      return;
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const response = await requestText(`${base}/api/chat`, {
+      method: "POST",
+      body: "x".repeat(1024 * 1024 + 1),
+    });
+    assert.equal(response.status, 413);
+    assert.match(
+      (JSON.parse(response.body) as any).error,
+      /request body exceeds the 1 MiB limit/
+    );
+    assert.deepEqual(calls, []);
+  } finally {
+    await close(server);
+  }
+});
+
 test("POST /api/chat streams SSE events", async () => {
   const server = createDesktopServer({ session: fakeSession() });
   const base = await start(server);

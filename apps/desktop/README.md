@@ -74,6 +74,9 @@ are accepted, and validation command fields are deliberately not configurable.
 
 ## API
 
+All POST JSON endpoints accept at most `1 MiB` of request body. A larger body
+returns `413`; the server does not echo the body, path, or raw error.
+
 - `GET /` — chat UI, including the runtime status panel.
 - `GET /health` — lightweight liveness response with the executor mode.
 - `GET /api/status?sessionId=<id>` — metadata-only status for the selected
