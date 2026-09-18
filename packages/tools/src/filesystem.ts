@@ -4,6 +4,7 @@ import {
   lstat,
   mkdir,
   open,
+  opendir,
   readFile,
   readdir,
   rename,
@@ -49,6 +50,7 @@ export type FilesystemAction =
 
 /** Reading without an explicit limit stops after this many lines. */
 const DEFAULT_READ_LIMIT = 2000;
+const MAX_LIST_ENTRIES = 256;
 const MAX_CHANGE_SETS = 64;
 
 export interface PatchHunk {
@@ -221,13 +223,30 @@ export class FilesystemTool implements Tool {
         return patchFile(await targetPath(resolveRequiredPath(params)), params.hunks!);
       case "list": {
         const target = await targetPath(resolveRequiredPath(params));
-        const entries = await readdir(target, { withFileTypes: true });
+        const directory = await opendir(target);
+        const entries: Array<{ name: string; isDirectory: boolean }> = [];
+        let truncated = false;
+        try {
+          while (entries.length < MAX_LIST_ENTRIES) {
+            const entry = await directory.read();
+            if (entry === null) {
+              break;
+            }
+            entries.push({
+              name: entry.name,
+              isDirectory: entry.isDirectory(),
+            });
+          }
+          if (entries.length === MAX_LIST_ENTRIES) {
+            truncated = (await directory.read()) !== null;
+          }
+        } finally {
+          await directory.close();
+        }
         return {
           path: target,
-          entries: entries.map((entry) => ({
-            name: entry.name,
-            isDirectory: entry.isDirectory(),
-          })),
+          entries,
+          truncated,
         };
       }
       case "stat": {

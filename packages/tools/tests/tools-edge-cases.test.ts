@@ -88,6 +88,18 @@ test("filesystem tool mkdir creates nested directories", async () => {
   });
 });
 
+test("filesystem tool bounds large directory listings and reports truncation", async () => {
+  await withTempDir("dev-agent-fs-list-limit-", async (dir) => {
+    const fileNames = Array.from({ length: 257 }, (_, index) => `entry-${index}.txt`);
+    await Promise.all(fileNames.map((name) => writeFile(join(dir, name), "")));
+
+    const listed: any = await new FilesystemTool().execute({ action: "list", path: dir });
+
+    assert.equal(listed.entries.length, 256);
+    assert.equal(listed.truncated, true);
+  });
+});
+
 test("filesystem tool stat reports file metadata", async () => {
   await withTempDir("dev-agent-fs-stat-", async (dir) => {
     const tool: any = new FilesystemTool();
