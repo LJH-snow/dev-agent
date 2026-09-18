@@ -26,6 +26,13 @@ export interface DesktopStatusSnapshot {
     readonly id: string;
     readonly running: boolean;
   };
+  readonly workspace?: {
+    readonly label: string;
+  };
+  readonly mcp?: {
+    readonly configured: number;
+    readonly connected: number;
+  };
   readonly executor: {
     readonly mode: DesktopStatusExecutorMode;
   };
@@ -56,6 +63,9 @@ export interface DesktopStatusSnapshot {
 
 export interface DesktopStatusOptions {
   readonly sessionId?: string;
+  readonly workspaceLabel?: string;
+  readonly mcpConfigured?: number;
+  readonly mcpConnected?: number;
   readonly running?: boolean;
   readonly executorMode?: ExecutorMode;
   readonly providerId?: ModelProviderId;
@@ -137,6 +147,8 @@ export function createDesktopStatus(options: DesktopStatusOptions = {}): Desktop
   );
   const model = safeModelLabel(options.model);
   const sessionId = safeSessionId(options.sessionId);
+  const workspaceLabel = safeWorkspaceLabel(options.workspaceLabel);
+  const mcp = safeMcpSummary(options.mcpConfigured, options.mcpConnected);
 
   return {
     schemaVersion: DESKTOP_STATUS_SCHEMA_VERSION,
@@ -145,6 +157,8 @@ export function createDesktopStatus(options: DesktopStatusOptions = {}): Desktop
       id: sessionId,
       running: options.running === true,
     },
+    ...(workspaceLabel === undefined ? {} : { workspace: { label: workspaceLabel } }),
+    ...(mcp === undefined ? {} : { mcp }),
     executor: { mode: executorMode },
     runtime: {
       kind: "node",
@@ -269,6 +283,33 @@ function safeSessionId(value: string | undefined): string {
   }
   const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-");
   return normalized.replace(/-+/g, "-").replace(/^-+|-+$/g, "").slice(0, 96) || "desktop-default";
+}
+
+function safeWorkspaceLabel(value: string | undefined): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  const normalized = value.trim().replace(/[\u0000\r\n\t]/g, " ");
+  if (!normalized || normalized.length > 64) {
+    return undefined;
+  }
+  if (/[\\/]/.test(normalized) || /^\.\.$/.test(normalized) || /^(?:api[-_ ]?key|token|secret)$/i.test(normalized)) {
+    return undefined;
+  }
+  return /^[A-Za-z0-9_.-]+$/.test(normalized) ? normalized : undefined;
+}
+
+function safeMcpSummary(configured: unknown, connected: unknown) {
+  const safeConfigured = safeCount(configured);
+  const safeConnected = safeCount(connected);
+  if (safeConfigured === 0 || safeConnected > safeConfigured) {
+    return undefined;
+  }
+  return { configured: safeConfigured, connected: safeConnected };
+}
+
+function safeCount(value: unknown): number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 function safeModelLabel(value: string | undefined): string {

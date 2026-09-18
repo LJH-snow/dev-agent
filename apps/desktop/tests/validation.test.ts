@@ -300,6 +300,10 @@ test("Desktop UI includes a validation card without removing the Undo action", a
     assert.match(html, /data-undo/);
     assert.match(html, /data-rerun/);
     assert.match(html, /\/api\/changesets\/validate/);
+    assert.match(html, /Rerun blocked — the file or session is busy/);
+    assert.match(html, /Change set is no longer available/);
+    assert.match(html, /Rerun is unavailable for this session/);
+    assert.match(html, /Rerun failed/);
     assert.match(html, /Undo/);
   } finally {
     await close(server);

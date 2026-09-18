@@ -36,6 +36,10 @@ numbered items 62/63/64 in the root README Roadmap.
   [v61 progress](day-plan-v61-progress.md), [Windows feasibility notes](windows-sandbox-feasibility-v61.md),
   [v62 plan](day-plan-v62.md), [v62 progress](day-plan-v62-progress.md), [v63 plan](day-plan-v63.md),
   [v63 progress](day-plan-v63-progress.md), [v64 plan](day-plan-v64.md), and [v64 progress](day-plan-v64-progress.md).
+  The [2026-09-18 overnight plan](superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
+  its [progress record](superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
+  and the [v0.1.7 Desktop candidate checklist](release-candidate-checklist-v0.1.7-desktop.md)
+  record the current workspace-only hardening and release-readiness evidence.
 - **Executable authority:** workflow files, `scripts/release-gate.mjs`, and their
   fixed contract tests remain authoritative for CI and release behavior; prose here
   is navigation and explanation, not a replacement for those checks.

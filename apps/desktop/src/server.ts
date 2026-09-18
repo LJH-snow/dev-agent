@@ -808,13 +808,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       res.writeHead(404, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "not found" }));
     } catch (error) {
-      res.writeHead(500, { "content-type": "application/json" });
-      res.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      console.error("[desktop] server error: request failed");
+      if (!res.headersSent) {
+        res.writeHead(500, { "content-type": "application/json" });
+      }
+      res.end(JSON.stringify({ error: "request failed" }));
     }
   });
 
   server.on("error", (error) => {
-    console.error(`[desktop] server error: ${error.message}`);
+    console.error("[desktop] server error: request failed");
   });
 
   server.once("close", () => {

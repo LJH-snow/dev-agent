@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import {
   AgentLoop,
@@ -444,6 +444,9 @@ export class ChatSession {
   getStatus(): DesktopStatusSnapshot {
     return createDesktopStatus({
       sessionId: this.sessionId,
+      workspaceLabel: basename(this.workingDirectory),
+      mcpConfigured: this.mcpServers.length,
+      mcpConnected: this.mcpClients.length,
       executorMode: this.executorMode,
       providerId: this.model.id,
       model: this.model.model,

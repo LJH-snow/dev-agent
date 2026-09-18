@@ -44,6 +44,32 @@ test("desktop status exposes only allowlisted runtime metadata", () => {
   assert.doesNotMatch(serialized, /secret|Users|home|tmp|source|api[-_ ]?key/i);
 });
 
+test("desktop workspace label stays metadata-only", () => {
+  const labeled = createDesktopStatus({ workspaceLabel: "dev-agent" });
+  const path = createDesktopStatus({ workspaceLabel: "/Users/Admin/Desktop/dev-agent" });
+  const unsafe = createDesktopStatus({ workspaceLabel: ".." });
+
+  assert.deepEqual(labeled.workspace, { label: "dev-agent" });
+  assert.equal(path.workspace, undefined);
+  assert.equal(unsafe.workspace, undefined);
+  const serialized = JSON.stringify(labeled);
+  assert.doesNotMatch(serialized, /Users|home|tmp/i);
+});
+
+test("desktop MCP summary is metadata-only and bounded", () => {
+  const ready = createDesktopStatus({ mcpConfigured: 2, mcpConnected: 2 });
+  const idle = createDesktopStatus({ mcpConfigured: 2, mcpConnected: 0 });
+  const none = createDesktopStatus();
+  const invalid = createDesktopStatus({ mcpConfigured: 1, mcpConnected: 2 });
+
+  assert.deepEqual(ready.mcp, { configured: 2, connected: 2 });
+  assert.deepEqual(idle.mcp, { configured: 2, connected: 0 });
+  assert.equal(none.mcp, undefined);
+  assert.equal(invalid.mcp, undefined);
+  const serialized = JSON.stringify(ready);
+  assert.doesNotMatch(serialized, /command|args|env|Users|home|tmp/i);
+});
+
 test("desktop status redacts path-like and secret-like model labels", () => {
   const pathStatus = createDesktopStatus({
     providerId: "ollama",

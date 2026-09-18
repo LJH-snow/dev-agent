@@ -85,9 +85,13 @@ are accepted, and validation command fields are deliberately not configurable.
   four supported runtime targets, `version` appears only when the installed
   binary has been verified, and `reason` is a stable diagnostic rather than raw
   error text.
+  It may include a safe `workspace.label` derived from the working directory
+  and an `mcp` summary with configured/connected counts only. It does not
+  expose MCP commands, args, env, or absolute paths.
   It never returns API keys, environment values, absolute paths, source text,
   command arguments, or raw provider/tool errors. Unknown sessions return a
-  generic `404` response.
+  generic `404` response. Unexpected internal failures return a generic `500`
+  `request failed` response instead of leaking the thrown diagnostic.
 - `GET /api/sessions` — the default session id plus every session file in
   `DEV_AGENT_SESSION_DIR` (`~/.dev-agent/sessions` by default), newest first.
   Each summary includes a metadata-only `evidenceSummary` with retained counts,

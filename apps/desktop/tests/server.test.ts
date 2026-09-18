@@ -183,12 +183,24 @@ test("GET / exposes a metadata-only evidence preview control", async () => {
     assert.match(html, /\/evidence\/preview/);
     assert.match(html, /new AbortController\(\)/);
     assert.match(html, /Session evidence changed — refresh to update\./);
+    assert.match(html, /function evidencePreviewFailureMessage\(status\)/);
+    assert.match(html, /case 404:[\s\S]*?Unknown session\./);
+    assert.match(html, /case 413:[\s\S]*?Evidence preview is too large\./);
+    assert.match(html, /case 400:[\s\S]*?Evidence preview request is invalid\./);
+    assert.match(html, /default:[\s\S]*?Evidence preview unavailable\./);
     assert.match(html, /validationCount/);
     assert.match(html, /changeSetCount/);
     assert.match(html, /fileCount/);
     assert.match(html, /serializedBytes/);
     assert.match(html, /Evidence summary/);
     assert.match(html, /Estimated export size/);
+    assert.match(html, /id="evidence-preview-retention-note"/);
+    assert.match(html, /Applied change-set guards stay for validation\./);
+    assert.match(html, /id="desktop-status-workspace"/);
+    assert.match(html, /payload\.workspace\?\.label \|\| "—"/);
+    assert.match(html, /id="desktop-status-mcp"/);
+    assert.match(html, /payload\.mcp\?\.configured/);
+    assert.match(html, /payload\.mcp\?\.connected/);
   } finally {
     await close(server);
   }

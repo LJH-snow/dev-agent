@@ -311,5 +311,5 @@ speculative Desktop UI，也不重新打开 Windows backend。
 
 2026-09-16 已在当前工作区完成保持兼容的 `--project-state` opt-in：它只为明确选择的
 外部项目使用 `<final-cwd>/.dev-agent` 下的 config/session，不改变用户级默认值，也不
-自动迁移历史 session。该变更已随已发布的 npm `0.1.5` 提供；详细步骤和验证记录见
+自动迁移历史 session。该变更已随已发布的 npm `@agent_cli/cli@0.1.3` 提供；详细步骤和验证记录见
 `superpowers/plans/2026-09-16-project-state-isolation.md`。

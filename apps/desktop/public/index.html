@@ -135,6 +135,7 @@
     .evidence-preview-item { min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; background: var(--bg); }
     .evidence-preview-label { display: block; color: var(--muted); font-size: 11px; }
     .evidence-preview-value { display: block; margin-top: 3px; font-size: 15px; }
+    .evidence-preview-note { color: var(--muted); font-size: 11px; margin-top: 8px; }
     .evidence-preview-refresh { margin-top: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 5px 9px; border-radius: 7px; }
     .desktop-status-panel { border-bottom: 1px solid var(--border); padding: 12px 16px; background: var(--assistant-bg); }
     .desktop-status-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; max-width: 900px; }
@@ -145,6 +146,7 @@
     .desktop-status-label { display: block; color: var(--muted); font-size: 11px; }
     .desktop-status-value { display: block; margin-top: 3px; font-size: 13px; overflow-wrap: anywhere; }
     .desktop-status-state { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .desktop-status-guidance { display: block; color: var(--fg); font-size: 11px; margin-top: 2px; }
     .desktop-status-refresh { border: 1px solid var(--border); background: var(--bg); color: var(--fg); font-size: 12px; padding: 5px 9px; border-radius: 7px; }
     .empty { color: var(--muted); font-size: 14px; align-self: center; margin-top: 40px; }
     @media (max-width: 720px) {
@@ -181,7 +183,9 @@
     <div class="desktop-status-grid">
       <div class="desktop-status-item"><span class="desktop-status-label">Executor</span><strong id="desktop-status-executor" class="desktop-status-value">—</strong><span id="desktop-status-executor-state" class="desktop-status-state">—</span></div>
       <div class="desktop-status-item"><span class="desktop-status-label">Runtime</span><strong id="desktop-status-runtime" class="desktop-status-value">—</strong><span id="desktop-status-runtime-state" class="desktop-status-state">—</span></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">Managed runtime</span><strong id="desktop-status-managed-runtime" class="desktop-status-value">—</strong><span id="desktop-status-managed-runtime-state" class="desktop-status-state">—</span></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">Workspace</span><strong id="desktop-status-workspace" class="desktop-status-value">—</strong></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">MCP</span><strong id="desktop-status-mcp" class="desktop-status-value">—</strong><span id="desktop-status-mcp-state" class="desktop-status-state">—</span></div>
+      <div class="desktop-status-item"><span class="desktop-status-label">Managed runtime</span><strong id="desktop-status-managed-runtime" class="desktop-status-value">—</strong><span id="desktop-status-managed-runtime-state" class="desktop-status-state">—</span><span id="desktop-status-managed-runtime-guidance" class="desktop-status-guidance">—</span></div>
       <div class="desktop-status-item"><span class="desktop-status-label">Provider</span><strong id="desktop-status-provider" class="desktop-status-value">—</strong><span id="desktop-status-provider-state" class="desktop-status-state">—</span></div>
       <div class="desktop-status-item"><span class="desktop-status-label">Model</span><strong id="desktop-status-model" class="desktop-status-value">—</strong><span id="desktop-status-model-state" class="desktop-status-state">—</span></div>
       <div class="desktop-status-item"><span class="desktop-status-label">Approval</span><strong id="desktop-status-approval" class="desktop-status-value">—</strong><span id="desktop-status-approval-state" class="desktop-status-state">—</span></div>
@@ -213,6 +217,7 @@
         <strong id="evidence-preview-bytes" class="evidence-preview-value">—</strong>
       </div>
     </div>
+    <div id="evidence-preview-retention-note" class="evidence-preview-note">Applied change-set guards stay for validation.</div>
     <button type="button" id="evidence-preview-refresh" class="evidence-preview-refresh">Refresh</button>
   </section>
   <div id="messages"><div class="empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
@@ -247,8 +252,12 @@
     const desktopStatusExecutorState = document.getElementById("desktop-status-executor-state");
     const desktopStatusRuntime = document.getElementById("desktop-status-runtime");
     const desktopStatusRuntimeState = document.getElementById("desktop-status-runtime-state");
+    const desktopStatusWorkspace = document.getElementById("desktop-status-workspace");
+    const desktopStatusMcp = document.getElementById("desktop-status-mcp");
+    const desktopStatusMcpState = document.getElementById("desktop-status-mcp-state");
     const desktopStatusManagedRuntime = document.getElementById("desktop-status-managed-runtime");
     const desktopStatusManagedRuntimeState = document.getElementById("desktop-status-managed-runtime-state");
+    const desktopStatusManagedRuntimeGuidance = document.getElementById("desktop-status-managed-runtime-guidance");
     const desktopStatusProvider = document.getElementById("desktop-status-provider");
     const desktopStatusProviderState = document.getElementById("desktop-status-provider-state");
     const desktopStatusModel = document.getElementById("desktop-status-model");
@@ -289,12 +298,15 @@
     function renderDesktopStatus(payload) {
       setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, payload.executor.mode, payload.session?.running ? "running" : "idle");
       setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, payload.runtime.kind + " " + payload.runtime.version, payload.runtime.platform);
+      desktopStatusWorkspace.textContent = payload.workspace?.label || "—";
+      setDesktopStatusValue(desktopStatusMcp, desktopStatusMcpState, (payload.mcp?.configured ?? 0) + " configured", (payload.mcp?.connected ?? 0) + " connected");
       setDesktopStatusValue(
         desktopStatusManagedRuntime,
         desktopStatusManagedRuntimeState,
         payload.managedRuntime?.state,
         payload.managedRuntime?.target ?? payload.managedRuntime?.version
       );
+      desktopStatusManagedRuntimeGuidance.textContent = managedRuntimeGuidance(payload.managedRuntime?.state);
       setDesktopStatusValue(desktopStatusProvider, desktopStatusProviderState, payload.provider.id, payload.provider.state);
       setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, payload.model.id, payload.model.state);
       setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, payload.approval.mode, payload.approval.guarded ? "guarded" : "direct");
@@ -307,9 +319,27 @@
       );
     }
 
+    function managedRuntimeGuidance(state) {
+      switch (state) {
+        case "installed":
+          return "Ready to use.";
+        case "missing":
+          return "Run `dev-agent runtime install` to set it up.";
+        case "unsupported":
+          return "This platform or architecture is not supported.";
+        case "corrupt":
+          return "Recheck status, then repair or reinstall if needed.";
+        case "unavailable":
+          return "Refresh status; check runtime health if it stays unavailable.";
+        default:
+          return "Refresh status to try again.";
+      }
+    }
+
     async function loadDesktopStatus(sessionId) {
       if (!sessionId) return;
       desktopStatusRefreshButton.disabled = true;
+      desktopStatusRefreshButton.setAttribute("aria-busy", "true");
       desktopStatusNote.textContent = "Loading metadata-only status…";
       try {
         const response = await fetch("/api/status?sessionId=" + encodeURIComponent(sessionId), { cache: "no-store" });
@@ -322,13 +352,17 @@
         desktopStatusNote.textContent = "Runtime status unavailable.";
         setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, "—", "—");
         setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, "—", "—");
+        desktopStatusWorkspace.textContent = "—";
+        setDesktopStatusValue(desktopStatusMcp, desktopStatusMcpState, "—", "—");
         setDesktopStatusValue(desktopStatusManagedRuntime, desktopStatusManagedRuntimeState, "—", "—");
+        desktopStatusManagedRuntimeGuidance.textContent = "—";
         setDesktopStatusValue(desktopStatusProvider, desktopStatusProviderState, "—", "—");
         setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, "—", "—");
         setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, "—", "—");
         setDesktopStatusValue(desktopStatusValidation, desktopStatusValidationState, "—", "—");
       } finally {
         desktopStatusRefreshButton.disabled = false;
+        desktopStatusRefreshButton.setAttribute("aria-busy", "false");
       }
     }
 
@@ -430,7 +464,11 @@
           "/api/sessions/" + encodeURIComponent(sessionId) + "/evidence/preview",
           { signal: controller.signal }
         );
-        if (!response.ok) throw new Error("evidence preview request failed");
+        if (!response.ok) {
+          evidencePreviewStatus.textContent = evidencePreviewFailureMessage(response.status);
+          setEvidencePreviewValues(null);
+          return;
+        }
         const payload = await response.json();
         if (requestId !== evidencePreviewRequestId || sessionId !== currentSessionId) return;
         if (dataRevision !== evidencePreviewDataRevision) {
@@ -455,6 +493,19 @@
       }
     }
 
+    function evidencePreviewFailureMessage(status) {
+      switch (status) {
+        case 404:
+          return "Unknown session.";
+        case 413:
+          return "Evidence preview is too large.";
+        case 400:
+          return "Evidence preview request is invalid.";
+        default:
+          return "Evidence preview unavailable.";
+      }
+    }
+
     function ensureSessionOption(sessionId) {
       const known = Array.from(sessionSelect.options).some((option) => option.value === sessionId);
       if (!known) {
@@ -464,6 +515,24 @@
         sessionSelect.appendChild(option);
       }
       sessionSelect.value = sessionId;
+    }
+
+    function formatSessionSummary(summary) {
+      const parts = [];
+      if (Number.isSafeInteger(summary?.entryCount) && summary.entryCount > 0) {
+        parts.push(summary.entryCount + " messages");
+      }
+      const evidence = summary?.evidenceSummary;
+      if (Number.isSafeInteger(evidence?.validations) && evidence.validations > 0) {
+        parts.push(evidence.validations + " validations");
+      }
+      if (Number.isSafeInteger(evidence?.changeSets) && evidence.changeSets > 0) {
+        parts.push(evidence.changeSets + " changes");
+      }
+      if (Number.isSafeInteger(evidence?.protectedChangeSets) && evidence.protectedChangeSets > 0) {
+        parts.push(evidence.protectedChangeSets + " protected");
+      }
+      return parts.join(" · ");
     }
 
     async function loadSessions() {
@@ -476,9 +545,8 @@
         for (const session of data.sessions ?? []) {
           const option = document.createElement("option");
           option.value = session.sessionId;
-          option.textContent = session.entryCount
-            ? session.sessionId + " (" + session.entryCount + ")"
-            : session.sessionId;
+          const summaryText = formatSessionSummary(session);
+          option.textContent = summaryText ? session.sessionId + " (" + summaryText + ")" : session.sessionId;
           sessionSelect.appendChild(option);
           sessionSummaries.set(session.sessionId, session);
         }
@@ -1004,6 +1072,8 @@
               rerunStatus.textContent = "Rerun blocked — the file or session is busy";
             } else if (response.status === 404) {
               rerunStatus.textContent = "Change set is no longer available";
+            } else if (response.status === 501) {
+              rerunStatus.textContent = "Rerun is unavailable for this session";
             } else {
               rerun.disabled = false;
               rerunStatus.textContent = "Rerun failed";

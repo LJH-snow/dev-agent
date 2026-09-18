@@ -222,8 +222,384 @@ runtime-manager tests（14/14）均通过。当前工作区尚未提交，也没
 
 ## 五、提前完成后新增的目标
 
-**待补充。** 只有在目标 1–10 和最终审计完成后才写入这里；每条必须包含范围、RED
-contract、验收命令和明确的 no-release 边界。
+### Follow-up 目标 11：把 runtime release 选择能力写进文档
+
+**建立时间：** 2026-09-18；目标 1–10 完成并进入最终审计后追加。
+
+**范围：**
+
+- 只补文档，不修改 CLI/runtime-manager 实现；
+- 说明 `--runtime-release <version>` 的用途：选择承载 runtime manifest 与 archive
+  的 GitHub release，允许它与 `--runtime-version` 表达的 runtime identity 不同；
+- 说明当前默认 release 是 `0.1.6`，runtime identity 仍是 `0.2.0`；
+- 说明 `pnpm runtime:smoke` 是额外的本地验证路径，不把它当作发布授权；
+- 更新 CLI README、CHANGELOG、roadmap baseline 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 扩展 `tests/documentation-contract.test.mjs`，要求 CLI README 包含
+  `--runtime-release` 与 manifest/archive release 的说明；
+- 要求 CHANGELOG 或 candidate checklist 区分 workspace-only candidate 与已发布的
+  `v0.1.6` release artifacts；
+- 先运行新增文档契约，确认缺少文档时为 RED，再补文档。
+
+**验收命令：**
+
+```sh
+node --test tests/documentation-contract.test.mjs
+pnpm --filter @dev-agent/runtime-manager run test
+pnpm --filter @agent_cli/cli run test
+pnpm --filter @dev-agent/desktop run test
+```
+
+**边界：**
+
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`；
+- 不改动另一个窗口正在维护的 CLI/runtime implementation 文件；
+- 验证通过前不把该能力描述为已发布。
+
+### Follow-up 目标 12：运行 runtime install 隔离 smoke
+
+**建立时间：** 2026-09-18；Follow-up 目标 11 文档收口通过后追加。
+
+**范围：**
+
+- 从仓库根目录执行 `pnpm runtime:smoke`；
+- 该脚本会本地构建、打包 CLI tarball，并在独立 npm prefix 与临时 runtime 目录中
+  验证 status/install/path/doctor/remove 生命周期；
+- 只允许下载已知 `v0.1.6` release manifest 与对应 runtime archive；
+- 不修改发布状态、用户 runtime cache 或任何实现文件。
+
+**Contract：**
+
+- `pnpm runtime:smoke` 必须以退出码 0 完成；
+- 脚本最终输出 `Runtime install smoke passed`；
+- 若失败，记录失败步骤与 sanitized 元数据，不重试超过三次，也不扩大范围。
+
+**边界：**
+
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`；
+- 失败时不把该路径描述为可发布或已验证。
+
+### Follow-up 目标 13：补强候选 release gates
+
+**建立时间：** 2026-09-18；Follow-up 目标 12 smoke 通过后追加。
+
+**范围：**
+
+- 运行 `pnpm verify:rust` 和 `pnpm verify:integration`；
+- 把 Rust 静态/单元 gate 与真实 Rust integration 的结果写入 v0.1.7 candidate
+  checklist；
+- 不修改 runtime implementation、release state 或发布动作。
+
+**Contract：**
+
+- Rust format/clippy 和 Rust unit/doc tests 必须通过；
+- real Rust integration 必须覆盖 sandbox policy、readonly/network 边界、
+  timeout/resource/output limit、abort、cancel 和 concurrency；
+- 通过前不把候选描述为 release ready。
+
+**边界：**
+
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 14：只读 release preflight 证据
+
+**建立时间：** 2026-09-18；Follow-up 目标 13 gate 补齐后追加。
+
+**范围：**
+
+- 运行 `pnpm release:preflight`，它只做 metadata-only 检查，不发布；
+- 记录 candidate metadata、auth、registry published version 和 tarball allowlist
+  的验证结果；
+- 明确 `nextAction: publish_candidate` 只是技术下一步，不是维护者授权。
+
+**Contract：**
+
+- preflight 必须以退出码 0 完成，candidate 为 `0.1.7`，published 为 `0.1.6`；
+- artifact allowlist 为五个期望文件；
+- 候选文档必须继续写明 no-publish/no-tag/no-release。
+
+**边界：**
+
+- 不创建 tag、不 push、不执行 `pnpm release:publish`、不创建 GitHub Release、
+  不修改 `~/.npmrc`。
+
+### Follow-up 目标 15：索引 2026-09-18 计划与 v0.1.7 candidate
+
+**建立时间：** 2026-09-18；Rust/integration/preflight 证据补齐后追加。
+
+**范围：**
+
+- 只更新文档导航，不改变行为；
+- 在根 README 与 docs README 的当前交付索引中加入 2026-09-18 overnight plan、
+  其 progress record 和 v0.1.7 Desktop candidate checklist；
+- 在根 README Roadmap 追加第 81 项，记录当前 workspace 完成且 release 仍需授权；
+- 保持历史文档链接不变。
+
+**RED contract：**
+
+- 在 documentation contract 中新增测试，断言三份 2026-09-18/v0.1.7 文档在两个
+  索引中可发现，且 Roadmap 第 81 项存在；
+- 先运行契约确认 RED，再补文档，直到 **12/12**。
+
+**边界：**
+
+- 不修改 CLI/runtime implementation；
+- 不发布、不 push、不创建 tag、不创建 GitHub Release、不修改 `~/.npmrc`。
+
+### Follow-up 目标 16：说明 runtime smoke 的 proxy 环境条件
+
+**建立时间：** 2026-09-18；Follow-up 目标 12 发现 proxy 环境差异后追加。
+
+**范围：**
+
+- 在 CLI runtime 说明与 v0.1.7 candidate checklist 中明确：proxy 环境下需要
+  `NODE_USE_ENV_PROXY=1` 才能让 Node fetch 走已配置的 HTTP/HTTPS proxy；
+- 说明 smoke 默认命令和 `--skip-build` 变体的区别；
+- 不修改 runtime downloader、smoke script 或 `NODE_USE_ENV_PROXY` 的运行时行为。
+
+**RED contract：**
+
+- 在 documentation contract 中断言 CLI README 与 candidate checklist 都包含
+  `NODE_USE_ENV_PROXY=1`；
+- 要求 candidate checklist 的 smoke gate 写成显式 proxy-aware 命令；
+- 先运行契约确认 RED，再补文档。
+
+**边界：**
+
+- 不修改 CLI/runtime implementation；
+- 不发布、不 push、不创建 tag、不创建 GitHub Release、不修改 `~/.npmrc`。
+
+### Follow-up 目标 17：在最终文档状态上运行完整 verify
+
+**建立时间：** 2026-09-18；Follow-up 目标 16 文档契约通过后追加。
+
+**范围：**
+
+- 从仓库根目录运行完整 `pnpm verify`，覆盖 TypeScript、Rust 和 real integration
+  的固定顺序；
+- 在同一轮最终工作树上验证最新 documentation contract，而不是只依赖先前分别
+  通过的 phase gate；
+- 把结果写入 progress 与 v0.1.7 candidate checklist；
+- 不修改实现、发布状态、tag、remote 或 `~/.npmrc`。
+
+**Contract：**
+
+- `pnpm verify` 必须以退出码 0 完成，最终输出 `all selected gates passed`；
+- 记录三类 gate 都通过；
+- 完整 verify 的通过不改变 release authorization 边界。
+
+**边界：**
+
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 18：锁定 CLI runtime release 契约
+
+**建立时间：** 2026-09-18；完整 verify 通过后追加。
+
+**范围：**
+
+- 只新增 CLI 层回归契约，不修改 runtime/CLI 实现；
+- 测试 `readRuntimeManifestRelease` 的显式值、空白值回退和默认值；
+- 测试 `runtime status --runtime-release` 被接受、不启动 provider、不把 release/
+  manifest metadata 泄漏进 JSON；
+- 不通过 CLI 测试执行真实 runtime install，完整安装路径继续由
+  `pnpm runtime:smoke` 和 runtime-manager tests 验证。
+
+**Contract：**
+
+- 默认 release 是 `0.1.6`；
+- 显式非空白 release 会被使用，空白值回退到默认；
+- runtime status payload 不包含 `release`、`manifestRelease`、
+  `manifestReleaseVersion` 或本地路径。
+
+**边界：**
+
+- 不修改 CLI/runtime implementation；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 19：审计 Desktop executor-mode 显示契约
+
+**建立时间：** 2026-09-18；post-goal-18 最终审计通过后追加。
+
+**范围：**
+
+- 只做 v65 的 bounded audit，验证 `/api/status` 的 allowlisted `executor.mode`
+  会被状态面板渲染为用户可见值，并在 session 缺少 executor metadata 时回退为
+  `unknown`；
+- 不新增 panel、快捷键、通知、导出入口，也不做 Desktop 视觉重设计；
+- 不修改 CLI、runtime-manager、release state 或另一个窗口正在维护的暂存文件。
+
+**RED contract：**
+
+- 在 Desktop status contract 中新增测试：HTML 必须声明 `renderDesktopStatus`
+  会把 `payload.executor.mode` 渲染到 Executor value/state 元素；
+- 新增测试：legacy fake session 没有 executor metadata 时，`/api/status` 仍然
+  返回 `executor: { mode: "unknown" }` 且不包含绝对路径或敏感诊断；
+- 先运行新契约确认当前覆盖状态，再决定 Preserve 或最小实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不改变 executor 执行语义、公开 schema、approval、validation 或 managed-runtime
+  卫生规则；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`；
+- 没有 evidence-backed 状态缺口时，结论必须是 `PRESERVE`，不为了让变更集变大而
+  添加功能。
+
+### Follow-up 目标 20：补齐 v0.1.7 维护者 review handoff
+
+**建立时间：** 2026-09-18；Goal 19 与 release preflight/runtime smoke 刷新通过
+后追加。
+
+**范围：**
+
+- 只更新文档，不修改代码、release state、tag 或 remote；
+- 在 v0.1.7 candidate checklist 中补充当前工作树的 review 边界：另一个窗口的
+  staged runtime-release slice、本窗口的 Desktop hardening slice、共享文档契约
+  和 2026-09-18 evidence；
+- 说明本地 commit 必须按已审阅边界拆分或经拥有者协调，不能为了方便把 staged 和
+  unstaged 两个 slice 捆成一个未审阅 commit；
+- 明确 release preflight 与 runtime smoke 都只是技术 readiness，不等于发布授权。
+
+**RED contract：**
+
+- 在 `tests/documentation-contract.test.mjs` 新增断言，要求 candidate checklist
+  有 `Candidate review handoff`；
+- 要求它区分 staged runtime-release slice 和 Desktop hardening slice；
+- 要求它写明共享 staging index 的 commit 风险与需要维护者决策的事项；
+- 先运行新契约确认 RED，再补文档。
+
+**验收命令：**
+
+```sh
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不提交、不 push、不创建 tag、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`；
+- 不修改另一个窗口的暂存实现文件；
+- 不把 review packet 当作完成发布。
+
+### Follow-up 目标 21：澄清 doctor 的 managed-state 合并语义
+
+**建立时间：** 2026-09-18；Goal 20 文档收口通过后追加。
+
+**范围：**
+
+- 只做 v65 的 bounded audit 和 candidate 文档澄清，不修改 CLI、runtime-manager 或
+  另一个窗口的暂存实现；
+- 说明 doctor 在显式 runtime probe 存在时如何区分 selected runtime 的
+  `runtimeVersion/protocolVersion` 与 managed runtime status 的 `state/target`；
+- 说明 selected binary 的契约不匹配仍会体现在 `rust runtime` check 与 summary fail
+  中，不能因 managed cache 状态为 `installed` 而误判通过；
+- 不新增 API 字段，不改变 doctor schema 或执行语义。
+
+**RED contract：**
+
+- 在 documentation contract 中新增断言，要求 v0.1.7 Desktop candidate checklist
+  同时说明 `selected runtime probe identity` 和 `managed cache state`；
+- 先运行新增契约确认 RED，再补文档，直到 **15/15**。
+
+**验收命令：**
+
+```sh
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`；
+- 不修改另一个窗口的暂存实现文件；
+- 没有 evidence-backed 实现缺口时，不改 doctor 代码。
+
+### Follow-up 目标 22：修正 project-state 的首次发布版本记录
+
+**建立时间：** 2026-09-18；post-goal-21 审计中发现 roadmap 的版本归属与
+CHANGELOG 历史不一致后追加。
+
+**范围：**
+
+- 只修正 `docs/next-roadmap-plans-v62-plus.md` 中 `--project-state` 的首次发布
+  版本归属，不改实现、release state 或另一个窗口的 staged 文件；
+- 以 `docs/CHANGELOG.md` 的 `0.1.3` 记录为准，避免把它误记为随 `0.1.5`
+  发布；
+- 在 progress 记录中记录 RED contract 与最终验证结果。
+
+**RED contract：**
+
+- 在 documentation contract 中新增测试，要求 roadmap 明确 `--project-state`
+  已随已发布的 npm `@agent_cli/cli@0.1.3` 提供；
+- 先运行新增契约确认 RED，再修正 roadmap，直到契约通过。
+
+**验收命令：**
+
+```sh
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`；
+- 不修改另一个窗口的暂存实现文件；
+- 不在文档契约中重新解释 `0.1.6` 的发布历史。
+
+### Follow-up 目标 23：收口 Desktop 服务的内部错误边界
+
+**建立时间：** 2026-09-18；post-goal-22 审计后检查 Desktop server 的错误
+边界时追加。
+
+**范围：**
+
+- 先写 RED contract，证明 `/api/status` 的 uncaught handler 错误会把原始
+  `error.message` 返回给客户端；
+- 将顶层 HTTP catch 的用户响应收敛为稳定的 `request failed`，避免路径、
+  secrets 或 raw stack 进入状态 API；
+- 不改变各个 endpoint 已有的稳定 400/404/409/413/501 错误语义；
+- 不修改另一个窗口的 staged runtime-release 文件。
+
+**RED contract：**
+
+- 在 Desktop server contract 中新增测试：自定义 session 的 `getStatus` 抛出
+  包含路径和 secret 的错误时，`/api/status` 必须返回 `500` 且 body 只包含
+  `error: "request failed"`；
+- 先运行该测试确认 RED，再做最小实现，直到 Desktop tests 全部通过。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+git diff --check
+```
+
+**边界：**
+
+- 不改变 Desktop 状态 schema、metadata allowlist、session 执行语义、审批或
+  validation 行为；
+- 不新增面板、导出入口或视觉重设计；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
 
 ## 六、最终交接要求
 
@@ -235,4 +611,3 @@ contract、验收命令和明确的 no-release 边界。
 - 仍未解决的产品或安全问题；
 - 当前 Git 工作树状态，包括本地 commits 和未提交内容；
 - 明确说明没有创建 tag、没有 push、没有发布 npm package、没有修改 `~/.npmrc`。
-

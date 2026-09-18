@@ -229,6 +229,11 @@ indexes, and MCP/Desktop status management. [`v0.1.6`](https://github.com/LJH-sn
 is the current GitHub release; `@agent_cli/cli@0.1.6` is the published npm
 registry `latest`, while `0.1.7` is the current workspace candidate.
 
+The [2026-09-18 overnight plan](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
+its [progress record](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
+and the [v0.1.7 Desktop candidate checklist](docs/release-candidate-checklist-v0.1.7-desktop.md)
+are the current evidence source for workspace-only release readiness.
+
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),
 [CLI npm distribution guide](docs/release-cli-npm.md), and the
@@ -640,3 +645,4 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
 78. ~~Incremental index status/refresh/clear with ignore rules and cache diagnostics~~ (done in workspace; release gated)
 79. ~~MCP management probes and Desktop status panel~~ (done in workspace; release gated)
 80. ~~MCP concurrent reconnect single-flight guard~~ (done in workspace; release gated)
+81. ~~Managed runtime and Desktop project-surface hardening~~ (workspace done; release gated)

@@ -14,6 +14,10 @@ const releaseChecklist = readFileSync(
   "utf8"
 );
 const cliReadme = readFileSync(new URL("../apps/cli/README.md", import.meta.url), "utf8");
+const desktopCandidate = readFileSync(
+  new URL("../docs/release-candidate-checklist-v0.1.7-desktop.md", import.meta.url),
+  "utf8"
+);
 const cliPackage = JSON.parse(
   readFileSync(new URL("../apps/cli/package.json", import.meta.url), "utf8")
 );
@@ -223,6 +227,60 @@ test("published CLI version is synchronized across release documentation", () =>
   assert.match(cliDistributionPlan, /本次已获得该授权并单独完成 npm 包发布/);
 });
 
+test("runtime release selection and smoke command are documented as candidate-only", () => {
+  assert.match(cliReadme, /--runtime-release <version>/);
+  assert.match(cliReadme, /GitHub release that carries the runtime manifest and archive/);
+  assert.match(cliReadme, /--runtime-release 0\.1\.6/);
+  assert.match(cliReadme, /runtime identity/);
+  assert.match(cliReadme, /pnpm runtime:smoke/);
+  assert.match(desktopCandidate, /--runtime-release/);
+  assert.match(desktopCandidate, /pnpm runtime:smoke/);
+  assert.match(desktopCandidate, /workspace-only/i);
+  assert.match(desktopCandidate, /no npm publish/i);
+});
+
+test("current overnight and v0.1.7 candidate evidence is indexed", () => {
+  for (const file of [
+    "docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md",
+    "docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md",
+    "docs/release-candidate-checklist-v0.1.7-desktop.md",
+  ]) {
+    assert.ok(readme.includes(file), `README should link to ${file}`);
+    assert.ok(
+      docsReadme.includes(file.replace(/^docs\//, "")),
+      `docs/README.md should link to ${file}`
+    );
+  }
+  assert.match(
+    readme,
+    /81\. ~~Managed runtime and Desktop project-surface hardening~~ \(workspace done; release gated\)/
+  );
+});
+
+test("runtime smoke documents the proxy-aware verification command", () => {
+  assert.match(cliReadme, /NODE_USE_ENV_PROXY=1/);
+  assert.match(cliReadme, /--skip-build/);
+  assert.match(desktopCandidate, /NODE_USE_ENV_PROXY=1 pnpm runtime:smoke -- --skip-build/);
+  assert.match(desktopCandidate, /proxy/i);
+  assert.match(desktopCandidate, /does not authorize publishing/i);
+});
+
+test("v0.1.7 candidate defines a maintainer review handoff", () => {
+  assert.match(desktopCandidate, /## Candidate review handoff/);
+  assert.match(desktopCandidate, /staged runtime-release slice/i);
+  assert.match(desktopCandidate, /Desktop hardening slice/i);
+  assert.match(desktopCandidate, /shared staging index/i);
+  assert.match(desktopCandidate, /do not bundle/i);
+  assert.match(desktopCandidate, /maintainer decision/i);
+});
+
+test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
+  assert.match(desktopCandidate, /selected runtime probe identity/i);
+  assert.match(desktopCandidate, /managed cache state/i);
+  assert.match(desktopCandidate, /`rust runtime` check/i);
+  assert.match(desktopCandidate, /summary fail/i);
+});
+
 test("published project-state work is represented in the current npm docs", () => {
   const escapedVersion = publishedCliVersion.replace(/[.*+?^${}()|[\\]\\]/g, "\\$&");
   assert.match(
@@ -235,6 +293,17 @@ test("published project-state work is represented in the current npm docs", () =
   );
   assert.doesNotMatch(readme, /has not yet been republished/);
   assert.doesNotMatch(npmRelease, /尚未随已发布/);
+});
+
+test("roadmap attributes the first project-state release to 0.1.3", () => {
+  assert.match(
+    nextRoadmap,
+    /该变更已随已发布的 npm `@agent_cli\/cli@0\.1\.3` 提供/
+  );
+  assert.doesNotMatch(
+    nextRoadmap,
+    /--project-state[\s\S]{0,320}该变更已随已发布的 npm `@agent_cli\/cli@0\.1\.5` 提供/
+  );
 });
 
 test("release checklist evidence matches the current fixed gate counts", () => {
