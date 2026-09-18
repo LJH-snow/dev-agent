@@ -295,3 +295,13 @@ pnpm --filter @agent_cli/cli run test
 | F-09 | `f16cbb2` | `~/.dev-agent/config.json` 超过 1 MiB 时忽略配置并回退到默认 Desktop 配置；新增超大配置回归测试 | Desktop build 通过；新增测试 1/1；`git diff --check` 通过 |
 
 该 commit 与主工作树当前修改不重叠，仍需等待主代理提交其工作后再 cherry-pick。独立 worktree 的完整 Desktop 测试中，除本测试外有两个既有静态资源 404；这两个失败与 F-09 无关，不能据此宣称 Desktop 全量测试通过。
+
+## 10. 审计后的 Filesystem 目录列表修复
+
+针对 F-07，`packages/tools/src/filesystem.ts:FilesystemTool.execute(action="list")` 现在通过 `opendir` 流式枚举目录，最多保留 256 条目，并在还有未返回条目时返回 `truncated: true`。原有 `path`、`entries[].name` 和 `entries[].isDirectory` 字段保持不变。
+
+| Finding | 修复 commit | 变更 | focused evidence |
+| --- | --- | --- | --- |
+| F-07 | `89750d9` | 为目录列表增加 256-entry 上限和截断元数据，避免先完整物化超大目录 | `@dev-agent/tools` build + test：130/130；先写 RED 测试，原实现返回 257 条，修复后按上限截断 |
+
+该 commit 与主工作区当前修改不重叠，仍需等待主代理提交其工作后再 cherry-pick。
