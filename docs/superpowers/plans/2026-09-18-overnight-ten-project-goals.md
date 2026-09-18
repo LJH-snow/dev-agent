@@ -601,6 +601,40 @@ git diff --check
 - 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
   `~/.npmrc`。
 
+### Follow-up 目标 24：刷新 candidate 的 handoff provenance
+
+**建立时间：** 2026-09-18；post-goal-23 收口后审计发现 checklist 仍描述
+runtime-release 和 Desktop hardening slice 为未提交，而它们实际已分别进入
+提交历史。
+
+**范围：**
+
+- 只更新 candidate review handoff 和 progress 记录，不修改实现、release state
+  或 Git remotes；
+- 将 runtime-release slice 记录为已由拥有者窗口提交并 push；
+- 将 Desktop hardening/evidence/docs slice 记录为本地 commit；
+- 明确当前没有新的共享 staging index，也不把任何内容描述为已发布或已授权。
+
+**RED contract：**
+
+- 在 documentation contract 中新增断言，要求 candidate handoff 说明两个 slice
+  的最终 Git 状态，并禁止继续把 focused work 描述为 `still uncommitted`；
+- 先运行新增契约确认 RED，再补文档。
+
+**验收命令：**
+
+```sh
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`；
+- 不改写已有历史验证记录；
+- 不做 release 授权。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

@@ -54,34 +54,33 @@ This checklist summarizes the Desktop-facing work prepared during the
 ## Technical readiness boundary
 
 The checklist records evidence for every technical gate listed below, but the
-candidate is not release-ready until a maintainer reviews the current uncommitted
-worktree and explicitly authorizes the release window. Technical readiness does
+candidate is not release-ready until a maintainer reviews the current candidate
+commits and explicitly authorizes the release window. Technical readiness does
 not imply or authorize tagging, pushing, npm publishing, or creating a GitHub
 Release.
 
 ## Candidate review handoff
 
-The shared staging index currently contains a coherent **staged runtime-release slice**:
-the CLI `--runtime-release` flag, the doctor managed-state merge, runtime-manager
-manifest-release support and tests, the runtime install smoke script, and
-matching CLI/npm documentation. Another window owns those active staged files;
-this window has not unstaged, reverted, or edited them.
+The **runtime-release slice has been committed and pushed** by its owning
+window as `69c8a9f`. It contains the CLI `--runtime-release` flag, the doctor
+managed-state merge, runtime-manager manifest-release support and tests, the
+runtime install smoke script, and matching CLI/npm documentation.
 
-A separate **Desktop hardening slice** remains unstaged: the metadata-only
-status/session/MCP/workspace additions, evidence and validation UX guards, and
-their focused tests. A third, coordination-sensitive slice contains the CLI
-runtime-release regression test, the 2026-09-18 plan/progress evidence, and the
-documentation contract/index updates.
+A separate **Desktop hardening slice has been committed locally** as
+`9c6592c`: the metadata-only status/session/MCP/workspace additions, evidence
+and validation UX guards, their focused tests, the CLI runtime-release
+regression test, the 2026-09-18 plan/progress evidence, and the documentation
+contract/index updates.
 
-Because the Git shared staging index is not window-owned, do not bundle the
-staged and unstaged slices into one commit without coordinating with each
-owner and reviewing the resulting paths. Until that maintainer decision is
-made, keep the worktree workspace-only: no tag, push, npm publish, or GitHub
-Release. The release preflight and isolated runtime smoke remain technical
-readiness evidence, not release authorization.
+No shared staging index remains for these slices. Maintainers review these
+commits separately and coordinate before combining them. Until that maintainer
+decision is made, keep the candidate workspace-only: no additional push, tag,
+npm publish, or GitHub Release. The release preflight and isolated runtime
+smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**16/16**, including the corrected `--project-state` first-release attribution.
+**16/16**, including the corrected `--project-state` first-release attribution
+and the refreshed provenance.
 
 ## Consolidated gate
 
@@ -199,11 +198,6 @@ Result: **Runtime install smoke passed.** This verifies the local package
 installation and isolated runtime lifecycle against the known release. It does
 not authorize publishing.
 
-Additional focused work by another window is still uncommitted:
-
-- CLI runtime release flag and smoke script
-- runtime-manager manifest-release support and tests
-- Documentation contract and candidate documentation for runtime-release support
 
 ## Remaining gates before any release decision
 

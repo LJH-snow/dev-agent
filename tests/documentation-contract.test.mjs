@@ -265,13 +265,14 @@ test("runtime smoke documents the proxy-aware verification command", () => {
   assert.match(desktopCandidate, /does not authorize publishing/i);
 });
 
-test("v0.1.7 candidate defines a maintainer review handoff", () => {
+test("v0.1.7 candidate records resolved handoff provenance", () => {
   assert.match(desktopCandidate, /## Candidate review handoff/);
-  assert.match(desktopCandidate, /staged runtime-release slice/i);
-  assert.match(desktopCandidate, /Desktop hardening slice/i);
-  assert.match(desktopCandidate, /shared staging index/i);
-  assert.match(desktopCandidate, /do not bundle/i);
-  assert.match(desktopCandidate, /maintainer decision/i);
+  assert.match(desktopCandidate, /runtime-release slice has been committed and pushed/i);
+  assert.match(desktopCandidate, /Desktop hardening slice has been committed locally/i);
+  assert.match(desktopCandidate, /No shared staging index remains/i);
+  assert.match(desktopCandidate, /Maintainers review these/i);
+  assert.match(desktopCandidate, /commits separately/i);
+  assert.match(desktopCandidate, /maintainer[\s\S]*decision/i);
 });
 
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {

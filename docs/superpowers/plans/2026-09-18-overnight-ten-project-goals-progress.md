@@ -919,3 +919,46 @@ Result: **preflight passed.** Candidate `0.1.7`, published registry `0.1.6`,
 authenticated npm identity, and five expected package files. This remains
 readiness evidence only; `nextAction: publish_candidate` does not authorize
 publishing.
+
+## Follow-up Goal 24: Candidate handoff provenance refresh
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Replaced the stale statement that the runtime-release and Desktop hardening
+  slices remained uncommitted.
+- Recorded that the runtime-release slice was committed and pushed as
+  `69c8a9f` by its owning window.
+- Recorded that the Desktop hardening/evidence/docs slice was committed locally
+  as `9c6592c`.
+- Kept the candidate release decision gated and unchanged.
+
+**RED contract:**
+
+- Updated `v0.1.7 candidate defines a maintainer review handoff` to require the
+  resolved provenance for both slices.
+- First run: **1 failed / 16 passed** because the candidate checklist still
+  described the focused work as uncommitted.
+
+**Files touched:**
+
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+node --test tests/documentation-contract.test.mjs
+git diff --check
+pnpm verify
+```
+
+Result: documentation contract **16/16** and whitespace check passed. The
+complete final audit passed with Desktop **98/98**, runtime-manager **15/15**,
+CLI **314/314**, documentation contract **16/16**, Rust unit/doc tests
+**54/54**, and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+follow-up documentation refresh can be committed locally as a separate commit.
