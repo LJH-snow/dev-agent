@@ -91,9 +91,10 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Managed runtime installation can pass `--runtime-release` to select the GitHub
   release carrying the manifest and archive; the cache identity remains
   `--runtime-version`, and the current default release is `0.1.6`.
-- Runtime install responses are bounded: manifests are capped at `1 MiB` and
-  archives at `16 MiB`; an over-limit response returns a structured
-  `DOWNLOAD_FAILED` result before staging or extraction.
+- Runtime install responses use streamed bounded readers: manifests are capped
+  at `1 MiB` and archives at `16 MiB`; an over-limit response cancels the
+  stream and returns a structured `DOWNLOAD_FAILED` result before staging or
+  extraction.
 - Runtime archive extraction limits the decompressed tar payload at `32 MiB`,
   rejecting a gzip bomb with a structured `ARCHIVE_INVALID` result before it
   can allocate unbounded memory or write extraction files.
@@ -146,14 +147,15 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**42/42**, including the corrected `--project-state` first-release attribution,
+**43/43**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
 public-symlink-containment, root-static-containment, session-ID-length-limit,
 session-listing-limit, history-response-limit, rename-lifecycle, and
 export-response-limit, JSON-object-shape, post-goal-46-preflight,
-runtime-install-download-limit, runtime-lifecycle-lock,
+streamed-runtime-download-limit, runtime-install-download-limit,
+runtime-lifecycle-lock,
 delete-storage-failure-lock, and decompressed-archive-limit contracts.
 
 ## Consolidated gate
@@ -335,6 +337,13 @@ The post-goal-51 gzip-bound audit reran the focused gates after limiting the
 decompressed runtime tar payload. The focused run passed with runtime-manager
 **19/19** and documentation contracts **42/42**. The full gate is recorded in
 the consolidated evidence below.
+
+The post-goal-52 streamed-download audit reran the focused gates after moving
+default manifest and archive reads to fixed bounded streams. The focused run
+passed with runtime-manager **21/21** and documentation contracts **43/43**.
+The full gate completed with `all selected gates passed`, CLI **314/314**,
+Desktop **127/127**, Rust unit/doc tests **54/54**, and real Rust integration
+**11/11**.
 
 ## Verification completed
 

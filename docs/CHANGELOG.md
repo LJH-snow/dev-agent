@@ -4,7 +4,9 @@
 
 - `runtime install` now rejects a manifest response larger than `1 MiB` or an
   archive response larger than `16 MiB` with a structured `DOWNLOAD_FAILED`
-  result before writing or extracting files.
+  result before writing or extracting files. Default downloaders read these
+  responses with streamed bounded readers instead of buffering the complete
+  response before checking the limit.
 - This keeps malicious or malformed release responses from allocating unbounded
   memory or staging temporary artifacts. Existing checksum, executable-bit, and
   health verification remain unchanged.

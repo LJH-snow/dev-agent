@@ -64,6 +64,22 @@ function assertRuntimeError(error: unknown, code: string) {
   return true;
 }
 
+function streamedResponse(chunks: Uint8Array[]) {
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk);
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return {
+    response: new Response(body, { status: 200 }),
+    wasCancelled: () => cancelled,
+  };
+}
+
 async function tempRoot() {
   return mkdtemp(join(tmpdir(), "dev-agent-runtime-manager-test-"));
 }
@@ -428,6 +444,82 @@ test("rejects a runtime archive above the fixed 16 MiB download limit", async ()
     (error: unknown) => assertRuntimeError(error, "DOWNLOAD_FAILED")
   );
   assert.deepEqual(await readdir(join(root, VERSION)).catch(() => []), []);
+});
+
+test("streams and bounds an oversized runtime manifest download", async () => {
+  const root = await tempRoot();
+  const oversizedPayload = Buffer.concat([
+    Buffer.from(JSON.stringify(manifestFor())),
+    Buffer.alloc(MANIFEST_DOWNLOAD_LIMIT + 1, 0x20),
+  ]);
+  const oversizedManifest = streamedResponse([oversizedPayload]);
+  const normalArchive = streamedResponse([Buffer.from("archive-bytes")]);
+  const originalFetch = globalThis.fetch;
+  let archiveCalls = 0;
+
+  try {
+    globalThis.fetch = (async (url: unknown) => {
+      return String(url).includes("/releases/download/v0.2.0/dev-agent-runtime-manifest.json")
+        ? oversizedManifest.response
+        : normalArchive.response;
+    }) as typeof fetch;
+
+    const manager = new api.RuntimeManager({
+      runtimeDir: root,
+      platform: "darwin",
+      arch: "arm64",
+      ...makeInstallDependencies({
+        onArchiveDownload: () => (archiveCalls += 1),
+      }),
+      manifestDownloader: undefined,
+    });
+
+    await assert.rejects(
+      () => manager.install(VERSION),
+      (error: unknown) => assertRuntimeError(error, "DOWNLOAD_FAILED")
+    );
+    assert.equal(oversizedManifest.wasCancelled(), true);
+    assert.equal(archiveCalls, 0);
+    assert.deepEqual(await readdir(join(root, VERSION)).catch(() => []), []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("streams and bounds an oversized runtime archive download", async () => {
+  const root = await tempRoot();
+  const oversizedManifest = manifestFor({
+    artifact: { ...artifactFor(), size: ARCHIVE_DOWNLOAD_LIMIT },
+  });
+  const oversizedArchive = streamedResponse([
+    Buffer.alloc(ARCHIVE_DOWNLOAD_LIMIT + 1),
+  ]);
+  const originalFetch = globalThis.fetch;
+
+  try {
+    globalThis.fetch = (async (url: unknown) => {
+      return String(url).includes("/dev-agent-runtime-manifest.json")
+        ? oversizedManifest.response
+        : oversizedArchive.response;
+    }) as typeof fetch;
+
+    const manager = new api.RuntimeManager({
+      runtimeDir: root,
+      platform: "darwin",
+      arch: "arm64",
+      ...makeInstallDependencies(),
+      archiveDownloader: undefined,
+    });
+
+    await assert.rejects(
+      () => manager.install(VERSION),
+      (error: unknown) => assertRuntimeError(error, "DOWNLOAD_FAILED")
+    );
+    assert.equal(oversizedArchive.wasCancelled(), true);
+    assert.deepEqual(await readdir(join(root, VERSION)).catch(() => []), []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("rejects a runtime archive above the fixed 32 MiB decompressed limit", async () => {

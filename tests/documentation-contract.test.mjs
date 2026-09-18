@@ -496,6 +496,13 @@ test("runtime manager documents fixed manifest and archive download limits", () 
   assert.match(cliReadme, /16 MiB/i);
 });
 
+test("runtime manager documents streamed bounded downloads", () => {
+  assert.match(cliReadme, /stream/i);
+  assert.match(cliReadme, /bounded/i);
+  assert.match(desktopCandidate, /stream/i);
+  assert.match(desktopCandidate, /bounded/i);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);

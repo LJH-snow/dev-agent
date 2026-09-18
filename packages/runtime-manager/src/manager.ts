@@ -71,11 +71,32 @@ const EMPTY_MARKER = "";
 const maxManifestDownloadBytes = 1024 * 1024;
 const maxArchiveDownloadBytes = 16 * 1024 * 1024;
 
+async function collectBoundedResponse(response: Response, maxBytes: number): Promise<Uint8Array> {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("response has no readable body");
+
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (!value) continue;
+
+    bytes += value.byteLength;
+    if (bytes > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("response exceeded the download limit");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
+}
+
 async function defaultManifestDownloader(version: string, signal?: AbortSignal): Promise<string> {
   try {
     const response = await fetch(getManifestDownloadUrl(version), { signal });
     if (!response.ok) throw new Error("manifest request failed");
-    return await response.text();
+    return Buffer.from(await collectBoundedResponse(response, maxManifestDownloadBytes)).toString("utf8");
   } catch (error) {
     if (isAbortError(error) || signal?.aborted) throw error;
     throw new Error("manifest request failed");
@@ -86,7 +107,7 @@ async function defaultArchiveDownloader(url: string, signal?: AbortSignal): Prom
   try {
     const response = await fetch(url, { signal });
     if (!response.ok) throw new Error("archive request failed");
-    return new Uint8Array(await response.arrayBuffer());
+    return await collectBoundedResponse(response, maxArchiveDownloadBytes);
   } catch (error) {
     if (isAbortError(error) || signal?.aborted) throw error;
     throw new Error("archive request failed");

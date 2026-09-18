@@ -1677,6 +1677,60 @@ Result: runtime-manager focused tests **19/19**, documentation contract
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 52: stream bound runtime downloads
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Replaced default manifest `response.text()` and archive
+  `response.arrayBuffer()` reads with a fixed bounded streaming collector.
+- Manifest reads stop at `1 MiB`; archive reads stop at `16 MiB`.
+- A stream exceeding its fixed limit cancels the reader and remains a stable
+  `DOWNLOAD_FAILED` boundary before staging or extraction.
+- Preserved manifest schema, fixed URLs, checksum, executable-bit, health,
+  atomic install, cancellation, and lifecycle lock behavior.
+- Updated the CLI README, changelog, v0.1.7 candidate checklist, and plan.
+
+**RED contract:**
+
+- Added `streams and bounds an oversized runtime manifest download` and
+  `streams and bounds an oversized runtime archive download` to
+  runtime-manager contracts.
+- Added `runtime manager documents streamed bounded downloads` to
+  documentation contracts.
+- RED proof: runtime-manager focused tests recorded **19 passed / 2 failed**
+  because the default downloaders completed buffering without cancelling the
+  reader; documentation contracts recorded **42 passed / 1 failed**.
+
+**Files touched:**
+
+- `packages/runtime-manager/src/manager.ts`
+- `packages/runtime-manager/tests/runtime-manager.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/runtime-manager run build
+pnpm --filter @dev-agent/runtime-manager run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: runtime-manager focused tests **21/21**, documentation contract
+**43/43**, and `pnpm verify` completed with `all selected gates passed`.
+Focused counts were Desktop **127/127**, CLI **314/314**, Rust unit/doc tests
+**54/54**, and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

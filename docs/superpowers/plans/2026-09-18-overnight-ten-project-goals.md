@@ -1978,7 +1978,7 @@ git diff --check
 
 ### Follow-up 目标 51：限制 runtime archive 解压后的内存
 
-**Status:** IN PROGRESS
+**Status:** DONE
 
 **建立时间：** 2026-09-18 Goal 50 收口后审计 archive 边界，发现 Goal 48
 限制了压缩响应大小，但没有限制 `gunzipSync` 的解压输出；一个小于 16 MiB
@@ -2016,5 +2016,50 @@ git diff --check
 - 不新增可配置解压上限；
 - 不改变 tar path、link、PAX、checksum、entry truncation 和 atomic install
   语义；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 52：流式限制 runtime 下载读取
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 51 收口后审计 manifest/archive 下载路径，
+发现默认下载器虽然已在读完后校验响应大小，但分别使用 `response.text()`
+和 `response.arrayBuffer()`；恶意或失控下载源仍可能在校验前占满内存。
+
+**范围：**
+
+- 默认 manifest 与 archive 下载改为读取流式 body；
+- 流式读取过程中累计超过固定 `1 MiB` / `16 MiB` 即 fail-closed；
+- 超限时取消 reader，不再继续接收响应；
+- 保持 manifest schema、URL、SHA-256、health、atomic install 与
+  `DOWNLOAD_FAILED` 语义；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 runtime-manager contract：默认 manifest downloader 读取超过 `1 MiB`
+  的流式响应时返回 `DOWNLOAD_FAILED`，且 reader 已被 cancel；
+- 新增 runtime-manager contract：默认 archive downloader 读取超过 `16 MiB`
+  的流式响应时返回 `DOWNLOAD_FAILED`，且 reader 已被 cancel；
+- 新增 documentation contract：CLI README 与 candidate checklist 说明
+  bounded streaming download；
+- 先运行新增契约确认 RED，再做最小实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/runtime-manager run build
+pnpm --filter @dev-agent/runtime-manager run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 release manifest schema、URL 或安装协议；
+- 不引入可配置下载上限；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。

@@ -58,9 +58,10 @@ only inspect or change the local cache; they do not load a model provider or con
 MCP. `runtime install` downloads only the fixed release manifest and the matching
 macOS/Linux artifact, verifies its SHA-256 and runtime protocol/version, then installs
 atomically under `~/.dev-agent/runtimes/<version>/<target>`. The manifest response is
-bounded at `1 MiB` and the archive response at `16 MiB`; either over-limit response is
-rejected with a structured `DOWNLOAD_FAILED` result before staging or extraction. The
-decompressed tar payload is bounded at `32 MiB` before extraction. Install
+read with a streamed bounded reader at `1 MiB` and the archive response with a streamed
+bounded reader at `16 MiB`; either over-limit response is rejected with a structured
+`DOWNLOAD_FAILED` result before staging or extraction. The decompressed tar payload is
+bounded at `32 MiB` before extraction. Install
 and remove for the same runtime version are serialized, so a concurrent remove waits until
 the active installation completes before acting. It
 never runs from npm `postinstall` and never silently falls back to `local`. Windows,
