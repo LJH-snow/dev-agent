@@ -1229,3 +1229,22 @@ and real Rust integration **11/11**.
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 29 slice can be committed locally as a separate commit.
+
+## Follow-up goals 28-29 final handoff snapshot
+
+**Status:** PASSED
+
+The branch is `main`, clean, and ahead of `origin/main` by nine local commits.
+The newest commits are:
+
+- `cacb7c5 fix: fail closed active desktop session lifecycle`
+- `b0ca143 fix: guard desktop undo rollback stale responses`
+
+Goals 28 and 29 are `DONE`. The latest full audit completed with Desktop
+**104/104**, runtime-manager **15/15**, CLI **314/314**, documentation contract
+**20/20**, Rust unit/doc tests **54/54**, real Rust integration **11/11**, and
+`all selected gates passed`.
+
+Release remains gated: no Git tag, no push, no npm publish, no GitHub Release,
+and no `~/.npmrc` change. The next human decision is whether to push the
+accumulated local commits and authorize the `v0.1.7` release review window.
