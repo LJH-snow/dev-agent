@@ -2674,3 +2674,40 @@ git diff --check
 - 不回显文件内容或绝对路径；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 64：审计 evidence/change-set 读取上限
+
+**Status:** PRESERVE
+
+**建立时间：** 2026-09-18 Goal 63 收口后继续检查 Desktop evidence 与
+change-set 读取。确认 `/evidence/preview`、`/evidence`、`/messages`、
+`/export`、validation rerun 和 rollback 最终都经由 `FileMemory` 读取
+persisted session 数据。
+
+**结论：**
+
+- `FileMemory.readEntries` 和 `readMemoryFile` 先用 `stat` 检查大小；
+- persisted agent memory 的固定读取上限是 `16 MiB`，超限在读取内容前
+  fail-closed；
+- evidence audit 另有 allowlisted projection、query filter 上限、count/file/
+  byte audit limits 和 metadata-only 边界；
+- 没有发现新的未 bound 的 evidence/change-set 文件读取路径；本目标
+  Preserve，不改代码。
+
+**验证命令：**
+
+```sh
+pnpm --filter @dev-agent/agent-core run test
+pnpm --filter @dev-agent/desktop run test
+git diff --check
+```
+
+**结果：** agent-core focused tests **131/131**；Desktop focused tests
+**128/128**；`git diff --check` 通过。
+
+**边界：**
+
+- 不新增可配置上限、分页、DTO 变更或 UI 重设计；
+- 不回显路径、文件内容、原始错误或凭据；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

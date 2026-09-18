@@ -1129,6 +1129,35 @@ Release remains gated: no Git tag, no push, no npm publish, no GitHub Release,
 and no `~/.npmrc` change. The next human decision is whether to push the
 accumulated local commits and authorize the `v0.1.7` release review window.
 
+## Follow-up Goal 64: preserve evidence/change-set read bounds
+
+**Status:** PRESERVE
+
+Audited Desktop evidence and change-set reads after Goal 63. The
+`/evidence/preview`, `/evidence`, `/messages`, `/export`, validation rerun, and
+rollback paths all ultimately load persisted session data through `FileMemory`.
+That reader checks the file size with `stat` before reading and rejects files
+above the fixed `16 MiB` read limit.
+
+No new unbounded evidence or change-set file-read path was found. Evidence
+selection remains metadata-only, with capped query filters and optional
+validation/change-set/file/byte audit limits. No code changes were needed, so
+this target is marked Preserve.
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/agent-core run test
+pnpm --filter @dev-agent/desktop run test
+git diff --check
+```
+
+Result: agent-core focused tests **131/131**, Desktop focused tests **128/128**,
+and `git diff --check` passed.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. This
+documentation-only Preserve record can be committed locally.
+
 ## Follow-up Goal 55/56 candidate sync
 
 **Status:** DONE
