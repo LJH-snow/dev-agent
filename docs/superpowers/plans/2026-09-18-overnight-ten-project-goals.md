@@ -1077,6 +1077,61 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 34：限制 Desktop static file response 大小
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 33 收口后继续审计 Desktop 的资源边界，发现
+`/public/` static response 会把整个文件读进内存，没有固定总字节上限。
+
+**范围：**
+
+- 为 `/public/` static file response 设定固定 `1 MiB` 总字节上限；
+- 超过上限返回稳定 `413`，不回显路径、文件内容或原始错误；
+- 现有 static asset 与 index 页面继续正常返回；
+- 不改变 path traversal、missing/directory 的 `404` 语义；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 static-file contract：`/public/` 下一个超过 `1 MiB` 的文件返回 `413`；
+- 在 documentation contract 中断言 README 与 checklist 记录 static response
+  上限；
+- 先确认 RED，再做最小实现。
+- RED proof：无上限实现时，oversized static file 返回 `200`，新契约解析为
+  HTML 内容时失败；聚焦运行为 **110 passed / 1 failed**。文档契约为
+  **24 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不配置用户可调上限，不流式扩展、缓存或重构 static serving；
+- 不新增 panel、导出入口、绝对路径、原始错误或视觉重设计；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已为 `/public/` static response 加入固定 `1 MiB` 上限；
+- 超限响应返回稳定 `413`，不回显路径、内容或原始错误；
+- missing/path-traversal `404` 语义保持不变；
+- RED 后 Desktop focused tests **111/111**，documentation contract
+  **25/25**；`pnpm verify` 输出 `all selected gates passed`，相关计数为
+  runtime-manager **15/15**、CLI **314/314**、Rust unit/doc **54/54**、real
+  Rust integration **11/11**；
+- 首次全量验证只遇到一个 MCP 并发时序测试失败，未改动实现；单独重跑
+  MCP suite 后 **63/63** 通过，随后完整 `pnpm verify` 通过；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ## 六、最终交接要求
 
 夜跑结束时必须留下：

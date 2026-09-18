@@ -38,6 +38,8 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Desktop always-allow memory is capped per session at `256` keys and
   `512 bytes` per key; oversized or post-limit decisions allow only the current
   call.
+- Desktop static responses under `/public/` are capped at `1 MiB`; an
+  oversized response returns `413` without exposing the path or contents.
 - Desktop session summaries expose safe message/validation/change-set/protected
   guard counts without paths or raw evidence.
 - Evidence preview failures distinguish `404`, `413`, and `400` without
@@ -103,10 +105,11 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**24/24**, including the corrected `--project-state` first-release attribution,
+**25/25**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
-session-registry-limit, and always-allow-limit contracts.
+session-registry-limit, always-allow-limit, and static-response-limit
+contracts.
 
 ## Consolidated gate
 
@@ -204,17 +207,24 @@ passed with Desktop **110/110**, runtime-manager **15/15**, CLI **314/314**,
 documentation contracts **24/24**, Rust unit/doc tests **54/54**, and real Rust
 integration **11/11**.
 
+The post-goal-34 static-response audit reran `pnpm verify` after capping
+Desktop static responses at `1 MiB`. It passed with Desktop **111/111**,
+runtime-manager **15/15**, CLI **314/314**, documentation contracts **25/25**,
+Rust unit/doc tests **54/54**, and real Rust integration **11/11**. The first
+full gate reported one MCP concurrency timing failure; the focused MCP suite
+passed **63/63** with no implementation change, and a second full gate passed.
+
 ## Verification completed
 
 ```sh
 pnpm --filter @dev-agent/desktop run test
 ```
 
-Result: **110 tests passed, 0 failed.** The latest regression contracts cover
+Result: **111 tests passed, 0 failed.** The latest regression contracts cover
 the legacy-session `unknown` executor fallback, status-panel executor rendering,
 rollback joining the active session lifecycle, the fixed JSON request-body
-limit, the fixed session registry count limit, and bounded always-allow
-memory.
+limit, the fixed session registry count limit, bounded always-allow memory, and
+the fixed static-response size limit.
 
 ```sh
 pnpm build

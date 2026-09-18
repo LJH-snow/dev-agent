@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
+import { rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import test from "node:test";
 
 import { createDesktopServer } from "../dist/server.js";
@@ -149,6 +151,21 @@ test("GET /public/ serves a real static asset", async () => {
     assert.match(body, /id="rename-session"/, "the rename control should be served");
     assert.match(body, /\/rename/, "the rename button should call the rename endpoint");
   });
+});
+
+test("/public/ rejects a response larger than 1 MiB", async () => {
+  const filePath = join(process.cwd(), "public", "bounded.tmp.html");
+  await writeFile(filePath, "x".repeat(1024 * 1024 + 1));
+  try {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/public/bounded.tmp.html`);
+      const body: any = await res.json();
+      assert.equal(res.status, 413);
+      assert.match(body.error, /static response exceeds the 1 MiB limit/);
+    });
+  } finally {
+    await rm(filePath, { force: true });
+  }
 });
 
 test("a matching fake session emits each event type it is given", async () => {

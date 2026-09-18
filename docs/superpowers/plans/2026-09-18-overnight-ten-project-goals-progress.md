@@ -1350,6 +1350,59 @@ and real Rust integration **11/11**.
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 33 slice can be committed locally as a separate commit.
 
+## Follow-up Goal 34: bound Desktop static responses
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `1 MiB` byte limit to Desktop `/public/` static responses.
+- Returned a stable JSON `413` for oversized files without echoing the path,
+  contents, or raw error.
+- Preserved existing missing-file and path-traversal `404` behavior.
+- Documented the static-response limit in the Desktop README and v0.1.7
+  candidate checklist.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **111/111**, documentation contract **25/25**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**. The first full verify hit one MCP
+concurrency timing failure; the focused MCP suite then passed **63/63** with
+no implementation change, and the second full verify passed.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 34 slice can be committed locally as a separate commit.
+
+Opened a bounded follow-up after the Goal 33 audit found that `/public/`
+responses read an entire file into memory without a fixed byte limit. The
+target is a fixed `1 MiB` static response limit with a stable `413`, while
+preserving existing missing/path-traversal `404` behavior. RED contracts will
+be added before implementation.
+
+RED confirmed for the new server contract: without a limit, the oversized
+static response returned `200`, so the test failed while parsing the HTML file
+body; Desktop focused tests recorded **110 passed / 1 failed**. The
+documentation contract recorded **24 passed / 1 failed**.
+
 ## Follow-up Goal 28: Desktop undo-rollback stale safety
 
 **Status:** DONE

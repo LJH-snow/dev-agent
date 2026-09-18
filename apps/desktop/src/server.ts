@@ -131,6 +131,7 @@ const activeSessionRequestMessage =
   "a chat, validation, cleanup, or rollback request is already running in this session";
 
 const maxJsonBodyBytes = 1024 * 1024;
+const maxStaticFileBytes = 1024 * 1024;
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
@@ -888,6 +889,11 @@ async function serveFile(res: ServerResponse, filePath: string, ext: string): Pr
     // Missing files, directories, and unreadable paths are client errors.
     res.writeHead(404, { "content-type": "application/json" });
     res.end(JSON.stringify({ error: "not found" }));
+    return;
+  }
+  if (content.byteLength > maxStaticFileBytes) {
+    res.writeHead(413, { "content-type": "application/json" });
+    res.end(JSON.stringify({ error: "static response exceeds the 1 MiB limit" }));
     return;
   }
   res.writeHead(200, { "content-type": mimeTypes[ext] ?? "application/octet-stream" });
