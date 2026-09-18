@@ -1,4 +1,5 @@
 import { readBoundedJsonResponse } from "./json-response.js";
+import { MAX_STREAM_LINE_BYTES, assertBoundedLineBuffer } from "./line-reader.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
 import type {
   ChatCompletion,
@@ -152,6 +153,7 @@ export class OllamaProvider implements ModelProvider {
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
+        await assertBoundedLineBuffer(buffer, MAX_STREAM_LINE_BYTES, reader);
         for (const line of lines) {
           handleLine(line);
         }

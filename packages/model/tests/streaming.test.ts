@@ -472,3 +472,82 @@ test("Ollama streamChat throws on a non-OK response", async () => {
     /Ollama stream request failed \(404\): missing model/
   );
 });
+
+// ---------------------------------------------------------------------------
+// Bounded streaming lines
+// ---------------------------------------------------------------------------
+
+function oversizeLineResponse() {
+  let cancelled = false;
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode("x".repeat(1024 * 1024 + 16)));
+      controller.enqueue(encoder.encode("tail"));
+      controller.close();
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  return {
+    response: new Response(stream, { status: 200 }),
+    wasCancelled: () => cancelled,
+  };
+}
+
+test("OpenAI streamChat rejects an oversized line and cancels the reader", async () => {
+  const { response, wasCancelled } = oversizeLineResponse();
+  const provider = createOpenAIProvider({
+    model: "gpt-4.1",
+    apiKey: "secret",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    /stream line exceeded the 1 MiB limit/
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Anthropic streamChat rejects an oversized line and cancels the reader", async () => {
+  const { response, wasCancelled } = oversizeLineResponse();
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    /stream line exceeded the 1 MiB limit/
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Gemini streamChat rejects an oversized line and cancels the reader", async () => {
+  const { response, wasCancelled } = oversizeLineResponse();
+  const provider = createGeminiProvider({
+    model: "gemini-2.5-pro",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    /stream line exceeded the 1 MiB limit/
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Ollama streamChat rejects an oversized line and cancels the reader", async () => {
+  const { response, wasCancelled } = oversizeLineResponse();
+  const provider = createOllamaProvider({
+    model: "qwen3:4b-instruct",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    /stream line exceeded the 1 MiB limit/
+  );
+  assert.equal(wasCancelled(), true);
+});

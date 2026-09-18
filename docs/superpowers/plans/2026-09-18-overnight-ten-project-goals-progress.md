@@ -1840,6 +1840,61 @@ tests **54/54**, and real Rust integration **11/11**.
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 55: bound provider streaming line buffers
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a shared bounded line-buffer assertion for provider streaming reads.
+- Fixed the per-line limit at `1 MiB` for OpenAI, Anthropic, Gemini, and
+  Ollama `streamChat`.
+- An over-limit partial line cancels its reader and rejects with stable
+  metadata before the unbounded buffer can grow.
+- Preserved provider wire schemas, tool calls, usage, onToken, trailing
+  flush, retry classification, and error-body redaction.
+- Updated the CLI README, changelog, v0.1.7 candidate checklist, and plan.
+
+**RED contract:**
+
+- Added one over-limit streaming-line contract per provider, asserting
+  rejection and reader cancellation.
+- Added `provider streaming lines use a bounded read limit` to documentation
+  contracts.
+- RED proof: model focused tests recorded **61 passed / 4 failed** because
+  all four providers completed full buffering without rejection or
+  cancellation; documentation contracts recorded **45 passed / 1 failed**.
+
+**Files touched:**
+
+- `packages/model/src/line-reader.ts`
+- `packages/model/src/openai.ts`
+- `packages/model/src/anthropic.ts`
+- `packages/model/src/gemini.ts`
+- `packages/model/src/ollama.ts`
+- `packages/model/tests/streaming.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/model run build
+pnpm --filter @dev-agent/model run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: model focused tests **65/65**, documentation contract **46/46**, and
+`pnpm verify` completed with `all selected gates passed`.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

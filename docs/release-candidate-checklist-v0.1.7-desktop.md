@@ -93,6 +93,9 @@ This checklist summarizes the Desktop-facing work prepared during the
   before provider schemas are parsed.
 - Provider error response reads stop at `16 KiB`; an over-limit error response
   becomes stable metadata without copying the full body into memory.
+- Provider streaming lines are buffered with a fixed `1 MiB` limit; an
+  over-limit line cancels its stream and rejects before the unbounded buffer
+  can grow.
 - Managed runtime installation can pass `--runtime-release` to select the GitHub
   release carrying the manifest and archive; the cache identity remains
   `--runtime-version`, and the current default release is `0.1.6`.

@@ -518,6 +518,13 @@ test("provider error bodies use a streamed bounded read limit", () => {
   assert.match(desktopCandidate, /error response/i);
 });
 
+test("provider streaming lines use a bounded read limit", () => {
+  assert.match(cliReadme, /streaming line/i);
+  assert.match(cliReadme, /1 MiB/i);
+  assert.match(desktopCandidate, /streaming line/i);
+  assert.match(desktopCandidate, /1 MiB/i);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);

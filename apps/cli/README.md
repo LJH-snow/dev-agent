@@ -256,6 +256,8 @@ error document. Error response reads stop at `16 KiB`; an over-limit error respo
 reported as stable metadata and its stream is cancelled.
 Non-streaming provider success JSON is read with a streamed bounded JSON reader at `16 MiB`;
 an over-limit response is rejected and its reader is cancelled before provider schemas are parsed.
+Provider streaming lines are buffered with a fixed `1 MiB` limit; an over-limit line
+cancels its stream and rejects before the unbounded buffer can grow.
 `NO_COLOR=1` disables color ANSI in rich TTY mode, but cursor movement and clear-line
 sequences required for live redraw remain.
 ### Managed Rust runtime

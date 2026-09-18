@@ -2151,3 +2151,64 @@ git diff --check
 - 不引入可配置错误体上限；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 55：流式限制 provider 行缓冲
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 54 收口后继续审计 provider 流式路径，发现
+OpenAI、Anthropic、Gemini 和 Ollama 的 streamChat 都使用
+`buffer += decoder.decode(value, { stream: true })`，且没有固定单行上限；
+恶意或失控 provider 可以发送超过 1 MiB 且不含换行的数据，导致未处理
+缓冲区无上限增长。
+
+**范围：**
+
+- 四个 provider 的流式读取在拆行后的剩余缓冲区超过固定 `1 MiB` 时
+  fail-closed；
+- 超限时取消 reader，不再继续接收响应；
+- 保持 provider wire schema、tool call、usage、onToken、retry 与
+  trailing-flush 语义；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 model contracts：每个 provider 的流式响应包含超过 `1 MiB` 且无
+  换行的数据时必须 reject，且 reader 已被 cancel；
+- 新增 documentation contract：说明 provider streaming line 有 `1 MiB`
+  的固定缓冲上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：model focused tests 为 **61 passed / 4 failed**，四个 provider
+  都正常返回且没有取消 reader；文档契约为 **45 passed / 1 failed**。
+
+**完成记录：**
+
+- 新增共享 `assertBoundedLineBuffer` helper 与 `MAX_STREAM_LINE_BYTES`
+  常量（`1 MiB`）；
+- 四个 provider 在拆行后的剩余缓冲区超过 `1 MiB` 时取消 reader 并
+  reject，错误信息为稳定元数据；
+- 保持 provider wire schema、tool call、usage、onToken、trailing-flush
+  与 retry 语义不变；
+- RED 后 model focused tests 为 **65/65**，文档契约为 **46/46**；
+- `pnpm verify` 输出 `all selected gates passed`；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/model run build
+pnpm --filter @dev-agent/model run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 provider wire schema、URL 或 tool call 语义；
+- 不限制已换行的 streaming output 本身；
+- 不引入可配置行缓冲上限；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

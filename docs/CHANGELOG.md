@@ -2,6 +2,10 @@
 
 ## 2026-09-18（runtime install and remove bounds）
 
+- Provider streaming lines are buffered with a fixed `1 MiB` limit; an
+  over-limit line cancels its stream and rejects before the unbounded buffer
+  can grow. Existing tool call, usage, retry, onToken, trailing-flush, and
+  provider schema behavior remains unchanged.
 - Provider non-streaming success JSON is read with a streamed bounded JSON
   reader at `16 MiB`; an over-limit response is rejected and its reader is
   cancelled before provider schemas are parsed. Existing tool call, usage,
