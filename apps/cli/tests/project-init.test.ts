@@ -106,6 +106,21 @@ test("adds .dev-agent/ to .gitignore without reordering content and remains idem
   });
 });
 
+test("rejects a .gitignore file above the 16 MiB read limit before changing project state", async () => {
+  await withWorkingDirectory(async (workingDirectory) => {
+    const paths = projectPaths(workingDirectory);
+    const existingGitignore = `node_modules/\n${"x".repeat(16 * 1024 * 1024)}\n`;
+    await writeFile(paths.gitignorePath, existingGitignore, "utf8");
+
+    await assert.rejects(
+      initializeProject({ workingDirectory, addGitignore: true }),
+      /16 MiB read limit/
+    );
+    assert.equal(await readFile(paths.gitignorePath, "utf8"), existingGitignore);
+    await assert.rejects(stat(paths.projectDirectory), { code: "ENOENT" });
+  });
+});
+
 test("dry-run reports planned work without modifying files", async () => {
   await withWorkingDirectory(async (workingDirectory) => {
     const paths = projectPaths(workingDirectory);

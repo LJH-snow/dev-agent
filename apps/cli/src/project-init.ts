@@ -13,6 +13,7 @@ const CONFIG_FILE_NAME = "config.json";
 const SESSIONS_DIRECTORY_NAME = "sessions";
 const GITIGNORE_ENTRY = ".dev-agent/";
 const DEFAULT_CONFIG = "{}\n";
+const MAX_GITIGNORE_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
 
 type PathKind = "missing" | "directory" | "file" | "symlink" | "other";
 
@@ -202,7 +203,14 @@ async function createFile(path: string, content: string, entry: PlannedEntry): P
   }
 }
 
+async function assertGitignoreSize(path: string): Promise<void> {
+  if ((await stat(path)).size > MAX_GITIGNORE_FILE_BYTES) {
+    throw new Error(".gitignore file exceeds the 16 MiB read limit.");
+  }
+}
+
 async function updateGitignore(path: string, entry: PlannedEntry): Promise<void> {
+  await assertGitignoreSize(path);
   const current = await readFile(path, "utf8");
   if (containsGitignoreEntry(current)) {
     entry.status = "existing";
@@ -240,6 +248,7 @@ export async function initializeProject(
     gitignoreKind = await inspectPath(gitignorePath);
     ensureFileOrMissing(gitignorePath, gitignoreKind);
     if (gitignoreKind === "file") {
+      await assertGitignoreSize(gitignorePath);
       gitignoreContent = await readFile(gitignorePath, "utf8");
     }
   }
