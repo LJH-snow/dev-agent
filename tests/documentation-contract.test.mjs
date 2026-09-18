@@ -369,6 +369,14 @@ test("v0.1.7 documents the Desktop history response limit", () => {
   assert.match(desktopCandidate, /1 MiB/i);
 });
 
+test("v0.1.7 documents Desktop rename target and concurrency fail-closed behavior", () => {
+  assert.match(desktopReadme, /active target/i);
+  assert.match(desktopReadme, /source and target/i);
+  assert.match(desktopReadme, /concurrent rename/i);
+  assert.match(desktopCandidate, /active target/i);
+  assert.match(desktopCandidate, /concurrent rename/i);
+});
+
 test("v0.1.7 candidate clarifies the doctor managed-state merge", () => {
   assert.match(desktopCandidate, /selected runtime probe identity/i);
   assert.match(desktopCandidate, /managed cache state/i);

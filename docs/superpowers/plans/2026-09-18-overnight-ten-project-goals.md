@@ -1250,7 +1250,7 @@ git diff --check
 
 ### Follow-up 目标 37：限制 Desktop history 响应大小
 
-**Status:** IN PROGRESS
+**Status:** DONE
 
 **建立时间：** 2026-09-18；Goal 36 收口后继续审计 Desktop 的读取路径，发现
 `GET /api/sessions/<id>/messages` 会把完整 memory session 序列化成 JSON 后
@@ -1301,6 +1301,69 @@ git diff --check
   `pnpm verify` 输出 `all selected gates passed`，相关计数为 runtime-manager
   **15/15**、CLI **314/314**、Rust unit/doc **54/54**、real Rust integration
   **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+### Follow-up 目标 38：约束 Desktop rename 生命周期
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 37 收口后继续审计 Desktop rename，发现
+rename 只检查 source 是否在运行，没有检查 target 是否在运行，也没有把
+source/target 在异步 rename 期间加入同一生命周期锁。同一 source 的并发
+rename 可能一胜一败，rename 期间创建的 target run 也可能与文件移动竞争。
+
+**范围：**
+
+- rename 前检查 source 与 target 的 active lifecycle guard；
+- 异步 rename 期间将 source 与 target 一并 fail-closed 锁定；
+- rename 到 active target 返回稳定 `409`，不移动 source 文件；
+- 同一 source 的并发 rename 不重复成功，输家返回稳定 `409`；
+- 保持 idle rename、同名幂等、缺失 `404` 和目标冲突 `409` 行为不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：active target 存在时，将 idle source rename 到该
+  target 返回 `409`；RED 阶段证明当前实现返回 `200` 并移动 source 文件；
+- 新增 server contract：同一 source 的两个并发 rename 只有一个成功；RED
+  阶段证明失败方不是稳定 `409`；
+- 在 documentation contract 中断言 README 与 checklist 记录 rename target
+  和并发锁定语义；
+- 先确认 RED，再做最小实现。
+- RED proof：无目标锁定实现时，active target 的 rename 返回 `200`；同源
+  并发 rename 返回 `200/500`。聚焦全量运行为 **114 passed / 2 failed**。文档
+  契约为 **28 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增可配置锁数、分页、原始错误、绝对路径或 UI 重设计；
+- 不改变 session file schema、DELETE、history、evidence 或 approval 行为；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已将 rename 的 source lifecycle guard 提前到请求处理期；
+- 已在 body 解析和文件移动期间同时锁定 source 与 target；
+- active target rename 返回稳定 `409`，source 文件不移动；
+- 并发同源 rename 的输家返回稳定 `409`，文件不会被复制或重复移动；
+- 新的 unknown chat session 会先通过 active guard，不会在 rename 期间被
+  提前注册到 target；
+- RED 后 Desktop focused tests **114/114，2 failed**；文档契约为 **28/28，
+  1 failed**。实现后 Desktop focused tests **116/116**，documentation
+  contract **29/29**；`pnpm verify` 输出 `all selected gates passed`，相关
+  计数为 runtime-manager **15/15**、CLI **314/314**、Rust unit/doc tests
+  **54/54**、real Rust integration **11/11**；
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 

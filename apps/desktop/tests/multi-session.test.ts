@@ -502,6 +502,78 @@ test("POST /api/sessions/<id>/rename returns 404 for an unknown session", async 
   });
 });
 
+test("rename refuses a target with an active Desktop run", async () => {
+  await withSessionDir(async (dir) => {
+    let release;
+    let started;
+    const targetStarted = new Promise((resolve) => {
+      started = resolve;
+    });
+    const server = createDesktopServer({
+      session: fakeSession("default"),
+      createSession: (sessionId) => ({
+        id: sessionId,
+        async run(_message, emit) {
+          emit({ type: "turn", data: { turn: 1 } });
+          started();
+          await new Promise((resolve) => {
+            release = resolve;
+          });
+          emit({ type: "done", data: { status: "done", turns: 1 } });
+        },
+      }),
+    });
+    const base = await start(server);
+    try {
+      await writeFile(join(dir, "before.json"), JSON.stringify({ version: 1, entries: [] }));
+      const targetChat: Promise<Response> = chat(base, "target", "keep running");
+      await targetStarted;
+
+      const response = await fetch(`${base}/api/sessions/before/rename`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ sessionId: "target" }),
+      });
+
+      assert.equal(response.status, 409);
+      const body: any = await response.json();
+      assert.match(body.error, /already running/);
+      assert.equal(await exists(join(dir, "before.json")), true);
+      assert.equal(await exists(join(dir, "target.json")), false);
+      release();
+      await targetChat.then((response) => response.text());
+    } finally {
+      release?.();
+      await close(server);
+    }
+  });
+});
+
+test("concurrent renames of the same source fail closed", async () => {
+  await withSessionDir(async (dir) => {
+    const server = createDesktopServer({ session: fakeSession("default") });
+    const base = await start(server);
+    try {
+      await writeFile(join(dir, "before.json"), JSON.stringify({ version: 1, entries: [] }));
+
+      const request = () =>
+        fetch(`${base}/api/sessions/before/rename`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ sessionId: "after" }),
+        });
+      const [first, second] = await Promise.all([request(), request()]);
+      const statuses = [first.status, second.status].sort();
+
+      assert.deepEqual(statuses, [200, 409]);
+      assert.equal(await exists(join(dir, "before.json")), false);
+      assert.equal(await exists(join(dir, "after.json")), true);
+    } finally {
+      await close(server);
+    }
+  });
+});
+
 test("GET /api/sessions/<id>/export returns a Markdown transcript", async () => {
   await withSessionDir(async (dir) => {
     const server = createDesktopServer({ session: fakeSession("default") });

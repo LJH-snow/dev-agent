@@ -1129,6 +1129,63 @@ Release remains gated: no Git tag, no push, no npm publish, no GitHub Release,
 and no `~/.npmrc` change. The next human decision is whether to push the
 accumulated local commits and authorize the `v0.1.7` release review window.
 
+## Follow-up Goal 38: guard Desktop rename lifecycle
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Checked both the source and target session before Desktop rename work.
+- Locked the source through request processing and held source/target locks
+  through the asynchronous memory-file rename.
+- Returned a stable `409` when renaming into an active target, leaving the
+  source memory file in place.
+- Returned a stable `409` to the loser of a concurrent same-source rename,
+  preventing duplicate success.
+- Rejected a new unknown chat target before creating its registry session
+  while that target is locked by an active rename.
+- Documented the target and concurrent rename fail-closed behavior in the
+  Desktop README and v0.1.7 candidate checklist.
+
+**RED contract:**
+
+- Added `rename refuses a target with an active Desktop run` and
+  `concurrent renames of the same source fail closed` to the Desktop server
+  contract.
+- Added `v0.1.7 documents Desktop rename target and concurrency fail-closed
+  behavior` to the documentation contract.
+- RED proof: without target locking, the active-target rename returned `200`;
+  concurrent same-source renames returned `200` and `500`. Desktop focused
+  tests recorded **114 passed / 2 failed**, and documentation contracts
+  recorded **28 passed / 1 failed**.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/multi-session.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **116/116**, documentation contract **29/29**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 38 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 30: rollback joins active session lifecycle
 
 **Status:** DONE

@@ -131,7 +131,9 @@ returns `413` without echoing the path, contents, or raw error.
   missing. Renaming to the current id is idempotent (`200` with
   `renamed: false`) when the session exists, and `404` when it does not.
   Rename also fails closed with `409` while the same session has an active
-  chat, validation, cleanup, or rollback request.
+  chat, validation, cleanup, or rollback request, or when the active target is
+  another session. Rename locks both the source and target while it runs, so a
+  concurrent rename cannot duplicate the same source into the target.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
   accepts the same `changeSetId`, `validationId`, and `status` filters and adds

@@ -337,34 +337,6 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "sessionId is too long" }));
           return;
         }
-        const body = await readJsonBody(req, res);
-        if (body === undefined) {
-          return;
-        }
-        let parsed: { sessionId?: unknown };
-        try {
-          parsed = JSON.parse(body) as { sessionId?: unknown };
-        } catch {
-          res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "request body must be valid JSON" }));
-          return;
-        }
-
-        const normalizedTarget =
-          typeof parsed.sessionId === "string"
-            ? normalizeSessionIdForRequest(parsed.sessionId)
-            : "";
-        if (normalizedTarget === undefined) {
-          res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "sessionId is too long" }));
-          return;
-        }
-        const to = normalizedTarget;
-        if (!to) {
-          res.writeHead(400, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "sessionId is required" }));
-          return;
-        }
 
         if (inFlight.has(from)) {
           req.resume();
@@ -373,36 +345,83 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const source = memoryPathFor(from);
-        if (from === to) {
-          // Renaming to the same name is idempotent when the session exists,
-          // and still a 404 when it does not -- previously this answered
-          // `renamed: false` for both, so a caller could not tell them apart.
-          if (!existsSync(source)) {
-            res.writeHead(404, { "content-type": "application/json" });
-            res.end(JSON.stringify({ error: "unknown session" }));
+        inFlight.add(from);
+        try {
+          const body = await readJsonBody(req, res);
+          if (body === undefined) {
             return;
           }
-        } else {
-          if (!existsSync(source)) {
-            res.writeHead(404, { "content-type": "application/json" });
-            res.end(JSON.stringify({ error: "unknown session" }));
+          let parsed: { sessionId?: unknown };
+          try {
+            parsed = JSON.parse(body) as { sessionId?: unknown };
+          } catch {
+            res.writeHead(400, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "request body must be valid JSON" }));
             return;
           }
-          if (existsSync(memoryPathFor(to))) {
-            res.writeHead(409, { "content-type": "application/json" });
-            res.end(JSON.stringify({ error: `session ${to} already exists` }));
-            return;
-          }
-          await rename(source, memoryPathFor(to));
-          // The in-memory session is bound to the old path; drop it so the new
-          // id is created fresh against the renamed file.
-          sessions.delete(from);
-        }
 
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ from, to, renamed: from !== to }));
-        return;
+          const normalizedTarget =
+            typeof parsed.sessionId === "string"
+              ? normalizeSessionIdForRequest(parsed.sessionId)
+              : "";
+          if (normalizedTarget === undefined) {
+            res.writeHead(400, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "sessionId is too long" }));
+            return;
+          }
+          const to = normalizedTarget;
+          if (!to) {
+            res.writeHead(400, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "sessionId is required" }));
+            return;
+          }
+
+          if (from !== to && inFlight.has(to)) {
+            req.resume();
+            res.writeHead(409, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: activeSessionRequestMessage }));
+            return;
+          }
+
+          inFlight.add(to);
+          try {
+            const source = memoryPathFor(from);
+            if (from === to) {
+              // Renaming to the same name is idempotent when the session exists,
+              // and still a 404 when it does not -- previously this answered
+              // `renamed: false` for both, so a caller could not tell them apart.
+              if (!existsSync(source)) {
+                res.writeHead(404, { "content-type": "application/json" });
+                res.end(JSON.stringify({ error: "unknown session" }));
+                return;
+              }
+            } else {
+              if (!existsSync(source)) {
+                res.writeHead(404, { "content-type": "application/json" });
+                res.end(JSON.stringify({ error: "unknown session" }));
+                return;
+              }
+              if (existsSync(memoryPathFor(to))) {
+                res.writeHead(409, { "content-type": "application/json" });
+                res.end(JSON.stringify({ error: `session ${to} already exists` }));
+                return;
+              }
+              await rename(source, memoryPathFor(to));
+              // The in-memory session is bound to the old path; drop it so the new
+              // id is created fresh against the renamed file.
+              sessions.delete(from);
+            }
+
+            res.writeHead(200, { "content-type": "application/json" });
+            res.end(JSON.stringify({ from, to, renamed: from !== to }));
+          } finally {
+            inFlight.delete(from);
+            inFlight.delete(to);
+          }
+          return;
+        } finally {
+          inFlight.delete(from);
+        }
       }
 
       if (
@@ -621,9 +640,17 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const resolved = sessionFor(
-          sessionId
-        );
+        if (inFlight.has(sessionId)) {
+          // Check before creating an unknown session so a rename target cannot
+          // be registered while its memory file is still being moved.
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({ error: activeSessionRequestMessage })
+          );
+          return;
+        }
+        const resolved = sessionFor(sessionId);
         if (!resolved) {
           res.writeHead(429, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "session registry limit reached" }));
