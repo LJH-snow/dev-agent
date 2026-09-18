@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -68,6 +68,8 @@ export function parseConfig(raw: string): CliConfig {
   } as CliConfig;
 }
 
+const MAX_CONFIG_FILE_BYTES = 1024 * 1024; // 1 MiB
+
 type Env = Readonly<Record<string, string | undefined>>;
 
 /**
@@ -115,15 +117,17 @@ export function loadConfig(
     return {};
   }
 
-  let raw: string;
   try {
-    raw = readFileSync(resolvedPath, "utf8");
+    if (statSync(resolvedPath).size > MAX_CONFIG_FILE_BYTES) {
+      return {};
+    }
+    const raw = readFileSync(resolvedPath, "utf8");
+    // Structural validation errors in the validation section intentionally
+    // propagate instead of silently disabling the safety policy.
+    return parseConfig(raw);
   } catch {
     return {};
   }
-  // Structural validation errors in the validation section intentionally
-  // propagate instead of silently disabling the safety policy.
-  return parseConfig(raw);
 }
 
 /**

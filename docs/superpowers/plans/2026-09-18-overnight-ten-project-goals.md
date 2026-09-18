@@ -2711,3 +2711,57 @@ git diff --check
 - 不回显路径、文件内容、原始错误或凭据；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 65：限制 CLI 配置文件读取
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 64 收口后继续审计输入文件边界，发现
+`loadConfig` 对显式 `--config`、`DEV_AGENT_CONFIG_FILE` 或用户级默认路径
+直接 `readFileSync` 整个 JSON 文件，没有大小上限。
+
+**范围：**
+
+- CLI `loadConfig` 在读取前用 `statSync` 检查大小；
+- 超过固定 `1 MiB` 的配置文件返回空配置，不把文件内容读入内存；
+- 保持正常配置解析、缺失文件、无效 JSON、不可读文件和 validation policy
+  错误行为不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 CLI contract：大于 `1 MiB` 的有效 JSON 配置不生效，返回默认
+  provider，而不是携带超大 padding 一起解析；
+- 新增 documentation contract：说明 CLI 配置文件的 `1 MiB` stat-before-read
+  上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：CLI focused 运行为 **337 passed / 2 failed**，超大但合法的
+  JSON 配置仍返回 `gemini`；文档契约为 **54 passed / 1 failed**。
+
+**完成记录：**
+
+- `loadConfig` 在 `readFileSync` 前执行 `statSync`；
+- 大于固定 `1 MiB` 的配置文件返回空配置，不读入文件内容；
+- 正常配置、缺失、无效 JSON、不可读文件与 validation policy 错误行为不变；
+- RED 后 CLI full tests 为 **318/318**，文档契约为 **55/55**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @agent_cli/cli run build
+pnpm --filter @agent_cli/cli run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 config schema、provider precedence 或错误分类；
+- 不新增可配置上限；
+- 不回显配置内容、路径、凭据或原始错误；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

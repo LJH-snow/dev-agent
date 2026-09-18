@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   parseConfig,
@@ -45,6 +48,26 @@ test("loadConfig returns empty object when no config file exists", () => {
   // When running in sandbox, the config file won't exist
   const config = loadConfig();
   assert.ok(typeof config === "object");
+});
+
+test("loadConfig ignores a config file above the 1 MiB read limit", async () => {
+  const home = await mkdtemp(join(tmpdir(), "dev-agent-config-limit-"));
+  try {
+    await mkdir(join(home, ".dev-agent"), { recursive: true });
+    await writeFile(
+      join(home, ".dev-agent", "config.json"),
+      JSON.stringify({
+        defaultProvider: "gemini",
+        padding: "x".repeat(1024 * 1024),
+      }),
+      "utf8"
+    );
+
+    const config = loadConfig(join(home, ".dev-agent", "config.json"));
+    assert.equal(config.defaultProvider, undefined);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });
 
 test("resolveRustBinaryPath prefers the flag over the environment", () => {

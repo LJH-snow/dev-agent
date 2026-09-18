@@ -587,6 +587,13 @@ test("cli workflow documents the 16 MiB input file read limit", () => {
   assert.match(desktopCandidate, /plan and apply input files?[\s\S]*read limit/i);
 });
 
+test("cli config documents the 1 MiB stat-before-read limit", () => {
+  assert.match(cliReadme, /config file[\s\S]*1 MiB/i);
+  assert.match(cliReadme, /stat.*before reading/i);
+  assert.match(desktopCandidate, /CLI config file/i);
+  assert.match(desktopCandidate, /1 MiB/i);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);

@@ -606,7 +606,10 @@ saved preference never overrides an explicit invocation.
   and an unknown model simply shows no cost.
 - `mcpServers` - MCP stdio servers, used when `DEV_AGENT_MCP_SERVERS` is unset.
 
-Malformed JSON or an unreadable config file is ignored; an invalid validation policy or validation command field is rejected rather than silently disabled.
+Config files are checked with `stat` before reading; a file above the fixed `1
+MiB` limit is ignored without loading its bytes. Malformed JSON or an unreadable
+config file is ignored; an invalid validation policy or validation command field
+is rejected rather than silently disabled.
 
 When MCP servers are configured, dev-agent injects `DEV_AGENT_SESSION_ID` and
 `DEV_AGENT_WORKING_DIRECTORY` into each server process so MCP tools can share

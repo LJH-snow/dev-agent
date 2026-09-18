@@ -1158,6 +1158,60 @@ and `git diff --check` passed.
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. This
 documentation-only Preserve record can be committed locally.
 
+## Follow-up Goal 65: bound CLI config file reads
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `1 MiB` config-file read limit to CLI `loadConfig`.
+- Checked the file size with `stat` before reading; an oversized config file
+  returns an empty config without loading its bytes.
+- Preserved normal config parsing, missing files, invalid JSON, unreadable
+  files, and validation-policy failure behavior.
+- Documented the CLI config-file read limit in the CLI README, CHANGELOG, and
+  v0.1.7 candidate checklist.
+
+**Files touched:**
+
+- `apps/cli/src/config.ts`
+- `apps/cli/tests/config.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**RED contract:**
+
+- Added `loadConfig ignores a config file above the 1 MiB read limit` to the
+  CLI config contract.
+- Added `cli config documents the 1 MiB stat-before-read limit` to the
+  documentation contract.
+- RED proof: the oversized valid JSON config still returned `gemini`; CLI
+  focused tests recorded **337 passed / 2 failed**, and the documentation
+  contract recorded **54 passed / 1 failed**.
+
+**Verification:**
+
+```sh
+pnpm --filter @agent_cli/cli run build
+node --test apps/cli/tests-dist/config.test.js
+node --test tests/documentation-contract.test.mjs
+pnpm --filter @agent_cli/cli run test
+pnpm verify
+git diff --check
+```
+
+Result: CLI config focused tests **21/21**, documentation contract **55/55**,
+CLI full tests **318/318**, and `pnpm verify` completed with
+`all selected gates passed`. The full audit counts included Desktop
+**128/128**, agent-core **131/131**, tools **129/129**, Rust unit/doc tests
+**54/54**, and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 65 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 55/56 candidate sync
 
 **Status:** DONE

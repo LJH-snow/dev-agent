@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-09-18（CLI config file read limit）
+
+- CLI config files are checked with `stat` before reading; a file above the
+  fixed `1 MiB` limit is ignored without loading its bytes into memory.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
 ## 2026-09-18（persisted code index read limit）
 
 - A persisted code index above the fixed `16 MiB` read limit is skipped in

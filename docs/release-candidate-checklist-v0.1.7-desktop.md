@@ -114,6 +114,8 @@ of a full scan instead of loading its bytes into memory.
   check changes file sizes with `stat` before parsing, `apply` also checks plan
   file sizes before reading, and oversized files return a stable
   `invalid_input_size` config error.
+- The CLI config file is checked with `stat` before reading; a file above
+  `1 MiB` is ignored without loading its bytes.
 - Managed runtime installation can pass `--runtime-release` to select the GitHub
   release carrying the manifest and archive; the cache identity remains
   `--runtime-version`, and the current default release is `0.1.6`.
