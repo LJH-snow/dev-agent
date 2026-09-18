@@ -1234,7 +1234,7 @@ git diff --check
 
 ### Follow-up 目标 36：限制 Desktop session 列表扫描
 
-**Status:** IN PROGRESS
+**Status:** DONE
 
 **建立时间：** 2026-09-18；Goal 35 收口后继续审计 Desktop 的资源边界，发现
 `GET /api/sessions` 会扫描并解析 session 目录里的每一个 `.json` 文件。内存
@@ -1886,5 +1886,49 @@ git diff --check
 
 - 不改变 release manifest schema、URL 或安装协议；
 - 不新增可配置下载上限；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+### Follow-up 目标 49：序列化 runtime install 与 remove
+
+**Status:** IN PROGRESS
+
+**建立时间：** 2026-09-18 Goal 48 收口后审计 runtime lifecycle，发现
+`install` 有同 version/target 的锁，但 `remove` 没有加入同一 lifecycle
+锁；阻塞 install 的期间，remove 可以先检查并返回，造成与后续原子替换的
+交错结果。
+
+**范围：**
+
+- 同一 runtime version 的 `install` 与 `remove` 共享 lifecycle 锁；
+- `remove` 在 active install 期间等待，install 完成后再执行移除；
+- install 成功且 remove 完成后，该 version/target 的最终状态为 missing；
+- 保持其他 version 的 install/remove 隔离、幂等 remove、target 隔离和
+  checksum/health 边界不变；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 runtime-manager contract：阻塞 archive download 时调用
+  `remove(VERSION, TARGET)`，remove 不得在 install pending 期间完成；
+- 释放 archive 后，install 成功且 remove 返回 `removed: true`，最终 status
+  为 missing；
+- 新增 documentation contract：CLI README 说明 install/remove lifecycle 锁；
+- 先运行新增契约确认 RED，再做最小实现。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/runtime-manager run build
+pnpm --filter @dev-agent/runtime-manager run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增 409/error lifecycle 状态，也不改变 RemoveResult schema；
+- 不引入全局跨 version 锁，不改变 manifest/archive URL 或校验语义；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。

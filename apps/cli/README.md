@@ -59,7 +59,9 @@ MCP. `runtime install` downloads only the fixed release manifest and the matchin
 macOS/Linux artifact, verifies its SHA-256 and runtime protocol/version, then installs
 atomically under `~/.dev-agent/runtimes/<version>/<target>`. The manifest response is
 bounded at `1 MiB` and the archive response at `16 MiB`; either over-limit response is
-rejected with a structured `DOWNLOAD_FAILED` result before staging or extraction. It
+rejected with a structured `DOWNLOAD_FAILED` result before staging or extraction. Install
+and remove for the same runtime version are serialized, so a concurrent remove waits until
+the active installation completes before acting. It
 never runs from npm `postinstall` and never silently falls back to `local`. Windows,
 Linux musl, and unknown platforms return a structured unsupported result.
 

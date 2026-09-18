@@ -91,6 +91,8 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Runtime install responses are bounded: manifests are capped at `1 MiB` and
   archives at `16 MiB`; an over-limit response returns a structured
   `DOWNLOAD_FAILED` result before staging or extraction.
+- Runtime install and remove are serialized for the same runtime version; a
+  concurrent remove waits until the active installation completes.
 - CLI doctor distinguishes the selected runtime probe identity
   (`runtimeVersion`/`protocolVersion`) from the managed cache state
   (`state`/`target`). A selected binary's contract mismatch remains visible in
@@ -138,14 +140,14 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**39/39**, including the corrected `--project-state` first-release attribution,
+**40/40**, including the corrected `--project-state` first-release attribution,
 the refreshed provenance, and the Desktop status/history/validation/undo stale
 safety plus active session lifecycle, rollback, JSON-body-limit,
 session-registry-limit, always-allow-limit, static-response-limit,
 public-symlink-containment, root-static-containment, session-ID-length-limit,
 session-listing-limit, history-response-limit, rename-lifecycle, and
-export-response-limit, JSON-object-shape, post-goal-46-preflight, and
-runtime-install-download-limit contracts.
+export-response-limit, JSON-object-shape, post-goal-46-preflight,
+runtime-install-download-limit, and runtime-lifecycle-lock contracts.
 
 ## Consolidated gate
 

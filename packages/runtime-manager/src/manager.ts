@@ -267,7 +267,7 @@ export class RuntimeManager {
       throw new RuntimeManagerError("UNSUPPORTED_PLATFORM", selected.reason);
     }
     const paths = getRuntimePaths(this.root, version, selected.target);
-    const lockKey = `${version}/${selected.target}`;
+    const lockKey = version;
     return this.withLock(lockKey, async () => this.installLocked(version, selected.target, paths, options));
   }
 
@@ -276,32 +276,34 @@ export class RuntimeManager {
     if (targetResolution && !targetResolution.supported) {
       throw new RuntimeManagerError("TARGET_MISMATCH", "Requested runtime target is unsupported");
     }
-    const versionDir = getRuntimePaths(this.root, version, SUPPORTED_TARGETS_FALLBACK[0]!).versionDir;
-    let versionInfo;
-    try {
-      versionInfo = await lstat(versionDir);
-    } catch (error) {
-      if (isNotFound(error)) return { version, ...(target ? { target } : {}), removed: false, removedPaths: [] };
-      throw new RuntimeManagerError("INSTALL_FAILED", "Runtime cache could not be inspected before removal");
-    }
-    if (versionInfo.isSymbolicLink()) {
-      if (target !== undefined) {
-        throw new RuntimeManagerError("RUNTIME_CORRUPT", "Cannot remove one target through a version symlink");
+    return this.withLock(version, async () => {
+      const versionDir = getRuntimePaths(this.root, version, SUPPORTED_TARGETS_FALLBACK[0]!).versionDir;
+      let versionInfo;
+      try {
+        versionInfo = await lstat(versionDir);
+      } catch (error) {
+        if (isNotFound(error)) return { version, ...(target ? { target } : {}), removed: false, removedPaths: [] };
+        throw new RuntimeManagerError("INSTALL_FAILED", "Runtime cache could not be inspected before removal");
       }
-      const removed = await removePathSafely(versionDir);
-      return { version, removed, removedPaths: removed ? [versionDir] : [] };
-    }
-    if (!versionInfo.isDirectory()) {
-      return { version, ...(target ? { target } : {}), removed: false, removedPaths: [] };
-    }
-    const targets = targetResolution ? [targetResolution.target] : SUPPORTED_TARGETS_FALLBACK;
-    const removedPaths: string[] = [];
-    for (const candidate of targets) {
-      const paths = getRuntimePaths(this.root, version, candidate);
-      if (await removePathSafely(paths.targetDir)) removedPaths.push(paths.targetDir);
-    }
-    if (await isDirectoryEmpty(versionDir)) await removePathSafely(versionDir);
-    return { version, ...(target ? { target } : {}), removed: removedPaths.length > 0, removedPaths };
+      if (versionInfo.isSymbolicLink()) {
+        if (target !== undefined) {
+          throw new RuntimeManagerError("RUNTIME_CORRUPT", "Cannot remove one target through a version symlink");
+        }
+        const removed = await removePathSafely(versionDir);
+        return { version, removed, removedPaths: removed ? [versionDir] : [] };
+      }
+      if (!versionInfo.isDirectory()) {
+        return { version, ...(target ? { target } : {}), removed: false, removedPaths: [] };
+      }
+      const targets = targetResolution ? [targetResolution.target] : SUPPORTED_TARGETS_FALLBACK;
+      const removedPaths: string[] = [];
+      for (const candidate of targets) {
+        const paths = getRuntimePaths(this.root, version, candidate);
+        if (await removePathSafely(paths.targetDir)) removedPaths.push(paths.targetDir);
+      }
+      if (await isDirectoryEmpty(versionDir)) await removePathSafely(versionDir);
+      return { version, ...(target ? { target } : {}), removed: removedPaths.length > 0, removedPaths };
+    });
   }
 
   private selectTarget(target?: RuntimeTarget): TargetResolution {

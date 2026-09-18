@@ -1530,6 +1530,56 @@ Result: runtime-manager focused tests **17/17**, documentation contract
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 49: serialize runtime install and remove
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Changed runtime installs to use the same per-version lifecycle lock as
+  removes.
+- Made a concurrent remove wait until the active installation finishes before
+  removing its target or version directories.
+- Preserved version isolation, target isolation, idempotent removal,
+  corruption checks, checksums, and health verification.
+- Updated the CLI README, changelog, and v0.1.7 Desktop candidate checklist.
+
+**RED contract:**
+
+- Added `remove waits for an active installation of the same runtime version`
+  to runtime-manager contracts.
+- Added `runtime manager documents the install and remove lifecycle lock` to
+  documentation contracts.
+- RED proof: runtime-manager **17 passed / 1 failed**; documentation contract
+  **39 passed / 1 failed**.
+
+**Files touched:**
+
+- `packages/runtime-manager/src/manager.ts`
+- `packages/runtime-manager/tests/runtime-manager.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/runtime-manager run build
+pnpm --filter @dev-agent/runtime-manager run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: runtime-manager focused tests **18/18**, documentation contract
+**40/40**, `pnpm verify` completed with `all selected gates passed`, and
+`git diff --check` passed.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

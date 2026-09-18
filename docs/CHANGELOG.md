@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-09-18（runtime install download bounds）
+## 2026-09-18（runtime install and remove bounds）
 
 - `runtime install` now rejects a manifest response larger than `1 MiB` or an
   archive response larger than `16 MiB` with a structured `DOWNLOAD_FAILED`
@@ -8,6 +8,9 @@
 - This keeps malicious or malformed release responses from allocating unbounded
   memory or staging temporary artifacts. Existing checksum, executable-bit, and
   health verification remain unchanged.
+- Runtime `install` and `remove` now share a per-version lifecycle lock, so a
+  concurrent remove waits until the active installation completes instead of
+  acting midway through atomic replacement.
 - This change is only in the `0.1.7` workspace candidate; it is not part of the
   already-published `0.1.6` npm tarball or `v0.1.6` GitHub Release.
 

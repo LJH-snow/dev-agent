@@ -488,3 +488,50 @@ test("remove is isolated to the requested version and target", async () => {
   assert.equal((await manager.status(VERSION, OTHER_TARGET)).state, "installed");
   assert.equal((await manager.status(OTHER_VERSION, TARGET)).state, "installed");
 });
+
+test("remove waits for an active installation of the same runtime version", async () => {
+  const root = await tempRoot();
+  let releaseArchive: ((value: Uint8Array) => void) | undefined;
+  let archiveStartedResolve: (() => void) | undefined;
+  const archiveStarted = new Promise<void>((resolve) => {
+    archiveStartedResolve = resolve;
+  });
+  const archiveDownload = new Promise<Uint8Array>((resolve) => {
+    releaseArchive = resolve;
+  });
+  const manager = new api.RuntimeManager({
+    runtimeDir: root,
+    platform: "darwin",
+    arch: "arm64",
+    ...makeInstallDependencies(),
+    archiveDownloader: async () => {
+      archiveStartedResolve?.();
+      return await archiveDownload;
+    },
+  });
+
+  try {
+    const installPromise = manager.install(VERSION);
+    await archiveStarted;
+    const removePromise = manager.remove(VERSION, TARGET);
+    let removeReturned = false;
+    const settled = await Promise.race([
+      removePromise.then(() => true),
+      new Promise((resolve) => setTimeout(() => resolve(false), 25)),
+    ]);
+    void removePromise.then(() => {
+      removeReturned = true;
+    });
+
+    assert.equal(settled, false, "remove must wait while install is pending");
+    assert.equal(removeReturned, false);
+
+    releaseArchive?.(Buffer.from("archive-bytes"));
+    const [installed, removed] = await Promise.all([installPromise, removePromise]);
+    assert.equal(installed.reused, false);
+    assert.equal(removed.removed, true);
+    assert.equal((await manager.status(VERSION, TARGET)).state, "missing");
+  } finally {
+    releaseArchive?.(Buffer.from("archive-bytes"));
+  }
+});
