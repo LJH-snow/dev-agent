@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { request } from "node:http";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -141,6 +141,36 @@ test("/public/ cannot escape to the parent directory", async () => {
     assert.equal(res.status, 404);
     assert.ok(!res.body.includes("\"name\""), "must not leak the parent package.json");
   });
+});
+
+test("/public/ refuses a symlink escaping the public directory", async () => {
+  const linkPath = join(process.cwd(), "public", "escape.tmp.json");
+  await symlink("../package.json", linkPath);
+  try {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/public/escape.tmp.json`);
+      assert.equal(res.status, 404);
+      const body = await res.text();
+      assert.ok(!body.includes("\"name\""), "must not leak the parent package.json");
+    });
+  } finally {
+    await rm(linkPath, { force: true });
+  }
+});
+
+test("/public/ returns a clean 404 for a broken symlink", async () => {
+  const linkPath = join(process.cwd(), "public", "broken.tmp.js");
+  await symlink("definitely-missing-target.js", linkPath);
+  try {
+    await withServer({}, async (base) => {
+      const res = await fetch(`${base}/public/broken.tmp.js`);
+      assert.equal(res.status, 404);
+      const body: any = await res.json();
+      assert.match(body.error, /not found/);
+    });
+  } finally {
+    await rm(linkPath, { force: true });
+  }
 });
 
 test("GET /public/ serves a real static asset", async () => {

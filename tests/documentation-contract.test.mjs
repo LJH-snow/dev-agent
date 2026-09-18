@@ -347,6 +347,14 @@ test("v0.1.7 documents the Desktop static response limit", () => {
   assert.match(desktopCandidate, /1 MiB/i);
 });
 
+test("v0.1.7 documents Desktop public symlink containment", () => {
+  assert.match(desktopReadme, /symlink/i);
+  assert.match(desktopReadme, /public\s+directory/i);
+  assert.match(desktopReadme, /404/i);
+  assert.match(desktopCandidate, /symlink/i);
+  assert.match(desktopCandidate, /public\s+directory/i);
+});
+
 test("v0.1.7 documents the Desktop session ID length limit", () => {
   assert.match(desktopReadme, /session id/i);
   assert.match(desktopReadme, /96/i);

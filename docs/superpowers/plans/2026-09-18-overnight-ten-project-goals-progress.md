@@ -1129,6 +1129,53 @@ Release remains gated: no Git tag, no push, no npm publish, no GitHub Release,
 and no `~/.npmrc` change. The next human decision is whether to push the
 accumulated local commits and authorize the `v0.1.7` release review window.
 
+## Follow-up Goal 40: Desktop public symlink containment
+
+**Status:** DONE
+
+**Scope completed:**
+
+- `/public/` now resolves both the requested file path and the public directory
+  to real paths before reading a file.
+- A symlink inside `public/` that resolves outside the real public directory
+  returns a clean `404`; it cannot expose the parent `package.json`.
+- A broken symlink also returns a clean `404` without raw diagnostics.
+- Normal static assets and the existing `1 MiB` static response limit remain
+  unchanged.
+- Documented the symlink containment behavior in the Desktop README and the
+  v0.1.7 candidate checklist.
+
+**RED contract:**
+
+- Added `public/escape.tmp.json` -> `../package.json` as a temporary test-only
+  symlink and proved the current server returned `200` before the fix.
+- Added a broken-link contract and the documentation containment contract.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+RED was Desktop focused tests **118/118, 1 failed** and documentation contract
+**30/30, 1 failed**. After implementation, Desktop focused tests were
+**119/119**, documentation contracts **31/31**, and `pnpm verify` completed
+with `all selected gates passed`. The full gate counts were runtime-manager
+**15/15**, CLI **314/314**, Rust unit/doc tests **54/54**, and real Rust
+integration **11/11**.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

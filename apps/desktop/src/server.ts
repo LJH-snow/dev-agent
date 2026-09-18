@@ -1,10 +1,10 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, readdir, rename, rm } from "node:fs/promises";
+import { readFile, readdir, realpath, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, join, extname } from "node:path";
+import { dirname, join, extname, sep } from "node:path";
 
 import {
   createEvidenceAuditExport,
@@ -609,6 +609,24 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const filePath = join(publicDir, relative);
         if (!filePath.startsWith(publicDir)) {
           res.writeHead(400).end("invalid path");
+          return;
+        }
+        try {
+          const [realFilePath, realPublicDir] = await Promise.all([
+            realpath(filePath),
+            realpath(publicDir),
+          ]);
+          if (
+            realFilePath !== realPublicDir &&
+            !realFilePath.startsWith(realPublicDir + sep)
+          ) {
+            res.writeHead(404, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "not found" }));
+            return;
+          }
+        } catch {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "not found" }));
           return;
         }
         await serveFile(res, filePath, extname(filePath));

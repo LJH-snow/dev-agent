@@ -1434,3 +1434,46 @@ git diff --check
 - 仍未解决的产品或安全问题；
 - 当前 Git 工作树状态，包括本地 commits 和未提交内容；
 - 明确说明没有创建 tag、没有 push、没有发布 npm package、没有修改 `~/.npmrc`。
+
+## 七、夜跑后新增目标
+
+### Follow-up 目标 40：约束 Desktop public 软链接边界
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 夜跑窗口结束后继续审计 Desktop 静态文件路径，
+发现 `/public/` 只对 join 后的字符串做前缀检查。`public/` 内指向父目录
+`package.json` 的 symlink 会被 `readFile` 跟随，越过真实 public 目录。
+
+**范围：**
+
+- `/public/` 内的 symlink 必须在解析真实路径后保持在真实 public 目录内；
+- 逃逸或断链的 symlink 返回稳定 `404`，不返回目标文件内容或原始路径；
+- 普通 static asset 与 `1 MiB` response limit 保持不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：`public/escape.tmp.json` 软链接到父目录
+  `package.json` 时，请求返回 `404` 且不包含 package 元数据；
+- 新增 server contract：`public/broken.tmp.js` 断链时返回稳定 `404`；
+- 在 documentation contract 中断言 README 与 checklist 记录 symlink
+  containment；
+- 先确认 RED，再做最小实现。
+- RED proof：无 realpath 守卫时，指向父目录 `package.json` 的 symlink 返回
+  `200`；聚焦运行为 **118 passed / 1 failed**。文档契约为 **30 passed /
+  1 failed**。
+
+**完成记录：**
+
+- 已为 `/public/` 同时解析 requested file 和 publicDir 的 real path；
+- real path 越出真实 public 目录或断链的 symlink 返回稳定 `404`；
+- RED 后 Desktop focused tests **118/118，1 failed**；文档契约为
+  **30/30，1 failed**。实现后 Desktop focused tests **119/119**，
+  documentation contract **31/31**；
+- `pnpm verify` 输出 `all selected gates passed`，相关计数为 runtime-manager
+  **15/15**、CLI **314/314**、Rust unit/doc tests **54/54**、real Rust
+  integration **11/11**；
+- 普通 static asset 与 `1 MiB` static response limit 保持不变；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
