@@ -1582,3 +1582,71 @@ git diff --check
 - 不回显 ID 内容、路径、文件内容或原始错误；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 43：约束 Desktop evidence 查询过滤器
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 42 收口后继续审计 Desktop 读路径，发现
+`changeSetId` 和 `validationId` 作为查询过滤器时仍只做 trim 和非空校验，
+没有与写路径一致的固定长度上限。真实 validation 和 change-set ID 都远小于
+`96` 字符，可以沿用同一个保守上限。
+
+**范围：**
+
+- `/messages`、`/export`、`/evidence` 和 `/evidence/preview` 共用的
+  `changeSetId` / `validationId` query filter trim 后必须少于或等于 `96`
+  字符；
+- 超长过滤器返回稳定 `400`，不回显过滤器内容；
+- 超长过滤器不进入 evidence selection，返回的 validations/changeSets 为空；
+- 正常 ID 过滤、status 过滤、audit limits、响应上限和 metadata-only 边界
+  保持不变；
+- 更新 Desktop README 与 v0.1.7 candidate checklist。
+
+**RED contract：**
+
+- 新增 server contract：history 发送 97 字符 `changeSetId` 时返回 `400`；
+  RED 阶段证明当前实现返回 `200`；
+- 新增 server contract：evidence audit 发送 97 字符 `validationId` 时返回
+  `400`；RED 阶段证明当前实现返回 `200`；
+- 在 documentation contract 中断言 README 与 checklist 记录 evidence query
+  filter 上限；
+- 先确认 RED，再做最小实现。
+- RED proof：无查询过滤器上限时，history 与 evidence audit 对 97 字符
+  `changeSetId` / `validationId` 返回 `200`；聚焦运行为
+  **122 passed / 2 failed**。文档契约为 **33 passed / 1 failed**。
+
+**完成记录：**
+
+- 已在共享 evidence filter parser 中为 `changeSetId` 和 `validationId` 加入
+  trim 后 `96` 字符固定上限；
+- `/messages`、`/export`、`/evidence` 和 `/evidence/preview` 都使用同一
+  parser；
+- 超长过滤器返回稳定 `400`，不回显过滤器内容，也不进入 evidence selection；
+- 正常过滤、status 过滤、audit limits、response limits 和 metadata-only
+  边界保持不变；
+- RED 后 Desktop focused tests **122/122，2 failed**；文档契约为
+  **33/33，1 failed**。实现后 Desktop focused tests **124/124**，
+  documentation contract **34/34**；
+- `pnpm verify` 输出 `all selected gates passed`，相关计数为 runtime-manager
+  **15/15**、CLI **314/314**、Rust unit/doc tests **54/54**、real Rust
+  integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不新增可配置上限、分页、裁剪或 UI 重设计；
+- 不改变 audit limit 语义、history schema 或 evidence DTO；
+- 不回显绝对路径、文件内容、过滤器内容或原始错误；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

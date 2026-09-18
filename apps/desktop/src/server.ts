@@ -1490,7 +1490,13 @@ function parseEvidenceFilters(
   options: EvidenceFilterOptions = {}
 ): EvidenceFilterResult {
   const changeSetId = nonEmptyQueryValue(url.searchParams.get("changeSetId"));
+  if (changeSetId !== undefined && changeSetId.length > maxChangeSetIdLength) {
+    return { error: "changeSetId is too long" };
+  }
   const validationId = nonEmptyQueryValue(url.searchParams.get("validationId"));
+  if (validationId !== undefined && validationId.length > maxChangeSetIdLength) {
+    return { error: "validationId is too long" };
+  }
   const rawStatus = nonEmptyQueryValue(url.searchParams.get("status"));
   if (
     rawStatus !== undefined &&

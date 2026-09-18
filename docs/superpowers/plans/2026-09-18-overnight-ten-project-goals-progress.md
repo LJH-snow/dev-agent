@@ -1274,6 +1274,58 @@ unit/doc tests **54/54**, and real Rust integration **11/11**.
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 42 slice can be committed locally as a separate commit.
 
+## Follow-up Goal 43: bound Desktop evidence query filters
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a fixed `96` trimmed-character cap to `changeSetId` and `validationId`
+  evidence query filters.
+- Covered history, export, evidence audit, and evidence preview through the
+  shared filter parser.
+- Returned stable JSON `400` responses without echoing the oversized filter or
+  selecting evidence.
+- Preserved status filters, audit limits, response limits, evidence schemas,
+  and metadata-only boundaries.
+- Documented the evidence query filter limit in the Desktop README and v0.1.7
+  candidate checklist.
+
+**RED contract:**
+
+- Sent a `97`-character `changeSetId` to history and a `97`-character
+  `validationId` to evidence audit.
+- RED proved both currently returned `200`: Desktop focused tests were
+  **122 passed / 2 failed** and documentation contracts were
+  **33 passed / 1 failed**.
+
+**Files touched:**
+
+- `apps/desktop/src/server.ts`
+- `apps/desktop/tests/server-edge-cases.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **124/124**, documentation contract **34/34**,
+`pnpm verify` completed with `all selected gates passed`, and `git diff --check`
+passed. Focused counts were runtime-manager **15/15**, CLI **314/314**, Rust
+unit/doc tests **54/54**, and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 43 slice can be committed locally as a separate commit.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

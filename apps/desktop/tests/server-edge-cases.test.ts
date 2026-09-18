@@ -296,6 +296,30 @@ test("rollback rejects a change set ID longer than 96 characters", async () => {
   );
 });
 
+test("history rejects an oversized change-set query filter", async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(
+      `${base}/api/sessions/default/messages?changeSetId=${encodeURIComponent(
+        "c".repeat(97)
+      )}`
+    );
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: "changeSetId is too long" });
+  });
+});
+
+test("evidence audit rejects an oversized validation query filter", async () => {
+  await withServer({}, async (base) => {
+    const res = await fetch(
+      `${base}/api/sessions/default/evidence?validationId=${encodeURIComponent(
+        "v".repeat(97)
+      )}`
+    );
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), { error: "validationId is too long" });
+  });
+});
+
 test("session listing stays within the fixed 256-entry limit", async () => {
   const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-listing-"));
   const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;

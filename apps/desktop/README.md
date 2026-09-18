@@ -84,6 +84,9 @@ symlinks return a clean `404`.
 A trimmed `changeSetId` passed to rollback or validation rerun may contain at
 most `96` characters; a longer change set ID returns `400` before calling the
 session.
+Evidence query filters for `changeSetId` and `validationId` are also capped at
+`96` trimmed characters; a longer evidence query filter returns `400` without
+selecting evidence.
 
 - `GET /` — chat UI, including the runtime status panel.
 - `GET /health` — lightweight liveness response with the executor mode.
@@ -117,7 +120,8 @@ session.
   and applied change-set evidence stay separate from the model message list. The
   summary always describes the whole session, while optional query filters
   `changeSetId`, `validationId`, and `status` (`passed`, `failed`, `skipped`, or
-  `blocked`) narrow only the evidence arrays without removing messages.
+  `blocked`) narrow only the evidence arrays without removing messages. An
+  oversized evidence query filter returns `400` without selecting evidence.
   An invalid `status` returns a structured `400` response.
   The fixed history response is capped at `1 MiB`; an oversized transcript
   returns `413` without echoing the transcript, path, or raw error.
@@ -142,8 +146,9 @@ session.
   concurrent rename cannot duplicate the same source into the target.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
-  accepts the same `changeSetId`, `validationId`, and `status` filters and adds
-  metadata-only change-set evidence and evidence-retention summary sections.
+  accepts the same `changeSetId`, `validationId`, and `status` filters, applies
+  the same `96`-character evidence query filter cap, and adds metadata-only
+  change-set evidence and evidence-retention summary sections.
   The fixed export response is capped at `1 MiB`; an oversized transcript
   returns `413` without echoing the transcript, path, or raw error.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
@@ -200,7 +205,8 @@ session.
   metadata-only audit projection as JSON. It accepts the same `changeSetId`,
   `validationId`, and `status` filters as history/export plus optional
   rejection-only `maxValidations`, `maxChangeSets`, `maxFiles`, and `maxBytes`
-  query values. Limits are positive integers within the agent-core caps
+  query values. Oversized evidence query filters return `400`. Limits are
+  positive integers within the agent-core caps
   (10,000 validations, 10,000 change sets, 100,000 files, and 10 MiB /
   10,485,760 bytes); invalid values return `400`, while a complete snapshot
   over a requested limit returns `413` with `code`, `kind`, `limit`, and `actual`
@@ -214,7 +220,8 @@ session.
   `validationCount`, `changeSetCount`, `fileCount`, and canonical UTF-8
   `serializedBytes` for the complete v1 projection. It accepts the standard
   `changeSetId`, `validationId`, and `status` filters, but rejects audit limit
-  query values because limits apply only to the full `/evidence` export. It
+  query values because limits apply only to the full `/evidence` export. The
+  same `96`-character evidence query filter cap applies. It
   returns `404` for an unknown session and never initializes a model, enters the
   chat queue, executes a command, reads/writes the working directory, or exposes
   evidence content, paths, commands, output/errors, file bytes, before-images,
