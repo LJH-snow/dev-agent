@@ -685,6 +685,54 @@ git diff --check
 - 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
   `~/.npmrc`。
 
+### Follow-up 目标 27：加固 Desktop validation rerun 的过时响应边界
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18；Goal 26 收口后审计 validation card，发现 rerun
+响应可在用户切换 session 后被追加到新 transcript。
+
+**范围：**
+
+- 为 validation rerun 请求补 request ID、AbortController 和 signal；
+- stale request 或 stale session 的 rerun 结果不更新状态、不标记 evidence
+  preview 过时、不追加 validation；
+- 保持 `/api/changesets/validate` schema、409/404/501 文案和 validation DTO
+  渲染不变。
+
+**RED contract：**
+
+- 先在 Desktop UI contract 中断言 `desktopValidationRerunRequestId`、
+  abort controller、stale/session guard 和 signal 存在；
+- 确认 RED 后，再做最小实现并更新文档。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+git diff --check
+```
+
+**边界：**
+
+- 不新增 panel、导出入口、绝对路径、原始错误或视觉重设计；
+- 不改变 validation DTO、session schema 或 endpoint 行为；
+- 不创建 tag、不 push、不发布 npm 包、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
+**完成记录：**
+
+- 已添加 request ID、AbortController、signal、stale request/session guard，
+  并只清理当前请求的 controller；
+- Desktop UI 与 documentation contract 先确认 RED，随后实现后通过；
+- Desktop focused tests **101/101**；
+- `pnpm verify` 通过并输出 `all selected gates passed`，相关计数为
+  runtime-manager **15/15**、CLI **314/314**、documentation contract
+  **18/18**、Rust unit/doc **54/54**、real Rust integration **11/11**；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
 ### Follow-up 目标 26：加固 Desktop session 历史的过时响应边界
 
 **Status:** DONE

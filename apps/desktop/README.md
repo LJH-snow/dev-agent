@@ -184,6 +184,9 @@ are accepted, and validation command fields are deliberately not configurable.
   validation DTO plus `sessionId`; unknown ids return `404`, a prepared,
   rolled-back, conflicting, or busy set returns `409`, and an unavailable
   rerunner returns `501`.
+  Validation rerun loading is stale-safe: a new rerun request aborts the
+  previous rerun request, and a response for a stale request or stale session
+  does not update the UI.
 
 ## Interrupts
 

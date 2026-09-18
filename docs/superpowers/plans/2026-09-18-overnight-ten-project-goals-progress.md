@@ -1058,3 +1058,53 @@ and real Rust integration **11/11**.
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
 Goal 26 slice can be committed locally as a separate commit.
+
+## Follow-up Goal 27: Desktop validation-rerun stale safety
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a request ID, AbortController, signal, stale request/session guard, and
+  current-request-only cleanup to Desktop validation rerun requests.
+- Preserved the `/api/changesets/validate` schema, DTO rendering, and the
+  existing `409`/`404`/`501` state copy.
+- Prevented stale rerun responses from updating status, marking evidence stale,
+  or appending a validation card.
+- Documented the stale-safe rerun behavior in the Desktop README and v0.1.7
+  candidate checklist.
+
+**RED contract:**
+
+- Added `GET / guards desktop validation rerun responses against stale
+  sessions` to the Desktop UI contract.
+- Added `v0.1.7 documents desktop validation rerun stale safety` to the
+  documentation contract.
+- First Desktop run: **1 failed / 100 passed** because rerun loading lacked the
+  request ID, AbortController, signal, and stale/session guards.
+
+**Files touched:**
+
+- `apps/desktop/public/index.html`
+- `apps/desktop/tests/validation.test.ts`
+- `apps/desktop/README.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/desktop run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: Desktop focused tests **101/101**, documentation contract **18/18**,
+and `pnpm verify` completed with `all selected gates passed`. Focused counts
+were runtime-manager **15/15**, CLI **314/314**, Rust unit/doc tests **54/54**,
+and real Rust integration **11/11**.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made. The
+Goal 27 slice can be committed locally as a separate commit.

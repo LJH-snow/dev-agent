@@ -285,6 +285,8 @@
     let desktopStatusController = null;
     let desktopHistoryRequestId = 0;
     let desktopHistoryController = null;
+    let desktopValidationRerunRequestId = 0;
+    let desktopValidationRerunController = null;
 
     function setStatus(text) { status.textContent = text; }
 
@@ -1084,14 +1086,20 @@
         rerun.disabled = !sessionId;
         rerun.addEventListener("click", async () => {
           if (!sessionId) return;
+          const requestId = ++desktopValidationRerunRequestId;
+          desktopValidationRerunController?.abort();
+          const controller = new AbortController();
+          desktopValidationRerunController = controller;
           rerun.disabled = true;
           try {
             const response = await fetch("/api/changesets/validate", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ sessionId, changeSetId: result.changeSetId }),
+              signal: controller.signal,
             });
             const payload = await response.json().catch(() => null);
+            if (requestId !== desktopValidationRerunRequestId || sessionId !== currentSessionId) return;
             if (response.ok && payload) {
               rerunStatus.textContent = "Rerun recorded";
               markEvidencePreviewStale();
@@ -1108,8 +1116,14 @@
               rerunStatus.textContent = "Rerun failed";
             }
           } catch {
-            rerun.disabled = false;
-            rerunStatus.textContent = "Rerun failed";
+            if (!controller.signal.aborted && requestId === desktopValidationRerunRequestId && sessionId === currentSessionId) {
+              rerun.disabled = false;
+              rerunStatus.textContent = "Rerun failed";
+            }
+          } finally {
+            if (requestId === desktopValidationRerunRequestId) {
+              desktopValidationRerunController = null;
+            }
           }
         });
         actions.append(rerun, rerunStatus);

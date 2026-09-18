@@ -19,6 +19,9 @@ This checklist summarizes the Desktop-facing work prepared during the
 - Desktop session history loading is stale-safe: a new request aborts the
   previous history request, and responses for a stale request or session do not
   render.
+- Desktop validation rerun loading is stale-safe: a new request aborts the
+  previous rerun request, and responses for a stale request or session do not
+  update the UI.
 - Desktop session summaries expose safe message/validation/change-set/protected
   guard counts without paths or raw evidence.
 - Evidence preview failures distinguish `404`, `413`, and `400` without
@@ -84,9 +87,9 @@ npm publish, or GitHub Release. The release preflight and isolated runtime
 smoke remain technical readiness evidence, not release authorization.
 
 The documentation contract now covers this review boundary and passes
-**17/17**, including the corrected `--project-state` first-release attribution,
-the refreshed provenance, and the Desktop status stale-response safety
-contract.
+**18/18**, including the corrected `--project-state` first-release attribution,
+the refreshed provenance, and the Desktop status/history/validation stale
+safety contracts.
 
 ## Consolidated gate
 
@@ -136,6 +139,12 @@ The post-goal-26 session-history audit reran `pnpm verify` after extending the
 same stale-response guard to Desktop session history. It passed with Desktop
 **100/100**, runtime-manager **15/15**, CLI **314/314**, documentation
 contracts **17/17**, Rust unit/doc tests **54/54**, and real Rust integration
+**11/11**.
+
+The post-goal-27 validation-rerun audit reran `pnpm verify` after extending the
+stale-response guard to Desktop validation reruns. It passed with Desktop
+**101/101**, runtime-manager **15/15**, CLI **314/314**, documentation
+contracts **18/18**, Rust unit/doc tests **54/54**, and real Rust integration
 **11/11**.
 
 After that consolidated gate and final handoff snapshot, a read-only release
