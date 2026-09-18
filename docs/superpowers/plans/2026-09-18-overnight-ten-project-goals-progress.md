@@ -1205,6 +1205,55 @@ performed for this candidate sync.
 - This is post-release `0.1.8` candidate work and is not part of the published
   `0.1.7` package or GitHub Release.
 
+## Follow-up Goal 62: bound agent memory writes
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added a `16 MiB` UTF-8 byte limit to `FileMemory.persist`; the serialized
+  payload is checked before `writeFile`.
+- An oversized write rejects without changing the memory file, so a session
+  cannot produce a memory file it cannot read back.
+- Preserved normal append, save, compact, validation, and change-set writes.
+- Updated the CLI README, changelog, v0.1.7 candidate checklist, and plan.
+
+**RED contract:**
+
+- Added `file memory rejects a write above the 16 MiB limit and keeps the
+  previous content` to agent-core contracts.
+- Added `agent memory documents the 16 MiB file write limit` to documentation
+  contracts.
+- RED proof: agent-core focused tests recorded **130 passed / 1 failed**
+  because the oversized write succeeded; documentation contracts recorded
+  **52 passed / 1 failed**.
+
+**Files touched:**
+
+- `packages/agent-core/src/memory.ts`
+- `packages/agent-core/tests/memory.test.ts`
+- `apps/cli/README.md`
+- `docs/CHANGELOG.md`
+- `docs/release-candidate-checklist-v0.1.7-desktop.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+pnpm --filter @dev-agent/agent-core run build
+pnpm --filter @dev-agent/agent-core run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+Result: agent-core focused tests **131/131**, documentation contract
+**53/53**, and `pnpm verify` completed with `all selected gates passed`.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 40: Desktop public symlink containment
 
 **Status:** DONE

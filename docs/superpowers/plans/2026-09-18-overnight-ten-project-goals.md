@@ -2505,6 +2505,63 @@ git diff --check
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
 
+### Follow-up 目标 62：限制 agent memory 文件写入
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 61 收口后继续审计共享数据边界。Goal 59
+约束了 memory 文件读取（`16 MiB`），但写入路径没有对应上限；agent 可以
+写入超过读取上限的文件，导致下一次读取 fail-closed，行为不一致。
+
+**范围：**
+
+- `FileMemory.persist` 在写入前序列化 payload，超过固定 `16 MiB` 时
+  reject，不写文件；
+- 超限时 memory 文件保留上一次（更小的）内容；
+- 保持正常 append、save、compact、validation、change-set 写入行为
+  不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 agent-core contract：entries 序列化超过 `16 MiB` 时 `append` 或
+  `save` reject，且 memory 文件保持写入前内容；
+- 新增 documentation contract：说明 agent memory 文件的 `16 MiB` 写入
+  上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：agent-core focused tests 为 **130 passed / 1 failed**，超大
+  write 成功写入文件；文档契约为 **52 passed / 1 failed**。
+
+**完成记录：**
+
+- `persist` 在 `writeFile` 前检查序列化后的 UTF-8 字节长度，超过
+  `16 MiB` 时 reject，不写文件；
+- 超限写入不改变 memory 文件（保持上一次内容）；
+- 正常 append、save、compact、validation、change-set 写入行为不变；
+- RED 后 agent-core focused tests 为 **131/131**，文档契约为 **53/53**；
+- `pnpm verify` 输出 `all selected gates passed`；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/agent-core run build
+pnpm --filter @dev-agent/agent-core run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 memory DTO 或读取语义；
+- 不新增可配置上限；
+- 不回显文件内容或绝对路径；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
+
 ### Follow-up 目标 60：限制 CLI workflow 输入文件读取
 
 **Status:** DONE

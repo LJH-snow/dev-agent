@@ -350,7 +350,9 @@ Filesystem reads, write/edit snapshots, edit, and patch use a fixed `16 MiB`
 whole-file read limit. An oversized file rejects before its bytes enter memory,
 and mutation targets remain unchanged.
 Persisted memory files use the same fixed `16 MiB` read limit; oversized session
-files are rejected before their bytes enter memory.
+files are rejected before their bytes enter memory. Memory file writes enforce
+the same `16 MiB` write limit; an oversized write is rejected before the file
+changes, so a session cannot outgrow its read limit.
 
 ### Change-set validation
 

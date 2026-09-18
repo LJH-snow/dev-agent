@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -1206,6 +1207,23 @@ test("file memory rejects a memory file above the 16 MiB read limit", async () =
       () => memory.entries(),
       /memory file exceeds the 16 MiB read limit/
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("file memory rejects a write above the 16 MiB limit and keeps the previous content", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "sessions", "bounded.json");
+    const memory = new FileMemory({ filePath });
+    const entry = createMemoryEntry("user", "x".repeat(16 * 1024 * 1024));
+
+    await assert.rejects(
+      () => memory.append(entry),
+      /memory file exceeds the 16 MiB write limit/
+    );
+    await assert.rejects(() => readFile(filePath), { code: "ENOENT" });
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

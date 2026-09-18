@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, win32 } from "node:path";
 
@@ -582,7 +583,13 @@ export class FileMemory implements AgentMemory {
       validations: validations === undefined ? existing?.validations : [...validations],
       changeSets: changeSets === undefined ? existing?.changeSets : [...changeSets],
     };
-    await writeFile(this.filePath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    const serialized = `${JSON.stringify(payload, null, 2)}\n`;
+    if (Buffer.byteLength(serialized, "utf8") > MAX_MEMORY_FILE_BYTES) {
+      throw new Error(
+        `memory file exceeds the ${MAX_MEMORY_FILE_BYTES / (1024 * 1024)} MiB write limit`
+      );
+    }
+    await writeFile(this.filePath, serialized, "utf8");
   }
 
   private async readMemoryFile(): Promise<MemoryFile> {

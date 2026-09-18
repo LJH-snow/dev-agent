@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-18（agent memory write limit）
+
+- Persisted agent memory writes enforce the same fixed `16 MiB` limit as
+  reads; an oversized write is rejected before the file changes, so a session
+  cannot produce a memory file it cannot read back.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
 ## 2026-09-18（workflow plan input file read limit）
 
 - `workflow plan` now uses the same fixed `16 MiB` input file read limit as

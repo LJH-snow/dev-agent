@@ -104,6 +104,8 @@ oversized file is rejected without loading its bytes into memory.
   memory, and mutation targets remain unchanged.
 - Persisted agent memory files use a fixed `16 MiB` read limit; oversized
   session files reject before their bytes enter memory.
+Memory file writes enforce the same `16 MiB` write limit; an oversized write
+is rejected before the file changes.
 - code-search scanner signatures skip source files above a fixed `16 MiB`
   scan limit before reading them; smaller files remain indexed.
 - Plan and apply input files use a fixed `16 MiB` read limit; both commands
