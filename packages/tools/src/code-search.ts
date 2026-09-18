@@ -51,6 +51,7 @@ const skippedDirectories = new Set([
 ]);
 const defaultMaxDepth = 8;
 const defaultLimit = 50;
+const maxScanFileBytes = 16 * 1024 * 1024;
 const modes: readonly Mode[] = ["search", "references", "definition"];
 const symbolKinds = new Set<SymbolKind>([
   "function",
@@ -493,6 +494,9 @@ async function collectSignatures(
     const filePath = entryPath;
     try {
       const info = await stat(filePath);
+      if (info.size > maxScanFileBytes) {
+        continue;
+      }
       signatures.set(filePath, { mtimeMs: info.mtimeMs, size: info.size });
     } catch {
       // Skip files that disappear or cannot be inspected mid-scan.

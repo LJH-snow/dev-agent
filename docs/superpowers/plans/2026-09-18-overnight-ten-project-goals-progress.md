@@ -1151,6 +1151,19 @@ GitHub Release `0.1.7` as published, advances the workspace candidate to
 attributing them to `0.1.7`. No new tag, npm publish, or GitHub Release was
 performed for this candidate sync.
 
+## Follow-up Goal 58: bound code-search indexing
+
+**Status:** DONE
+
+- Added a fixed `16 MiB` per-file scan limit to code-search.
+- The scanner now skips oversized supported source files when collecting
+  signatures, so neither a full scan nor an incremental rescan reads, caches,
+  or indexes their bytes.
+- Tools focused tests passed **128/128**, and the documentation contract passed
+  **50/50**.
+- This is post-release `0.1.8` candidate work and is not part of the published
+  `0.1.7` package or GitHub Release.
+
 ## Follow-up Goal 40: Desktop public symlink containment
 
 **Status:** DONE

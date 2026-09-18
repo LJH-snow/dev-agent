@@ -73,6 +73,31 @@ test("a deleted file is dropped from the cached index", async () => {
   }
 });
 
+test("a file above the 16 MiB scan limit is skipped without indexing", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-oversize-"));
+  try {
+    await writeFile(
+      join(dir, "small.ts"),
+      "export function smallSymbol() { return 1; }\n",
+      "utf8"
+    );
+    await writeFile(
+      join(dir, "huge.ts"),
+      "export function hugeSymbol() { return 2; }\n" + "x".repeat(16 * 1024 * 1024),
+      "utf8"
+    );
+    const tool: any = new CodeSearchTool();
+
+    const found = await tool.execute({ mode: "search", query: "hugeSymbol", path: dir });
+    assert.equal(found.count, 0, "symbols from an oversized file must not be indexed");
+
+    const small = await tool.execute({ mode: "search", query: "smallSymbol", path: dir });
+    assert.equal(small.count, 1, "small files remain indexed");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("reference lookups reuse the cached sources", async () => {
   const { dir, file } = await createProject(
     [

@@ -558,6 +558,13 @@ test("desktop static file serving checks the size before reading", () => {
   assert.match(desktopCandidate, /1 MiB/);
 });
 
+test("code-search documents the 16 MiB scan limit", () => {
+  assert.match(cliReadme, /code-search scanner[\s\S]*16 MiB/);
+  assert.match(cliReadme, /scan limit/i);
+  assert.match(desktopCandidate, /code-search scanner[\s\S]*16 MiB/);
+  assert.match(desktopCandidate, /scan limit/i);
+});
+
 test("runtime manager documents the install and remove lifecycle lock", () => {
   assert.match(cliReadme, /install\s+and\s+remove/i);
   assert.match(cliReadme, /same runtime version/i);

@@ -520,7 +520,9 @@ body is included in JSON output.
 and Rust. It records signatures and refresh metadata in the index, so subsequent
 searches can reuse unchanged files. Default generated/vendor/cache directories,
 root `.gitignore`, root `.ignore`, and explicit `--exclude` rules are applied in
-that order; `index clear` is confirmation-gated.
+that order. The scanner skips source files above the fixed `16 MiB` scan limit
+before reading them; smaller files remain indexed. `index clear` is
+confirmation-gated.
 
 ## Configuration file
 

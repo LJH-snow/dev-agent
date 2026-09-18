@@ -33,6 +33,13 @@
 - This is a new workspace candidate change after the `0.1.7` release; it is not
   part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
 
+## 2026-09-18（code-search scan limit）
+
+- Code-search scanner signatures skip source files above a fixed `16 MiB`
+  scan limit before reading their bytes; smaller files remain indexed.
+- This is a new workspace candidate change after the `0.1.7` release; it is not
+  part of the published `0.1.7` npm tarball or `v0.1.7` GitHub Release.
+
 ## 2026-09-18（runtime install and remove bounds）
 
 - Provider non-streaming success JSON is read with a streamed bounded JSON

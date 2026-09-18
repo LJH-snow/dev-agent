@@ -2335,3 +2335,60 @@ git diff --check
 - 不回显路径、文件内容或原始错误；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 58：限制 code-search 单文件索引大小
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 57 收口后继续审计工具读取边界，发现
+code-search 的 `readSource` 会把整个文件读入内存用于索引，没有大小
+上限；workspace 里的超大源文件会无上限分配内存。
+
+**范围：**
+
+- `loadScan` 在读取文件前检查 `signatures` 里的 `size`，超过固定
+  `16 MiB` 时跳过该文件（不读入、不索引）；
+- 全量扫描和增量 rescan 使用同一上限；
+- 保持缓存、persisted index、ignore、depth limit 和小文件行为不变；
+- 不新增可配置上限；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 tools contract：workspace 中超过 `16 MiB` 的源文件的符号不出现在
+  搜索结果中；
+- 新增 documentation contract：说明 code-search 的 `16 MiB` 单文件索引
+  上限；
+- 先运行新增契约确认 RED，再做最小实现。
+- RED proof：tools focused tests 为 **127 passed / 1 failed**；文档契约为
+  **49 passed / 1 failed**。
+
+**完成记录：**
+
+- 新增固定 `maxScanFileBytes`（`16 MiB`）；
+- `collectSignatures` 在记录文件签名前检查 `stat.size`，超限文件不进入
+  scan signatures；
+- 这使全量扫描和增量 rescan 都不会读取、缓存或索引超大文件；
+- 小文件索引、缓存、persisted index、ignore、depth 和搜索 DTO 不变；
+- RED 后 tools focused tests 为 **128/128**，文档契约为 **50/50**；
+- `pnpm verify` 输出 `all selected gates passed`；
+- 未创建 tag、未 push、未发布 npm package、未创建 GitHub Release、未修改
+  `~/.npmrc`。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/tools run build
+pnpm --filter @dev-agent/tools run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 code-search 的搜索 DTO 或 workspace 隔离语义；
+- 不新增可配置上限；
+- 不回显文件内容或绝对路径；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
