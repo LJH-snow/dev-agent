@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -26,6 +27,7 @@ import type {
   InstallOptions,
   InstallResult,
   ManifestDownloader,
+  ManifestPayload,
   RemoveResult,
   RuntimeManagerOptions,
   RuntimeManifest,
@@ -66,6 +68,8 @@ const INSTALL_METADATA_KEYS = [
 ] as const;
 
 const EMPTY_MARKER = "";
+const maxManifestDownloadBytes = 1024 * 1024;
+const maxArchiveDownloadBytes = 16 * 1024 * 1024;
 
 async function defaultManifestDownloader(version: string, signal?: AbortSignal): Promise<string> {
   try {
@@ -147,6 +151,20 @@ function completeMarker(metadata: InstallMetadata): string {
     binary: metadata.binary,
     binarySha256: metadata.binarySha256,
   });
+}
+
+function assertManifestDownloadSize(payload: ManifestPayload): void {
+  const bytes =
+    typeof payload === "string"
+      ? Buffer.byteLength(payload, "utf8")
+      : payload instanceof Uint8Array
+        ? payload.byteLength
+        : undefined;
+  if (bytes === undefined || bytes <= maxManifestDownloadBytes) return;
+  throw new RuntimeManagerError(
+    "DOWNLOAD_FAILED",
+    "Runtime manifest download exceeds the 1 MiB limit"
+  );
 }
 
 function parseInstallMetadata(input: string): InstallMetadata | undefined {
@@ -376,6 +394,12 @@ export class RuntimeManager {
     const manifest = await this.loadManifest(manifestReleaseVersion, options);
     const artifact = findArtifact(manifest, target);
     this.ensureNotCancelled(options.signal);
+    if (artifact.size > maxArchiveDownloadBytes) {
+      throw new RuntimeManagerError(
+        "DOWNLOAD_FAILED",
+        "Runtime archive exceeds the 16 MiB limit"
+      );
+    }
 
     await ensurePrivateDirectory(this.root);
     await ensurePrivateDirectory(paths.versionDir);
@@ -392,6 +416,12 @@ export class RuntimeManager {
         throw new RuntimeManagerError("DOWNLOAD_FAILED", "Runtime archive download failed");
       }
       this.ensureNotCancelled(options.signal);
+      if (archive.byteLength > maxArchiveDownloadBytes) {
+        throw new RuntimeManagerError(
+          "DOWNLOAD_FAILED",
+          "Runtime archive exceeds the 16 MiB limit"
+        );
+      }
       if (archive.byteLength !== artifact.size) {
         throw new RuntimeManagerError("CHECKSUM_MISMATCH", "Runtime archive size does not match the manifest");
       }
@@ -495,6 +525,7 @@ export class RuntimeManager {
       this.ensureNotCancelled(options.signal, error);
       throw new RuntimeManagerError("DOWNLOAD_FAILED", "Runtime manifest download failed");
     }
+    assertManifestDownloadSize(payload);
     try {
       return validateManifest(parseManifest(payload), version);
     } catch (error) {

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-18（runtime install download bounds）
+
+- `runtime install` now rejects a manifest response larger than `1 MiB` or an
+  archive response larger than `16 MiB` with a structured `DOWNLOAD_FAILED`
+  result before writing or extracting files.
+- This keeps malicious or malformed release responses from allocating unbounded
+  memory or staging temporary artifacts. Existing checksum, executable-bit, and
+  health verification remain unchanged.
+- This change is only in the `0.1.7` workspace candidate; it is not part of the
+  already-published `0.1.6` npm tarball or `v0.1.6` GitHub Release.
+
 ## 2026-09-17（Desktop managed runtime status）
 
 - Desktop `/api/status` now reports the managed Rust runtime state, version,

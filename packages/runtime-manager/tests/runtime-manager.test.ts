@@ -14,6 +14,8 @@ const REPOSITORY = "LJH-snow/dev-agent";
 const SHA = "a".repeat(64);
 const TARGET = "aarch64-apple-darwin";
 const OTHER_TARGET = "x86_64-unknown-linux-gnu";
+const MANIFEST_DOWNLOAD_LIMIT = 1024 * 1024;
+const ARCHIVE_DOWNLOAD_LIMIT = 16 * 1024 * 1024;
 
 function artifactFor(target = TARGET, sha256 = SHA): any {
   const targetInfo = {
@@ -380,6 +382,49 @@ test("cleans temporary state after extractor, health, or downloader failure", as
     });
     assert.deepEqual(await readdir(join(root, VERSION)).catch(() => []), []);
   }
+});
+
+test("rejects a runtime manifest above the fixed 1 MiB download limit", async () => {
+  const root = await tempRoot();
+  let archiveCalls = 0;
+  const manager = new api.RuntimeManager({
+    runtimeDir: root,
+    platform: "darwin",
+    arch: "arm64",
+    ...makeInstallDependencies({
+      onArchiveDownload: () => (archiveCalls += 1),
+    }),
+    manifestDownloader: async () =>
+      JSON.stringify(manifestFor()) + " ".repeat(MANIFEST_DOWNLOAD_LIMIT + 1),
+  });
+
+  await assert.rejects(
+    () => manager.install(VERSION),
+    (error: unknown) => assertRuntimeError(error, "DOWNLOAD_FAILED")
+  );
+  assert.equal(archiveCalls, 0);
+  assert.deepEqual(await readdir(join(root, VERSION)).catch(() => []), []);
+});
+
+test("rejects a runtime archive above the fixed 16 MiB download limit", async () => {
+  const root = await tempRoot();
+  const oversizedArchive = new Uint8Array(ARCHIVE_DOWNLOAD_LIMIT + 1);
+  const oversizedManifest = manifestFor({
+    artifact: { ...artifactFor(), size: oversizedArchive.byteLength },
+  });
+  const manager = new api.RuntimeManager({
+    runtimeDir: root,
+    platform: "darwin",
+    arch: "arm64",
+    ...makeInstallDependencies({ manifest: oversizedManifest }),
+    archiveDownloader: async () => oversizedArchive,
+  });
+
+  await assert.rejects(
+    () => manager.install(VERSION),
+    (error: unknown) => assertRuntimeError(error, "DOWNLOAD_FAILED")
+  );
+  assert.deepEqual(await readdir(join(root, VERSION)).catch(() => []), []);
 });
 
 test("cancellation cleans temporary state and returns a structured cancellation error", async () => {

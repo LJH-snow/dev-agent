@@ -489,3 +489,9 @@ test("v0.1.7 records the post-goal-46 release preflight refresh", () => {
 test("Desktop diagnostic reports are ignored", () => {
   assert.match(gitignore, /apps\/desktop\/report\.\*\.json/);
 });
+
+test("runtime manager documents fixed manifest and archive download limits", () => {
+  assert.match(cliReadme, /runtime manifest/i);
+  assert.match(cliReadme, /1 MiB/i);
+  assert.match(cliReadme, /16 MiB/i);
+});

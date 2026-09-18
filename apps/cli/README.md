@@ -57,9 +57,11 @@ The managed runtime is opt-in. `runtime status`, `runtime path`, and `runtime re
 only inspect or change the local cache; they do not load a model provider or connect to
 MCP. `runtime install` downloads only the fixed release manifest and the matching
 macOS/Linux artifact, verifies its SHA-256 and runtime protocol/version, then installs
-atomically under `~/.dev-agent/runtimes/<version>/<target>`. It never runs from npm
-`postinstall` and never silently falls back to `local`. Windows, Linux musl, and unknown
-platforms return a structured unsupported result.
+atomically under `~/.dev-agent/runtimes/<version>/<target>`. The manifest response is
+bounded at `1 MiB` and the archive response at `16 MiB`; either over-limit response is
+rejected with a structured `DOWNLOAD_FAILED` result before staging or extraction. It
+never runs from npm `postinstall` and never silently falls back to `local`. Windows,
+Linux musl, and unknown platforms return a structured unsupported result.
 
 `dev-agent review` is read-only and provider-free. It reports changed-file metadata from the working tree; use `--base <ref> --head <ref>` for a Git range. `dev-agent plan` accepts a JSON array of filesystem mutation inputs, writes only a metadata-only plan document, and never changes the workspace. `dev-agent apply` requires both the plan document and the original `--changes-file`; it rechecks the workspace preimage before applying. Use `--event-stream` for newline-delimited, versioned, redacted workflow events. CI workflows use stable exit codes: 0 success, 2 findings, 3 policy denied, 4 config error, 5 runtime unavailable, 6 execution error, and 64 usage error.
 

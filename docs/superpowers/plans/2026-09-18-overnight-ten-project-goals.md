@@ -1843,3 +1843,48 @@ git diff --check
 - 不提交任何 diagnostic report；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 48：限制 runtime install 响应大小
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 47 收口后审计 runtime install 网络/内存
+边界，发现 manifest 与 archive 都会在完整读入内存后才校验大小和哈希；
+异常下载源可以造成无上限内存分配或临时落盘。
+
+**范围：**
+
+- manifest 响应固定上限 `1 MiB`；
+- archive 响应固定上限 `16 MiB`；
+- 超限返回结构化 `DOWNLOAD_FAILED`，不写入临时文件、不解压；
+- manifest 大小校验在 `parseManifest` 前，archive 大小校验在写入和
+  解压前；
+- 保留 SHA-256、尺寸、executable bit、health 和原子替换语义；
+- 更新 CLI README、CHANGELOG、v0.1.7 candidate checklist 与计划/progress。
+
+**RED contract：**
+
+- 新增 runtime-manager contract：超过 `1 MiB` 的 manifest payload 返回
+  `DOWNLOAD_FAILED`，且不调用 archive download、不留下临时目录；
+- 新增 runtime-manager contract：超过 `16 MiB` 的 archive 响应返回
+  `DOWNLOAD_FAILED`，且不留下临时目录；
+- 新增 documentation contract：CLI README 说明 `1 MiB` 与 `16 MiB` 上限；
+- RED proof：runtime-manager 聚焦运行为 **15 passed / 2 failed**；文档
+  契约为 **38 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+pnpm --filter @dev-agent/runtime-manager run build
+pnpm --filter @dev-agent/runtime-manager run test
+node --test tests/documentation-contract.test.mjs
+pnpm verify
+git diff --check
+```
+
+**边界：**
+
+- 不改变 release manifest schema、URL 或安装协议；
+- 不新增可配置下载上限；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。
