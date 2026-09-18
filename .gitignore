@@ -2,6 +2,7 @@ node_modules/
 dist/
 tests-dist/
 coverage/
+apps/desktop/report.*.json
 *.log
 *.tsbuildinfo
 runtime/rust/target/

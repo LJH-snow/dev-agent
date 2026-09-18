@@ -1809,3 +1809,37 @@ git diff --check
 - 不修改实现、package version 或 release state；
 - 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
   `~/.npmrc`。
+
+### Follow-up 目标 47：忽略 Desktop diagnostic report 文件
+
+**Status:** DONE
+
+**建立时间：** 2026-09-18 Goal 46 收口后检查工作区，发现 Node 生成的
+`apps/desktop/report.*.json` 一直是未跟踪文件，存在误暂存风险。
+
+**范围：**
+
+- 为 `apps/desktop/report.*.json` 增加 root `.gitignore` 规则；
+- 保留已存在的临时 report 文件，不读取内容、不提交、不删除；
+- 用 documentation contract 锁定该 ignore 边界。
+
+**RED contract：**
+
+- 新增 `Desktop diagnostic reports are ignored` documentation contract；
+- RED proof：无 `.gitignore` 规则时 documentation contract 为
+  **37 passed / 1 failed**。
+
+**验收命令：**
+
+```sh
+node --test tests/documentation-contract.test.mjs
+git status --short --branch
+git diff --check
+```
+
+**边界：**
+
+- 不修改实现或 release state；
+- 不提交任何 diagnostic report；
+- 不创建 tag、不 push、不发布 npm package、不创建 GitHub Release、不修改
+  `~/.npmrc`。

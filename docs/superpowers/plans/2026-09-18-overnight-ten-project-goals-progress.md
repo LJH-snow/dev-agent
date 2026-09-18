@@ -1447,6 +1447,41 @@ Result: preflight passed, documentation contract **37/37**, and
 
 No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
 
+## Follow-up Goal 47: ignore Desktop diagnostic reports
+
+**Status:** DONE
+
+**Scope completed:**
+
+- Added `apps/desktop/report.*.json` to the root `.gitignore`.
+- Kept the existing transient Node diagnostic reports untracked and unmodified.
+- Locked the hygiene boundary in the documentation contract.
+
+**RED contract:**
+
+- Added `Desktop diagnostic reports are ignored`.
+- RED proof: **37 passed / 1 failed** before the `.gitignore` rule existed.
+
+**Files touched:**
+
+- `.gitignore`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md`
+- `docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md`
+- `tests/documentation-contract.test.mjs`
+
+**Verification:**
+
+```sh
+node --test tests/documentation-contract.test.mjs
+git status --short --branch
+git diff --check
+```
+
+Result: documentation contract **38/38**, `git status --short --branch` showed a
+clean working tree, and `git diff --check` passed.
+
+No tag, push, npm publish, GitHub Release, or `~/.npmrc` change was made.
+
 ## Follow-up Goal 38: guard Desktop rename lifecycle
 
 **Status:** DONE

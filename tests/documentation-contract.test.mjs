@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+const gitignore = readFileSync(new URL("../.gitignore", import.meta.url), "utf8");
 const docsReadme = readFileSync(new URL("../docs/README.md", import.meta.url), "utf8");
 const nextRoadmap = readFileSync(
   new URL("../docs/next-roadmap-plans-v62-plus.md", import.meta.url),
@@ -483,4 +484,8 @@ test("v0.1.7 records the post-goal-46 release preflight refresh", () => {
   assert.match(desktopCandidate, /0\.1\.6/);
   assert.match(desktopCandidate, /authenticated/i);
   assert.match(desktopCandidate, /five/i);
+});
+
+test("Desktop diagnostic reports are ignored", () => {
+  assert.match(gitignore, /apps\/desktop\/report\.\*\.json/);
 });
