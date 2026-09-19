@@ -50,6 +50,21 @@ test("loadConfig returns empty object when no config file exists", () => {
   assert.ok(typeof config === "object");
 });
 
+test("loadConfig rejects an invalid validation policy instead of ignoring it", async () => {
+  const home = await mkdtemp(join(tmpdir(), "dev-agent-config-validation-"));
+  const configPath = join(home, "config.json");
+  try {
+    await writeFile(configPath, JSON.stringify({ validation: { policy: "unsafe" } }), "utf8");
+
+    assert.throws(
+      () => loadConfig(configPath),
+      /unknown validation policy/i
+    );
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
+});
+
 test("loadConfig ignores a config file above the 1 MiB read limit", async () => {
   const home = await mkdtemp(join(tmpdir(), "dev-agent-config-limit-"));
   try {

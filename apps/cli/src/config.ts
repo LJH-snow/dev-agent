@@ -117,17 +117,19 @@ export function loadConfig(
     return {};
   }
 
+  let raw: string;
   try {
     if (statSync(resolvedPath).size > MAX_CONFIG_FILE_BYTES) {
       return {};
     }
-    const raw = readFileSync(resolvedPath, "utf8");
-    // Structural validation errors in the validation section intentionally
-    // propagate instead of silently disabling the safety policy.
-    return parseConfig(raw);
+    raw = readFileSync(resolvedPath, "utf8");
   } catch {
     return {};
   }
+
+  // Structural validation errors in the validation section intentionally
+  // propagate instead of silently disabling the safety policy.
+  return parseConfig(raw);
 }
 
 /**
