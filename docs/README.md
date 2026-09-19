@@ -36,6 +36,8 @@ numbered items 62/63/64 in the root README Roadmap.
   [v61 progress](day-plan-v61-progress.md), [Windows feasibility notes](windows-sandbox-feasibility-v61.md),
   [v62 plan](day-plan-v62.md), [v62 progress](day-plan-v62-progress.md), [v63 plan](day-plan-v63.md),
   [v63 progress](day-plan-v63-progress.md), [v64 plan](day-plan-v64.md), and [v64 progress](day-plan-v64-progress.md).
+  The [v65 Desktop/CLI workbench plan](day-plan-v65.md) and [v65 progress record](day-plan-v65-progress.md)
+  record the approved Scheme A experience polish and its browser/TTY evidence.
   The [2026-09-18 overnight plan](superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
   its [progress record](superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
   and the [v0.1.7 Desktop candidate checklist](release-candidate-checklist-v0.1.7-desktop.md)

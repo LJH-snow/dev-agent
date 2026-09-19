@@ -8,6 +8,7 @@ import {
   renderAssistantMessage,
   renderCommandHints,
   renderRuntimeStatus,
+  renderSignalDivider,
   renderToolCall,
   renderToolResult,
   renderUserMessage,
@@ -56,6 +57,14 @@ test("rich renderer uses semantic blocks for runtime, tools, approvals, and vali
   assert.match(output, /< TOOL RESULT \/ shell/);
   assert.match(output, /APPROVAL \/ filesystem/);
   assert.match(output, /VALIDATION \/ passed/);
+});
+
+test("signal divider keeps the weave motif inside narrow terminal widths", () => {
+  const output = renderSignalDivider("TOOLS", { width: 24 });
+
+  assert.match(output, /TOOLS/);
+  assert.match(output, /[╞═╡]/);
+  assert.ok(output.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").length <= 24);
 });
 
 test("assistant render gives markdown headings and fenced code a clear layout", () => {

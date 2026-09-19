@@ -309,6 +309,19 @@ export function renderSignalMark(requestedWidth?: number): string {
   ].join("\n");
 }
 
+export function renderSignalDivider(
+  label: string,
+  options: BlockOptions = {}
+): string {
+  const width = normalizeWidth(options.width);
+  const safeLabel = stripAnsi(redactSensitiveText(sanitizeTerminalText(label)))
+    .replace(/\s+/g, " ")
+    .trim();
+  const prefix = `╞═ ${safeLabel} <> `;
+  const fillWidth = Math.max(0, width - visibleLength(prefix) - 1);
+  return colorize(fitLine(`${prefix}${"═".repeat(fillWidth)}╡`, width), "dim");
+}
+
 export function renderWelcome({
   provider,
   model,
@@ -408,7 +421,10 @@ export function renderToolCall(
   const width = normalizeWidth(options.width);
   const safeName = redactSensitiveText(sanitizeTerminalText(name));
   const safeDetail = redactSensitiveText(sanitizeTerminalText(detail));
-  const lines = [colorize(fitLine(`> TOOL / ${safeName}`, width), "blue")];
+  const lines = [
+    renderSignalDivider("TOOL CALL", { width }),
+    colorize(fitLine(`> TOOL / ${safeName}`, width), "blue"),
+  ];
   if (safeDetail) {
     lines.push(...wrapPrefixed(safeDetail, "  input: ", width));
   }
@@ -424,6 +440,7 @@ export function renderToolResult(
   const safeName = redactSensitiveText(sanitizeTerminalText(name));
   const safeOutput = redactSensitiveText(sanitizeTerminalText(output));
   return [
+    renderSignalDivider("TOOL RESULT", { width }),
     colorize(fitLine(`< TOOL RESULT / ${safeName}`, width), "dim"),
     ...wrapPrefixed(safeOutput, "  ", width),
   ].join("\n");
@@ -441,7 +458,10 @@ export function renderApprovalMessage(
   const normalized = decision.trim().toLowerCase();
   const color = normalized === "allow" || normalized === "allow-always" ? "green" : "amber";
   const marker = normalized === "allow" || normalized === "allow-always" ? "OK" : normalized === "deny" ? "NO" : "??";
-  const lines = [colorize(fitLine(`! APPROVAL / ${safeTool}`, width), color)];
+  const lines = [
+    renderSignalDivider("APPROVAL", { width }),
+    colorize(fitLine(`! APPROVAL / ${safeTool}`, width), color),
+  ];
   lines.push(...wrapPrefixed(`${marker} ${safeDetail || "decision recorded"}`, "  ", width));
   return lines.join("\n");
 }
@@ -455,6 +475,7 @@ export function renderValidationMessage(
   const normalized = status.trim().toLowerCase();
   const color = normalized === "passed" ? "green" : normalized === "failed" || normalized === "blocked" ? "red" : "amber";
   return [
+    renderSignalDivider("VALIDATION", { width }),
     colorize(fitLine(`+ VALIDATION / ${sanitizeTerminalText(status)}`, width), color),
     ...wrapPrefixed(redactSensitiveText(sanitizeTerminalText(summary)), "  ", width),
   ].join("\n");
