@@ -189,7 +189,7 @@ test("phase labels are distinct from root README roadmap item numbers", () => {
 
 test("npm CLI docs describe external-directory use and current publication status", () => {
   assert.equal(releaseState.package, cliPackage.name);
-  assert.equal(releaseState.status, "candidate");
+  assert.equal(releaseState.status, "published");
   assert.equal(candidateCliVersion, cliPackage.version);
   assert.match(readme, /release-cli-npm\.md/);
   assert.match(readme, /npm install -g @agent_cli\/cli/);
@@ -486,15 +486,18 @@ test("v0.1.7 records the post-goal-46 release preflight refresh", () => {
   assert.match(desktopCandidate, /five/i);
 });
 
-test("v0.1.7 release is synchronized across npm, tag, and GitHub", () => {
-  assert.equal(releaseState.publishedVersion, "0.1.7");
+test("0.1.8 npm publication is synchronized while GitHub remains at v0.1.7", () => {
+  assert.equal(releaseState.publishedVersion, "0.1.8");
   assert.equal(releaseState.candidateVersion, "0.1.8");
-  assert.equal(releaseState.status, "candidate");
+  assert.equal(releaseState.status, "published");
   assert.equal(cliPackage.version, "0.1.8");
   assert.match(npmRelease, /v0\.1\.7 GitHub Release 记录/);
   assert.match(npmRelease, /https:\/\/github\.com\/LJH-snow\/dev-agent\/releases\/tag\/v0\.1\.7/);
   assert.match(npmRelease, /npm view @agent_cli\/cli@0\.1\.7 version/);
   assert.match(npmRelease, /registry 查询确认 `0\.1\.7` 已完成发布/);
+  assert.match(npmRelease, /npm view @agent_cli\/cli@0\.1\.8 version/);
+  assert.match(npmRelease, /npm-only publication|只发布 npm 包/i);
+  assert.match(npmRelease, /没有创建 `v0\.1\.8` Git tag 或 GitHub Release/);
   assert.match(desktopCandidate, /Publication evidence/);
   assert.match(desktopCandidate, /35338225586/);
   assert.match(readme, /released in 0\.1\.7/);

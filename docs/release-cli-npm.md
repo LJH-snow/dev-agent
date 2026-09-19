@@ -1,6 +1,6 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-18，`@agent_cli/cli@0.1.7` 已发布到 npm，`latest` 指向该版本，并且与 `v0.1.7` GitHub Release 中的 CLI tarball 一致**。当前工作区已进入 `@agent_cli/cli@0.1.8` candidate；后续新版本仍需维护者单独授权。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-19，`@agent_cli/cli@0.1.8` 已发布到 npm，`latest` 指向该版本**。`v0.1.7` GitHub Release 仍是最新正式 release；`0.1.8` 本次仅执行 npm 发布，没有创建新的 Git tag 或 GitHub Release。后续新版本仍需维护者单独授权。
 
 ## 已发布版本记录（2026-09-16）
 
@@ -60,6 +60,17 @@
   `dev-agent-runtime-manifest.json` 和 CLI tarball；publish job 已验证 tag 和 artifacts。
 - 正式 release 地址为
   <https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.7>。
+
+## 最新发布检查（2026-09-19）
+
+- `@agent_cli/cli@0.1.8` 已完成 npm 发布；registry 可复核
+  `npm view @agent_cli/cli@0.1.8 version`，`latest` 指向该版本。
+- 发布后的第一次包装器复核遇到 registry propagation delay；等待后直接查询确认
+  `0.1.8`、dist-tag 和完整 versions 列表均已同步。
+- 从 npm registry clean-install 后，`dev-agent --version` 输出 `0.1.8`，
+  provider-free `dev-agent --tools --json` 正常返回。
+- 这是 npm-only publication；没有创建 `v0.1.8` Git tag 或 GitHub Release，
+  `v0.1.7` 仍是最新正式 GitHub release。
 
 ## 给使用者的安装方式（已发布）
 
@@ -139,7 +150,7 @@ session: DEV_AGENT_SESSION_DIR > --project-state 项目默认 > 用户默认
 memory:  DEV_AGENT_MEMORY_FILE > 选定的 session 目录
 ```
 
-`--project-state` 已随已发布的 `@agent_cli/cli@0.1.7` 提供；它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
+`--project-state` 已随已发布的 `@agent_cli/cli@0.1.8` 提供；它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
 `~/.dev-agent/sessions/default.json`。不带该 flag 时，兼容默认仍是
 `~/.dev-agent/config.json` 和 `~/.dev-agent/sessions`。
 

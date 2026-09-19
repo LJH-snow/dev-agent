@@ -394,3 +394,10 @@ tag 或 GitHub Release。
 `v0.1.6` GitHub Release 中的 `agent_cli-cli-0.1.6.tgz` 已发布到 npm，`latest` 指向
 `@agent_cli/cli@0.1.6`。发布前核对下载 tarball 的 SHA-256 与 GitHub release asset digest；当前工作区
 `@agent_cli/cli@0.1.7` candidate 包含未发布的 doctor metadata 收紧和 Desktop managed runtime status。
+
+## 后续补充：0.1.8 npm-only 发布（2026-09-19）
+
+在维护者明确授权后，将 `@agent_cli/cli` 发布为 `@agent_cli/cli@0.1.8`。该版本包含
+可取消且有界并发的 `index refresh`，并通过 npm registry 复核、clean-install smoke、
+`dev-agent --version` 和 provider-free `--tools --json` 验证。本次只发布 npm 包，没有创建
+`v0.1.8` Git tag 或 GitHub Release；`v0.1.7` 仍是最新正式 GitHub release。

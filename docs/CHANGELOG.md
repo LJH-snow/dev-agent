@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026-09-19（index refresh cancellation and bounded processing）
+## 2026-09-19（`@agent_cli/cli@0.1.8` published release）
 
 - `index refresh` now accepts `SIGINT` cancellation, reports a stable
   metadata-only cancellation result, and preserves the previous index until
@@ -15,9 +15,11 @@
   `index refresh --json` and verifies exit code `130`, stable cancellation
   metadata, preservation of the previous index, and cleanup of the temporary
   index file.
-- This is workspace-only `@agent_cli/cli@0.1.8` candidate work after the
-  published `0.1.7` release; it is not part of the published npm tarball or
-  `v0.1.7` GitHub Release.
+- Published `@agent_cli/cli@0.1.8` to npm; registry `latest` now points to
+  `0.1.8`. A clean install reports `dev-agent 0.1.8`, and provider-free
+  `--tools --json` remains usable.
+- This npm-only publication does not create a new Git tag or GitHub Release;
+  `v0.1.7` remains the latest GitHub release.
 
 ## 2026-09-18（index compatibility and bounded input follow-ups）
 

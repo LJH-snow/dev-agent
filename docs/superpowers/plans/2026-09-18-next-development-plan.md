@@ -441,5 +441,7 @@ status contracts:
   **132/132**, Desktop **132/132**, and CLI **329/329**; Rust passed
   **48/48** library tests, **6/6** binary tests, and real integration
   **11/11**.
-- The candidate remains workspace-only and unpublished. No tag, npm publish,
-  GitHub Release, or new remote publication was performed by this slice.
+- At the implementation checkpoint this was workspace-only candidate work. After
+  explicit maintainer authorization, `@agent_cli/cli@0.1.8` was published to
+  npm and verified by registry lookup plus clean-install smoke; no new tag or
+  GitHub Release was created.
