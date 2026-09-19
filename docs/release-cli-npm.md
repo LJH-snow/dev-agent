@@ -1,6 +1,6 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-19，`@agent_cli/cli@0.1.8` 已发布到 npm，`latest` 指向该版本**。`v0.1.7` GitHub Release 仍是最新正式 release；`0.1.8` 本次仅执行 npm 发布，没有创建新的 Git tag 或 GitHub Release。后续新版本仍需维护者单独授权。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-09-19，`@agent_cli/cli@0.1.8` 已发布到 npm，`latest` 指向该版本，且正式 `v0.1.8` GitHub Release 已完成**。该 release 包含四个平台 runtime、checksum sidecar、固定 manifest 和已验证的 CLI tarball。后续新版本仍需维护者单独授权。
 
 ## 已发布版本记录（2026-09-16）
 
@@ -69,8 +69,11 @@
   `0.1.8`、dist-tag 和完整 versions 列表均已同步。
 - 从 npm registry clean-install 后，`dev-agent --version` 输出 `0.1.8`，
   provider-free `dev-agent --tools --json` 正常返回。
-- 这是 npm-only publication；没有创建 `v0.1.8` Git tag 或 GitHub Release，
-  `v0.1.7` 仍是最新正式 GitHub release。
+- tag `v0.1.8` 已创建并推送；release workflow run `35425092544` 成功完成。
+- 正式 [GitHub Release v0.1.8](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8)
+  已上传四个平台 runtime archive、四个 `.sha256` sidecar、固定
+  `dev-agent-runtime-manifest.json` 和 `agent_cli-cli-0.1.8.tgz`，并通过 tag、
+  checksum 和下载 artifact 校验。
 
 ## 给使用者的安装方式（已发布）
 

@@ -168,7 +168,10 @@ test("release docs distinguish readiness audit from formal release authorization
     /## v64：Release candidate readiness（已完成）/
   );
   assert.match(nextRoadmap, /v64 readiness audit 已完成；formal release 仍保持 gated/);
-  assert.match(readme, /The `v0\.1\.6` and `v0\.1\.7` GitHub release flows are complete/);
+  assert.match(
+    readme,
+    /The `v0\.1\.6`, `v0\.1\.7`, and `v0\.1\.8` GitHub release flows are complete/
+  );
   assert.match(
     readme,
     /Future\s+versions require a new explicit maintainer\s+release decision/
@@ -486,7 +489,7 @@ test("v0.1.7 records the post-goal-46 release preflight refresh", () => {
   assert.match(desktopCandidate, /five/i);
 });
 
-test("0.1.8 npm publication is synchronized while GitHub remains at v0.1.7", () => {
+test("0.1.8 publication is synchronized across npm, tag, and GitHub Release", () => {
   assert.equal(releaseState.publishedVersion, "0.1.8");
   assert.equal(releaseState.candidateVersion, "0.1.8");
   assert.equal(releaseState.status, "published");
@@ -496,11 +499,13 @@ test("0.1.8 npm publication is synchronized while GitHub remains at v0.1.7", () 
   assert.match(npmRelease, /npm view @agent_cli\/cli@0\.1\.7 version/);
   assert.match(npmRelease, /registry 查询确认 `0\.1\.7` 已完成发布/);
   assert.match(npmRelease, /npm view @agent_cli\/cli@0\.1\.8 version/);
-  assert.match(npmRelease, /npm-only publication|只发布 npm 包/i);
-  assert.match(npmRelease, /没有创建 `v0\.1\.8` Git tag 或 GitHub Release/);
+  assert.match(npmRelease, /tag `v0\.1\.8` 已创建并推送/);
+  assert.match(npmRelease, /release workflow run `35425092544` 成功完成/);
+  assert.match(npmRelease, /四个平台 runtime archive/);
+  assert.doesNotMatch(npmRelease, /没有创建 `v0\.1\.8` Git tag 或 GitHub Release/);
   assert.match(desktopCandidate, /Publication evidence/);
   assert.match(desktopCandidate, /35338225586/);
-  assert.match(readme, /released in 0\.1\.7/);
+  assert.match(readme, /`v0\.1\.8`[\s\S]*current GitHub release/);
 });
 
 test("Desktop diagnostic reports are ignored", () => {

@@ -443,5 +443,6 @@ status contracts:
   **11/11**.
 - At the implementation checkpoint this was workspace-only candidate work. After
   explicit maintainer authorization, `@agent_cli/cli@0.1.8` was published to
-  npm and verified by registry lookup plus clean-install smoke; no new tag or
-  GitHub Release was created.
+  npm and verified by registry lookup plus clean-install smoke. The `v0.1.8`
+  tag was then pushed, and the release workflow created the formal GitHub
+  Release with four runtime targets, checksums, manifest, and CLI tarball.

@@ -18,8 +18,9 @@
 - Published `@agent_cli/cli@0.1.8` to npm; registry `latest` now points to
   `0.1.8`. A clean install reports `dev-agent 0.1.8`, and provider-free
   `--tools --json` remains usable.
-- This npm-only publication does not create a new Git tag or GitHub Release;
-  `v0.1.7` remains the latest GitHub release.
+- Created and pushed tag `v0.1.8`; the release workflow built and verified the
+  four runtime archives, checksum sidecars, runtime manifest, and CLI tarball,
+  then created the formal [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8).
 
 ## 2026-09-18（index compatibility and bounded input follow-ups）
 

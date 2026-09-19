@@ -89,10 +89,10 @@ The package is built as a self-contained JavaScript CLI bundle and is verified b
 wrapper only publishes after that preflight succeeds. As of September 19, 2026,
 `@agent_cli/cli@0.1.8` is published to npm and is the registry `latest`; it includes
 the cancellable, bounded `index refresh` flow and its provider-free CLI lifecycle.
-The formal [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.7)
-remains the latest release carrying runtime artifacts and checksums; this npm-only
-publication does not create a `v0.1.8` tag or GitHub Release. `0.1.7` and `0.1.6`
-are earlier published versions. See [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
+The formal [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8)
+is also complete and carries the four runtime artifacts, checksums, manifest, and
+verified CLI tarball. `0.1.7` and `0.1.6` are earlier published versions. See
+[`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.
 
@@ -190,9 +190,9 @@ Supported targets:
 
 To cut a release (authorized release flow only):
 
-The `v0.1.6` and `v0.1.7` GitHub release flows are complete. Each workflow built
-all four runtime artifacts and the corresponding CLI tarball, verified checksums,
-and created the release. Future versions require a new explicit maintainer
+The `v0.1.6`, `v0.1.7`, and `v0.1.8` GitHub release flows are complete. Each
+workflow built all four runtime artifacts and the corresponding CLI tarball,
+verified checksums, and created the release. Future versions require a new explicit maintainer
 release decision.
 
 ```bash
@@ -226,14 +226,14 @@ The active post-release implementation sequence is tracked in
 [docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). As of September 19, 2026,
 all six workspace phases in that plan are implemented and verified: project initialization, managed
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
-indexes, and MCP/Desktop status management. [`v0.1.7`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.7)
-is the current GitHub release; `@agent_cli/cli@0.1.8` is the published npm
+indexes, and MCP/Desktop status management. [`v0.1.8`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8)
+is the current GitHub release and `@agent_cli/cli@0.1.8` is the published npm
 registry `latest`. No new workspace candidate has been opened yet.
 
 The [2026-09-18 overnight plan](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
 its [progress record](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
 and the [v0.1.7 Desktop candidate checklist](docs/release-candidate-checklist-v0.1.7-desktop.md)
-are the current evidence source for workspace-only release readiness.
+remain the historical evidence source for workspace-only release readiness.
 
 For the project map and decision history, use the [documentation index](docs/README.md),
 [architecture reference](docs/architecture.md), [changelog](docs/CHANGELOG.md),

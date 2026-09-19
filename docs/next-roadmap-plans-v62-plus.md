@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、MCP reconnect hardening、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；`v0.1.7` GitHub release 与 `0.1.8` npm 发布已完成。**
+**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、MCP reconnect hardening、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；`v0.1.8` GitHub release 与 npm 发布已完成。**
 
 > v60 完成了文档 source-of-truth 整理，v61 完成了 Windows restricted execution 的
 > feasibility review。v61 的结论是：继续保留 macOS `sandbox-exec`、Linux `bwrap` 和其他
@@ -20,10 +20,9 @@
 - v63 executor mode metadata 已在 executor、CLI doctor 和 Desktop `/health` 中可见，未改变
   执行权限语义。
 - v64 release-candidate audit 已完成四平台 build、archive、README、executable bit、checksum
-  与 publish boundary 验证；formal release 仍未执行。
-- `v0.1.6` and `v0.1.7` GitHub Releases 已创建并通过 artifact/checksum 验证；
+  与 publish boundary 验证；该审计当时尚未执行 formal release。
+- `v0.1.6`、`v0.1.7` 和 `v0.1.8` GitHub Releases 已创建并通过 artifact/checksum 验证；
   `@agent_cli/cli@0.1.8` CLI tarball 已发布到 npm，`latest` 已切换到 `0.1.8`。
-  本次 npm 发布没有创建新的 Git tag 或 GitHub Release。
 - 2026-09-18 的 runtime candidate 另有 `--runtime-release`：安装时显式选择承载
   runtime manifest/archive 的 GitHub release，并附带 `pnpm runtime:smoke` 隔离验证；
   该能力已随 `v0.1.7` 发布。
@@ -294,7 +293,7 @@ fallback。详细 proof gap 见
 | 3 | v64 Release candidate readiness | **已完成** | — |
 | 4 | CLI Modern TUI v1 | **已完成** | — |
 | 5 | CLI TUI v1.1 reliability | **已完成** | — |
-| 6 | Formal release v0.1.6 | **已完成** | GitHub Release + npm tarball |
+| 6 | Formal release v0.1.8 | **已完成** | GitHub Release + npm tarball |
 | 7 | v65 Desktop 产品化 UX | Preserve/deferred | 真实 Desktop UX feedback |
 | 8 | Windows backend | NO-GO | runner + primitive + live evidence + target commitment |
 
@@ -303,9 +302,9 @@ fallback。详细 proof gap 见
 上一轮 [8 小时安全无人值守并行开发计划](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md)、
 其[进度记录](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md)
 以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
-均已完成。当前 npm 包 `@agent_cli/cli@0.1.8` 已发布；`v0.1.7` 的 GitHub Release 仍是
-最新正式 GitHub release，四平台 runtime、checksum sidecar、manifest 和 CLI tarball 均已上传。
-npm registry `latest` 指向 `0.1.8`；本次 npm-only 发布没有创建新的 tag 或 GitHub Release。
+均已完成。当前 npm 包 `@agent_cli/cli@0.1.8` 已发布，正式 GitHub Release 为
+`v0.1.8`；四平台 runtime、checksum sidecar、manifest 和 CLI tarball 均已上传并验证。
+npm registry `latest` 同样指向 `0.1.8`。
 在没有新的产品决策或真实 Desktop UX trigger 时，保持当前实现和发布边界，不开始
 speculative Desktop UI，也不重新打开 Windows backend。
 

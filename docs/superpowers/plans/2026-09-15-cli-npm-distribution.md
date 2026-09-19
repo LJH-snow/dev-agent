@@ -18,7 +18,7 @@
 - `--cwd` 的优先级必须高于 `DEV_AGENT_WORKING_DIRECTORY`、`INIT_CWD` 和 `process.cwd()`；所有选定目录都必须经过存在性和目录类型校验。
 - 生产包不得依赖当前 checkout 的 `node_modules`、workspace symlink 或未发布的 `workspace:*` 依赖。
 - Rust sandbox 不是基础 npm CLI 的隐式前置条件；没有显式 runtime 时，必须清楚报告 LocalExecutor/未沙箱模式。
-- 本计划默认不执行 `npm publish`、不创建 release tag、不创建 GitHub Release；这些动作必须由维护者单独授权。本次已获得该授权并单独完成 npm 包发布，仍未创建 tag 或 GitHub Release。
+- 本计划默认不执行 `npm publish`、不创建 release tag、不创建 GitHub Release；这些动作必须由维护者单独授权。本次已获得该授权并单独完成 npm 包发布，以及后续的 `v0.1.8` GitHub Release。
 - 所有实现任务采用 TDD：先增加可复现的失败测试，再实现最小改动，最后运行局部测试和固定 release gate。
 
 ## 当前状态与问题边界
@@ -395,9 +395,10 @@ tag 或 GitHub Release。
 `@agent_cli/cli@0.1.6`。发布前核对下载 tarball 的 SHA-256 与 GitHub release asset digest；当前工作区
 `@agent_cli/cli@0.1.7` candidate 包含未发布的 doctor metadata 收紧和 Desktop managed runtime status。
 
-## 后续补充：0.1.8 npm-only 发布（2026-09-19）
+## 后续补充：0.1.8 npm 与 GitHub Release 发布（2026-09-19）
 
 在维护者明确授权后，将 `@agent_cli/cli` 发布为 `@agent_cli/cli@0.1.8`。该版本包含
 可取消且有界并发的 `index refresh`，并通过 npm registry 复核、clean-install smoke、
-`dev-agent --version` 和 provider-free `--tools --json` 验证。本次只发布 npm 包，没有创建
-`v0.1.8` Git tag 或 GitHub Release；`v0.1.7` 仍是最新正式 GitHub release。
+`dev-agent --version` 和 provider-free `--tools --json` 验证。随后创建并推送
+`v0.1.8` tag，release workflow `35425092544` 成功构建并校验四个平台 runtime、
+checksum sidecar、固定 manifest 和 CLI tarball，并创建正式 GitHub Release。
