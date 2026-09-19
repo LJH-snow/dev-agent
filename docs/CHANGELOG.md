@@ -11,6 +11,10 @@
 - Cold start, incremental reuse, delete, rename, cancellation, recovery,
   bounded concurrency, and provider-free `index refresh/status/clear`
   compatibility are covered by the CLI and package tests.
+- A real CLI subprocess regression test now sends `SIGINT` to
+  `index refresh --json` and verifies exit code `130`, stable cancellation
+  metadata, preservation of the previous index, and cleanup of the temporary
+  index file.
 - This is workspace-only `@agent_cli/cli@0.1.8` candidate work after the
   published `0.1.7` release; it is not part of the published npm tarball or
   `v0.1.7` GitHub Release.
