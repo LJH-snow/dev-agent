@@ -9,12 +9,15 @@
 **Tech Stack:** TypeScript, Node.js built-ins (`node:readline`, `node:tty`, `node:events`), ANSI escape sequences, existing `tui-mode.ts`, `tui-renderer.ts`, `colors.ts`, Node test runner, `expect` PTY tests, existing Desktop vanilla HTML/CSS.
 
 **Implementation status (September 19, 2026):** Complete. The Signal Loom brand,
-rich run-state model, bordered editor, `/` and `:` palette, live cards with
-approval diffs and local collapse/expand commands, Desktop SVG integration, and
-compatibility boundaries are implemented. Verification completed with CLI
-`356/356`, Desktop `132/132`, documentation `57/57`, real PTY sessions at
-80/100/120/160 columns, and a live Desktop HTTP check for the Signal Loom SVG
-asset.
+rich run-state model, bordered editor, blue truecolor input frame, blue-purple-
+pink ANSI gradient launch mark, `/` and `:` palette, session path footer,
+terminal-safe width handling, live cards with approval diffs and local
+collapse/expand commands, waiting-prompt queueing, per-turn composer
+separation, Desktop SVG integration, and compatibility boundaries are
+implemented. The latest verification includes CLI `380/380` tests, Desktop
+`136/136` tests, documentation `57/57`, `11/11` rich interactive tests, and
+real PTY sessions at 80/100/120/160 columns with command-palette expansion,
+interrupt handling, tool cards, and approval denial recovery.
 
 **Spec:** `docs/superpowers/specs/2026-09-19-desktop-cli-workbench-design.md`
 
@@ -329,7 +332,11 @@ Test insertion, cursor movement, newline, history, palette filtering, Tab comple
 
 - [x] **Step 2: Implement the pure reducer**
 
-Keep the editor state immutable. Enter submits only when the palette is closed and `shift` is false; Shift+Enter inserts `\n`. Up/Down navigate history when the cursor is on the first/last logical line and otherwise move within multiline content.
+Keep the editor state immutable. Enter submits when `shift` is false; an
+incomplete palette match is completed first, while an exact command match is
+submitted immediately. Shift+Enter inserts `\n`. Up/Down navigate history when
+the cursor is on the first/last logical line and otherwise move within
+multiline content.
 
 - [x] **Step 3: Implement command palette matching**
 
@@ -527,7 +534,12 @@ Expected: CLI and Desktop suites pass with zero failures and no whitespace error
 
 - [x] **Step 3: Capture rich TTY at 80, 100, 120, and 160 columns**
 
-Use an `expect` PTY fixture that starts the CLI, captures the welcome screen, opens `/` and `:`, inserts a multiline prompt, exercises history, sends `Ctrl-L`, then exits. Strip ANSI only for width assertions; retain ANSI output for visual inspection.
+Use an `expect` PTY fixture that starts the CLI, captures the welcome screen,
+opens `/` and `:`, inserts a multiline prompt, exercises history, sends
+`Ctrl-L`, submits a second prompt while the first is active, and exits. Strip
+ANSI only for width assertions; retain ANSI output for visual inspection. The
+current fixture covers launch, command-palette expansion, and interruption at
+80/100/120/160 columns.
 
 - [x] **Step 4: Capture a live tool-card scenario**
 

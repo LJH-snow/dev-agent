@@ -71,12 +71,15 @@ are accepted, and validation command fields are deliberately not configurable.
   sanitized before serialization, even when injected by a custom host.
 - `src/chat-session.ts` — builds the `AgentLoop` with the default tools and model
   provider, optionally connects configured MCP stdio servers, and bridges its
-  `onToken` / `onToolCall` / `onToolProgress` / `onToolResult` / `onValidation` /
-  `onTurn` callbacks to SSE events.
+  `onToken` / `onReasoning` / `onToolCall` / `onToolProgress` / `onToolResult` /
+  `onValidation` / `onTurn` callbacks to SSE events.
 - `public/index.html` — single-page chat UI (vanilla JS, no build step) that
   renders streaming tokens live, shows tool call/result activity, renders
-  validation cards next to reviewed-change Undo actions, and displays the
-  metadata-only runtime status panel.
+  validation cards next to reviewed-change Undo actions, displays the
+  metadata-only runtime status panel, and aggregates the live run, tool,
+  approval, validation, reasoning, completion, cancellation, and error events into a
+  metadata-safe Run timeline. The timeline resets when the active session or
+  run changes and never persists raw tool inputs, outputs, secrets, or paths.
 
 ## API
 
@@ -164,8 +167,8 @@ ID returns `400` before the approval lookup.
   The fixed export response is capped at `1 MiB`; an oversized transcript
   returns `413` without echoing the transcript, path, or raw error.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
-  frames: `token`, `tool`, `tool-progress`, `tool-result`, `turn`, `usage`,
-  `approval-request`, `approval`, `validation`, `done`, `error`. A
+  frames: `token`, `reasoning`, `tool`, `tool-progress`, `tool-result`, `turn`,
+  `usage`, `approval-request`, `approval`, `validation`, `done`, `error`. A
   `tool-progress` frame carries `{ name, progress, total? }`; for one tool call it
   appears after `tool` and before `tool-result`. An `approval-request` frame
   carries `{ id, tool, reason, input }`; in `review-writes` mode it also carries

@@ -220,3 +220,47 @@ test("default command hints use the CLI's colon commands", () => {
   assert.match(output, /exit \/ quit/);
   assert.doesNotMatch(output, /\/help/);
 });
+
+test("input footer shows the working directory and session metadata", async () => {
+  const module = await import("../dist/tui-renderer.js") as unknown as {
+    renderInputFooter?: (options: {
+      workingDirectory: string;
+      sessionId: string;
+      executor: string;
+      width: number;
+    }) => string;
+  };
+
+  assert.equal(typeof module.renderInputFooter, "function");
+  const output = module.renderInputFooter?.({
+    workingDirectory: "/workspace/project",
+    sessionId: "default",
+    executor: "local",
+    width: 64,
+  }) ?? "";
+
+  assert.match(output, /\/workspace\/project/);
+  assert.match(output, /default/);
+  assert.match(output, /local/);
+  assert.ok(displayWidth(output) <= 64);
+  assert.ok(displayWidth(output) < 64);
+});
+
+test("welcome frames leave a terminal safety column", () => {
+  const output = renderWelcome({
+    provider: "OpenAI",
+    model: "gpt-5",
+    streaming: false,
+    sessionId: "session-123",
+    workingDirectory: "/Users/example/project",
+    width: 80,
+  });
+
+  assert.ok(
+    output
+      .split("\n")
+      .every((line) => visibleLength(line) < 80),
+    "rich welcome lines must not occupy the terminal's final auto-wrap column"
+  );
+  assert.doesNotMatch(output, /SIGNAL LOOM \/\/ local coding workbench.*…/);
+});

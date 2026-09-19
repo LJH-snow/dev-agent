@@ -64,6 +64,40 @@ async function startStreamingStubProvider(options: {
   return { baseUrl, close: () => closeServer(server) };
 }
 
+async function startQueuedStreamingStubProvider(): Promise<{
+  baseUrl: string;
+  close: () => Promise<void>;
+  requests: string[];
+}> {
+  const requests: string[] = [];
+  let requestIndex = 0;
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    req.on("end", () => {
+      requests.push(body);
+      const response = requestIndex === 0 ? "FIRST_RESPONSE" : "SECOND_RESPONSE";
+      const delayMs = requestIndex === 0 ? 300 : 10;
+      requestIndex += 1;
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      setTimeout(() => {
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: response } }] })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [],
+            usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+          })}\n\n`
+        );
+        res.end("data: [DONE]\n\n");
+      }, delayMs);
+    });
+  });
+  const baseUrl = await listen(server);
+  return { baseUrl, close: () => closeServer(server), requests };
+}
+
 async function startStubProvider(): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     req.on("data", () => {});
@@ -91,6 +125,95 @@ async function startHangingProvider(): Promise<{ baseUrl: string; close: () => P
   });
   const baseUrl = await listen(server);
   return { baseUrl, close: () => closeServer(server) };
+}
+
+async function startToolApprovalProvider(target: string): Promise<{
+  baseUrl: string;
+  close: () => Promise<void>;
+  requests: string[];
+}> {
+  const requests: string[] = [];
+  let requestCount = 0;
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk.toString();
+    });
+    req.on("end", () => {
+      requests.push(body);
+      requestCount += 1;
+      const parsed = JSON.parse(body) as { stream?: boolean };
+      if (parsed.stream !== true) {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            choices: [
+              {
+                message: requestCount === 1
+                  ? {
+                      content: "",
+                      tool_calls: [
+                        {
+                          id: "rich_call_1",
+                          type: "function",
+                          function: {
+                            name: "shell",
+                            arguments: JSON.stringify({
+                              command: "chmod",
+                              args: ["777", target],
+                            }),
+                          },
+                        },
+                      ],
+                    }
+                  : { content: "approval-finished" },
+              },
+            ],
+          })
+        );
+        return;
+      }
+
+      res.writeHead(200, { "content-type": "text/event-stream" });
+      if (requestCount === 1) {
+        res.write(
+          `data: ${JSON.stringify({
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "rich_call_1",
+                      type: "function",
+                      function: {
+                        name: "shell",
+                        arguments: JSON.stringify({
+                          command: "chmod",
+                          args: ["777", target],
+                        }),
+                      },
+                    },
+                  ],
+                },
+              },
+            ],
+          })}\n\n`
+        );
+      } else {
+        res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: "approval-finished" } }] })}\n\n`);
+      }
+      res.write(
+        `data: ${JSON.stringify({
+          choices: [],
+          usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+        })}\n\n`
+      );
+      res.end("data: [DONE]\n\n");
+    });
+  });
+  const baseUrl = await listen(server);
+  return { baseUrl, close: () => closeServer(server), requests };
 }
 
 interface InteractiveOptions {
@@ -139,6 +262,110 @@ function launchRichCtrlC({ provider, memoryFile, openAiBaseUrl }: InteractiveOpt
     set childPid [exec pgrep -P [pid] -f {dist/index.js}]
     exec kill -INT $childPid
     expect "(interrupted)"
+    expect eof
+  `;
+  return spawn("expect", ["-c", expectScript], {
+    env: {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: provider,
+      ...(openAiBaseUrl
+        ? { OPENAI_API_KEY: "test-key", OPENAI_BASE_URL: openAiBaseUrl }
+        : {}),
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+function launchRichBusyComposer({ provider, memoryFile, openAiBaseUrl }: InteractiveOptions): ChildProcess {
+  const expectScript = `
+    log_user 1
+    spawn {${process.execPath}} {${cliPath}}
+    expect "SIGNAL LOOM"
+    expect "default · local"
+    send "busy-prompt\\r"
+    expect -re {Thinking…(.|\\n)*╭}
+    set childPid [exec pgrep -P [pid] -f {dist/index.js}]
+    exec kill -INT $childPid
+    expect "(interrupted)"
+    expect eof
+  `;
+  return spawn("expect", ["-c", expectScript], {
+    env: {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: provider,
+      ...(openAiBaseUrl
+        ? { OPENAI_API_KEY: "test-key", OPENAI_BASE_URL: openAiBaseUrl }
+        : {}),
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+function launchRichIdleCancel(
+  { provider, memoryFile, openAiBaseUrl }: InteractiveOptions,
+  keySequence: "\\003" | "\\033" | "^C"
+): ChildProcess {
+  const expectScript = `
+    log_user 1
+    spawn {${process.execPath}} {${cliPath}}
+    expect "SIGNAL LOOM"
+    expect "╭"
+    send "${keySequence}"
+    expect "(interrupted)"
+    expect eof
+  `;
+  return spawn("expect", ["-c", expectScript], {
+    env: {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: provider,
+      ...(openAiBaseUrl
+        ? { OPENAI_API_KEY: "test-key", OPENAI_BASE_URL: openAiBaseUrl }
+        : {}),
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+function launchRichWidthScenario(width: number, memoryFile: string): ChildProcess {
+  const expectScript = `
+    log_user 1
+    spawn {${process.execPath}} {${cliPath}}
+    stty rows 36 columns ${width}
+    expect "SIGNAL LOOM"
+    send "/h"
+    expect "├"
+    send "\\r\\r"
+    expect "COMMANDS // DECK"
+    send "\\003"
+    expect "(interrupted)"
+    expect eof
+  `;
+  return spawn("expect", ["-c", expectScript], {
+    env: {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "ollama",
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+    },
+    stdio: ["pipe", "pipe", "pipe"],
+  });
+}
+
+function launchRichApprovalScenario(
+  { provider, memoryFile, openAiBaseUrl }: InteractiveOptions
+): ChildProcess {
+  const expectScript = `
+    log_user 1
+    spawn {${process.execPath}} {${cliPath}} {--approval} {ask}
+    expect "SIGNAL LOOM"
+    send "run tool\\r"
+    expect "TOOL / RUNNING"
+    expect "Run shell anyway?"
+    send "n\\n"
+    expect "approval-finished"
+    send "exit\\r"
     expect eof
   `;
   return spawn("expect", ["-c", expectScript], {
@@ -411,5 +638,171 @@ test(
     assert.match(stdout, /\u001b\[1A\u001b\[2K\r/, "Ctrl-C should clear Thinking");
   });
   await provider.close();
+  }
+);
+
+test(
+  "rich TTY shows a fresh composer while a run is in flight",
+  { skip: !expectAvailable ? "expect is unavailable" : false },
+  async () => {
+    const provider = await startHangingProvider();
+    await withTempDir(async (dir) => {
+      const child = launchRichBusyComposer({
+        provider: "openai",
+        openAiBaseUrl: provider.baseUrl,
+        memoryFile: join(dir, "session.json"),
+      });
+      let stdout = "";
+      child.stdout?.on("data", (chunk) => {
+        stdout += chunk.toString();
+      });
+      try {
+        const result = await waitForExit(child, 5000);
+        assert.equal(result.code, 0, stdout);
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+      }
+      assert.match(stdout, /Thinking…/, "the in-flight state should be visible");
+      assert.match(stdout, /busy-prompt/, "the submitted prompt should remain visible");
+    });
+    await provider.close();
+  }
+);
+
+test(
+  "rich TTY queues prompts submitted during an active run and sends them in order",
+  { skip: !expectAvailable ? "expect is unavailable" : false },
+  async () => {
+    const provider = await startQueuedStreamingStubProvider();
+    await withTempDir(async (dir) => {
+      const expectScript = `
+        log_user 1
+        spawn {${process.execPath}} {${cliPath}}
+        expect "SIGNAL LOOM"
+        expect "default · local"
+        send "first-prompt\\r"
+        expect "Thinking…"
+        send "second-prompt\\r"
+        expect "FIRST_RESPONSE"
+        expect "SECOND_RESPONSE"
+        expect "\\[state=done turns=2\\]"
+        send "exit\\r"
+        expect eof
+      `;
+      const child = spawn("expect", ["-c", expectScript], {
+        env: {
+          ...process.env,
+          DEV_AGENT_MODEL_PROVIDER: "openai",
+          OPENAI_API_KEY: "test-key",
+          OPENAI_BASE_URL: provider.baseUrl,
+          DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      child.stdout?.on("data", (chunk) => {
+        stdout += chunk.toString();
+      });
+      try {
+        const result = await waitForExit(child, 7000);
+        assert.equal(result.code, 0, stdout);
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+      }
+      assert.equal(provider.requests.length, 2, "the queued prompt should create exactly one later request");
+      assert.match(provider.requests[0] ?? "", /first-prompt/);
+      assert.match(provider.requests[1] ?? "", /second-prompt/);
+      assert.equal(stdout.match(/FIRST_RESPONSE/g)?.length ?? 0, 1);
+      assert.equal(stdout.match(/SECOND_RESPONSE/g)?.length ?? 0, 1);
+    });
+    await provider.close();
+  }
+);
+
+test(
+  "rich TTY exits an idle prompt for Ctrl-C, Escape, and visible ^C",
+  { skip: !expectAvailable ? "expect is unavailable" : false },
+  async () => {
+    for (const keySequence of ["\\003", "\\033", "^C"] as const) {
+      await withTempDir(async (dir) => {
+        const child = launchRichIdleCancel(
+          { provider: "ollama", memoryFile: join(dir, "session.json") },
+          keySequence
+        );
+        let stdout = "";
+        child.stdout?.on("data", (chunk) => {
+          stdout += chunk.toString();
+        });
+        try {
+          const result = await waitForExit(child, 3000);
+          assert.equal(result.code, 0, stdout);
+          assert.match(stdout, /\(interrupted\)/, keySequence);
+        } finally {
+          if (child.exitCode === null && child.signalCode === null) {
+            child.kill("SIGKILL");
+          }
+        }
+      });
+    }
+  }
+);
+
+test(
+  "rich TTY keeps the launch and command palette stable at canonical widths",
+  { skip: !expectAvailable ? "expect is unavailable" : false },
+  async () => {
+    for (const width of [80, 100, 120, 160]) {
+      await withTempDir(async (dir) => {
+        const child = launchRichWidthScenario(width, join(dir, "session.json"));
+        let stdout = "";
+        child.stdout?.on("data", (chunk) => {
+          stdout += chunk.toString();
+        });
+        try {
+          const result = await waitForExit(child, 5000);
+          assert.equal(result.code, 0, `width=${width}\n${stdout}`);
+        } finally {
+          if (child.exitCode === null && child.signalCode === null) {
+            child.kill("SIGKILL");
+          }
+        }
+        assert.match(stdout, /SIGNAL LOOM/, `width=${width}`);
+        assert.match(stdout, /COMMANDS \/\/ DECK/, `width=${width}`);
+      });
+    }
+  }
+);
+
+test(
+  "rich TTY renders a tool card and resumes after approval denial",
+  { skip: !expectAvailable ? "expect is unavailable" : false },
+  async () => {
+    await withTempDir(async (dir) => {
+      const provider = await startToolApprovalProvider(join(dir, "target.txt"));
+      const child = launchRichApprovalScenario({
+        provider: "openai",
+        openAiBaseUrl: provider.baseUrl,
+        memoryFile: join(dir, "session.json"),
+      });
+      let stdout = "";
+      child.stdout?.on("data", (chunk) => {
+        stdout += chunk.toString();
+      });
+      try {
+        const result = await waitForExit(child, 7000);
+        assert.equal(result.code, 0, stdout);
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) {
+          child.kill("SIGKILL");
+        }
+        await provider.close();
+      }
+      assert.match(stdout, /TOOL \/ RUNNING/);
+      assert.match(stdout, /approval-finished/);
+    });
   }
 );

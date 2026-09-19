@@ -43,6 +43,7 @@ export interface AgentLoopOptions {
   readonly budget?: AgentLoopBudget;
   readonly onTurn?: (turn: number, context: AgentContext) => void;
   readonly onToken?: (token: string, context: AgentContext) => void;
+  readonly onReasoning?: (token: string, context: AgentContext) => void;
   readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
   readonly onToolProgress?: (
     progress: { name: string; progress: number; total?: number },
@@ -132,6 +133,7 @@ export class AgentLoop {
   private readonly budget?: AgentLoopBudget;
   private readonly onTurn?: (turn: number, context: AgentContext) => void;
   private readonly onToken?: (token: string, context: AgentContext) => void;
+  private readonly onReasoning?: (token: string, context: AgentContext) => void;
   private readonly onToolCall?: (call: { name: string; input: unknown }, context: AgentContext) => void;
   private readonly onToolProgress?: (
     progress: { name: string; progress: number; total?: number },
@@ -176,6 +178,7 @@ export class AgentLoop {
       : Math.max(configuredMaxTurns, Math.ceil(this.budget.maxTurns) + 1);
     this.onTurn = options.onTurn;
     this.onToken = options.onToken;
+    this.onReasoning = options.onReasoning;
     this.onToolCall = options.onToolCall;
     this.onToolProgress = options.onToolProgress;
     this.onToolResult = options.onToolResult;
@@ -226,7 +229,11 @@ export class AgentLoop {
           signal: options.signal,
         };
         const completion = this.model.streamChat && this.onToken
-          ? await this.model.streamChat(messages, { ...chatOptions, onToken: (token) => this.onToken?.(token, context) })
+          ? await this.model.streamChat(messages, {
+              ...chatOptions,
+              onToken: (token) => this.onToken?.(token, context),
+              onReasoning: (token) => this.onReasoning?.(token, context),
+            })
           : await this.model.chat(messages, chatOptions);
         if (completion.usage) {
           await this.recordUsage(runState, completion.usage);

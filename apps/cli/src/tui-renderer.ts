@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+
 import { colorize } from "./colors.js";
 import { renderSignalLoomMark, renderSignalLoomWordmark } from "./tui-brand.js";
 import type { ToolCard, TuiRunState } from "./tui-session.js";
@@ -31,6 +33,13 @@ export interface CommandHintsOptions {
   width?: number;
 }
 
+export interface InputFooterOptions {
+  workingDirectory: string;
+  sessionId?: string;
+  executor?: string;
+  width?: number;
+}
+
 export interface BlockOptions {
   width?: number;
 }
@@ -52,8 +61,9 @@ export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
 ];
 
 function normalizeWidth(width?: number): number {
-  if (width === undefined || !Number.isFinite(width)) return DEFAULT_WIDTH;
-  return Math.max(1, Math.floor(width));
+  const terminalWidth =
+    width === undefined || !Number.isFinite(width) ? DEFAULT_WIDTH : Math.floor(width);
+  return Math.max(1, terminalWidth - 1);
 }
 
 function stripAnsi(value: string): string {
@@ -331,6 +341,30 @@ export function renderSignalDivider(
   return colorize(fitLine(`${prefix}${"═".repeat(fillWidth)}╡`, width), "dim");
 }
 
+function shortenWorkingDirectory(value: string): string {
+  const clean = redactSensitiveText(sanitizeTerminalText(value)).replace(/\/+$/, "") || "/";
+  const home = homedir().replace(/\/+$/, "");
+  if (clean === home) return "~";
+  if (clean.startsWith(`${home}/`)) return `~/${clean.slice(home.length + 1)}`;
+  return clean;
+}
+
+export function renderInputFooter({
+  workingDirectory,
+  sessionId = "default",
+  executor = "local",
+  width: requestedWidth,
+}: InputFooterOptions): string {
+  const width = normalizeWidth(requestedWidth);
+  const left = `  ${shortenWorkingDirectory(workingDirectory)}`;
+  const right = `${redactSensitiveText(sanitizeTerminalText(sessionId))} · ${redactSensitiveText(
+    sanitizeTerminalText(executor)
+  )}`;
+  const gap = width - visibleLength(left) - visibleLength(right);
+  const line = gap >= 1 ? `${left}${" ".repeat(gap)}${right}` : `${left} ${right}`;
+  return colorize(fitLine(line, width), "dim");
+}
+
 export function renderWelcome({
   provider,
   model,
@@ -343,7 +377,7 @@ export function renderWelcome({
   width: requestedWidth,
 }: WelcomeOptions): string {
   const width = normalizeWidth(requestedWidth);
-  const contentWidth = Math.max(1, width - 2);
+  const contentWidth = Math.max(1, width - 4);
   const state = runState ?? (streaming ? "streaming" : "ready");
   const stateLabel = formatRunState(state);
   const fields = [
@@ -366,7 +400,7 @@ export function renderWelcome({
     fitLine("  Ctrl+L clears the terminal view", contentWidth),
   ];
 
-  const markWidth = Math.min(width, 16);
+  const markWidth = Math.min(width, 64);
   return [
     renderSignalLoomMark({ width: markWidth, color: process.env.NO_COLOR === undefined }),
     renderSignalLoomWordmark({ width, color: process.env.NO_COLOR === undefined }),

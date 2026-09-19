@@ -1,3 +1,4 @@
+import { colorizeRgb, type RgbColor } from "./colors.js";
 import { DEFAULT_COMMAND_HINTS, type CommandHint } from "./tui-renderer.js";
 import { displayWidth, fitDisplayLine } from "./tui-width.js";
 
@@ -26,6 +27,67 @@ export interface InputEditorState {
 }
 
 const EMPTY_PALETTE: PaletteState = { open: false, matches: [], selected: 0 };
+const INPUT_PREFIX_WIDTH = 4;
+const DEFAULT_INPUT_BORDER_COLOR: RgbColor = { r: 104, g: 169, b: 255 };
+const QUEUED_INPUT_BORDER_COLOR: RgbColor = { r: 93, g: 108, b: 132 };
+
+function normalizeInputWidth(width: number): number {
+  return Math.max(12, Math.floor(width) - 1);
+}
+
+function inputContentWidth(safeWidth: number): number {
+  return Math.max(1, safeWidth - INPUT_PREFIX_WIDTH - 2);
+}
+
+function wrapInputLines(value: string, contentWidth: number): string[] {
+  return value.split("\n").flatMap((line) => {
+    if (displayWidth(line) <= contentWidth) return [line];
+    const output: string[] = [];
+    let remaining = line;
+    while (displayWidth(remaining) > contentWidth) {
+      let cut = 0;
+      let currentWidth = 0;
+      for (const character of remaining) {
+        const characterWidth = displayWidth(character);
+        if (currentWidth + characterWidth > contentWidth) break;
+        currentWidth += characterWidth;
+        cut += character.length;
+      }
+      output.push(remaining.slice(0, cut));
+      remaining = remaining.slice(cut);
+    }
+    output.push(remaining);
+    return output;
+  });
+}
+
+function inputCursorPosition(
+  value: string,
+  cursor: number,
+  contentWidth: number
+): { row: number; column: number } {
+  let row = 0;
+  let column = 0;
+  for (let index = 0; index < cursor; ) {
+    const codePoint = value.codePointAt(index);
+    if (codePoint === undefined) break;
+    const character = String.fromCodePoint(codePoint);
+    if (character === "\n") {
+      row += 1;
+      column = 0;
+      index += 1;
+      continue;
+    }
+    const characterWidth = displayWidth(character);
+    if (column > 0 && column + characterWidth > contentWidth) {
+      row += 1;
+      column = 0;
+    }
+    column += characterWidth;
+    index += character.length;
+  }
+  return { row, column };
+}
 
 export function createInputEditorState(history: readonly string[] = []): InputEditorState {
   return {
@@ -145,42 +207,56 @@ export function reduceInputKey(
   return state;
 }
 
-export function renderInputEditor(state: InputEditorState, width: number): string[] {
-  const safeWidth = Math.max(20, Math.floor(width));
-  const contentWidth = safeWidth - 4;
-  const lines = state.value.split("\n").flatMap((line) => {
-    if (displayWidth(line) <= contentWidth) return [line];
-    const output: string[] = [];
-    let remaining = line;
-    while (displayWidth(remaining) > contentWidth) {
-      let cut = 0;
-      let currentWidth = 0;
-      for (const character of remaining) {
-        const characterWidth = displayWidth(character);
-        if (currentWidth + characterWidth > contentWidth) break;
-        currentWidth += characterWidth;
-        cut += character.length;
-      }
-      output.push(remaining.slice(0, cut));
-      remaining = remaining.slice(cut);
-    }
-    output.push(remaining);
-    return output;
-  });
+export interface InputEditorRenderOptions {
+  readonly borderColor?: RgbColor;
+}
+
+export function renderInputEditor(
+  state: InputEditorState,
+  width: number,
+  options: InputEditorRenderOptions = {}
+): string[] {
+  const safeWidth = normalizeInputWidth(width);
+  const contentWidth = inputContentWidth(safeWidth);
+  const innerWidth = safeWidth - 2;
+  const borderColor = options.borderColor ?? DEFAULT_INPUT_BORDER_COLOR;
+  const border = (value: string): string => colorizeRgb(value, borderColor);
+  const lines = wrapInputLines(state.value, contentWidth);
   const visibleLines = lines.length > 0 ? lines : [""];
   const rendered = [
-    `╭${"─".repeat(safeWidth - 2)}╮`,
-    ...visibleLines.map((line, index) => fitDisplayLine(`│ ${index === 0 ? "› " : "  "}${line}`, safeWidth - 1) + "│"),
+    border(`╭${"─".repeat(safeWidth - 2)}╮`),
+    ...visibleLines.map((line, index) => {
+      const prefix = index === 0 ? " › " : "   ";
+      return `${border("│")}${fitDisplayLine(`${prefix}${line}`, innerWidth)}${border("│")}`;
+    }),
   ];
   if (state.palette.open && state.palette.matches.length > 0) {
-    rendered.push(`├${"─".repeat(safeWidth - 2)}┤`);
+    rendered.push(border(`├${"─".repeat(safeWidth - 2)}┤`));
     for (const [index, command] of state.palette.matches.slice(0, 5).entries()) {
       const marker = index === state.palette.selected ? "›" : " ";
-      rendered.push(fitDisplayLine(`│ ${marker} ${command.command}  ${command.description ?? ""}`, safeWidth - 1) + "│");
+      rendered.push(
+        `${border("│")}${fitDisplayLine(` ${marker} ${command.command}  ${command.description ?? ""}`, innerWidth)}${border("│")}`
+      );
     }
   }
-  rendered.push(`╰${"─".repeat(safeWidth - 2)}╯`);
+  rendered.push(border(`╰${"─".repeat(safeWidth - 2)}╯`));
   return rendered;
+}
+
+function renderStaticInputEditor(
+  value: string,
+  width: number,
+  borderColor: RgbColor
+): string[] {
+  return renderInputEditor(
+    {
+      ...createInputEditorState(),
+      value,
+      cursor: value.length,
+    },
+    width,
+    { borderColor }
+  );
 }
 
 export interface RichInputControllerOptions {
@@ -197,17 +273,34 @@ export interface RichInputControllerOptions {
   readonly width: () => number;
   readonly history?: readonly string[];
   readonly commands: readonly CommandHint[];
+  readonly footer?: (width: number) => string;
+  readonly borderColor?: RgbColor;
 }
 
 export class RichInputController {
   private state: InputEditorState;
   private rawModeEnabled = false;
   private renderedLineCount = 0;
+  private cursorSaved = false;
+  private promptHidden = false;
+  private inputSuspended = false;
+  private submittedBlockLineCount = 0;
+  private queuedPrompts: readonly string[] = [];
   private waiting:
     | { resolve: (value: string | null) => void; reject: (error: Error) => void }
     | undefined;
   private readonly onData = (chunk: Buffer | string): void => {
     for (const key of parseInputKeys(chunk.toString())) {
+      if (!this.waiting) break;
+      if (
+        key.type === "text" &&
+        (key.value === "C" || key.value === "c") &&
+        this.state.value === "^" &&
+        this.state.cursor === 1
+      ) {
+        this.handleKey({ type: "ctrl-c" });
+        continue;
+      }
       this.handleKey(key);
     }
   };
@@ -224,45 +317,127 @@ export class RichInputController {
 
   async read(): Promise<string | null> {
     if (this.waiting) throw new Error("rich input editor already has a pending read");
-    this.options.input.resume?.();
-    this.options.input.on("data", this.onData);
-    this.options.input.once("end", this.onEnd);
-    this.options.output.on?.("resize", this.onResize);
-    this.setRawMode(true);
     const result = new Promise<string | null>((resolve, reject) => {
       this.waiting = { resolve, reject };
     });
+    this.options.input.on("data", this.onData);
+    this.options.input.once("end", this.onEnd);
+    this.options.output.on?.("resize", this.onResize);
+    this.inputSuspended = false;
+    this.setRawMode(true);
+    this.options.input.resume?.();
     this.redraw();
     return await result;
   }
 
-  close(): void {
-    this.options.input.off("data", this.onData);
-    this.options.input.off("end", this.onEnd);
-    this.options.output.off?.("resize", this.onResize);
+  /** Repaint the current editor without starting another stdin read. */
+  renderPendingPrompt(): void {
+    this.promptHidden = false;
+    this.redraw();
+  }
+
+  hidePendingPrompt(): void {
+    this.promptHidden = true;
+    this.clearRendered();
+  }
+
+  isPendingPromptVisible(): boolean {
+    return !this.promptHidden && this.renderedLineCount > 0;
+  }
+
+  setQueuedPrompts(prompts: readonly string[]): void {
+    this.queuedPrompts = [...prompts];
+    this.redraw();
+  }
+
+  renderQueuedPrompt(value: string): void {
+    this.hidePendingPrompt();
+    const width = this.options.width();
+    const lines = renderStaticInputEditor(value, width, QUEUED_INPUT_BORDER_COLOR);
+    this.options.output.write(`${lines.join("\n")}\n`);
+    this.renderPendingPrompt();
+  }
+
+  discardSubmittedPrompt(): void {
+    if (this.submittedBlockLineCount === 0) return;
+    this.options.output.write(clearRenderedBlock(this.submittedBlockLineCount));
+    this.submittedBlockLineCount = 0;
+  }
+
+  suspend(): void {
+    if (!this.waiting || this.inputSuspended) return;
+    this.inputSuspended = true;
+    this.hidePendingPrompt();
+    this.detachInput();
     this.setRawMode(false);
     this.options.input.pause?.();
+  }
+
+  resume(): void {
+    if (!this.waiting || !this.inputSuspended) return;
+    this.inputSuspended = false;
+    this.options.input.on("data", this.onData);
+    this.options.input.once("end", this.onEnd);
+    this.options.output.on?.("resize", this.onResize);
+    this.setRawMode(true);
+    this.options.input.resume?.();
+    this.renderPendingPrompt();
+  }
+
+  close(): void {
+    this.inputSuspended = false;
+    this.submittedBlockLineCount = 0;
+    this.detachInput();
+    this.setRawMode(false);
+    this.options.input.pause?.();
+    this.clearRendered();
     this.resolveRead(null);
   }
 
+  private detachInput(): void {
+    this.options.input.off("data", this.onData);
+    this.options.input.off("end", this.onEnd);
+    this.options.output.off?.("resize", this.onResize);
+  }
+
   redraw(): void {
+    if (this.promptHidden) return;
     if (this.renderedLineCount > 0) {
+      this.restoreRenderedCursor();
       this.options.output.write(clearRenderedBlock(this.renderedLineCount));
     }
-    const lines = renderInputEditor(this.state, this.options.width());
-    this.options.output.write(`${lines.join("\n")}\n`);
-    this.renderedLineCount = lines.length;
+    const width = this.options.width();
+    const queuedLines = this.queuedPrompts.flatMap((prompt) =>
+      renderStaticInputEditor(prompt, width, QUEUED_INPUT_BORDER_COLOR)
+    );
+    const lines = renderInputEditor(this.state, width, {
+      borderColor: this.options.borderColor,
+    });
+    const footer = this.options.footer?.(width);
+    const renderedLines = footer === undefined
+      ? [...queuedLines, ...lines]
+      : [...queuedLines, ...lines, footer];
+    this.options.output.write(`${renderedLines.join("\n")}\n`);
+    this.renderedLineCount = renderedLines.length;
+    this.options.output.write(
+      `\u001b7${this.cursorMovementToEditor(renderedLines.length, width, queuedLines.length)}`
+    );
+    this.cursorSaved = true;
   }
 
   private handleKey(key: InputKey): void {
     if (key.type === "ctrl-c") {
-      this.clearRendered();
-      this.resolveRead(null);
+      this.cancelRead();
+      return;
+    }
+    if (key.type === "escape" && !this.state.palette.open) {
+      this.cancelRead();
       return;
     }
     if (key.type === "ctrl-l") {
       this.options.output.write("\u001b[2J\u001b[H");
       this.renderedLineCount = 0;
+      this.cursorSaved = false;
       this.redraw();
       return;
     }
@@ -273,10 +448,10 @@ export class RichInputController {
         ? this.state.history
         : [...this.state.history, value];
       this.state = createInputEditorState(history);
+      this.restoreRenderedCursor();
+      this.submittedBlockLineCount = this.renderedLineCount;
       this.renderedLineCount = 0;
-      this.options.input.off("data", this.onData);
-      this.options.input.off("end", this.onEnd);
-      this.options.output.off?.("resize", this.onResize);
+      this.detachInput();
       this.setRawMode(false);
       this.options.input.pause?.();
       this.resolveRead(value);
@@ -285,10 +460,43 @@ export class RichInputController {
     this.redraw();
   }
 
+  private cancelRead(): void {
+    this.detachInput();
+    this.setRawMode(false);
+    this.options.input.pause?.();
+    this.clearRendered();
+    this.resolveRead(null);
+  }
+
   private clearRendered(): void {
     if (this.renderedLineCount === 0) return;
+    this.restoreRenderedCursor();
     this.options.output.write(clearRenderedBlock(this.renderedLineCount));
     this.renderedLineCount = 0;
+  }
+
+  private restoreRenderedCursor(): void {
+    if (!this.cursorSaved) return;
+    this.options.output.write("\u001b8");
+    this.cursorSaved = false;
+  }
+
+  private cursorMovementToEditor(
+    renderedLineCount: number,
+    width: number,
+    editorOffset = 0
+  ): string {
+    const safeWidth = normalizeInputWidth(width);
+    const position = inputCursorPosition(
+      this.state.value,
+      this.state.cursor,
+      inputContentWidth(safeWidth)
+    );
+    const rowsUp = Math.max(0, renderedLineCount - 1 - editorOffset - position.row);
+    const horizontal = INPUT_PREFIX_WIDTH + position.column;
+    return `${rowsUp > 0 ? `\u001b[${rowsUp}A` : ""}\r${
+      horizontal > 0 ? `\u001b[${horizontal}C` : ""
+    }`;
   }
 
   private resolveRead(value: string | null): void {
@@ -303,6 +511,83 @@ export class RichInputController {
     this.rawModeEnabled = enabled;
     this.options.input.setRawMode?.(enabled);
   }
+}
+
+export class RichPromptQueue {
+  private readonly queued: string[] = [];
+  private waiter:
+    | ((value: RichPromptQueueItem | null) => void)
+    | undefined;
+  private started = false;
+  private closed = false;
+  private pumpPromise: Promise<void> | undefined;
+
+  constructor(private readonly input: RichInputController) {}
+
+  start(): void {
+    if (this.started) return;
+    this.started = true;
+    this.pumpPromise = this.pump();
+  }
+
+  next(): Promise<RichPromptQueueItem | null> {
+    const queued = this.queued.shift();
+    if (queued !== undefined) {
+      this.input.setQueuedPrompts(this.queued);
+      return Promise.resolve({ value: queued, queued: true });
+    }
+    if (this.closed) {
+      return Promise.resolve(null);
+    }
+    return new Promise<RichPromptQueueItem | null>((resolve) => {
+      this.waiter = resolve;
+    });
+  }
+
+  async close(): Promise<void> {
+    if (!this.closed) {
+      this.closed = true;
+      this.input.close();
+      this.resolveWaiter(null);
+    }
+    await this.pumpPromise;
+  }
+
+  private async pump(): Promise<void> {
+    try {
+      while (!this.closed) {
+        const value = await this.input.read();
+        if (value === null) {
+          this.closed = true;
+          this.resolveWaiter(null);
+          return;
+        }
+        const waiter = this.waiter;
+        if (waiter) {
+          this.waiter = undefined;
+          waiter({ value, queued: false });
+        } else {
+          this.input.discardSubmittedPrompt();
+          this.queued.push(value);
+          this.input.setQueuedPrompts(this.queued);
+        }
+      }
+    } finally {
+      this.closed = true;
+      this.resolveWaiter(null);
+    }
+  }
+
+  private resolveWaiter(value: RichPromptQueueItem | null): void {
+    const waiter = this.waiter;
+    this.waiter = undefined;
+    waiter?.(value);
+  }
+}
+
+export interface RichPromptQueueItem {
+  readonly value: string;
+  readonly queued: boolean;
 }
 
 function parseInputKeys(value: string): InputKey[] {

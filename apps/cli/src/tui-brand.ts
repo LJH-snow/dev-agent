@@ -1,11 +1,18 @@
-import { colorize } from "./colors.js";
+import { colorize, colorizeGradient } from "./colors.js";
 import { displayWidth, truncateToDisplayWidth } from "./tui-width.js";
 
 export interface SignalLoomMarkOptions {
   width?: number;
   color?: boolean;
   compact?: boolean;
+  gradient?: boolean;
 }
+
+const SIGNAL_LOOM_GRADIENT = [
+  { r: 75, g: 158, b: 255 },
+  { r: 137, g: 119, b: 216 },
+  { r: 218, g: 101, b: 146 },
+] as const;
 
 function fit(value: string, width: number): string {
   return truncateToDisplayWidth(value, Math.max(1, Math.floor(width)));
@@ -19,17 +26,40 @@ function paint(value: string, color: "teal" | "amber" | "bold", enabled: boolean
 export function renderSignalLoomMark(options: SignalLoomMarkOptions = {}): string {
   const width = Math.max(1, Math.floor(options.width ?? 16));
   const useColor = options.color !== false;
-  const compact = options.compact === true || width < 12;
+  const compact = options.compact === true || width < 20;
+  const medium = !compact && width < 52;
   const lines = compact
     ? ["╭─╮", "╰<>╯", "╰─╯"]
-    : ["  ╲╱  ╲╱", "╭─╾<>╼─╮", "  ╱╲  ╱╲"];
+    : medium
+      ? [
+          "   ╲╲      ╱╱",
+          "╭──╾<>╼──╮",
+          "│ SIGNAL │",
+          "╰──╼<>╾──╯",
+          "   ╱╱      ╲╲",
+        ]
+      : [
+          "            ╲╲                    ╱╱",
+          "             ╲╲                  ╱╱",
+          "╭──────────────────────╾<>╼──────────────────────╮",
+          "│                  SIGNAL LOOM                   │",
+          "╰──────────────────────╼<>╾──────────────────────╯",
+          "             ╱╱                  ╲╲",
+          "            ╱╱                    ╲╲",
+        ];
 
-  return lines
+  const fitted = lines
     .map((line, index) => {
-      const color = index === 1 ? "amber" : "teal";
+      const color = index === 1 || index === 2 || index === 4 ? "amber" : "teal";
       return paint(fit(line, width), color, useColor);
     })
     .join("\n");
+
+  if (!useColor || options.gradient === false) return fitted;
+  return colorizeGradient(
+    lines.map((line) => fit(line, width)).join("\n"),
+    SIGNAL_LOOM_GRADIENT
+  );
 }
 
 export function renderSignalLoomWordmark(options: {

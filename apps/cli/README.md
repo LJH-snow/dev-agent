@@ -260,8 +260,10 @@ Rich interactive commands accept either `/` or `:` prefixes:
 `/cards`/`:cards`, `/collapse`/`:collapse`, `/expand`/`:expand`, and
 `/quit`/`:quit`;
 `exit` and `quit` remain accepted aliases. Tab completes a command, Shift+Enter
-inserts a newline, Escape dismisses the palette, Ctrl-L redraws the rich
-surface, and Ctrl-C cancels the request in flight or exits an idle session.
+inserts a newline, Escape dismisses the palette or exits an idle session when the
+palette is closed, Ctrl-L redraws the rich surface, and Ctrl-C cancels the
+request in flight or exits an idle session. Terminals that render Ctrl-C as
+visible `^C` are handled as cancellation input as well.
 `:cards` prints the latest live card, while `:collapse` and `:expand` append a
 compact folded or expanded view of the latest card without changing the
 underlying session state.
@@ -276,6 +278,13 @@ retention summary; it never executes a command or touches workspace files.
 `Ctrl-C` cancels the request that is in flight (through the same abort path the
 desktop uses) and exits with status `130`; it also exits immediately when the CLI
 is idle at the prompt.
+
+When a request is still running, a prompt submitted with Enter is retained in
+the session's waiting queue. It is displayed as a passive message block rather
+than another active editor, and the next model request starts only after the
+current response has completed. The active blue editor and its
+working-directory footer remain at the bottom, while each streamed answer stays
+attached to its own submitted prompt.
 
 For a deterministic plain-text transcript with no terminal control sequences, use
 a pipe, `--once`, or `--json`. Human-readable model/tool text is sanitized before it

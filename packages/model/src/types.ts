@@ -49,6 +49,12 @@ export interface ChatOptions {
   readonly stream?: boolean;
 }
 
+export interface ChatStreamOptions extends ChatOptions {
+  readonly onToken?: (token: string) => void;
+  /** Provider-emitted reasoning/thinking deltas, when available. */
+  readonly onReasoning?: (token: string) => void;
+}
+
 export interface ProviderConfig {
   readonly model: string;
   readonly apiKey?: string;
@@ -64,6 +70,6 @@ export interface ModelProvider {
   chat(messages: readonly ChatMessage[], options?: ChatOptions): Promise<ChatCompletion>;
   streamChat?(
     messages: readonly ChatMessage[],
-    options?: ChatOptions & { onToken?: (token: string) => void }
+    options?: ChatStreamOptions
   ): Promise<ChatCompletion>;
 }

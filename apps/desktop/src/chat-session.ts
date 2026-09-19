@@ -56,6 +56,7 @@ import {
 export interface StreamEvent {
   readonly type:
     | "token"
+    | "reasoning"
     | "tool"
     | "tool-progress"
     | "tool-result"
@@ -215,6 +216,7 @@ export class ChatSession {
         emit({ type: "turn", data: { turn } });
       },
       onToken: (token) => emit({ type: "token", data: { token } }),
+      onReasoning: (token) => emit({ type: "reasoning", data: { reasoning: token } }),
       onToolCall: (call) => emit({ type: "tool", data: { name: call.name, input: call.input } }),
       onToolProgress: (progress) =>
         emit({

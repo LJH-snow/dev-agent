@@ -57,7 +57,7 @@ import {
 import { colors, colorize } from "./colors.js";
 import { shouldUseRichUi } from "./tui-mode.js";
 import { LiveAssistantRenderer } from "./tui-stream.js";
-import { RichInputController } from "./tui-input.js";
+import { RichInputController, RichPromptQueue } from "./tui-input.js";
 import {
   TuiSessionModel,
   type TuiRunState,
@@ -69,6 +69,7 @@ import {
   renderApprovalMessage,
   renderAssistantMessage,
   renderCommandHints,
+  renderInputFooter,
   renderRuntimeStatus,
   renderToolCard,
   renderToolCall,
@@ -1578,11 +1579,13 @@ export async function main(argv: string[]): Promise<void> {
         streaming.approvalResolved(request.toolName, outcome.decision, detail);
         // Nothing may interleave with the JSON document on stdout.
         if (!jsonOutput && richUi) {
-          process.stdout.write(
-            `${renderApprovalMessage(request.toolName, outcome.decision, detail, {
-              width: resolveTerminalWidth(),
-            })}\n`
-          );
+          streaming.withComposerHidden(() => {
+            process.stdout.write(
+              `${renderApprovalMessage(request.toolName, outcome.decision, detail, {
+                width: resolveTerminalWidth(),
+              })}\n`
+            );
+          });
         } else if (!jsonOutput && outcome.decision === "deny") {
           const line = `[denied] ${safeTerminalText(request.toolName)} ${safeTerminalText(
             outcome.reason ?? ""
@@ -1594,7 +1597,13 @@ export async function main(argv: string[]): Promise<void> {
         validations.push(result);
         streaming.validationResult(result.status, result.summary);
         if (!jsonOutput) {
-          printValidationResult(result, richUi, resolveTerminalWidth());
+          if (richUi) {
+            streaming.withComposerHidden(() => {
+              printValidationResult(result, true, resolveTerminalWidth());
+            });
+          } else {
+            printValidationResult(result, false, resolveTerminalWidth());
+          }
         }
       },
       validation,
@@ -1602,7 +1611,9 @@ export async function main(argv: string[]): Promise<void> {
         if (!jsonOutput) {
           if (richUi) {
             streaming.commitLive();
-            process.stdout.write(`\n${colorize(`Turn ${turn}`, "dim")}\n`);
+            streaming.withComposerHidden(() => {
+              process.stdout.write(`\n${colorize(`Turn ${turn}`, "dim")}\n`);
+            });
           } else {
             if (streaming.isEnabled() && streaming.hasStreamed()) {
               process.stdout.write("\n");
@@ -2303,12 +2314,22 @@ async function interactive(
         output: process.stdout,
         width: resolveTerminalWidth,
         commands: DEFAULT_COMMAND_HINTS,
+        footer: (width) =>
+          renderInputFooter({
+            workingDirectory: ui.workingDirectory,
+            sessionId: ui.sessionId,
+            executor: ui.executor,
+            width,
+          }),
       })
     : undefined;
+  streaming.attachComposer(richInput);
+  const richPromptQueue = richInput ? new RichPromptQueue(richInput) : undefined;
   // Approval prompts reuse this interface instead of opening a second reader
   // on the same stdin.
   questionBox.ask = async (prompt) => {
     if (ui.rich) {
+      richInput?.suspend();
       const approvalReader = createInterface({
         input: process.stdin,
         output: process.stdout,
@@ -2317,6 +2338,7 @@ async function interactive(
         return await approvalReader.question(prompt);
       } finally {
         approvalReader.close();
+        richInput?.resume();
       }
     }
     return rl?.question(prompt) ?? "";
@@ -2382,26 +2404,29 @@ async function interactive(
   };
 
   printHeader();
+  richPromptQueue?.start();
 
   // Each prompt continues from the previous run's context, so `turns` and
   // `usage` accumulate across the session instead of restarting every time.
   let current = context;
   try {
     for (;;) {
-      const line = await Promise.race([
+      const inputResult = await Promise.race([
         ui.rich
-          ? richInput?.read() ?? Promise.resolve(null)
+          ? richPromptQueue?.next() ?? Promise.resolve(null)
           : rl?.question("> ").catch(() => "") ?? Promise.resolve(""),
         interrupt.then(() => null),
       ]);
       if (interrupted) {
         break;
       }
-      if (line === null) {
+      if (inputResult === null) {
         process.exitCode = 130;
         process.stdout.write("\n(interrupted)\n");
         break;
       }
+      const queuedItem = typeof inputResult === "string" ? undefined : inputResult;
+      const line = typeof inputResult === "string" ? inputResult : inputResult.value;
       const prompt = line.trim();
       const command = normalizeInteractiveCommand(prompt);
       if (command === ":quit" || command === "exit" || command === "quit") {
@@ -2410,10 +2435,15 @@ async function interactive(
       if (!prompt) {
         continue;
       }
+      if (ui.rich && queuedItem?.queued) {
+        richInput?.renderQueuedPrompt(line);
+      }
 
       if (command === ":help") {
         if (ui.rich) {
-          console.log(renderCommandHints(DEFAULT_COMMAND_HINTS, { width: ui.width }));
+          streaming.withComposerHidden(() => {
+            console.log(renderCommandHints(DEFAULT_COMMAND_HINTS, { width: ui.width }));
+          });
         } else {
           console.log(
             "Commands: :help, :clear, :model, :validate <changeSetId>, :cleanup ..., exit, quit"
@@ -2424,8 +2454,10 @@ async function interactive(
 
       if (command === ":clear") {
         if (ui.rich) {
-          process.stdout.write("\u001b[2J\u001b[H");
-          printHeader();
+          streaming.withComposerHidden(() => {
+            process.stdout.write("\u001b[2J\u001b[H");
+            printHeader();
+          });
         } else {
           console.log("Clear is available only in an interactive terminal.");
         }
@@ -2434,15 +2466,17 @@ async function interactive(
 
       if (command === ":model") {
         if (ui.rich) {
-          console.log(
-            renderRuntimeStatus({
-              provider: ui.provider,
-              model: ui.model,
-              streaming: ui.streaming,
-              runState: ui.session?.snapshot().state ?? "ready",
-              width: ui.width,
-            })
-          );
+          streaming.withComposerHidden(() => {
+            console.log(
+              renderRuntimeStatus({
+                provider: ui.provider,
+                model: ui.model,
+                streaming: ui.streaming,
+                runState: ui.session?.snapshot().state ?? "ready",
+                width: ui.width,
+              })
+            );
+          });
         } else {
           console.log(
             `[runtime] provider=${safeTerminalText(ui.provider)} model=${safeTerminalText(ui.model)} streaming=${
@@ -2477,22 +2511,42 @@ async function interactive(
           continue;
         }
         if (!context.memory.pruneEvidence) {
-          console.error("Evidence cleanup is unavailable for this memory.");
+          if (ui.rich) {
+            streaming.withComposerHidden(() => {
+              console.error("Evidence cleanup is unavailable for this memory.");
+            });
+          } else {
+            console.error("Evidence cleanup is unavailable for this memory.");
+          }
           continue;
         }
         try {
           const result = await context.memory.pruneEvidence(parsedCleanup.options);
           const evidenceSummary = await context.memory.evidenceSummary?.();
-          printEvidenceCleanupResult(
-            context.sessionId,
-            result,
-            evidenceSummary,
-            jsonOutput
-          );
+          const printCleanup = (): void => {
+            printEvidenceCleanupResult(
+              context.sessionId,
+              result,
+              evidenceSummary,
+              jsonOutput
+            );
+          };
+          if (ui.rich) {
+            streaming.withComposerHidden(printCleanup);
+          } else {
+            printCleanup();
+          }
         } catch (error) {
           if (!interrupted) {
             const message = error instanceof Error ? error.message : String(error);
-            console.error(safeTerminalText(`Evidence cleanup failed: ${message}`));
+            const printError = (): void => {
+              console.error(safeTerminalText(`Evidence cleanup failed: ${message}`));
+            };
+            if (ui.rich) {
+              streaming.withComposerHidden(printError);
+            } else {
+              printError();
+            }
           }
         }
         continue;
@@ -2505,7 +2559,14 @@ async function interactive(
           continue;
         }
         if (!rerunValidation) {
-          console.error("Validation rerun is unavailable because the filesystem tool is unavailable.");
+          const printError = (): void => {
+            console.error("Validation rerun is unavailable because the filesystem tool is unavailable.");
+          };
+          if (ui.rich) {
+            streaming.withComposerHidden(printError);
+          } else {
+            printError();
+          }
           continue;
         }
         const controller = new AbortController();
@@ -2516,24 +2577,45 @@ async function interactive(
           if (jsonOutput) {
             const changeSets = (await context.memory.changeSets?.()) ?? [];
             const evidenceSummary = await context.memory.evidenceSummary?.();
-            console.log(
-              JSON.stringify(
-                {
-                  validation,
-                  changeSets: [...changeSets],
-                  ...(evidenceSummary === undefined ? {} : { evidenceSummary }),
-                },
-                null,
-                2
-              )
-            );
+            const printJson = (): void => {
+              console.log(
+                JSON.stringify(
+                  {
+                    validation,
+                    changeSets: [...changeSets],
+                    ...(evidenceSummary === undefined ? {} : { evidenceSummary }),
+                  },
+                  null,
+                  2
+                )
+              );
+            };
+            if (ui.rich) {
+              streaming.withComposerHidden(printJson);
+            } else {
+              printJson();
+            }
           } else {
-            printValidationResult(validation, ui.rich, ui.width);
+            const printValidation = (): void => {
+              printValidationResult(validation, true, ui.width);
+            };
+            if (ui.rich) {
+              streaming.withComposerHidden(printValidation);
+            } else {
+              printValidationResult(validation, false, ui.width);
+            }
           }
         } catch (error) {
           if (!interrupted) {
             const message = error instanceof Error ? error.message : String(error);
-            console.error(safeTerminalText(`Validation rerun failed: ${message}`));
+            const printError = (): void => {
+              console.error(safeTerminalText(`Validation rerun failed: ${message}`));
+            };
+            if (ui.rich) {
+              streaming.withComposerHidden(printError);
+            } else {
+              printError();
+            }
           }
         } finally {
           abort = undefined;
@@ -2572,7 +2654,7 @@ async function interactive(
     }
   } finally {
     process.removeListener("SIGINT", onSigint);
-    richInput?.close();
+    await richPromptQueue?.close();
     rl?.close();
   }
 }
@@ -2960,32 +3042,34 @@ async function runPrompt(
     return result;
   }
 
-  if (streaming.isRichUi()) {
-    if (!streaming.hasStreamed() && lastAssistant) {
+  return streaming.withComposerHidden(() => {
+    if (streaming.isRichUi()) {
+      if (!streaming.hasStreamed() && lastAssistant) {
+        console.log(
+          renderAssistantMessage(lastAssistant.content, {
+            width: streaming.width(),
+          })
+        );
+      }
+    } else if (streaming.isEnabled() && streaming.hasStreamed()) {
+      process.stdout.write("\n");
+    } else if (lastAssistant) {
+      console.log(safeTerminalText(lastAssistant.content));
+    }
+    console.log(`[state=${result.state.status} turns=${result.state.turns}]`);
+    if (result.usage) {
+      const suffix = cost === undefined ? "" : ` cost=$${formatCost(cost)}`;
       console.log(
-        renderAssistantMessage(lastAssistant.content, {
-          width: streaming.width(),
-        })
+        `[usage] prompt=${result.usage.promptTokens} completion=${result.usage.completionTokens} total=${result.usage.totalTokens}${suffix}`
       );
     }
-  } else if (streaming.isEnabled() && streaming.hasStreamed()) {
-    process.stdout.write("\n");
-  } else if (lastAssistant) {
-    console.log(safeTerminalText(lastAssistant.content));
-  }
-  console.log(`[state=${result.state.status} turns=${result.state.turns}]`);
-  if (result.usage) {
-    const suffix = cost === undefined ? "" : ` cost=$${formatCost(cost)}`;
     console.log(
-      `[usage] prompt=${result.usage.promptTokens} completion=${result.usage.completionTokens} total=${result.usage.totalTokens}${suffix}`
+      `[timing] first-token=${formatTimingMs(timing.firstTokenMs)} total=${formatTimingMs(
+        timing.totalMs
+      )}`
     );
-  }
-  console.log(
-    `[timing] first-token=${formatTimingMs(timing.firstTokenMs)} total=${formatTimingMs(
-      timing.totalMs
-    )}`
-  );
-  return result;
+    return result;
+  });
 }
 
 function formatTimingMs(value: number | undefined): string {
@@ -3141,6 +3225,12 @@ interface StreamingCallbacks {
   onToolResult?: (result: { name: string; output: string }, context: AgentContext) => void;
 }
 
+interface PromptComposer {
+  renderPendingPrompt(): void;
+  hidePendingPrompt(): void;
+  isPendingPromptVisible(): boolean;
+}
+
 interface RunTiming {
   readonly firstTokenMs?: number;
   readonly totalMs: number;
@@ -3152,6 +3242,7 @@ class StreamingRun {
   private readonly terminalWidth?: number;
   private readonly session: TuiSessionModel;
   private readonly liveAssistant?: LiveAssistantRenderer;
+  private composer?: PromptComposer;
   private readonly activeToolIds = new Map<string, string[]>();
   private streamed = false;
   private thinkingVisible = false;
@@ -3173,10 +3264,28 @@ class StreamingRun {
     this.terminalWidth = options.width;
     this.session = options.session ?? new TuiSessionModel();
     this.liveAssistant = this.richUi
-      ? new LiveAssistantRenderer((chunk) => process.stdout.write(chunk), {
+      ? new LiveAssistantRenderer((chunk) => this.writeRich(chunk), {
           width: options.width,
         })
       : undefined;
+  }
+
+  attachComposer(composer: PromptComposer | undefined): void {
+    this.composer = composer;
+  }
+
+  withComposerHidden<T>(callback: () => T): T {
+    const wasVisible = this.composer?.isPendingPromptVisible() === true;
+    if (wasVisible) {
+      this.composer?.hidePendingPrompt();
+    }
+    try {
+      return callback();
+    } finally {
+      if (wasVisible) {
+        this.composer?.renderPendingPrompt();
+      }
+    }
   }
 
   isEnabled(): boolean {
@@ -3211,7 +3320,8 @@ class StreamingRun {
     if (this.richUi) {
       this.thinkingVisible = true;
       this.announceState("thinking");
-      process.stdout.write(`${colorize("Thinking…", "dim")}\n`);
+      this.writeRich(`${colorize("Thinking…", "dim")}\n`);
+      this.showComposer();
     }
   }
 
@@ -3289,7 +3399,7 @@ class StreamingRun {
   showLatestCard(): void {
     const card = this.latestCard();
     if (!card) {
-      process.stdout.write("No tool cards recorded yet.\n");
+      this.writeRich("No tool cards recorded yet.\n");
       return;
     }
     this.renderCard(card.id, { append: true });
@@ -3298,7 +3408,7 @@ class StreamingRun {
   setLatestCardCollapsed(collapsed: boolean): void {
     const card = this.latestCard();
     if (!card) {
-      process.stdout.write("No tool cards recorded yet.\n");
+      this.writeRich("No tool cards recorded yet.\n");
       return;
     }
     if (collapsed) {
@@ -3343,7 +3453,7 @@ class StreamingRun {
     }
     // Thinking is rendered on its own line. Move back to it, erase it, and
     // leave the cursor at column zero for the next stable block.
-    process.stdout.write("\u001b[1A\u001b[2K\r");
+    this.writeRich("\u001b[1A\u001b[2K\r");
     this.thinkingVisible = false;
     return true;
   }
@@ -3383,7 +3493,7 @@ class StreamingRun {
         const separator = clearedThinking || committedLive ? "" : "\n";
         const line = `[tool] ${safeTerminalText(call.name)}${preview}`;
         if (this.richUi) {
-          if (separator) process.stdout.write(separator);
+          if (separator) this.writeRich(separator);
           this.renderCard(toolId);
         } else {
           process.stdout.write(`${line}\n`);
@@ -3420,13 +3530,13 @@ class StreamingRun {
     if (!card) return;
 
     if (!options.append && this.renderedCardId === id && this.renderedCardLineCount > 0) {
-      process.stdout.write(clearRenderedBlock(this.renderedCardLineCount));
+      this.writeRich(clearRenderedBlock(this.renderedCardLineCount));
     }
     const rendered = renderToolCard(card, {
       width: this.terminalWidth,
       collapsed: this.collapsedCardIds.has(id),
     });
-    process.stdout.write(`${rendered}\n`);
+    this.writeRich(`${rendered}\n`);
 
     if (options.append) return;
 
@@ -3448,7 +3558,19 @@ class StreamingRun {
     if (!this.richUi) return;
     const label = state === "ready" ? "READY / idle" : state.toUpperCase().replaceAll("-", " ");
     const color = state === "ready" ? "dim" : state === "error" ? "red" : "green";
-    process.stdout.write(`${colorize(`STATUS / ${label}`, color)}\n`);
+    this.writeRich(`${colorize(`STATUS / ${label}`, color)}\n`);
+  }
+
+  private showComposer(): void {
+    if (!this.composer?.isPendingPromptVisible()) {
+      this.composer?.renderPendingPrompt();
+    }
+  }
+
+  private writeRich(chunk: string): void {
+    this.withComposerHidden(() => {
+      process.stdout.write(chunk);
+    });
   }
 }
 

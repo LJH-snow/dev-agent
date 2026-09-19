@@ -392,6 +392,7 @@ test("Ollama streamChat streams NDJSON content", async () => {
       assert.equal(String(url), "http://localhost:11434/api/chat");
       const body = JSON.parse(String(init.body));
       assert.equal(body.stream, true);
+      assert.equal(body.think, true);
       return streamFromStrings([
         '{"message":{"content":"Ol"}}\n',
         '{"message":{"content":"la"}}\n',
@@ -406,6 +407,28 @@ test("Ollama streamChat streams NDJSON content", async () => {
 
   assert.equal(completion.content, "Olla");
   assert.deepEqual(tokens, ["Ol", "la"]);
+});
+
+test("Ollama streamChat forwards provider thinking chunks separately from answer tokens", async () => {
+  const reasoning = [];
+  const tokens = [];
+  const provider = createOllamaProvider({
+    model: "qwen3:4b-instruct",
+    fetch: async () =>
+      streamFromStrings([
+        '{"message":{"thinking":"先分析问题"}}\n',
+        '{"message":{"thinking":"，再给出答案","content":"答案"}}\n',
+      ]),
+  });
+
+  const completion = await provider.streamChat([{ role: "user", content: "hi" }], {
+    onReasoning: (token) => reasoning.push(token),
+    onToken: (token) => tokens.push(token),
+  });
+
+  assert.deepEqual(reasoning, ["先分析问题", "，再给出答案"]);
+  assert.deepEqual(tokens, ["答案"]);
+  assert.equal(completion.content, "答案");
 });
 
 test("Ollama streamChat handles several JSON objects in a single chunk", async () => {

@@ -5,6 +5,7 @@ import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatStreamOptions,
   ChatUsage,
   ModelProvider,
   ProviderConfig,
@@ -12,9 +13,7 @@ import type {
   ToolSchema,
 } from "./types.js";
 
-export interface OllamaStreamOptions extends ChatOptions {
-  onToken?: (token: string) => void;
-}
+export interface OllamaStreamOptions extends ChatStreamOptions {}
 
 export interface OllamaProviderConfig extends ProviderConfig {}
 
@@ -28,6 +27,8 @@ interface OllamaWireToolCall {
 interface OllamaResponse {
   readonly message?: {
     readonly content?: string | null;
+    readonly thinking?: string | null;
+    readonly reasoning_content?: string | null;
     readonly tool_calls?: readonly OllamaWireToolCall[];
   };
   /** Token counts Ollama reports on the final chunk of a response. */
@@ -102,6 +103,7 @@ export class OllamaProvider implements ModelProvider {
             model: this.model,
             messages: messages.map(toOllamaMessage),
             stream: true,
+            think: true,
             ...(options.tools ? { tools: options.tools.map(toOllamaTool) } : {}),
             options: {
               temperature: options.temperature,
@@ -137,6 +139,10 @@ export class OllamaProvider implements ModelProvider {
         if (delta) {
           content += delta;
           options.onToken?.(delta);
+        }
+        const reasoning = chunk.message?.thinking ?? chunk.message?.reasoning_content ?? "";
+        if (reasoning) {
+          options.onReasoning?.(reasoning);
         }
         for (const call of chunk.message?.tool_calls ?? []) {
           toolCalls.push(parseOllamaToolCall(call, toolCalls.length));

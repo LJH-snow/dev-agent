@@ -104,14 +104,22 @@ command aliases:
 /quit       :quit
 ```
 
-Use Tab to complete a command, Shift+Enter for a newline, Ctrl-L to redraw the
-surface, `:collapse`/`:expand` to inspect the latest tool card, and Ctrl-C to
-cancel the active request or exit an idle session. The
+Use Tab to complete a command, Shift+Enter for a newline, Esc to close the
+command palette or exit an idle session, Ctrl-L to redraw the surface,
+`:collapse`/`:expand` to inspect the latest tool card, and Ctrl-C to cancel the
+active request or exit an idle session. The
 rich path is limited to interactive TTYs; pipes, `--once`, `--json`,
 `--mcp-server` retain their stable non-rich contracts. `NO_COLOR=1` keeps the
 rich layout but removes color while preserving the cursor controls required for
-live redraw. The
-full interaction and compatibility boundary is recorded in the
+live redraw. The canonical visual profile is ANSI color at 120 columns by 36
+rows; the renderer is bounded for 80, 100, 120, and 160 columns. The
+When a request is in flight, pressing Enter submits the next prompt into a
+waiting queue instead of starting a concurrent request. Queued prompts render
+as passive transcript blocks, while the active blue editor remains at the
+bottom; each assistant response stays attached to the prompt that produced it.
+The working-directory footer belongs only to the active editor, so queued
+messages do not repeat it.
+The full interaction and compatibility boundary is recorded in the
 [Signal Loom TTY plan](docs/superpowers/plans/2026-09-19-signal-loom-cli-tui.md)
 and [workbench design](docs/superpowers/specs/2026-09-19-desktop-cli-workbench-design.md).
 

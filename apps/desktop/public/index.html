@@ -162,149 +162,169 @@
 <body>
   <div class="app-shell">
     <header class="topbar">
-      <div class="brand-lockup" aria-label="dev-agent Signal Loom workbench">
+      <div class="brand-lockup" aria-label="dev-agent Signal Loom workbench" data-i18n-aria-label="brand.workbench">
         <img class="brand-mark" src="/public/signal-loom.svg" alt="" aria-hidden="true" />
         <div class="brand-copy">
-          <span class="eyebrow">Local workbench</span>
+          <span class="eyebrow" data-i18n="brand.localWorkbench">Local workbench</span>
           <strong>dev-agent</strong>
         </div>
       </div>
-      <div class="topbar-context" aria-label="Workspace context">
-        <span class="context-pill">active workspace</span>
+      <div class="topbar-context" aria-label="Workspace context" data-i18n-aria-label="top.workspaceContext">
+        <span class="context-pill" data-i18n="top.activeWorkspace">active workspace</span>
         <span class="topbar-divider" aria-hidden="true"></span>
-        <span class="topbar-label">agent coordination surface</span>
+        <span class="topbar-label" data-i18n="top.agentCoordination">agent coordination surface</span>
       </div>
       <div class="header-status">
-        <span class="status" id="usage" aria-label="Usage"></span>
-        <span class="status" id="status" role="status" aria-live="polite" aria-atomic="true">idle</span>
+        <span class="status" id="usage" aria-label="Usage" data-i18n-aria-label="usage.label"></span>
+        <span class="status" id="status" data-i18n="status.idle" aria-label="Status" data-i18n-aria-label="status.label" role="status" aria-live="polite" aria-atomic="true">idle</span>
+        <div id="language-toggle" class="language-toggle" role="group" data-i18n-aria-label="language.label">
+          <button type="button" id="language-en" class="language-option" data-language="en" data-i18n="language.en" aria-pressed="true">EN</button>
+          <button type="button" id="language-zh" class="language-option" data-language="zh" data-i18n="language.zh" aria-pressed="false">中文</button>
+        </div>
         <button
           type="button"
           id="theme-toggle"
           class="theme-toggle"
-          title="Switch color theme"
-          aria-label="Switch color theme"
+          data-i18n-title="theme.switch"
+          data-i18n-aria-label="theme.switch"
           aria-pressed="false"
         >
           <span class="theme-glyph" aria-hidden="true">◐</span>
-          <span id="theme-toggle-label">Auto</span>
+          <span id="theme-toggle-label" data-i18n="theme.auto">Auto</span>
         </button>
-        <button type="button" id="stop" title="Stop the running request" disabled>Stop</button>
+        <button type="button" id="stop" data-i18n="action.stop" data-i18n-title="action.stopTitle" disabled>Stop</button>
       </div>
     </header>
     <div class="workbench">
-      <aside class="session-rail" aria-label="Session navigation">
+      <aside class="session-rail" aria-label="Session navigation" data-i18n-aria-label="session.navigation">
         <div class="rail-heading">
           <div>
-            <span class="section-kicker">Workspace</span>
-            <h2>Sessions</h2>
+            <span class="section-kicker" data-i18n="workspace.label">Workspace</span>
+            <h2 data-i18n="session.sessions">Sessions</h2>
           </div>
-          <button type="button" id="new-session" title="New session" aria-label="New session">+</button>
+          <button type="button" id="new-session" title="New session" aria-label="New session" data-i18n-title="session.newTitle" data-i18n-aria-label="session.newTitle">+</button>
         </div>
         <label class="session-picker">
-          <span class="rail-label">Active session</span>
-          <select id="session" title="Session" aria-label="Session"></select>
+          <span class="rail-label" data-i18n="session.active">Active session</span>
+          <select id="session" title="Session" aria-label="Session" data-i18n-title="session.select" data-i18n-aria-label="session.select"></select>
         </label>
         <div class="session-meta">
           <strong id="session-meta-id">desktop-default</strong>
-          <span id="session-meta">Ready for a new run.</span>
+          <span id="session-meta" data-i18n="session.ready">Ready for a new run.</span>
         </div>
-        <div class="rail-actions" aria-label="Session actions">
-          <button type="button" id="rename-session" title="Rename session">Rename</button>
-          <button type="button" id="delete-session" title="Delete session">Delete</button>
-          <button type="button" id="export-session" title="Download transcript">Download</button>
-          <button type="button" id="preview-evidence" title="Preview evidence summary" aria-expanded="false" aria-controls="evidence-preview">Evidence</button>
+        <div class="rail-actions" aria-label="Session actions" data-i18n-aria-label="session.actions">
+          <button type="button" id="rename-session" title="Rename session" data-i18n="action.rename" data-i18n-title="session.renameTitle">Rename</button>
+          <button type="button" id="delete-session" title="Delete session" data-i18n="action.delete" data-i18n-title="session.deleteTitle">Delete</button>
+          <button type="button" id="export-session" title="Download transcript" data-i18n="action.download" data-i18n-title="session.downloadTitle">Download</button>
+          <button type="button" id="preview-evidence" title="Preview evidence summary" data-i18n="action.evidence" data-i18n-title="session.evidenceTitle" aria-expanded="false" aria-controls="evidence-preview">Evidence</button>
         </div>
         <div class="rail-footer">
-          <strong>Signal Loom</strong>
-          <span>Sessions, tools, approvals, and validation stay in one local workbench.</span>
+          <strong data-i18n="brand.signalLoom">Signal Loom</strong>
+          <span data-i18n="brand.footer">Sessions, tools, approvals, and validation stay in one local workbench.</span>
         </div>
       </aside>
       <main class="conversation-workspace">
         <div class="conversation-toolbar">
           <div class="conversation-heading">
             <div>
-              <span class="section-kicker">Conversation</span>
-              <h1>Agent run</h1>
+              <span class="section-kicker" data-i18n="conversation.label">Conversation</span>
+              <h1 data-i18n="conversation.agentRun">Agent run</h1>
             </div>
           </div>
           <div class="conversation-meta">
-            <span>Live stream with guarded tools and evidence-aware validation.</span>
+            <span data-i18n="conversation.liveStream">Live stream with guarded tools and evidence-aware validation.</span>
             <button
               type="button"
               id="toggle-inspector"
               class="inspector-toggle"
-              title="Show runtime inspector"
+              data-i18n-title="inspector.show"
+              data-i18n-aria-label="inspector.show"
               aria-controls="runtime-inspector"
               aria-expanded="false"
-            >Inspector</button>
+            data-i18n="inspector.label">Inspector</button>
           </div>
         </div>
-        <div id="messages"><div class="empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
+        <div id="messages"><div class="empty" data-i18n="conversation.empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
         <form class="composer" id="form">
           <div class="composer-toolbar">
-            <span>Prompt the agent</span>
-            <span>Enter to send · Shift+Enter for a new line</span>
+            <span data-i18n="composer.prompt">Prompt the agent</span>
+            <span data-i18n="composer.shortcut">Enter to send · Shift+Enter for a new line</span>
           </div>
           <div class="composer-actions">
-            <textarea id="input" rows="1" aria-label="Message" placeholder="Describe the work you want the agent to coordinate…"></textarea>
-            <button type="submit" id="send">Send</button>
+            <textarea id="input" rows="1" aria-label="Message" data-i18n-aria-label="composer.message" data-i18n-placeholder="composer.placeholder" placeholder="Describe the work you want the agent to coordinate…"></textarea>
+            <button type="submit" id="send" data-i18n="action.send">Send</button>
           </div>
         </form>
       </main>
-      <aside id="runtime-inspector" class="inspector-shell" aria-label="Runtime inspector">
+      <aside id="runtime-inspector" class="inspector-shell" data-i18n-aria-label="inspector.runtime">
         <div class="inspector-heading">
           <div>
-            <span class="inspector-label">Inspector</span>
-            <h2>Runtime signal</h2>
+            <span class="inspector-label" data-i18n="inspector.label">Inspector</span>
+            <h2 data-i18n="inspector.runtimeSignal">Runtime signal</h2>
           </div>
         </div>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
           <div class="desktop-status-header">
             <div>
-              <div id="desktop-status-title" class="desktop-status-title">Runtime status</div>
-              <div id="desktop-status-note" class="desktop-status-note" role="status">Loading metadata-only status…</div>
+              <div id="desktop-status-title" class="desktop-status-title" data-i18n="runtime.status">Runtime status</div>
+              <div id="desktop-status-note" class="desktop-status-note" data-i18n="runtime.loading" role="status">Loading metadata-only status…</div>
             </div>
-            <button type="button" id="desktop-status-refresh" class="desktop-status-refresh" title="Refresh runtime status">Refresh</button>
+            <button type="button" id="desktop-status-refresh" class="desktop-status-refresh" data-i18n="action.refresh" data-i18n-title="runtime.refreshTitle">Refresh</button>
           </div>
           <div class="desktop-status-grid">
-            <div class="desktop-status-item"><span class="desktop-status-label">Executor</span><strong id="desktop-status-executor" class="desktop-status-value">—</strong><span id="desktop-status-executor-state" class="desktop-status-state">—</span></div>
-            <div class="desktop-status-item"><span class="desktop-status-label">Runtime</span><strong id="desktop-status-runtime" class="desktop-status-value">—</strong><span id="desktop-status-runtime-state" class="desktop-status-state">—</span></div>
-            <div class="desktop-status-item"><span class="desktop-status-label">Workspace</span><strong id="desktop-status-workspace" class="desktop-status-value">—</strong></div>
-            <div class="desktop-status-item"><span class="desktop-status-label">MCP</span><strong id="desktop-status-mcp" class="desktop-status-value">—</strong><span id="desktop-status-mcp-state" class="desktop-status-state">—</span></div>
-            <div class="desktop-status-item"><span class="desktop-status-label">Managed runtime</span><strong id="desktop-status-managed-runtime" class="desktop-status-value">—</strong><span id="desktop-status-managed-runtime-state" class="desktop-status-state">—</span><span id="desktop-status-managed-runtime-guidance" class="desktop-status-guidance">—</span></div>
-            <div class="desktop-status-item"><span class="desktop-status-label">Provider</span><strong id="desktop-status-provider" class="desktop-status-value">—</strong><span id="desktop-status-provider-state" class="desktop-status-state">—</span></div>
-            <div class="desktop-status-item"><span class="desktop-status-label">Model</span><strong id="desktop-status-model" class="desktop-status-value">—</strong><span id="desktop-status-model-state" class="desktop-status-state">—</span></div>
-            <div class="desktop-status-item"><span class="desktop-status-label">Approval</span><strong id="desktop-status-approval" class="desktop-status-value">—</strong><span id="desktop-status-approval-state" class="desktop-status-state">—</span></div>
-            <div class="desktop-status-item"><span class="desktop-status-label">Validation</span><strong id="desktop-status-validation" class="desktop-status-value">—</strong><span id="desktop-status-validation-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.executor">Executor</span><strong id="desktop-status-executor" class="desktop-status-value">—</strong><span id="desktop-status-executor-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.runtime">Runtime</span><strong id="desktop-status-runtime" class="desktop-status-value">—</strong><span id="desktop-status-runtime-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.workspace">Workspace</span><strong id="desktop-status-workspace" class="desktop-status-value">—</strong></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.mcp">MCP</span><strong id="desktop-status-mcp" class="desktop-status-value">—</strong><span id="desktop-status-mcp-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.managedRuntime">Managed runtime</span><strong id="desktop-status-managed-runtime" class="desktop-status-value">—</strong><span id="desktop-status-managed-runtime-state" class="desktop-status-state">—</span><span id="desktop-status-managed-runtime-guidance" class="desktop-status-guidance">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.provider">Provider</span><strong id="desktop-status-provider" class="desktop-status-value">—</strong><span id="desktop-status-provider-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.model">Model</span><strong id="desktop-status-model" class="desktop-status-value">—</strong><span id="desktop-status-model-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.approval">Approval</span><strong id="desktop-status-approval" class="desktop-status-value">—</strong><span id="desktop-status-approval-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="runtime.validation">Validation</span><strong id="desktop-status-validation" class="desktop-status-value">—</strong><span id="desktop-status-validation-state" class="desktop-status-state">—</span></div>
           </div>
+        </section>
+        <section id="run-inspector" class="run-inspector" aria-labelledby="run-inspector-title" aria-live="polite">
+          <div class="run-inspector-header">
+            <div>
+              <div id="run-inspector-title" class="run-inspector-title" data-i18n="timeline.title">Run timeline</div>
+              <div id="run-inspector-note" class="run-inspector-note" data-i18n="timeline.liveSteps" role="status">Live run steps appear here.</div>
+            </div>
+            <div class="run-inspector-metrics" data-i18n-aria-label="timeline.summary">
+              <span id="run-inspector-state" class="run-inspector-state" data-i18n="timeline.idle" data-state="idle">Idle</span>
+              <span id="run-inspector-duration" class="run-inspector-duration">0s</span>
+            </div>
+          </div>
+          <ol id="run-timeline" class="run-timeline" data-i18n-aria-label="timeline.title">
+            <li id="run-timeline-empty" class="run-timeline-empty" data-i18n="timeline.empty">No live run yet.</li>
+          </ol>
         </section>
         <section id="evidence-preview" class="evidence-preview" hidden aria-busy="false" aria-labelledby="evidence-preview-title" aria-live="polite">
           <div class="evidence-preview-header">
             <div>
-              <div id="evidence-preview-title" class="evidence-preview-title">Evidence summary</div>
-              <div id="evidence-preview-status" class="evidence-preview-status" role="status">Choose Evidence to load a metadata-only summary.</div>
+              <div id="evidence-preview-title" class="evidence-preview-title" data-i18n="evidence.title">Evidence summary</div>
+              <div id="evidence-preview-status" class="evidence-preview-status" data-i18n="evidence.choose" role="status">Choose Evidence to load a metadata-only summary.</div>
             </div>
           </div>
           <div class="evidence-preview-grid">
             <div class="evidence-preview-item">
-              <span class="evidence-preview-label">Validations</span>
+              <span class="evidence-preview-label" data-i18n="evidence.validations">Validations</span>
               <strong id="evidence-preview-validations" class="evidence-preview-value">—</strong>
             </div>
             <div class="evidence-preview-item">
-              <span class="evidence-preview-label">Change sets</span>
+              <span class="evidence-preview-label" data-i18n="evidence.changeSets">Change sets</span>
               <strong id="evidence-preview-change-sets" class="evidence-preview-value">—</strong>
             </div>
             <div class="evidence-preview-item">
-              <span class="evidence-preview-label">Files</span>
+              <span class="evidence-preview-label" data-i18n="evidence.files">Files</span>
               <strong id="evidence-preview-files" class="evidence-preview-value">—</strong>
             </div>
             <div class="evidence-preview-item">
-              <span class="evidence-preview-label">Estimated export size</span>
+              <span class="evidence-preview-label" data-i18n="evidence.exportSize">Estimated export size</span>
               <strong id="evidence-preview-bytes" class="evidence-preview-value">—</strong>
             </div>
           </div>
-          <div id="evidence-preview-retention-note" class="evidence-preview-note">Applied change-set guards stay for validation.</div>
-          <button type="button" id="evidence-preview-refresh" class="evidence-preview-refresh">Refresh</button>
+          <div id="evidence-preview-retention-note" class="evidence-preview-note" data-i18n="evidence.retention">Applied change-set guards stay for validation.</div>
+          <button type="button" id="evidence-preview-refresh" class="evidence-preview-refresh" data-i18n="action.refresh">Refresh</button>
         </section>
       </aside>
     </div>
@@ -328,6 +348,8 @@
     const inspectorShell = document.getElementById("runtime-inspector");
     const themeToggleButton = document.getElementById("theme-toggle");
     const themeToggleLabel = document.getElementById("theme-toggle-label");
+    const languageEnButton = document.getElementById("language-en");
+    const languageZhButton = document.getElementById("language-zh");
     const evidencePreviewPanel = document.getElementById("evidence-preview");
     const evidencePreviewStatus = document.getElementById("evidence-preview-status");
     const evidencePreviewValidations = document.getElementById("evidence-preview-validations");
@@ -356,12 +378,20 @@
     const desktopStatusApprovalState = document.getElementById("desktop-status-approval-state");
     const desktopStatusValidation = document.getElementById("desktop-status-validation");
     const desktopStatusValidationState = document.getElementById("desktop-status-validation-state");
+    const runInspectorNote = document.getElementById("run-inspector-note");
+    const runInspectorState = document.getElementById("run-inspector-state");
+    const runInspectorDuration = document.getElementById("run-inspector-duration");
+    const runTimeline = document.getElementById("run-timeline");
 
     let currentAssistant = null;
+    let currentReasoning = null;
     let currentToolProgress = null;
     // Set by the `done` frame so the finally block can keep an honest status
     // ("aborted" after Stop) instead of always snapping back to "idle".
     let finalStatus = null;
+    let activeChatRequestId = 0;
+    let activeChatSessionId = null;
+    let activeChatController = null;
     let totalTokens = 0;
     let totalCost = 0;
     let hasCost = false;
@@ -373,12 +403,532 @@
     let evidencePreviewDataRevision = 0;
     let desktopStatusRequestId = 0;
     let desktopStatusController = null;
+    let desktopStatusPayload = null;
     let desktopHistoryRequestId = 0;
     let desktopHistoryController = null;
     let desktopValidationRerunRequestId = 0;
     let desktopValidationRerunController = null;
     let desktopUndoRequestId = 0;
     let desktopUndoController = null;
+    let runTimelineEntries = [];
+    let runTimelineSessionId = null;
+    let runTimelineStartedAt = null;
+    let runTimelineFinishedAt = null;
+    let runTimelineTimer = null;
+    let runTimelineState = "idle";
+    let runTimelineSequence = 0;
+    let runTimelineRootId = null;
+    let activeRunToolId = null;
+    let activeRunApprovalId = null;
+
+    const translations = {
+      en: {
+        "brand.workbench": "dev-agent Signal Loom workbench",
+        "brand.localWorkbench": "Local workbench",
+        "brand.signalLoom": "Signal Loom",
+        "brand.footer": "Sessions, tools, approvals, and validation stay in one local workbench.",
+        "top.workspaceContext": "Workspace context",
+        "top.activeWorkspace": "active workspace",
+        "top.agentCoordination": "agent coordination surface",
+        "usage.label": "Usage",
+        "usage.tokens": "{count} tokens",
+        "status.label": "Status",
+        "status.idle": "idle",
+        "status.streaming": "streaming",
+        "status.stopping": "stopping",
+        "status.error": "error",
+        "status.aborted": "aborted",
+        "status.done": "done",
+        "status.turn": "turn {turn}",
+        "status.session": "session {session}",
+        "status.newSession": "new session",
+        "status.deleteFailed": "delete failed",
+        "status.sessionDeleted": "session deleted",
+        "status.renameConflict": "rename conflict",
+        "status.renameFailed": "rename failed",
+        "status.sessionRenamed": "session renamed",
+        "status.stopFailed": "stop failed",
+        "status.doneTurns": "done · {turns} turn(s)",
+        "language.label": "Language",
+        "language.en": "EN",
+        "language.zh": "中文",
+        "theme.auto": "Auto",
+        "theme.dark": "Dark",
+        "theme.light": "Light",
+        "theme.switch": "Switch to {theme} theme",
+        "action.stop": "Stop",
+        "action.stopTitle": "Stop the running request",
+        "action.rename": "Rename",
+        "action.delete": "Delete",
+        "action.download": "Download",
+        "action.evidence": "Evidence",
+        "action.send": "Send",
+        "action.refresh": "Refresh",
+        "workspace.label": "Workspace",
+        "session.navigation": "Session navigation",
+        "session.sessions": "Sessions",
+        "session.newTitle": "New session",
+        "session.active": "Active session",
+        "session.select": "Session",
+        "session.ready": "Ready for a new run.",
+        "session.noActive": "no active session",
+        "session.create": "Create a session to begin.",
+        "session.messages": "{count} messages",
+        "session.validations": "{count} validations",
+        "session.changes": "{count} changes",
+        "session.protected": "{count} protected",
+        "session.actions": "Session actions",
+        "session.renameTitle": "Rename session",
+        "session.deleteTitle": "Delete session",
+        "session.downloadTitle": "Download transcript",
+        "session.evidenceTitle": "Preview evidence summary",
+        "session.deleteConfirm": "Delete session {session}?",
+        "session.renamePrompt": "Rename session {session} to:",
+        "conversation.label": "Conversation",
+        "conversation.agentRun": "Agent run",
+        "conversation.liveStream": "Live stream with guarded tools and evidence-aware validation.",
+        "conversation.empty": "Ask dev-agent anything. Tools run in your working directory.",
+        "reasoning.title": "Model reasoning",
+        "composer.prompt": "Prompt the agent",
+        "composer.shortcut": "Enter to send · Shift+Enter for a new line",
+        "composer.message": "Message",
+        "composer.placeholder": "Describe the work you want the agent to coordinate…",
+        "inspector.label": "Inspector",
+        "inspector.runtime": "Runtime inspector",
+        "inspector.runtimeSignal": "Runtime signal",
+        "inspector.show": "Show runtime inspector",
+        "inspector.hide": "Hide runtime inspector",
+        "runtime.status": "Runtime status",
+        "runtime.loading": "Loading metadata-only status…",
+        "runtime.unavailable": "Runtime status unavailable.",
+        "runtime.metadataOnly": "Metadata only — no keys, paths, source, or raw errors are shown.",
+        "runtime.refreshTitle": "Refresh runtime status",
+        "runtime.executor": "Executor",
+        "runtime.runtime": "Runtime",
+        "runtime.workspace": "Workspace",
+        "runtime.mcp": "MCP",
+        "runtime.managedRuntime": "Managed runtime",
+        "runtime.provider": "Provider",
+        "runtime.model": "Model",
+        "runtime.approval": "Approval",
+        "runtime.validation": "Validation",
+        "runtime.configured": "{count} configured",
+        "runtime.connected": "{count} connected",
+        "runtime.validationState": "{enabled} · last {last}",
+        "runtime.newSession": "New session will initialize on the first run.",
+        "runtime.ready": "Ready to use.",
+        "runtime.install": "Run `dev-agent runtime install` to set it up.",
+        "runtime.unsupported": "This platform or architecture is not supported.",
+        "runtime.corrupt": "Recheck status, then repair or reinstall if needed.",
+        "runtime.unavailableGuidance": "Refresh status; check runtime health if it stays unavailable.",
+        "runtime.retry": "Refresh status to try again.",
+        "timeline.title": "Run timeline",
+        "timeline.liveSteps": "Live run steps appear here.",
+        "timeline.summary": "Run summary",
+        "timeline.idle": "Idle",
+        "timeline.running": "Running",
+        "timeline.waiting": "Waiting",
+        "timeline.complete": "Complete",
+        "timeline.failed": "Failed",
+        "timeline.aborted": "Aborted",
+        "timeline.empty": "No live run yet.",
+        "timeline.steps": "{count} step(s) · Metadata-safe",
+        "duration.zero": "0s",
+        "duration.seconds": "{seconds}s",
+        "duration.minutes": "{minutes}m {seconds}s",
+        "run.started": "Run started",
+        "run.waitingAgent": "Waiting for agent response",
+        "run.streamingResponse": "Streaming response",
+        "run.receivingAssistant": "Receiving assistant response",
+        "run.turn": "Turn {turn}",
+        "run.agentTurnActive": "Agent turn active",
+        "run.tool": "Tool · {name}",
+        "run.runningTool": "Running tool",
+        "run.progress": "Progress {progress}{total}",
+        "run.toolFailed": "Tool failed",
+        "run.toolReturnedError": "Tool returned an error",
+        "run.toolCompleted": "Tool completed",
+        "run.approvalRequired": "Approval required",
+        "run.reviewRequired": "{count} file(s) · review required",
+        "run.approvalGranted": "Approval granted",
+        "run.approvalDenied": "Approval denied",
+        "run.toolMayContinue": "Tool may continue",
+        "run.toolWasBlocked": "Tool was blocked",
+        "run.toolBlocked": "Tool blocked",
+        "run.blockedByPolicy": "Blocked by approval policy",
+        "run.validation": "Validation",
+        "run.validationSummary": "{count} check(s) · {status}",
+        "run.error": "Run error",
+        "run.requestFailed": "Request failed",
+        "run.failed": "Run failed",
+        "run.endedWithError": "The request ended with an error",
+        "run.aborted": "Run aborted",
+        "run.stopped": "The request was stopped",
+        "run.complete": "Run complete",
+        "run.finished": "Agent run finished",
+        "evidence.title": "Evidence summary",
+        "evidence.choose": "Choose Evidence to load a metadata-only summary.",
+        "evidence.stale": "Session evidence changed — refresh to update.",
+        "evidence.loading": "Loading evidence summary…",
+        "evidence.metadataOnly": "Metadata only — no file contents or paths are shown.",
+        "evidence.unavailable": "Evidence preview unavailable.",
+        "evidence.unknownSession": "Unknown session.",
+        "evidence.tooLarge": "Evidence preview is too large.",
+        "evidence.invalidRequest": "Evidence preview request is invalid.",
+        "evidence.validations": "Validations",
+        "evidence.changeSets": "Change sets",
+        "evidence.files": "Files",
+        "evidence.exportSize": "Estimated export size",
+        "evidence.retention": "Applied change-set guards stay for validation.",
+        "approval.request": "Approve {tool}{reason}",
+        "approval.requestDecision": "Approve {tool}{reason} — {decision}",
+        "approval.requestFailed": "Approve {tool}{reason} — {decision} (failed to send)",
+        "approval.decision.allow": "allowed",
+        "approval.decision.deny": "denied",
+        "approval.decision.allow-always": "always allowed",
+        "approval.allow": "Allow",
+        "approval.deny": "Deny",
+        "approval.alwaysAllow": "Always allow",
+        "approval.changeSet": "Change set {id}: {files} file(s), +{additions}/-{deletions}",
+        "approval.file": "{path} (+{additions}/-{deletions})",
+        "approval.noTextualChanges": "(no textual changes; existence and hashes are still checked)",
+        "approval.failedToSend": "{message} (failed to send)",
+        "undo.action": "Undo",
+        "undo.done": "Undone",
+        "undo.conflict": "Undo conflict — the file changed",
+        "undo.missing": "Change set is no longer available",
+        "undo.failed": "Undo failed",
+        "validation.title": "Validation · {id}",
+        "validation.changeSet": "change set",
+        "validation.checkStatus": "{status} · {duration}ms",
+        "validation.status.passed": "passed",
+        "validation.status.failed": "failed",
+        "validation.status.skipped": "skipped",
+        "validation.status.blocked": "blocked",
+        "validation.status.unknown": "unknown",
+        "validation.check": "validation check",
+        "validation.unknown": "unknown",
+        "validation.rerun": "Rerun validation",
+        "validation.rerunRecorded": "Rerun recorded",
+        "validation.rerunBlocked": "Rerun blocked — the file or session is busy",
+        "validation.missing": "Change set is no longer available",
+        "validation.unavailable": "Rerun is unavailable for this session",
+        "validation.rerunFailed": "Rerun failed",
+        "validation.commandUnavailable": "command unavailable",
+        "state.running": "running",
+        "state.idle": "idle",
+        "state.guarded": "guarded",
+        "state.direct": "direct",
+        "state.enabled": "enabled",
+        "state.unknown": "unknown",
+        "state.connected": "connected",
+        "state.ready": "ready",
+        "state.missing": "missing",
+        "state.installed": "installed",
+        "state.unavailable": "unavailable",
+        "state.unsupported": "unsupported",
+        "state.corrupt": "corrupt",
+      },
+      zh: {
+        "brand.workbench": "dev-agent Signal Loom 本地工作台",
+        "brand.localWorkbench": "本地工作台",
+        "brand.signalLoom": "Signal Loom",
+        "brand.footer": "会话、工具、审批和校验都集中在一个本地工作台中。",
+        "top.workspaceContext": "工作区上下文",
+        "top.activeWorkspace": "当前工作区",
+        "top.agentCoordination": "智能体协作界面",
+        "usage.label": "用量",
+        "usage.tokens": "{count} 个令牌",
+        "status.label": "状态",
+        "status.idle": "空闲",
+        "status.streaming": "流式处理中",
+        "status.stopping": "正在停止",
+        "status.error": "错误",
+        "status.aborted": "已中止",
+        "status.done": "完成",
+        "status.turn": "第 {turn} 轮",
+        "status.session": "会话 {session}",
+        "status.newSession": "新会话",
+        "status.deleteFailed": "删除失败",
+        "status.sessionDeleted": "会话已删除",
+        "status.renameConflict": "重命名冲突",
+        "status.renameFailed": "重命名失败",
+        "status.sessionRenamed": "会话已重命名",
+        "status.stopFailed": "停止失败",
+        "status.doneTurns": "完成 · {turns} 轮",
+        "language.label": "语言",
+        "language.en": "EN",
+        "language.zh": "中文",
+        "theme.auto": "自动",
+        "theme.dark": "深色",
+        "theme.light": "浅色",
+        "theme.switch": "切换到{theme}主题",
+        "action.stop": "停止",
+        "action.stopTitle": "停止正在运行的请求",
+        "action.rename": "重命名",
+        "action.delete": "删除",
+        "action.download": "下载",
+        "action.evidence": "证据",
+        "action.send": "发送",
+        "action.refresh": "刷新",
+        "workspace.label": "工作区",
+        "session.navigation": "会话导航",
+        "session.sessions": "会话",
+        "session.newTitle": "新建会话",
+        "session.active": "当前会话",
+        "session.select": "会话",
+        "session.ready": "准备开始新的运行。",
+        "session.noActive": "没有活动会话",
+        "session.create": "创建会话后即可开始。",
+        "session.messages": "{count} 条消息",
+        "session.validations": "{count} 项校验",
+        "session.changes": "{count} 项变更",
+        "session.protected": "{count} 项受保护",
+        "session.actions": "会话操作",
+        "session.renameTitle": "重命名会话",
+        "session.deleteTitle": "删除会话",
+        "session.downloadTitle": "下载会话记录",
+        "session.evidenceTitle": "预览证据摘要",
+        "session.deleteConfirm": "删除会话 {session}？",
+        "session.renamePrompt": "将会话 {session} 重命名为：",
+        "conversation.label": "对话",
+        "conversation.agentRun": "智能体运行",
+        "conversation.liveStream": "带有工具保护和证据感知校验的实时流。",
+        "conversation.empty": "可以向 dev-agent 提问。工具会在你的工作目录中运行。",
+        "reasoning.title": "模型思考",
+        "composer.prompt": "提示智能体",
+        "composer.shortcut": "按 Enter 发送 · Shift+Enter 换行",
+        "composer.message": "消息",
+        "composer.placeholder": "描述你希望智能体协调的工作…",
+        "inspector.label": "检查器",
+        "inspector.runtime": "运行时检查器",
+        "inspector.runtimeSignal": "运行时信号",
+        "inspector.show": "显示运行时检查器",
+        "inspector.hide": "隐藏运行时检查器",
+        "runtime.status": "运行时状态",
+        "runtime.loading": "正在加载仅含元数据的状态…",
+        "runtime.unavailable": "运行时状态不可用。",
+        "runtime.metadataOnly": "仅显示元数据，不展示密钥、路径、源码或原始错误。",
+        "runtime.refreshTitle": "刷新运行时状态",
+        "runtime.executor": "执行器",
+        "runtime.runtime": "运行时",
+        "runtime.workspace": "工作区",
+        "runtime.mcp": "MCP",
+        "runtime.managedRuntime": "托管运行时",
+        "runtime.provider": "提供方",
+        "runtime.model": "模型",
+        "runtime.approval": "审批",
+        "runtime.validation": "校验",
+        "runtime.configured": "已配置 {count} 个",
+        "runtime.connected": "已连接 {count} 个",
+        "runtime.validationState": "{enabled} · 最近一次：{last}",
+        "runtime.newSession": "新会话将在第一次运行时初始化。",
+        "runtime.ready": "已准备就绪。",
+        "runtime.install": "运行 `dev-agent runtime install` 进行设置。",
+        "runtime.unsupported": "不支持此平台或架构。",
+        "runtime.corrupt": "请重新检查状态，必要时修复或重新安装。",
+        "runtime.unavailableGuidance": "请刷新状态；如果仍不可用，请检查运行时健康状况。",
+        "runtime.retry": "刷新状态后重试。",
+        "timeline.title": "运行时间线",
+        "timeline.liveSteps": "实时运行步骤会显示在这里。",
+        "timeline.summary": "运行摘要",
+        "timeline.idle": "空闲",
+        "timeline.running": "运行中",
+        "timeline.waiting": "等待中",
+        "timeline.complete": "已完成",
+        "timeline.failed": "失败",
+        "timeline.aborted": "已中止",
+        "timeline.empty": "还没有实时运行。",
+        "timeline.steps": "{count} 个步骤 · 仅元数据",
+        "duration.zero": "0秒",
+        "duration.seconds": "{seconds}秒",
+        "duration.minutes": "{minutes}分 {seconds}秒",
+        "run.started": "运行已开始",
+        "run.waitingAgent": "等待智能体响应",
+        "run.streamingResponse": "正在流式输出响应",
+        "run.receivingAssistant": "正在接收智能体响应",
+        "run.turn": "第 {turn} 轮",
+        "run.agentTurnActive": "智能体轮次进行中",
+        "run.tool": "工具 · {name}",
+        "run.runningTool": "正在运行工具",
+        "run.progress": "进度 {progress}{total}",
+        "run.toolFailed": "工具失败",
+        "run.toolReturnedError": "工具返回错误",
+        "run.toolCompleted": "工具已完成",
+        "run.approvalRequired": "需要审批",
+        "run.reviewRequired": "{count} 个文件 · 需要审查",
+        "run.approvalGranted": "审批已通过",
+        "run.approvalDenied": "审批已拒绝",
+        "run.toolMayContinue": "工具可以继续",
+        "run.toolWasBlocked": "工具已被阻止",
+        "run.toolBlocked": "工具已阻止",
+        "run.blockedByPolicy": "被审批策略阻止",
+        "run.validation": "校验",
+        "run.validationSummary": "{count} 项检查 · {status}",
+        "run.error": "运行错误",
+        "run.requestFailed": "请求失败",
+        "run.failed": "运行失败",
+        "run.endedWithError": "请求以错误结束",
+        "run.aborted": "运行已中止",
+        "run.stopped": "请求已停止",
+        "run.complete": "运行完成",
+        "run.finished": "智能体运行已结束",
+        "evidence.title": "证据摘要",
+        "evidence.choose": "选择“证据”以加载仅含元数据的摘要。",
+        "evidence.stale": "会话证据已变化，请刷新以更新。",
+        "evidence.loading": "正在加载证据摘要…",
+        "evidence.metadataOnly": "仅显示元数据，不展示文件内容或路径。",
+        "evidence.unavailable": "证据预览不可用。",
+        "evidence.unknownSession": "未知会话。",
+        "evidence.tooLarge": "证据预览过大。",
+        "evidence.invalidRequest": "证据预览请求无效。",
+        "evidence.validations": "校验",
+        "evidence.changeSets": "变更集",
+        "evidence.files": "文件",
+        "evidence.exportSize": "预计导出大小",
+        "evidence.retention": "已应用的变更集保护会保留到校验阶段。",
+        "approval.request": "批准 {tool}{reason}",
+        "approval.requestDecision": "批准 {tool}{reason} — {decision}",
+        "approval.requestFailed": "批准 {tool}{reason} — {decision}（发送失败）",
+        "approval.decision.allow": "已允许",
+        "approval.decision.deny": "已拒绝",
+        "approval.decision.allow-always": "始终允许",
+        "approval.allow": "允许",
+        "approval.deny": "拒绝",
+        "approval.alwaysAllow": "始终允许",
+        "approval.changeSet": "变更集 {id}：{files} 个文件，+{additions}/-{deletions}",
+        "approval.file": "{path}（+{additions}/-{deletions}）",
+        "approval.noTextualChanges": "（没有文本变更，仍会检查文件存在性和哈希）",
+        "approval.failedToSend": "{message}（发送失败）",
+        "undo.action": "撤销",
+        "undo.done": "已撤销",
+        "undo.conflict": "撤销冲突：文件已发生变化",
+        "undo.missing": "变更集已不可用",
+        "undo.failed": "撤销失败",
+        "validation.title": "校验 · {id}",
+        "validation.changeSet": "变更集",
+        "validation.checkStatus": "{status} · {duration}毫秒",
+        "validation.status.passed": "通过",
+        "validation.status.failed": "失败",
+        "validation.status.skipped": "已跳过",
+        "validation.status.blocked": "已阻止",
+        "validation.status.unknown": "未知",
+        "validation.check": "校验检查",
+        "validation.unknown": "未知",
+        "validation.rerun": "重新运行校验",
+        "validation.rerunRecorded": "已记录重新运行",
+        "validation.rerunBlocked": "重新运行被阻止：文件或会话正忙",
+        "validation.missing": "变更集已不可用",
+        "validation.unavailable": "此会话不支持重新运行",
+        "validation.rerunFailed": "重新运行失败",
+        "validation.commandUnavailable": "命令不可用",
+        "state.running": "运行中",
+        "state.idle": "空闲",
+        "state.guarded": "受保护",
+        "state.direct": "直接",
+        "state.enabled": "已启用",
+        "state.unknown": "未知",
+        "state.connected": "已连接",
+        "state.ready": "就绪",
+        "state.missing": "缺失",
+        "state.installed": "已安装",
+        "state.unavailable": "不可用",
+        "state.unsupported": "不支持",
+        "state.corrupt": "损坏",
+      },
+    };
+
+    const LANGUAGE_STORAGE_KEY = "dev-agent-language";
+    const SUPPORTED_LANGUAGES = ["en", "zh"];
+    let languagePreference = readLanguagePreference();
+    let statusDescriptor = { key: "status.idle", values: {}, state: "ready" };
+    let desktopStatusNoteDescriptor = { key: "runtime.loading", values: {} };
+    let evidencePreviewStatusDescriptor = { key: "evidence.choose", values: {} };
+
+    function readLanguagePreference() {
+      try {
+        const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+        return SUPPORTED_LANGUAGES.includes(stored) ? stored : "en";
+      } catch {
+        return "en";
+      }
+    }
+
+    function t(key, values = {}) {
+      const template = translations[languagePreference]?.[key] ?? translations.en[key] ?? key;
+      return Object.entries(values).reduce(
+        (text, [name, value]) => text.replaceAll("{" + name + "}", String(value)),
+        template
+      );
+    }
+
+    function resolveTranslationValues(values = {}) {
+      const resolved = { ...values };
+      for (const [name, value] of Object.entries(values)) {
+        if (!name.endsWith("Key") || typeof value !== "string" || !value) continue;
+        const targetName = name.slice(0, -3);
+        resolved[targetName] = t(value);
+        delete resolved[name];
+      }
+      return resolved;
+    }
+
+    function setLocalizedNode(node, key, values = {}) {
+      if (!node) return;
+      node.dataset.i18nKey = key;
+      node.dataset.i18nValues = JSON.stringify(values);
+      node.textContent = t(key, resolveTranslationValues(values));
+    }
+
+    function refreshLocalizedNodes() {
+      for (const node of document.querySelectorAll("[data-i18n-key]")) {
+        let values = {};
+        try {
+          values = JSON.parse(node.dataset.i18nValues || "{}");
+        } catch {
+          values = {};
+        }
+        node.textContent = t(node.dataset.i18nKey, resolveTranslationValues(values));
+      }
+    }
+
+    function applyLanguage(language) {
+      languagePreference = SUPPORTED_LANGUAGES.includes(language) ? language : "en";
+      document.documentElement.lang = languagePreference === "zh" ? "zh-CN" : "en";
+      for (const node of document.querySelectorAll("[data-i18n]")) {
+        node.textContent = t(node.dataset.i18n);
+      }
+      for (const node of document.querySelectorAll("[data-i18n-title]")) {
+        node.title = t(node.dataset.i18nTitle);
+      }
+      for (const node of document.querySelectorAll("[data-i18n-aria-label]")) {
+        node.setAttribute("aria-label", t(node.dataset.i18nAriaLabel));
+      }
+      for (const node of document.querySelectorAll("[data-i18n-placeholder]")) {
+        node.placeholder = t(node.dataset.i18nPlaceholder);
+      }
+      languageEnButton.setAttribute("aria-pressed", String(languagePreference === "en"));
+      languageZhButton.setAttribute("aria-pressed", String(languagePreference === "zh"));
+      refreshLocalizedNodes();
+      renderStatus();
+      renderDesktopStatusNote();
+      if (desktopStatusPayload) renderDesktopStatus(desktopStatusPayload);
+      renderEvidencePreviewStatus();
+      renderRunTimeline();
+      renderUsage();
+      renderSessionOptions();
+      renderSessionMeta(sessionSummaries.get(currentSessionId));
+      applyThemePreference(themePreference);
+      syncInspectorToggle();
+    }
+
+    function persistLanguagePreference(language) {
+      try {
+        window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+      } catch {
+        // A private browsing context may reject local storage; the live toggle still works.
+      }
+    }
 
     const THEME_STORAGE_KEY = "dev-agent-theme";
     let themePreference = readThemePreference();
@@ -404,10 +954,12 @@
       document.documentElement.dataset.theme = preference;
       const effectiveTheme = currentTheme(preference);
       const nextTheme = effectiveTheme === "dark" ? "light" : "dark";
-      themeToggleLabel.textContent = effectiveTheme === "dark" ? "Dark" : "Light";
+      themeToggleLabel.textContent = t(effectiveTheme === "dark" ? "theme.dark" : "theme.light");
       themeToggleButton.setAttribute("aria-pressed", String(effectiveTheme === "dark"));
-      themeToggleButton.title = `Switch to ${nextTheme} theme`;
-      themeToggleButton.setAttribute("aria-label", `Switch to ${nextTheme} theme`);
+      const nextThemeLabel = t(nextTheme === "dark" ? "theme.dark" : "theme.light");
+      const themeLabel = t("theme.switch", { theme: nextThemeLabel });
+      themeToggleButton.title = themeLabel;
+      themeToggleButton.setAttribute("aria-label", themeLabel);
     }
 
     function persistThemePreference(preference) {
@@ -418,16 +970,433 @@
       }
     }
 
-    function setStatus(text) {
+    function statusDescriptorFor(text) {
+      const value = String(text);
+      const exact = {
+        idle: { key: "status.idle", state: "ready" },
+        streaming: { key: "status.streaming", state: "active" },
+        stopping: { key: "status.stopping", state: "active" },
+        error: { key: "status.error", state: "error" },
+        aborted: { key: "status.aborted", state: "neutral" },
+        done: { key: "status.done", state: "ready" },
+        "new session": { key: "status.newSession", state: "neutral" },
+        "delete failed": { key: "status.deleteFailed", state: "error" },
+        "session deleted": { key: "status.sessionDeleted", state: "ready" },
+        "rename conflict": { key: "status.renameConflict", state: "error" },
+        "rename failed": { key: "status.renameFailed", state: "error" },
+        "session renamed": { key: "status.sessionRenamed", state: "ready" },
+        "stop failed": { key: "status.stopFailed", state: "error" },
+      };
+      if (exact[value]) return { ...exact[value], values: {} };
+      const turn = value.match(/^turn (.+)$/);
+      if (turn) return { key: "status.turn", values: { turn: turn[1] }, state: "neutral" };
+      const session = value.match(/^session (.+)$/);
+      if (session) return { key: "status.session", values: { session: session[1] }, state: "neutral" };
+      const doneTurns = value.match(/^done · (\d+) turn\(s\)$/);
+      if (doneTurns) {
+        return { key: "status.doneTurns", values: { turns: doneTurns[1] }, state: "ready" };
+      }
+      return {
+        raw: value,
+        values: {},
+        state: value.includes("failed") || value.includes("conflict") ? "error" : "neutral",
+      };
+    }
+
+    function renderStatus() {
+      const text = statusDescriptor.key
+        ? t(statusDescriptor.key, statusDescriptor.values)
+        : statusDescriptor.raw;
       status.textContent = text;
-      const state = text === "streaming" || text === "stopping"
-        ? "active"
-        : text.includes("failed") || text.includes("conflict")
-          ? "error"
-          : text === "done" || text === "idle"
-            ? "ready"
-            : "neutral";
-      status.dataset.state = state;
+      status.dataset.state = statusDescriptor.state;
+    }
+
+    function setStatus(text) {
+      statusDescriptor = statusDescriptorFor(text);
+      renderStatus();
+    }
+
+    function setLocalizedStatus(key, values = {}, state = "neutral") {
+      statusDescriptor = { key, values, state };
+      renderStatus();
+    }
+
+    function isCurrentChatRequest(sessionId, requestId) {
+      return sessionId === currentSessionId && requestId === activeChatRequestId;
+    }
+
+    // Session changes detach the UI from the old stream but let that session finish in the background.
+    function invalidateActiveChat(abort = false) {
+      activeChatRequestId += 1;
+      activeChatSessionId = null;
+      if (abort) {
+        activeChatController?.abort();
+      }
+      activeChatController = null;
+      currentAssistant = null;
+      currentReasoning = null;
+      currentToolProgress = null;
+      finalStatus = null;
+      send.disabled = false;
+      stopButton.disabled = true;
+    }
+
+    function invalidateSessionHistory() {
+      desktopHistoryRequestId += 1;
+      desktopHistoryController?.abort();
+      desktopHistoryController = null;
+    }
+
+    function formatRunDuration(value) {
+      const durationMs = Number.isFinite(value) && value >= 0 ? value : 0;
+      if (durationMs < 1000) return t("duration.zero");
+      const totalSeconds = Math.floor(durationMs / 1000);
+      if (totalSeconds < 60) return t("duration.seconds", { seconds: totalSeconds });
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+      return t("duration.minutes", {
+        minutes,
+        seconds: String(seconds).padStart(2, "0"),
+      });
+    }
+
+    function runTimelineStatusLabel(state) {
+      switch (state) {
+        case "running":
+          return t("timeline.running");
+        case "waiting":
+          return t("timeline.waiting");
+        case "success":
+        case "done":
+          return t("timeline.complete");
+        case "failed":
+          return t("timeline.failed");
+        case "aborted":
+          return t("timeline.aborted");
+        default:
+          return t("timeline.idle");
+      }
+    }
+
+    function runTimelineTerminal(state) {
+      return state === "success" || state === "done" || state === "failed" || state === "aborted";
+    }
+
+    function safeRunToolName(value) {
+      if (typeof value !== "string") return "tool";
+      const normalized = value.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+      if (!normalized) return "tool";
+      return normalized.length > 48 ? normalized.slice(0, 45) + "..." : normalized;
+    }
+
+    function isRunToolFailure(output) {
+      if (typeof output !== "string") return false;
+      const normalized = output.trim();
+      if (!normalized.startsWith("{")) return false;
+      try {
+        const parsed = JSON.parse(normalized);
+        return Boolean(parsed && typeof parsed.error === "string");
+      } catch {
+        return false;
+      }
+    }
+
+    function runTimelineDuration() {
+      if (runTimelineStartedAt === null) return 0;
+      const end = runTimelineFinishedAt ?? Date.now();
+      return Math.max(0, end - runTimelineStartedAt);
+    }
+
+    function renderRunTimeline() {
+      runTimeline.innerHTML = "";
+      if (runTimelineEntries.length === 0) {
+        const empty = document.createElement("li");
+        empty.id = "run-timeline-empty";
+        empty.className = "run-timeline-empty";
+        setLocalizedNode(empty, "timeline.empty");
+        runTimeline.appendChild(empty);
+      } else {
+        for (const entry of runTimelineEntries) {
+          const item = document.createElement("li");
+          item.className = "run-timeline-entry";
+          item.dataset.stage = entry.stage;
+          item.dataset.status = entry.status;
+
+          const marker = document.createElement("span");
+          marker.className = "run-timeline-marker";
+          marker.setAttribute("aria-hidden", "true");
+
+          const body = document.createElement("div");
+          body.className = "run-timeline-body";
+          const title = document.createElement("strong");
+          title.className = "run-timeline-entry-title";
+          title.textContent = t(entry.titleKey, entry.titleValues);
+          const detail = document.createElement("span");
+          detail.className = "run-timeline-entry-detail";
+          const detailValues = { ...entry.detailValues };
+          if (detailValues.statusKey) {
+            detailValues.status = t(detailValues.statusKey);
+            delete detailValues.statusKey;
+          }
+          detail.textContent = t(entry.detailKey, detailValues);
+          body.append(title, detail);
+
+          const meta = document.createElement("span");
+          meta.className = "run-timeline-entry-meta";
+          meta.textContent = runTimelineStatusLabel(entry.status);
+
+          item.append(marker, body, meta);
+          runTimeline.appendChild(item);
+        }
+      }
+
+      const stepCount = runTimelineEntries.filter((entry) => entry.stage !== "run").length;
+      const stateLabel = runTimelineStatusLabel(runTimelineState);
+      runInspectorState.textContent = stateLabel;
+      runInspectorState.dataset.state = runTimelineState;
+      runInspectorDuration.textContent = formatRunDuration(runTimelineDuration());
+      if (runTimelineStartedAt === null) {
+        setLocalizedNode(runInspectorNote, "timeline.liveSteps");
+      } else {
+        setLocalizedNode(runInspectorNote, "timeline.steps", { count: stepCount });
+      }
+    }
+
+    function addRunTimelineEntry(stage, titleKey, status, detailKey, titleValues = {}, detailValues = {}) {
+      const entry = {
+        id: "run-step-" + (++runTimelineSequence),
+        stage,
+        titleKey,
+        titleValues,
+        status,
+        detailKey,
+        detailValues,
+        startedAt: Date.now(),
+        endedAt: runTimelineTerminal(status) ? Date.now() : null,
+      };
+      runTimelineEntries.push(entry);
+      renderRunTimeline();
+      return entry.id;
+    }
+
+    function updateRunTimelineEntry(id, updates) {
+      const entry = runTimelineEntries.find((candidate) => candidate.id === id);
+      if (!entry) return;
+      Object.assign(entry, updates);
+      if (runTimelineTerminal(entry.status)) {
+        entry.endedAt = entry.endedAt ?? Date.now();
+      } else {
+        entry.endedAt = null;
+      }
+      renderRunTimeline();
+    }
+
+    function findLatestRunTimelineEntry(stage, status) {
+      for (let index = runTimelineEntries.length - 1; index >= 0; index -= 1) {
+        const entry = runTimelineEntries[index];
+        if (entry.stage === stage && (status === undefined || entry.status === status)) return entry;
+      }
+      return null;
+    }
+
+    function resetRunTimeline(sessionId = currentSessionId) {
+      if (runTimelineTimer !== null) {
+        window.clearInterval(runTimelineTimer);
+        runTimelineTimer = null;
+      }
+      runTimelineEntries = [];
+      runTimelineSessionId = sessionId;
+      runTimelineStartedAt = null;
+      runTimelineFinishedAt = null;
+      runTimelineState = "idle";
+      runTimelineRootId = null;
+      activeRunToolId = null;
+      activeRunApprovalId = null;
+      renderRunTimeline();
+    }
+
+    function startRunTimeline(sessionId = currentSessionId) {
+      if (runTimelineSessionId !== sessionId) resetRunTimeline(sessionId);
+      if (runTimelineStartedAt !== null && runTimelineFinishedAt === null) return;
+      runTimelineSessionId = sessionId;
+      runTimelineStartedAt = Date.now();
+      runTimelineFinishedAt = null;
+      runTimelineState = "running";
+      runTimelineRootId = addRunTimelineEntry(
+        "run",
+        "run.started",
+        "running",
+        "run.waitingAgent"
+      );
+      if (runTimelineTimer !== null) window.clearInterval(runTimelineTimer);
+      runTimelineTimer = window.setInterval(renderRunTimeline, 1000);
+      renderRunTimeline();
+    }
+
+    function finishRunTimeline(state, title, detail) {
+      runTimelineState = state;
+      runTimelineFinishedAt = Date.now();
+      if (runTimelineTimer !== null) {
+        window.clearInterval(runTimelineTimer);
+        runTimelineTimer = null;
+      }
+      if (runTimelineRootId) {
+        updateRunTimelineEntry(runTimelineRootId, {
+          titleKey: title,
+          status: state === "done" ? "done" : state,
+          detailKey: detail,
+        });
+      }
+      renderRunTimeline();
+    }
+
+    function recordRunEvent(eventType, parsed) {
+      if (runTimelineSessionId !== currentSessionId) return;
+      if (runTimelineStartedAt === null) startRunTimeline(currentSessionId);
+      const root = runTimelineRootId
+        ? runTimelineEntries.find((entry) => entry.id === runTimelineRootId)
+        : null;
+
+      switch (eventType) {
+        case "token":
+          runTimelineState = "running";
+          if (root) updateRunTimelineEntry(root.id, {
+            titleKey: "run.streamingResponse",
+            status: "running",
+            detailKey: "run.receivingAssistant",
+          });
+          break;
+        case "turn": {
+          runTimelineState = "running";
+          const turn = Number.isSafeInteger(parsed.turn) ? parsed.turn : "?";
+          if (root) updateRunTimelineEntry(root.id, {
+            titleKey: "run.turn",
+            titleValues: { turn },
+            status: "running",
+            detailKey: "run.agentTurnActive",
+          });
+          break;
+        }
+        case "tool": {
+          runTimelineState = "running";
+          activeRunToolId = addRunTimelineEntry(
+            "tool",
+            "run.tool",
+            "running",
+            "run.runningTool",
+            { name: safeRunToolName(parsed.name) }
+          );
+          break;
+        }
+        case "tool-progress": {
+          runTimelineState = "running";
+          const progress = Number.isFinite(parsed.progress) ? String(parsed.progress) : "working";
+          const total = Number.isFinite(parsed.total) ? "/" + parsed.total : "";
+          if (!activeRunToolId) {
+            activeRunToolId = addRunTimelineEntry(
+              "tool",
+              "run.tool",
+              "running",
+              "run.runningTool",
+              { name: safeRunToolName(parsed.name) }
+            );
+          }
+          updateRunTimelineEntry(activeRunToolId, {
+            detailKey: "run.progress",
+            detailValues: { progress, total },
+          });
+          break;
+        }
+        case "tool-result":
+          if (activeRunToolId) {
+            const failed = isRunToolFailure(parsed.output);
+            updateRunTimelineEntry(activeRunToolId, {
+              status: failed ? "failed" : "success",
+              titleKey: failed ? "run.toolFailed" : "run.tool",
+              titleValues: failed ? {} : { name: safeRunToolName(parsed.name) },
+              detailKey: failed ? "run.toolReturnedError" : "run.toolCompleted",
+              detailValues: {},
+            });
+          }
+          activeRunToolId = null;
+          runTimelineState = "running";
+          break;
+        case "approval-request": {
+          runTimelineState = "waiting";
+          const review = parsed.review;
+          activeRunApprovalId = addRunTimelineEntry(
+            "approval",
+            "run.approvalRequired",
+            "waiting",
+            review && Array.isArray(review.files) ? "run.reviewRequired" : "run.approvalRequired",
+            review && Array.isArray(review.files) ? { count: review.files.length } : {}
+          );
+          break;
+        }
+        case "approval": {
+          const approval = activeRunApprovalId
+            ? runTimelineEntries.find((entry) => entry.id === activeRunApprovalId)
+            : findLatestRunTimelineEntry("approval", "waiting");
+          const allowed = parsed.decision === "allow" || parsed.decision === "allow-always";
+          if (approval) {
+            updateRunTimelineEntry(approval.id, {
+              status: allowed ? "success" : "failed",
+              titleKey: allowed ? "run.approvalGranted" : "run.approvalDenied",
+              titleValues: {},
+              detailKey: allowed ? "run.toolMayContinue" : "run.toolWasBlocked",
+              detailValues: {},
+            });
+          }
+          if (!allowed && activeRunToolId) {
+            updateRunTimelineEntry(activeRunToolId, {
+              status: "failed",
+              titleKey: "run.toolBlocked",
+              titleValues: {},
+              detailKey: "run.blockedByPolicy",
+              detailValues: {},
+            });
+            activeRunToolId = null;
+          }
+          activeRunApprovalId = null;
+          runTimelineState = allowed ? "running" : "failed";
+          break;
+        }
+        case "validation": {
+          const statusValue = ["passed", "failed", "skipped", "blocked"].includes(parsed.status)
+            ? parsed.status
+            : "blocked";
+          const timelineStatus = statusValue === "passed" ? "success"
+            : statusValue === "failed" || statusValue === "blocked" ? "failed"
+              : "waiting";
+          const checks = Array.isArray(parsed.checks) ? parsed.checks.length : 0;
+          addRunTimelineEntry(
+            "validation",
+            "run.validation",
+            timelineStatus,
+            "run.validationSummary",
+            {},
+            { count: checks, statusKey: "validation.status." + statusValue }
+          );
+          runTimelineState = timelineStatus === "failed" ? "failed" : "running";
+          break;
+        }
+        case "error":
+          addRunTimelineEntry("error", "run.error", "failed", "run.requestFailed");
+          finishRunTimeline("failed", "run.failed", "run.endedWithError");
+          break;
+        case "done":
+          if (parsed.status === "aborted") {
+            finishRunTimeline("aborted", "run.aborted", "run.stopped");
+          } else if (parsed.status === "error" || parsed.status === "failed") {
+            finishRunTimeline("failed", "run.failed", "run.endedWithError");
+          } else {
+            finishRunTimeline("done", "run.complete", "run.finished");
+          }
+          break;
+        default:
+          break;
+      }
+      renderRunTimeline();
     }
 
     function syncInspectorToggle() {
@@ -435,14 +1404,34 @@
       if (!canCollapse) {
         inspectorShell.classList.remove("is-open");
         toggleInspectorButton.setAttribute("aria-expanded", "false");
-        toggleInspectorButton.textContent = "Inspector";
-        toggleInspectorButton.title = "Show runtime inspector";
+        setLocalizedNode(toggleInspectorButton, "inspector.label");
+        toggleInspectorButton.title = t("inspector.show");
+        toggleInspectorButton.setAttribute("aria-label", t("inspector.show"));
       }
+    }
+
+    function localizedMetadataState(value) {
+      const key = {
+        running: "state.running",
+        idle: "state.idle",
+        guarded: "state.guarded",
+        direct: "state.direct",
+        enabled: "state.enabled",
+        unknown: "state.unknown",
+        connected: "state.connected",
+        ready: "state.ready",
+        missing: "state.missing",
+        installed: "state.installed",
+        unavailable: "state.unavailable",
+        unsupported: "state.unsupported",
+        corrupt: "state.corrupt",
+      }[value];
+      return key ? t(key) : value;
     }
 
     function setDesktopStatusValue(valueElement, stateElement, value, state) {
       valueElement.textContent = typeof value === "string" && value ? value : "—";
-      stateElement.textContent = typeof state === "string" && state ? state : "—";
+      stateElement.textContent = typeof state === "string" && state ? localizedMetadataState(state) : "—";
     }
 
     function isDesktopStatusPayload(payload) {
@@ -452,10 +1441,12 @@
     }
 
     function renderDesktopStatus(payload) {
+      desktopStatusPayload = payload;
       setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, payload.executor.mode, payload.session?.running ? "running" : "idle");
       setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, payload.runtime.kind + " " + payload.runtime.version, payload.runtime.platform);
       desktopStatusWorkspace.textContent = payload.workspace?.label || "—";
-      setDesktopStatusValue(desktopStatusMcp, desktopStatusMcpState, (payload.mcp?.configured ?? 0) + " configured", (payload.mcp?.connected ?? 0) + " connected");
+      desktopStatusMcp.textContent = t("runtime.configured", { count: payload.mcp?.configured ?? 0 });
+      desktopStatusMcpState.textContent = t("runtime.connected", { count: payload.mcp?.connected ?? 0 });
       setDesktopStatusValue(
         desktopStatusManagedRuntime,
         desktopStatusManagedRuntimeState,
@@ -467,16 +1458,37 @@
       setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, payload.model.id, payload.model.state);
       setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, payload.approval.mode, payload.approval.guarded ? "guarded" : "direct");
       const validationResult = payload.validation.lastResult || "unknown";
-      setDesktopStatusValue(
-        desktopStatusValidation,
-        desktopStatusValidationState,
-        payload.validation.policy,
-        (payload.validation.enabled ? "enabled" : "unknown") + " · last " + validationResult
-      );
+      desktopStatusValidation.textContent = payload.validation.policy || "—";
+      desktopStatusValidationState.textContent = t("runtime.validationState", {
+        enabled: localizedMetadataState(payload.validation.enabled ? "enabled" : "unknown"),
+        last: t("validation.status." + (["passed", "failed", "skipped", "blocked"].includes(validationResult) ? validationResult : "blocked")),
+      });
+    }
+
+    function desktopStatusNoteFor(note) {
+      const exact = {
+        "Loading metadata-only status…": { key: "runtime.loading", values: {} },
+        "Runtime status unavailable.": { key: "runtime.unavailable", values: {} },
+        "Metadata only — no keys, paths, source, or raw errors are shown.": { key: "runtime.metadataOnly", values: {} },
+        "New session will initialize on the first run.": { key: "runtime.newSession", values: {} },
+      };
+      return exact[note] || { raw: note, values: {} };
+    }
+
+    function renderDesktopStatusNote() {
+      desktopStatusNote.textContent = desktopStatusNoteDescriptor.key
+        ? t(desktopStatusNoteDescriptor.key, desktopStatusNoteDescriptor.values)
+        : desktopStatusNoteDescriptor.raw;
+    }
+
+    function setDesktopStatusNote(note) {
+      desktopStatusNoteDescriptor = desktopStatusNoteFor(note);
+      renderDesktopStatusNote();
     }
 
     function resetDesktopStatus(note) {
-      desktopStatusNote.textContent = note;
+      desktopStatusPayload = null;
+      setDesktopStatusNote(note);
       setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, "—", "—");
       setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, "—", "—");
       desktopStatusWorkspace.textContent = "—";
@@ -492,17 +1504,27 @@
     function managedRuntimeGuidance(state) {
       switch (state) {
         case "installed":
-          return "Ready to use.";
+          return languagePreference === "en" ? "Ready to use." : t("runtime.ready");
         case "missing":
-          return "Run `dev-agent runtime install` to set it up.";
+          return languagePreference === "en"
+            ? "Run `dev-agent runtime install` to set it up."
+            : t("runtime.install");
         case "unsupported":
-          return "This platform or architecture is not supported.";
+          return languagePreference === "en"
+            ? "This platform or architecture is not supported."
+            : t("runtime.unsupported");
         case "corrupt":
-          return "Recheck status, then repair or reinstall if needed.";
+          return languagePreference === "en"
+            ? "Recheck status, then repair or reinstall if needed."
+            : t("runtime.corrupt");
         case "unavailable":
-          return "Refresh status; check runtime health if it stays unavailable.";
+          return languagePreference === "en"
+            ? "Refresh status; check runtime health if it stays unavailable."
+            : t("runtime.unavailableGuidance");
         default:
-          return "Refresh status to try again.";
+          return languagePreference === "en"
+            ? "Refresh status to try again."
+            : t("runtime.retry");
       }
     }
 
@@ -514,7 +1536,7 @@
       desktopStatusController = controller;
       desktopStatusRefreshButton.disabled = true;
       desktopStatusRefreshButton.setAttribute("aria-busy", "true");
-      desktopStatusNote.textContent = "Loading metadata-only status…";
+      setDesktopStatusNote("Loading metadata-only status…");
       try {
         const response = await fetch("/api/status?sessionId=" + encodeURIComponent(sessionId), { cache: "no-store", signal: controller.signal });
         if (!response.ok) throw new Error("status unavailable");
@@ -522,7 +1544,7 @@
         if (requestId !== desktopStatusRequestId || sessionId !== currentSessionId) return;
         if (!isDesktopStatusPayload(payload)) throw new Error("invalid status response");
         renderDesktopStatus(payload);
-        desktopStatusNote.textContent = "Metadata only — no keys, paths, source, or raw errors are shown.";
+        setDesktopStatusNote("Metadata only — no keys, paths, source, or raw errors are shown.");
       } catch {
         if (controller.signal.aborted || requestId !== desktopStatusRequestId || sessionId !== currentSessionId) return;
         resetDesktopStatus("Runtime status unavailable.");
@@ -542,7 +1564,7 @@
     }
 
     function renderUsage() {
-      const parts = [totalTokens + " tokens"];
+      const parts = [t("usage.tokens", { count: totalTokens })];
       if (hasCost) parts.push("$" + formatCost(totalCost));
       usage.textContent = parts.join(" · ");
     }
@@ -594,6 +1616,31 @@
         ));
     }
 
+    function evidencePreviewStatusFor(text) {
+      const exact = {
+        "Choose Evidence to load a metadata-only summary.": { key: "evidence.choose", values: {} },
+        "Session evidence changed — refresh to update.": { key: "evidence.stale", values: {} },
+        "Loading evidence summary…": { key: "evidence.loading", values: {} },
+        "Metadata only — no file contents or paths are shown.": { key: "evidence.metadataOnly", values: {} },
+        "Evidence preview unavailable.": { key: "evidence.unavailable", values: {} },
+        "Unknown session.": { key: "evidence.unknownSession", values: {} },
+        "Evidence preview is too large.": { key: "evidence.tooLarge", values: {} },
+        "Evidence preview request is invalid.": { key: "evidence.invalidRequest", values: {} },
+      };
+      return exact[text] || { raw: text, values: {} };
+    }
+
+    function renderEvidencePreviewStatus() {
+      evidencePreviewStatus.textContent = evidencePreviewStatusDescriptor.key
+        ? t(evidencePreviewStatusDescriptor.key, evidencePreviewStatusDescriptor.values)
+        : evidencePreviewStatusDescriptor.raw;
+    }
+
+    function setEvidencePreviewStatus(text) {
+      evidencePreviewStatusDescriptor = evidencePreviewStatusFor(text);
+      renderEvidencePreviewStatus();
+    }
+
     function resetEvidencePreview() {
       evidencePreviewRequestId += 1;
       evidencePreviewDataRevision += 1;
@@ -604,14 +1651,14 @@
       previewEvidenceButton.setAttribute("aria-expanded", "false");
       previewEvidenceButton.disabled = false;
       evidencePreviewRefreshButton.disabled = false;
-      evidencePreviewStatus.textContent = "Choose Evidence to load a metadata-only summary.";
+      setEvidencePreviewStatus("Choose Evidence to load a metadata-only summary.");
       setEvidencePreviewValues(null);
     }
 
     function markEvidencePreviewStale() {
       evidencePreviewDataRevision += 1;
       if (evidencePreviewPanel.hidden) return;
-      evidencePreviewStatus.textContent = "Session evidence changed — refresh to update.";
+      setEvidencePreviewStatus("Session evidence changed — refresh to update.");
     }
 
     async function loadEvidencePreview(sessionId) {
@@ -626,7 +1673,7 @@
       previewEvidenceButton.setAttribute("aria-expanded", "true");
       previewEvidenceButton.disabled = true;
       evidencePreviewRefreshButton.disabled = true;
-      evidencePreviewStatus.textContent = "Loading evidence summary…";
+      setEvidencePreviewStatus("Loading evidence summary…");
       setEvidencePreviewValues(null);
 
       try {
@@ -635,23 +1682,23 @@
           { signal: controller.signal }
         );
         if (!response.ok) {
-          evidencePreviewStatus.textContent = evidencePreviewFailureMessage(response.status);
+          setEvidencePreviewStatus(evidencePreviewFailureMessage(response.status));
           setEvidencePreviewValues(null);
           return;
         }
         const payload = await response.json();
         if (requestId !== evidencePreviewRequestId || sessionId !== currentSessionId) return;
         if (dataRevision !== evidencePreviewDataRevision) {
-          evidencePreviewStatus.textContent = "Session evidence changed — refresh to update.";
+          setEvidencePreviewStatus("Session evidence changed — refresh to update.");
           return;
         }
         if (!isEvidencePreviewPayload(payload, sessionId)) throw new Error("invalid evidence preview response");
         setEvidencePreviewValues(payload);
-        evidencePreviewStatus.textContent = "Metadata only — no file contents or paths are shown.";
+        setEvidencePreviewStatus("Metadata only — no file contents or paths are shown.");
       } catch (error) {
         if (controller.signal.aborted || error?.name === "AbortError"
           || requestId !== evidencePreviewRequestId || sessionId !== currentSessionId) return;
-        evidencePreviewStatus.textContent = "Evidence preview unavailable.";
+        setEvidencePreviewStatus("Evidence preview unavailable.");
         setEvidencePreviewValues(null);
       } finally {
         if (requestId === evidencePreviewRequestId) {
@@ -690,26 +1737,41 @@
     function formatSessionSummary(summary) {
       const parts = [];
       if (Number.isSafeInteger(summary?.entryCount) && summary.entryCount > 0) {
-        parts.push(summary.entryCount + " messages");
+        parts.push(t("session.messages", { count: summary.entryCount }));
       }
       const evidence = summary?.evidenceSummary;
       if (Number.isSafeInteger(evidence?.validations) && evidence.validations > 0) {
-        parts.push(evidence.validations + " validations");
+        parts.push(t("session.validations", { count: evidence.validations }));
       }
       if (Number.isSafeInteger(evidence?.changeSets) && evidence.changeSets > 0) {
-        parts.push(evidence.changeSets + " changes");
+        parts.push(t("session.changes", { count: evidence.changeSets }));
       }
       if (Number.isSafeInteger(evidence?.protectedChangeSets) && evidence.protectedChangeSets > 0) {
-        parts.push(evidence.protectedChangeSets + " protected");
+        parts.push(t("session.protected", { count: evidence.protectedChangeSets }));
       }
       return parts.join(" · ");
     }
 
     function renderSessionMeta(summary) {
-      sessionMetaId.textContent = currentSessionId || "no active session";
+      sessionMetaId.textContent = currentSessionId || t("session.noActive");
       sessionMeta.textContent = currentSessionId
-        ? (formatSessionSummary(summary) || "Ready for a new run.")
-        : "Create a session to begin.";
+        ? (formatSessionSummary(summary) || t("session.ready"))
+        : t("session.create");
+    }
+
+    function renderSessionOptions() {
+      const selectedSessionId = currentSessionId;
+      sessionSelect.innerHTML = "";
+      for (const session of sessionSummaries.values()) {
+        const option = document.createElement("option");
+        option.value = session.sessionId;
+        const summaryText = formatSessionSummary(session);
+        option.textContent = summaryText
+          ? session.sessionId + " (" + summaryText + ")"
+          : session.sessionId;
+        sessionSelect.appendChild(option);
+      }
+      if (selectedSessionId) ensureSessionOption(selectedSessionId);
     }
 
     async function loadSessions() {
@@ -717,19 +1779,14 @@
         const res = await fetch("/api/sessions");
         if (!res.ok) return;
         const data = await res.json();
-        sessionSelect.innerHTML = "";
         sessionSummaries = new Map();
         for (const session of data.sessions ?? []) {
-          const option = document.createElement("option");
-          option.value = session.sessionId;
-          const summaryText = formatSessionSummary(session);
-          option.textContent = summaryText ? session.sessionId + " (" + summaryText + ")" : session.sessionId;
-          sessionSelect.appendChild(option);
           sessionSummaries.set(session.sessionId, session);
         }
         if (currentSessionId === null) {
           currentSessionId = data.activeSessionId ?? "desktop-default";
         }
+        renderSessionOptions();
         ensureSessionOption(currentSessionId);
         applySessionUsage(sessionSummaries.get(currentSessionId));
       } catch {
@@ -753,12 +1810,13 @@
         if (!res.ok) throw new Error("history unavailable");
         const data = await res.json();
         if (requestId !== desktopHistoryRequestId || sessionId !== currentSessionId) return;
+        if (data.sessionId !== sessionId) return;
         const history = data.messages ?? [];
         const validations = data.validations ?? [];
         if (history.length === 0 && validations.length === 0) {
           const empty = document.createElement("div");
           empty.className = "empty";
-          empty.textContent = "Ask dev-agent anything. Tools run in your working directory.";
+          setLocalizedNode(empty, "conversation.empty");
           messages.appendChild(empty);
           return;
         }
@@ -779,16 +1837,46 @@
       }
     }
 
+    const MESSAGE_SCROLL_THRESHOLD = 24;
+
+    function isMessagesAtBottom() {
+      return messages.scrollHeight - messages.scrollTop - messages.clientHeight <= MESSAGE_SCROLL_THRESHOLD;
+    }
+
+    function scrollMessagesToBottom(wasAtBottom = isMessagesAtBottom()) {
+      if (wasAtBottom) messages.scrollTop = messages.scrollHeight;
+    }
+
     function appendMessage(kind, text) {
+      const wasAtBottom = isMessagesAtBottom();
       const div = document.createElement("div");
       div.className = "msg " + kind;
       div.textContent = text;
       messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
+      scrollMessagesToBottom(wasAtBottom);
       return div;
     }
 
+    function ensureReasoning() {
+      if (!currentReasoning) {
+        const wasAtBottom = isMessagesAtBottom();
+        const details = document.createElement("details");
+        details.className = "msg reasoning";
+        details.open = true;
+        const summary = document.createElement("summary");
+        setLocalizedNode(summary, "reasoning.title");
+        const content = document.createElement("div");
+        content.className = "reasoning-content";
+        details.append(summary, content);
+        messages.appendChild(details);
+        scrollMessagesToBottom(wasAtBottom);
+        currentReasoning = content;
+      }
+      return currentReasoning;
+    }
+
     function ensureAssistant() {
+      currentReasoning = null;
       if (!currentAssistant) {
         currentAssistant = appendMessage("assistant", "");
       }
@@ -799,40 +1887,69 @@
       const div = document.createElement("div");
       div.className = "msg approval";
       const label = document.createElement("div");
-      label.textContent = "Approve " + request.tool + (request.reason ? ": " + request.reason : "");
+      let decision = null;
+      let failedToSend = false;
+      const renderApprovalLabel = () => {
+        const reason = request.reason ? ": " + request.reason : "";
+        const values = {
+          tool: request.tool,
+          reason,
+          decisionKey: decision ? "approval.decision." + decision : "",
+        };
+        setLocalizedNode(
+          label,
+          failedToSend
+            ? "approval.requestFailed"
+            : decision
+              ? "approval.requestDecision"
+              : "approval.request",
+          values
+        );
+      };
+      renderApprovalLabel();
       const requestSessionId = currentSessionId;
       const actions = document.createElement("div");
       actions.className = "actions";
       const allow = document.createElement("button");
       allow.type = "button";
-      allow.textContent = "Allow";
+      setLocalizedNode(allow, "approval.allow");
       const deny = document.createElement("button");
       deny.type = "button";
-      deny.textContent = "Deny";
+      setLocalizedNode(deny, "approval.deny");
       let allowAlways = null;
       if (!request.review) {
         allowAlways = document.createElement("button");
         allowAlways.type = "button";
-        allowAlways.textContent = "Always allow";
+        setLocalizedNode(allowAlways, "approval.alwaysAllow");
       }
 
       if (request.review) {
         const review = document.createElement("div");
         const summary = document.createElement("div");
         summary.className = "review-summary";
-        summary.textContent =
-          "Change set " + request.review.changeSetId + ": " +
-          request.review.files.length + " file(s), +" + request.review.additions + "/-" + request.review.deletions;
+        setLocalizedNode(summary, "approval.changeSet", {
+          id: request.review.changeSetId,
+          files: request.review.files.length,
+          additions: request.review.additions,
+          deletions: request.review.deletions,
+        });
         review.appendChild(summary);
         for (const file of request.review.files ?? []) {
           const filePanel = document.createElement("div");
           filePanel.className = "review-file";
           const fileLabel = document.createElement("div");
           fileLabel.className = "review-file-label";
-          fileLabel.textContent =
-            file.path + " (+" + file.additions + "/-" + file.deletions + ")";
+          setLocalizedNode(fileLabel, "approval.file", {
+            path: file.path,
+            additions: file.additions,
+            deletions: file.deletions,
+          });
           const diff = document.createElement("pre");
-          diff.textContent = file.diff || "(no textual changes; existence and hashes are still checked)";
+          if (file.diff) {
+            diff.textContent = file.diff;
+          } else {
+            setLocalizedNode(diff, "approval.noTextualChanges");
+          }
           filePanel.append(fileLabel, diff);
           review.appendChild(filePanel);
         }
@@ -843,19 +1960,21 @@
         });
       }
 
-      const decide = async (decision) => {
+      const decide = async (nextDecision) => {
         allow.disabled = true;
         deny.disabled = true;
         if (allowAlways) allowAlways.disabled = true;
-        label.textContent = label.textContent + " — " + decision;
+        decision = nextDecision;
+        renderApprovalLabel();
         try {
           await fetch("/api/approval", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ id: request.id, decision }),
+            body: JSON.stringify({ id: request.id, decision: nextDecision }),
           });
         } catch {
-          label.textContent = label.textContent + " (failed to send)";
+          failedToSend = true;
+          renderApprovalLabel();
         }
       };
 
@@ -868,8 +1987,9 @@
         actions.append(allow, deny);
       }
       div.append(label, actions);
+      const wasAtBottom = isMessagesAtBottom();
       messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
+      scrollMessagesToBottom(wasAtBottom);
     }
 
     function appendUndo(changeSetId, approvalEntry) {
@@ -879,7 +1999,7 @@
       if (!actions) return;
       const undo = document.createElement("button");
       undo.type = "button";
-      undo.textContent = "Undo";
+      setLocalizedNode(undo, "undo.action");
       undo.dataset.undo = changeSetId;
       const undoStatus = document.createElement("span");
       undoStatus.className = "undo-status";
@@ -899,21 +2019,21 @@
           });
           if (requestId !== desktopUndoRequestId || sessionId !== currentSessionId) return;
           if (res.ok) {
-            undoStatus.textContent = "Undone";
+            setLocalizedNode(undoStatus, "undo.done");
             markEvidencePreviewStale();
           } else if (res.status === 409) {
             undo.disabled = false;
-            undoStatus.textContent = "Undo conflict — the file changed";
+            setLocalizedNode(undoStatus, "undo.conflict");
           } else if (res.status === 404) {
-            undoStatus.textContent = "Change set is no longer available";
+            setLocalizedNode(undoStatus, "undo.missing");
           } else {
             undo.disabled = false;
-            undoStatus.textContent = "Undo failed";
+            setLocalizedNode(undoStatus, "undo.failed");
           }
         } catch {
           if (!controller.signal.aborted && requestId === desktopUndoRequestId && sessionId === currentSessionId) {
             undo.disabled = false;
-            undoStatus.textContent = "Undo failed";
+            setLocalizedNode(undoStatus, "undo.failed");
           }
         } finally {
           if (requestId === desktopUndoRequestId) {
@@ -925,8 +2045,11 @@
     }
 
     sessionSelect.addEventListener("change", async () => {
+      invalidateActiveChat();
+      invalidateSessionHistory();
       resetEvidencePreview();
       currentSessionId = sessionSelect.value;
+      resetRunTimeline(currentSessionId);
       applySessionUsage(sessionSummaries.get(currentSessionId));
       await Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]);
       setStatus("session " + currentSessionId);
@@ -935,10 +2058,22 @@
     toggleInspectorButton.addEventListener("click", () => {
       const isOpen = inspectorShell.classList.toggle("is-open");
       toggleInspectorButton.setAttribute("aria-expanded", String(isOpen));
-      toggleInspectorButton.textContent = isOpen ? "Hide inspector" : "Inspector";
-      toggleInspectorButton.title = isOpen ? "Hide runtime inspector" : "Show runtime inspector";
+      const labelKey = isOpen ? "inspector.hide" : "inspector.label";
+      setLocalizedNode(toggleInspectorButton, labelKey);
+      toggleInspectorButton.title = t(isOpen ? "inspector.hide" : "inspector.show");
+      toggleInspectorButton.setAttribute("aria-label", t(isOpen ? "inspector.hide" : "inspector.show"));
     });
     window.addEventListener("resize", syncInspectorToggle);
+
+    languageEnButton.addEventListener("click", () => {
+      persistLanguagePreference("en");
+      applyLanguage("en");
+    });
+
+    languageZhButton.addEventListener("click", () => {
+      persistLanguagePreference("zh");
+      applyLanguage("zh");
+    });
 
     themeToggleButton.addEventListener("click", () => {
       const nextTheme = currentTheme() === "dark" ? "light" : "dark";
@@ -969,8 +2104,11 @@
     });
 
     newSessionButton.addEventListener("click", async () => {
+      invalidateActiveChat();
+      invalidateSessionHistory();
       resetEvidencePreview();
       currentSessionId = "session-" + Date.now().toString(36);
+      resetRunTimeline(currentSessionId);
       ensureSessionOption(currentSessionId);
       totalTokens = 0;
       totalCost = 0;
@@ -982,7 +2120,7 @@
       currentToolProgress = null;
       const empty = document.createElement("div");
       empty.className = "empty";
-      empty.textContent = "Ask dev-agent anything. Tools run in your working directory.";
+      setLocalizedNode(empty, "conversation.empty");
       messages.appendChild(empty);
       resetDesktopStatus("New session will initialize on the first run.");
       setStatus("new session");
@@ -990,7 +2128,7 @@
 
     deleteSessionButton.addEventListener("click", async () => {
       if (currentSessionId === null) return;
-      if (!window.confirm("Delete session " + currentSessionId + "?")) return;
+      if (!window.confirm(t("session.deleteConfirm", { session: currentSessionId }))) return;
       try {
         const res = await fetch("/api/sessions/" + encodeURIComponent(currentSessionId), {
           method: "DELETE",
@@ -1005,6 +2143,7 @@
       }
       currentSessionId = null;
       resetEvidencePreview();
+      resetRunTimeline(null);
       totalTokens = 0;
       totalCost = 0;
       hasCost = false;
@@ -1018,7 +2157,7 @@
     renameSessionButton.addEventListener("click", async () => {
       if (currentSessionId === null) return;
       const answer = window.prompt(
-        "Rename session " + currentSessionId + " to:",
+        t("session.renamePrompt", { session: currentSessionId }),
         currentSessionId
       );
       if (answer === null) return;
@@ -1094,6 +2233,11 @@
       const message = input.value.trim();
       if (!message) return;
 
+      const requestSessionId = currentSessionId;
+      const requestId = ++activeChatRequestId;
+      const controller = new AbortController();
+      activeChatSessionId = requestSessionId;
+      activeChatController = controller;
       appendMessage("user", message);
       input.value = "";
       input.style.height = "auto";
@@ -1101,18 +2245,24 @@
       stopButton.disabled = false;
       setStatus("streaming");
       currentAssistant = null;
+      currentReasoning = null;
       currentToolProgress = null;
       finalStatus = null;
+      resetRunTimeline(requestSessionId);
+      startRunTimeline(requestSessionId);
 
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ message, sessionId: currentSessionId }),
+          body: JSON.stringify({ message, sessionId: requestSessionId }),
+          signal: controller.signal,
         });
         if (!res.ok || !res.body) {
+          if (!isCurrentChatRequest(requestSessionId, requestId)) return;
           const text = await res.text().catch(() => "");
           appendMessage("error", "Request failed: " + (text || res.status));
+          recordRunEvent("error", {});
           setStatus("error");
           return;
         }
@@ -1127,21 +2277,43 @@
           while ((idx = buffer.indexOf("\n\n")) >= 0) {
             const block = buffer.slice(0, idx);
             buffer = buffer.slice(idx + 2);
-            handleEvent(block);
+            handleEvent(block, requestSessionId, requestId);
           }
         }
       } catch (err) {
+        if (!isCurrentChatRequest(requestSessionId, requestId)) return;
+        if (err?.name === "AbortError") return;
         appendMessage("error", err instanceof Error ? err.message : String(err));
+        recordRunEvent("error", {});
         setStatus("error");
       } finally {
+        if (!isCurrentChatRequest(requestSessionId, requestId)) {
+          if (currentSessionId === requestSessionId && activeChatSessionId === null) {
+            void loadHistory(requestSessionId);
+            void loadDesktopStatus(requestSessionId);
+          }
+          return;
+        }
+        if (
+          finalStatus === null &&
+          runTimelineSessionId === requestSessionId &&
+          runTimelineStartedAt !== null &&
+          runTimelineFinishedAt === null
+        ) {
+          recordRunEvent("error", {});
+        }
         send.disabled = false;
         stopButton.disabled = true;
         currentAssistant = null;
+        currentReasoning = null;
+        activeChatSessionId = null;
+        activeChatController = null;
         setStatus(finalStatus ?? "idle");
       }
     });
 
-    function handleEvent(block) {
+    function handleEvent(block, sessionId, requestId) {
+      if (!isCurrentChatRequest(sessionId, requestId)) return;
       let eventType = "message";
       let data = "";
       for (const line of block.split("\n")) {
@@ -1151,17 +2323,27 @@
       if (!data) return;
       let parsed;
       try { parsed = JSON.parse(data); } catch { return; }
+      recordRunEvent(eventType, parsed);
 
       switch (eventType) {
-        case "token":
-          ensureAssistant().textContent += parsed.token;
-          messages.scrollTop = messages.scrollHeight;
+        case "reasoning": {
+          const wasAtBottom = isMessagesAtBottom();
+          ensureReasoning().textContent += parsed.reasoning || "";
+          scrollMessagesToBottom(wasAtBottom);
           break;
+        }
+        case "token": {
+          const wasAtBottom = isMessagesAtBottom();
+          ensureAssistant().textContent += parsed.token;
+          scrollMessagesToBottom(wasAtBottom);
+          break;
+        }
         case "tool":
           currentToolProgress = null;
           appendMessage("tool", "▶ " + parsed.name + (parsed.input != null ? " " + JSON.stringify(parsed.input) : ""));
           break;
         case "tool-progress": {
+          const wasAtBottom = isMessagesAtBottom();
           if (!currentToolProgress || currentToolProgress.dataset.toolName !== parsed.name) {
             currentToolProgress = appendMessage("tool-progress", "");
             currentToolProgress.dataset.toolName = parsed.name || "";
@@ -1170,7 +2352,7 @@
             ? "/" + parsed.total
             : "";
           currentToolProgress.textContent = "↗ " + (parsed.name || "tool") + ": " + parsed.progress + total;
-          messages.scrollTop = messages.scrollHeight;
+          scrollMessagesToBottom(wasAtBottom);
           break;
         }
         case "tool-result":
@@ -1233,10 +2415,13 @@
       const header = document.createElement("div");
       header.className = "validation-header";
       const title = document.createElement("span");
-      title.textContent = "Validation · " + (result.changeSetId || "change set");
+      setLocalizedNode(title, "validation.title", {
+        idKey: result.changeSetId ? "" : "validation.changeSet",
+        id: result.changeSetId || "",
+      });
       const statusLabel = document.createElement("span");
       statusLabel.className = "validation-status";
-      statusLabel.textContent = statusValue;
+      setLocalizedNode(statusLabel, "validation.status." + statusValue);
       header.append(title, statusLabel);
       div.appendChild(header);
 
@@ -1253,15 +2438,24 @@
         const line = document.createElement("div");
         line.className = "validation-check-line";
         const label = document.createElement("span");
-        label.textContent = check.id || "validation check";
+        label.textContent = check.id || t("validation.check");
         const checkStatus = document.createElement("span");
         checkStatus.className = "validation-check-status";
-        checkStatus.textContent = (check.status || "unknown") + " · " + (Number(check.durationMs) || 0) + "ms";
+        const checkStatusValue = ["passed", "failed", "skipped", "blocked"].includes(check.status)
+          ? check.status
+          : "unknown";
+        setLocalizedNode(checkStatus, "validation.checkStatus", {
+          statusKey: "validation.status." + checkStatusValue,
+          duration: Number(check.durationMs) || 0,
+        });
         line.append(label, checkStatus);
         row.appendChild(line);
         const command = document.createElement("div");
         command.className = "validation-command";
-        command.textContent = formatValidationCommand(check.command);
+        const formattedCommand = formatValidationCommand(check.command);
+        command.textContent = formattedCommand === "command unavailable"
+          ? t("validation.commandUnavailable")
+          : formattedCommand;
         row.appendChild(command);
         if (check.reason) {
           const reason = document.createElement("div");
@@ -1284,7 +2478,7 @@
         actions.className = "actions validation-actions";
         const rerun = document.createElement("button");
         rerun.type = "button";
-        rerun.textContent = "Rerun validation";
+        setLocalizedNode(rerun, "validation.rerun");
         rerun.setAttribute("data-rerun", result.changeSetId);
         const rerunStatus = document.createElement("span");
         rerunStatus.className = "undo-status rerun-status";
@@ -1307,24 +2501,24 @@
             const payload = await response.json().catch(() => null);
             if (requestId !== desktopValidationRerunRequestId || sessionId !== currentSessionId) return;
             if (response.ok && payload) {
-              rerunStatus.textContent = "Rerun recorded";
+              setLocalizedNode(rerunStatus, "validation.rerunRecorded");
               markEvidencePreviewStale();
               appendValidation(payload);
             } else if (response.status === 409) {
               rerun.disabled = false;
-              rerunStatus.textContent = "Rerun blocked — the file or session is busy";
+              setLocalizedNode(rerunStatus, "validation.rerunBlocked");
             } else if (response.status === 404) {
-              rerunStatus.textContent = "Change set is no longer available";
+              setLocalizedNode(rerunStatus, "validation.missing");
             } else if (response.status === 501) {
-              rerunStatus.textContent = "Rerun is unavailable for this session";
+              setLocalizedNode(rerunStatus, "validation.unavailable");
             } else {
               rerun.disabled = false;
-              rerunStatus.textContent = "Rerun failed";
+              setLocalizedNode(rerunStatus, "validation.rerunFailed");
             }
           } catch {
             if (!controller.signal.aborted && requestId === desktopValidationRerunRequestId && sessionId === currentSessionId) {
               rerun.disabled = false;
-              rerunStatus.textContent = "Rerun failed";
+              setLocalizedNode(rerunStatus, "validation.rerunFailed");
             }
           } finally {
             if (requestId === desktopValidationRerunRequestId) {
@@ -1335,8 +2529,9 @@
         actions.append(rerun, rerunStatus);
         div.appendChild(actions);
       }
+      const wasAtBottom = isMessagesAtBottom();
       messages.appendChild(div);
-      messages.scrollTop = messages.scrollHeight;
+      scrollMessagesToBottom(wasAtBottom);
       return div;
     }
 
@@ -1356,7 +2551,7 @@
 
     loadSessions().then(() => Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]));
     syncInspectorToggle();
-    applyThemePreference(themePreference);
+    applyLanguage(languagePreference);
   </script>
 </body>
 </html>

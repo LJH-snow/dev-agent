@@ -10,6 +10,7 @@ import {
 
 test("agent loop invokes onToken callback when model provides streamChat", async () => {
   const tokens = [];
+  const reasoning = [];
   const toolCalls = [];
   const toolResults = [];
 
@@ -32,6 +33,8 @@ test("agent loop invokes onToken callback when model provides streamChat", async
     async streamChat(_messages, options) {
       callCount += 1;
       if (callCount === 1) {
+        options.onReasoning?.("thinking ");
+        options.onReasoning?.("done");
         options.onToken?.("Hello ");
         options.onToken?.("world");
         return {
@@ -51,6 +54,7 @@ test("agent loop invokes onToken callback when model provides streamChat", async
     tools,
     maxTurns: 3,
     onToken: (token) => tokens.push(token),
+    onReasoning: (token) => reasoning.push(token),
     onToolCall: (call) => toolCalls.push(call.name),
     onToolResult: (result) => toolResults.push(result.name),
   });
@@ -58,6 +62,7 @@ test("agent loop invokes onToken callback when model provides streamChat", async
   const result = await loop.run(context, "stream test");
 
   assert.equal(result.state.status, "done");
+  assert.deepEqual(reasoning, ["thinking ", "done"]);
   assert.deepEqual(tokens, ["Hello ", "world", "done"]);
   assert.deepEqual(toolCalls, ["echo"]);
   assert.deepEqual(toolResults, ["echo"]);
