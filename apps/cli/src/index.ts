@@ -55,8 +55,14 @@ import {
   type McpSessionSnapshot,
 } from "@dev-agent/mcp";
 import { colors, colorize } from "./colors.js";
-import { richPromptPrefix, shouldUseRichUi } from "./tui-mode.js";
+import { shouldUseRichUi } from "./tui-mode.js";
 import { LiveAssistantRenderer } from "./tui-stream.js";
+import { RichInputController } from "./tui-input.js";
+import {
+  TuiSessionModel,
+  type TuiRunState,
+  type UsageSummary,
+} from "./tui-session.js";
 import {
   DEFAULT_COMMAND_HINTS,
   redactSensitiveText,
@@ -64,6 +70,7 @@ import {
   renderAssistantMessage,
   renderCommandHints,
   renderRuntimeStatus,
+  renderToolCard,
   renderToolCall,
   renderToolResult,
   renderValidationMessage,
@@ -1335,6 +1342,7 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
     const questionBox: QuestionBox = {};
+    const tuiSession = new TuiSessionModel();
     const executor = createExecutor({ rustBinaryPath });
     const tools = new AgentToolRegistry();
     for (const tool of createDefaultTools(executor)) {
@@ -1531,6 +1539,7 @@ export async function main(argv: string[]): Promise<void> {
       enabled: streamingEnabled,
       richUi,
       width: resolveTerminalWidth(),
+      session: tuiSession,
     });
     const reviews: ReviewRecord[] = [];
     const validations: ValidationResult[] = [];
@@ -1562,12 +1571,13 @@ export async function main(argv: string[]): Promise<void> {
             deletions: request.review.deletions,
           });
         }
+        const review = request.review;
+        const detail = review
+          ? `${review.files.length} file(s), +${review.additions}/-${review.deletions}`
+          : outcome.reason ?? "tool call decision recorded";
+        streaming.approvalResolved(request.toolName, outcome.decision, detail);
         // Nothing may interleave with the JSON document on stdout.
         if (!jsonOutput && richUi) {
-          const review = request.review;
-          const detail = review
-            ? `${review.files.length} file(s), +${review.additions}/-${review.deletions}`
-            : outcome.reason ?? "tool call decision recorded";
           process.stdout.write(
             `${renderApprovalMessage(request.toolName, outcome.decision, detail, {
               width: resolveTerminalWidth(),
@@ -1582,6 +1592,7 @@ export async function main(argv: string[]): Promise<void> {
       },
       onValidation: (result) => {
         validations.push(result);
+        streaming.validationResult(result.status, result.summary);
         if (!jsonOutput) {
           printValidationResult(result, richUi, resolveTerminalWidth());
         }
@@ -1601,13 +1612,15 @@ export async function main(argv: string[]): Promise<void> {
         }
       },
       onToolProgress: (progress) => {
+        streaming.toolProgress(progress.name, `${progress.progress}${progress.total === undefined ? "" : `/${progress.total}`}`);
         if (!jsonOutput) {
+          if (richUi) {
+            return;
+          }
           const total = progress.total === undefined ? "" : `/${progress.total}`;
           const line = `[tool-progress] ${safeTerminalText(progress.name)} ${progress.progress}${total}`;
           process.stdout.write(
-            `${richUi
-              ? colorize(`  ↗ ${line}`, "blue")
-              : line}\n`
+            `${line}\n`
           );
         }
       },
@@ -1631,6 +1644,7 @@ export async function main(argv: string[]): Promise<void> {
       provider: provider.id,
       model: provider.model,
       streaming: streamingEnabled,
+      session: tuiSession,
       sessionId: normalizedSessionId,
       workingDirectory,
       width: resolveTerminalWidth(),
@@ -2231,11 +2245,20 @@ function resolveTerminalWidth(): number {
     : 80;
 }
 
+function normalizeInteractiveCommand(value: string): string {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("/")) {
+    return `:${trimmed.slice(1)}`;
+  }
+  return trimmed;
+}
+
 interface InteractiveUiOptions {
   readonly rich: boolean;
   readonly provider: string;
   readonly model: string;
   readonly streaming: boolean;
+  readonly session?: TuiSessionModel;
   readonly sessionId: string;
   readonly workingDirectory: string;
   readonly width: number;
@@ -2253,13 +2276,36 @@ async function interactive(
   validations: ValidationResult[] = [],
   rerunValidation?: ValidationRerunner
 ): Promise<void> {
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
+  const rl = ui.rich
+    ? undefined
+    : createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+  const richInput = ui.rich
+    ? new RichInputController({
+        input: process.stdin,
+        output: process.stdout,
+        width: resolveTerminalWidth,
+        commands: DEFAULT_COMMAND_HINTS,
+      })
+    : undefined;
   // Approval prompts reuse this interface instead of opening a second reader
   // on the same stdin.
-  questionBox.ask = (prompt) => rl.question(prompt);
+  questionBox.ask = async (prompt) => {
+    if (ui.rich) {
+      const approvalReader = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      try {
+        return await approvalReader.question(prompt);
+      } finally {
+        approvalReader.close();
+      }
+    }
+    return rl?.question(prompt) ?? "";
+  };
 
   let interrupted = false;
   let abort: AbortController | undefined;
@@ -2272,14 +2318,16 @@ async function interactive(
   });
   const onSigint = () => {
     interrupted = true;
+    ui.session?.dispatch({ type: "turn-interrupted", reason: "SIGINT" });
     if (ui.rich) {
       streaming.cleanup();
+      richInput?.close();
     }
     process.stdout.write("\n(interrupted)\n");
     // Cancel whatever is in flight. Without this Ctrl-C only printed a line
     // and the running request kept going.
     abort?.abort();
-    rl.close();
+    rl?.close();
     // 130 is the conventional exit code for "terminated by SIGINT".
     process.exitCode = 130;
     wakeOnInterrupt?.();
@@ -2302,6 +2350,7 @@ async function interactive(
         provider: ui.provider,
         model: ui.model,
         streaming: ui.streaming,
+        runState: ui.session?.snapshot().state ?? "ready",
         sessionId: ui.sessionId,
         workingDirectory: ui.workingDirectory,
         width: ui.width,
@@ -2320,21 +2369,29 @@ async function interactive(
   try {
     for (;;) {
       const line = await Promise.race([
-        rl.question(ui.rich ? richPromptPrefix() : "> ").catch(() => ""),
-        interrupt.then(() => ""),
+        ui.rich
+          ? richInput?.read() ?? Promise.resolve(null)
+          : rl?.question("> ").catch(() => "") ?? Promise.resolve(""),
+        interrupt.then(() => null),
       ]);
       if (interrupted) {
         break;
       }
+      if (line === null) {
+        process.exitCode = 130;
+        process.stdout.write("\n(interrupted)\n");
+        break;
+      }
       const prompt = line.trim();
-      if (prompt === ":quit" || prompt === "exit" || prompt === "quit") {
+      const command = normalizeInteractiveCommand(prompt);
+      if (command === ":quit" || command === "exit" || command === "quit") {
         break;
       }
       if (!prompt) {
         continue;
       }
 
-      if (prompt === ":help") {
+      if (command === ":help") {
         if (ui.rich) {
           console.log(renderCommandHints(DEFAULT_COMMAND_HINTS, { width: ui.width }));
         } else {
@@ -2345,7 +2402,7 @@ async function interactive(
         continue;
       }
 
-      if (prompt === ":clear") {
+      if (command === ":clear") {
         if (ui.rich) {
           process.stdout.write("\u001b[2J\u001b[H");
           printHeader();
@@ -2355,13 +2412,14 @@ async function interactive(
         continue;
       }
 
-      if (prompt === ":model") {
+      if (command === ":model") {
         if (ui.rich) {
           console.log(
             renderRuntimeStatus({
               provider: ui.provider,
               model: ui.model,
               streaming: ui.streaming,
+              runState: ui.session?.snapshot().state ?? "ready",
               width: ui.width,
             })
           );
@@ -2375,8 +2433,8 @@ async function interactive(
         continue;
       }
 
-      if (prompt === ":cleanup" || prompt.startsWith(":cleanup ")) {
-        const cleanupArgs = prompt.slice(":cleanup".length).trim();
+      if (command === ":cleanup" || command.startsWith(":cleanup ")) {
+        const cleanupArgs = command.slice(":cleanup".length).trim();
         const parsedCleanup = parseCliEvidenceCleanupOptions(
           ["--cleanup-evidence", ...(cleanupArgs ? cleanupArgs.split(/\s+/) : [])],
           true
@@ -2407,8 +2465,8 @@ async function interactive(
         continue;
       }
 
-      if (prompt === ":validate" || prompt.startsWith(":validate ")) {
-        const changeSetId = prompt.slice(":validate".length).trim();
+      if (command === ":validate" || command.startsWith(":validate ")) {
+        const changeSetId = command.slice(":validate".length).trim();
         if (!changeSetId) {
           console.error("Usage: :validate <changeSetId>");
           continue;
@@ -2481,7 +2539,8 @@ async function interactive(
     }
   } finally {
     process.removeListener("SIGINT", onSigint);
-    rl.close();
+    richInput?.close();
+    rl?.close();
   }
 }
 
@@ -2802,10 +2861,18 @@ async function runPrompt(
   const rawResult = await loop.run(context, prompt, signal ? { signal } : undefined).catch((error) => {
     // Keep a rich live block from leaking into the next prompt when a request
     // is aborted or fails before the normal result rendering path.
-    streaming.finish();
+    streaming.finish(
+      signal?.aborted ? "interrupted" : "error",
+      undefined,
+      error instanceof Error ? error.message : String(error)
+    );
     throw error;
   });
-  const timing = streaming.finish();
+  const timing = streaming.finish(
+    rawResult.state.status === "error" ? "error" : "ready",
+    rawResult.usage,
+    rawResult.state.lastError
+  );
   const currentSelection = costOptions?.selection?.();
   const result = currentSelection === undefined
     ? rawResult
@@ -3050,16 +3117,27 @@ class StreamingRun {
   private readonly enabled: boolean;
   private readonly richUi: boolean;
   private readonly terminalWidth?: number;
+  private readonly session: TuiSessionModel;
   private readonly liveAssistant?: LiveAssistantRenderer;
+  private readonly activeToolIds = new Map<string, string[]>();
   private streamed = false;
   private thinkingVisible = false;
+  private streamingStateVisible = false;
+  private renderedCardId: string | undefined;
+  private renderedCardLineCount = 0;
   private startedAt?: number;
   private firstTokenAt?: number;
 
-  constructor(options: { enabled: boolean; richUi?: boolean; width?: number }) {
+  constructor(options: {
+    enabled: boolean;
+    richUi?: boolean;
+    width?: number;
+    session?: TuiSessionModel;
+  }) {
     this.enabled = options.enabled;
     this.richUi = options.richUi === true;
     this.terminalWidth = options.width;
+    this.session = options.session ?? new TuiSessionModel();
     this.liveAssistant = this.richUi
       ? new LiveAssistantRenderer((chunk) => process.stdout.write(chunk), {
           width: options.width,
@@ -3083,19 +3161,46 @@ class StreamingRun {
     return this.streamed;
   }
 
+  state(): TuiRunState {
+    return this.session.snapshot().state;
+  }
+
   begin(): void {
     this.streamed = false;
     this.startedAt = performance.now();
     this.firstTokenAt = undefined;
+    this.streamingStateVisible = false;
+    this.activeToolIds.clear();
+    this.renderedCardId = undefined;
+    this.renderedCardLineCount = 0;
+    this.session.dispatch({ type: "turn-start" });
     if (this.richUi) {
       this.thinkingVisible = true;
+      this.announceState("thinking");
       process.stdout.write(`${colorize("Thinking…", "dim")}\n`);
     }
   }
 
-  finish(): RunTiming {
+  finish(
+    outcome: "ready" | "error" | "interrupted" = "ready",
+    usage?: UsageSummary,
+    errorMessage?: string
+  ): RunTiming {
     this.clearThinking();
     this.commitLive();
+    if (outcome === "error") {
+      this.session.dispatch({
+        type: "turn-error",
+        message: errorMessage ?? "agent run failed",
+      });
+    } else if (outcome === "interrupted") {
+      this.session.dispatch({ type: "turn-interrupted", reason: errorMessage ?? "interrupted" });
+    } else {
+      this.session.dispatch({ type: "turn-complete", usage });
+    }
+    if (this.richUi) {
+      this.announceState(outcome === "error" ? "error" : outcome === "interrupted" ? "interrupted" : "ready");
+    }
     const finishedAt = performance.now();
     const startedAt = this.startedAt ?? finishedAt;
     return {
@@ -3119,6 +3224,53 @@ class StreamingRun {
   cleanup(): void {
     this.clearThinking();
     this.commitLive();
+    this.renderedCardId = undefined;
+    this.renderedCardLineCount = 0;
+  }
+
+  approvalResolved(tool: string, decision: string, detail: string): void {
+    const existing = [...this.session.snapshot().cards]
+      .reverse()
+      .find((card) => card.kind === "approval" && card.name === tool && card.status === "approval");
+    const approvalId = existing?.id ?? this.session.dispatch({
+      type: "approval-request",
+      tool,
+      detail,
+    });
+    this.session.dispatch({
+      type: "approval-resolved",
+      decision,
+      id: approvalId,
+    });
+    if (this.richUi) this.renderCard(approvalId);
+  }
+
+  validationResult(status: string, summary: string): void {
+    const validationId = this.session.dispatch({
+      type: "validation-start",
+      detail: summary,
+    });
+    const normalized: "passed" | "failed" | "blocked" =
+      status === "passed" || status === "failed" || status === "blocked"
+        ? status
+        : "failed";
+    if (this.richUi) this.renderCard(validationId);
+    this.session.dispatch({
+      type: "validation-result",
+      status: normalized,
+      detail: summary,
+      id: validationId,
+    });
+    if (this.richUi) this.renderCard(validationId);
+  }
+
+  toolProgress(name: string, detail: string): void {
+    const ids = this.activeToolIds.get(name);
+    const id = ids?.at(-1);
+    if (id !== undefined) {
+      this.session.dispatch({ type: "tool-progress", id, detail });
+      if (this.richUi) this.renderCard(id);
+    }
   }
 
   private clearThinking(): boolean {
@@ -3141,6 +3293,11 @@ class StreamingRun {
         this.clearThinking();
         this.firstTokenAt ??= performance.now();
         this.streamed = true;
+        this.session.dispatch({ type: "assistant-token", text: token });
+        if (this.richUi && !this.streamingStateVisible) {
+          this.announceState("streaming");
+          this.streamingStateVisible = true;
+        }
         if (this.liveAssistant) {
           this.liveAssistant.append(token);
         } else {
@@ -3149,31 +3306,88 @@ class StreamingRun {
       },
       onToolCall: (call) => {
         const preview = previewInput(call.name, call.input);
+        const toolId = this.session.dispatch({
+          type: "tool-start",
+          name: call.name,
+          ...(preview.trim() ? { input: preview.trim() } : {}),
+        });
+        const ids = this.activeToolIds.get(call.name) ?? [];
+        ids.push(toolId);
+        this.activeToolIds.set(call.name, ids);
         const clearedThinking = this.clearThinking();
         const committedLive = this.commitLive();
         const separator = clearedThinking || committedLive ? "" : "\n";
         const line = `[tool] ${safeTerminalText(call.name)}${preview}`;
-        process.stdout.write(
-          `${separator}${
-            this.richUi
-              ? renderToolCall(call.name, preview.trim(), { width: this.terminalWidth })
-              : line
-          }\n`
-        );
+        if (this.richUi) {
+          if (separator) process.stdout.write(separator);
+          this.renderCard(toolId);
+        } else {
+          process.stdout.write(`${line}\n`);
+        }
       },
       onToolResult: (result) => {
         const summary = summarizeOutput(result.output);
+        const ids = this.activeToolIds.get(result.name);
+        const toolId = ids?.shift();
+        if (ids?.length === 0) {
+          this.activeToolIds.delete(result.name);
+        }
+        if (toolId !== undefined) {
+          this.session.dispatch({
+            type: "tool-finish",
+            id: toolId,
+            output: summary,
+          });
+        }
         this.clearThinking();
         this.commitLive();
         const line = `[tool-result] ${safeTerminalText(result.name)}: ${summary}`;
-        process.stdout.write(
-          `${this.richUi
-            ? renderToolResult(result.name, summary, { width: this.terminalWidth })
-            : line}\n`
-        );
+        if (this.richUi && toolId !== undefined) {
+          this.renderCard(toolId);
+        } else if (!this.richUi) {
+          process.stdout.write(`${line}\n`);
+        }
       },
     };
   }
+
+  private renderCard(id: string): void {
+    const card = this.session.snapshot().cards.find((candidate) => candidate.id === id);
+    if (!card) return;
+
+    if (this.renderedCardId === id && this.renderedCardLineCount > 0) {
+      process.stdout.write(clearRenderedBlock(this.renderedCardLineCount));
+    }
+    const rendered = renderToolCard(card, { width: this.terminalWidth });
+    process.stdout.write(`${rendered}\n`);
+
+    const stable = card.status !== "running" && card.status !== "approval" && card.status !== "validation";
+    if (stable) {
+      this.renderedCardId = undefined;
+      this.renderedCardLineCount = 0;
+    } else {
+      this.renderedCardId = id;
+      this.renderedCardLineCount = rendered.split("\n").length;
+    }
+  }
+
+  private announceState(state: TuiRunState): void {
+    if (!this.richUi) return;
+    const label = state === "ready" ? "READY / idle" : state.toUpperCase().replaceAll("-", " ");
+    const color = state === "ready" ? "dim" : state === "error" ? "red" : "green";
+    process.stdout.write(`${colorize(`STATUS / ${label}`, color)}\n`);
+  }
+}
+
+function clearRenderedBlock(lineCount: number): string {
+  if (lineCount <= 0) return "";
+  const chunks = [`\u001b[${lineCount}A`];
+  for (let index = 0; index < lineCount; index += 1) {
+    chunks.push("\u001b[2K\r");
+    if (index < lineCount - 1) chunks.push("\n");
+  }
+  if (lineCount > 1) chunks.push(`\u001b[${lineCount - 1}A`);
+  return chunks.join("");
 }
 
 function previewInput(name: string, input: unknown): string {

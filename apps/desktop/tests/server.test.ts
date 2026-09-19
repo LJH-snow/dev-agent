@@ -207,9 +207,15 @@ test("GET / serves the chat UI", async () => {
     assert.match(html, /id="theme-toggle"/);
     assert.match(html, /data-theme/);
     assert.match(html, /\/public\/styles\.css/);
+    assert.match(html, /src="\/public\/signal-loom\.svg"/);
+    assert.match(html, /aria-label="dev-agent Signal Loom workbench"/);
     assert.match(html, /tool-progress/);
     assert.match(html, /changesets\/rollback/);
     assert.match(html, /createElement\("pre"\)/);
+    const asset = await requestText(`${base}/public/signal-loom.svg`, { method: "GET" });
+    assert.equal(asset.status, 200);
+    assert.match(asset.body, /<svg[\s>]/);
+    assert.match(asset.body, /#58d6d1/);
   } finally {
     await close(server);
   }

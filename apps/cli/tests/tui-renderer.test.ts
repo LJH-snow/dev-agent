@@ -15,10 +15,19 @@ import {
   renderValidationMessage,
   renderWelcome,
 } from "../dist/tui-renderer.js";
+import { displayWidth, truncateToDisplayWidth } from "../dist/tui-width.js";
 
 function visibleLength(line: string): number {
   return line.replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "").length;
 }
+
+test("display width counts terminal cells rather than JavaScript code points", () => {
+  assert.equal(displayWidth("abc"), 3);
+  assert.equal(displayWidth("中文"), 4);
+  assert.equal(displayWidth("e\u0301"), 1);
+  assert.ok(displayWidth("🙂") >= 1);
+  assert.ok(displayWidth(truncateToDisplayWidth("中文abc", 4)) <= 4);
+});
 
 test("welcome render includes provider, model, status, session, and working directory", () => {
   const output = renderWelcome({
@@ -71,6 +80,19 @@ test("runtime state is independent from streaming transport capability", () => {
   assert.match(output, /READY \/ idle/);
   assert.match(output, /Transport: streaming/);
   assert.doesNotMatch(output, /LIVE \/ streaming/);
+});
+
+test("runtime renderer keeps the live label for an active streaming turn", () => {
+  const output = renderRuntimeStatus({
+    provider: "OpenAI",
+    model: "gpt-5",
+    streaming: true,
+    runState: "streaming",
+    width: 48,
+  });
+
+  assert.match(output, /LIVE \/ streaming/);
+  assert.match(output, /Transport: streaming/);
 });
 
 test("signal divider keeps the weave motif inside narrow terminal widths", () => {

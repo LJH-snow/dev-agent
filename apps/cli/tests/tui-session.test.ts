@@ -51,3 +51,41 @@ test("terminal state events preserve an explicit state before returning to ready
   session.dispatch({ type: "ready" });
   assert.equal(session.snapshot().state, "ready");
 });
+
+test("late callbacks cannot reopen a failed turn", () => {
+  const session = new TuiSessionModel();
+
+  session.dispatch({ type: "turn-start" });
+  session.dispatch({ type: "turn-error", message: "provider unavailable" });
+  session.dispatch({ type: "assistant-token", text: "late token" });
+  session.dispatch({ type: "tool-start", name: "shell", input: "pwd" });
+
+  assert.equal(session.snapshot().state, "error");
+  assert.equal(session.snapshot().cards.length, 0);
+});
+
+test("approval and validation cards keep stable identities through resolution", () => {
+  const session = new TuiSessionModel();
+  const approvalId = session.dispatch({
+    type: "approval-request",
+    tool: "filesystem",
+    detail: "1 file, +2/-1",
+  });
+
+  session.dispatch({ type: "approval-resolved", id: approvalId, decision: "allow" });
+  const validationId = session.dispatch({
+    type: "validation-start",
+    detail: "running trusted checks",
+  });
+  session.dispatch({
+    type: "validation-result",
+    id: validationId,
+    status: "blocked",
+    detail: "postimage changed",
+  });
+
+  const cards = session.snapshot().cards;
+  assert.deepEqual(cards.map((card) => card.id), [approvalId, validationId]);
+  assert.equal(cards[0]?.status, "completed");
+  assert.equal(cards[1]?.status, "blocked");
+});

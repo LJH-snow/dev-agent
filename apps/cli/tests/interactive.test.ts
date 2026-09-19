@@ -369,10 +369,14 @@ test(
       }
     }
 
+    assert.ok(
+      stdout.includes("unique-user-prompt"),
+      "the submitted prompt should remain visible in the rich editor transcript"
+    );
     assert.equal(
-      stdout.split("unique-user-prompt").length - 1,
+      stdout.split("[state=done turns=1]").length - 1,
       1,
-      "readline echo should be the only user-prompt rendering"
+      "the completed turn should be rendered once"
     );
     assert.match(stdout, /\u001b\[1A\u001b\[2K\r/, "Thinking should be cleared before the answer");
   });

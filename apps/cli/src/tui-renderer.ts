@@ -1,4 +1,7 @@
 import { colorize } from "./colors.js";
+import { renderSignalLoomMark, renderSignalLoomWordmark } from "./tui-brand.js";
+import type { ToolCard, TuiRunState } from "./tui-session.js";
+import { displayWidth, splitByDisplayWidth, truncateToDisplayWidth } from "./tui-width.js";
 
 const DEFAULT_WIDTH = 80;
 
@@ -6,8 +9,11 @@ export interface WelcomeOptions {
   provider: string;
   model: string;
   streaming: boolean;
+  runState?: TuiRunState;
   sessionId: string;
   workingDirectory: string;
+  mcpCount?: number;
+  executor?: string;
   width?: number;
 }
 
@@ -170,14 +176,12 @@ function isStringEscapeIntroducer(code: number): boolean {
 }
 
 function visibleLength(value: string): number {
-  return Array.from(stripAnsi(value)).length;
+  return displayWidth(stripAnsi(value));
 }
 
 function truncate(value: string, width: number): string {
   const clean = stripAnsi(value);
-  if (visibleLength(clean) <= width) return clean;
-  if (width <= 1) return Array.from(clean).slice(0, width).join("");
-  return `${Array.from(clean).slice(0, width - 1).join("")}…`;
+  return truncateToDisplayWidth(clean, width);
 }
 
 function fitLine(value: string, width: number): string {
@@ -194,21 +198,23 @@ function wrapLine(value: string, width: number): string[] {
   if (width <= 0) return [""];
   if (visibleLength(clean) <= width) return [clean];
 
-  const characters = Array.from(clean);
   const result: string[] = [];
-  let remaining = characters;
+  let remaining = clean;
 
-  while (remaining.length > width) {
-    let cut = width;
-    const whitespace = remaining.lastIndexOf(" ", width - 1);
-    if (whitespace > 0) cut = whitespace;
-
-    result.push(remaining.slice(0, cut).join("").trimEnd());
-    remaining = remaining.slice(cut);
-    while (remaining[0] === " ") remaining = remaining.slice(1);
+  while (visibleLength(remaining) > width) {
+    const first = splitByDisplayWidth(remaining, width)[0] ?? "";
+    const whitespace = first.lastIndexOf(" ");
+    if (whitespace > 0) {
+      result.push(first.slice(0, whitespace).trimEnd());
+      remaining = `${first.slice(whitespace + 1)}${remaining.slice(first.length)}`;
+      while (remaining.startsWith(" ")) remaining = remaining.slice(1);
+    } else {
+      result.push(first);
+      remaining = remaining.slice(first.length);
+    }
   }
 
-  result.push(remaining.join(""));
+  result.push(remaining);
   return result;
 }
 
@@ -240,7 +246,7 @@ function renderMarkdown(text: string, width: number): string[] {
 
   const flushCode = (): void => {
     const label = language ? ` code (${language}) ` : " code ";
-    result.push(colorize(fitLine(`┌─${label}${"─".repeat(Math.max(0, width - label.length - 3))}┐`, width), "dim"));
+    result.push(colorize(fitLine(`┌─${label}${"─".repeat(Math.max(0, width - displayWidth(label) - 3))}┐`, width), "dim"));
     const prefix = "│ ";
     const codeWidth = Math.max(1, width - visibleLength(prefix));
     for (const codeLine of codeLines) {
@@ -302,11 +308,7 @@ function renderLabeledLine(label: string, value: string, width: number): string 
 
 export function renderSignalMark(requestedWidth?: number): string {
   const width = normalizeWidth(requestedWidth);
-  return [
-    colorize(fitLine("  /\\  /\\", width), "teal"),
-    colorize(fitLine(" <  <>  >", width), "amber"),
-    colorize(fitLine("  \\/--\\/", width), "teal"),
-  ].join("\n");
+  return renderSignalLoomMark({ width, compact: width < 12 });
 }
 
 export function renderSignalDivider(
@@ -326,30 +328,50 @@ export function renderWelcome({
   provider,
   model,
   streaming,
+  runState,
   sessionId,
   workingDirectory,
+  mcpCount = 0,
+  executor = "local",
   width: requestedWidth,
 }: WelcomeOptions): string {
   const width = normalizeWidth(requestedWidth);
   const contentWidth = Math.max(1, width - 2);
+  const state = runState ?? (streaming ? "streaming" : "ready");
+  const stateLabel = formatRunState(state);
   const fields = [
-    colorize(padRight("SIGNAL WEAVE", contentWidth), "bold"),
-    colorize(padRight("dev-agent // local workbench", contentWidth), "dim"),
+    colorize(padRight("DEV AGENT", contentWidth), "bold"),
+    colorize(padRight("SIGNAL WEAVE // local coding workbench", contentWidth), "dim"),
     "",
     renderLabeledLine("Provider", provider, contentWidth),
     renderLabeledLine("Model", model, contentWidth),
-    renderLabeledLine("Status", streaming ? "streaming" : "idle", contentWidth),
+    renderLabeledLine("Status", stateLabel, contentWidth),
+    renderLabeledLine("Transport", streaming ? "streaming" : "single response", contentWidth),
     renderLabeledLine("Session", sessionId, contentWidth),
     renderLabeledLine("Working directory", workingDirectory, contentWidth),
+    renderLabeledLine("Workspace", workingDirectory.split("/").at(-1) ?? workingDirectory, contentWidth),
+    renderLabeledLine("Executor", executor, contentWidth),
+    renderLabeledLine("MCP", String(mcpCount), contentWidth),
+    "",
+    colorize(padRight("Tips", contentWidth), "teal"),
+    fitLine("  Ask questions, edit files, or run commands", contentWidth),
+    fitLine("  Type / or : for commands", contentWidth),
+    fitLine("  Ctrl+L clears the terminal view", contentWidth),
   ];
 
-  return [renderSignalMark(width), box(fields, width).join("\n")].join("\n");
+  const markWidth = Math.min(width, 16);
+  return [
+    renderSignalLoomMark({ width: markWidth, color: process.env.NO_COLOR === undefined }),
+    renderSignalLoomWordmark({ width, color: process.env.NO_COLOR === undefined }),
+    box(fields, width).join("\n"),
+  ].join("\n");
 }
 
 export interface RuntimeStatusOptions {
   provider: string;
   model: string;
   streaming: boolean;
+  runState?: TuiRunState;
   width?: number;
 }
 
@@ -357,18 +379,36 @@ export function renderRuntimeStatus({
   provider,
   model,
   streaming,
+  runState,
   width: requestedWidth,
 }: RuntimeStatusOptions): string {
   const width = normalizeWidth(requestedWidth);
-  const state = streaming ? "LIVE / streaming" : "READY / idle";
+  const state = runState ?? (streaming ? "streaming" : "ready");
   const lines = [
     colorize(fitLine("SIGNAL RAIL", width), "teal"),
-    colorize(fitLine(`  ${state}`, width), streaming ? "green" : "dim"),
+    colorize(fitLine(`  ${formatRunState(state)}`, width), state === "ready" ? "dim" : "green"),
     renderLabeledLine("Provider", provider, width),
     renderLabeledLine("Model", model, width),
     renderLabeledLine("Transport", streaming ? "streaming" : "single response", width),
   ];
   return lines.join("\n");
+}
+
+export function formatRunState(state: TuiRunState): string {
+  switch (state) {
+    case "ready":
+      return "READY / idle";
+    case "streaming":
+      return "LIVE / streaming";
+    case "tool-running":
+      return "TOOL / running";
+    case "waiting-approval":
+      return "WAITING / approval";
+    case "validating":
+      return "VALIDATING";
+    default:
+      return state.toUpperCase().replaceAll("-", " ");
+  }
 }
 
 export function renderUserMessage(text: string, options: { width?: number } = {}): string {
@@ -444,6 +484,43 @@ export function renderToolResult(
     colorize(fitLine(`< TOOL RESULT / ${safeName}`, width), "dim"),
     ...wrapPrefixed(safeOutput, "  ", width),
   ].join("\n");
+}
+
+export function renderToolCard(
+  card: ToolCard,
+  options: BlockOptions = {}
+): string {
+  const width = normalizeWidth(options.width);
+  const status = card.status.toUpperCase().replaceAll("-", " ");
+  const marker = card.status === "completed" || card.status === "passed"
+    ? "✓"
+    : card.status === "failed" || card.status === "blocked"
+      ? "×"
+      : card.status === "approval"
+        ? "?"
+        : "·";
+  const statusColor = card.status === "completed" || card.status === "passed"
+    ? "green"
+    : card.status === "failed" || card.status === "blocked"
+      ? "red"
+      : card.status === "approval"
+        ? "amber"
+        : "blue";
+  const safeName = redactSensitiveText(sanitizeTerminalText(card.name));
+  const lines = [
+    renderSignalDivider(`${card.kind.toUpperCase()} / ${status}`, { width }),
+    colorize(fitLine(`${marker} ${safeName}`, width), statusColor),
+  ];
+
+  if (card.input) lines.push(...wrapPrefixed(redactSensitiveText(sanitizeTerminalText(card.input)), "  input: ", width));
+  if (card.detail) lines.push(...wrapPrefixed(redactSensitiveText(sanitizeTerminalText(card.detail)), "  ", width));
+  if (card.output) lines.push(...wrapPrefixed(redactSensitiveText(sanitizeTerminalText(card.output)), "  output: ", width));
+  if (card.diff) {
+    lines.push(colorize(fitLine("  diff:", width), "dim"));
+    lines.push(...renderMarkdown(card.diff, width));
+  }
+
+  return lines.join("\n");
 }
 
 export function renderApprovalMessage(
