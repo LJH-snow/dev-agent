@@ -388,15 +388,15 @@ git commit -m "feat(cli): add rich terminal input editor"
   - `renderToolCard(card: ToolCard, options: { width: number; collapsed?: boolean }): string`
   - `renderCardUpdate(card: ToolCard, options: { width: number }): string`
 
-- [ ] **Step 1: Add card lifecycle tests**
+- [x] **Step 1: Add card lifecycle tests**
 
 Test that tool progress changes one stable card, late results are ignored after cancellation, approval cards contain review summaries, validation cards show passed/failed/blocked, and long input/output is bounded.
 
-- [ ] **Step 2: Implement card storage and stable IDs**
+- [x] **Step 2: Implement card storage and stable IDs**
 
 Generate an in-memory card ID when a tool starts. Store cards in `TuiSessionModel`; update by ID. Do not append a second card for tool result or progress.
 
-- [ ] **Step 3: Implement compact card rendering**
+- [x] **Step 3: Implement compact card rendering**
 
 Use the Signal Loom divider vocabulary only at card boundaries. Render:
 
@@ -408,15 +408,15 @@ Use the Signal Loom divider vocabulary only at card boundaries. Render:
 
 On completion replace the marker with `✓`; on error use `×`; on approval use `?`; on validation use `+`. Preserve the existing redaction and width limits.
 
-- [ ] **Step 4: Wire tool callbacks and approval events**
+- [x] **Step 4: Wire tool callbacks and approval events**
 
 Update `StreamingRun` callbacks to dispatch card events and redraw the current card. Approval review data must stay bounded and must not expose secrets or absolute paths that existing output redaction would remove.
 
-- [ ] **Step 5: Add collapse/expand commands**
+- [x] **Step 5: Add collapse/expand commands**
 
 Support a compact default card and a deterministic expanded rendering when the user presses the configured expand key or enters the card command. Keep collapse state local to the current rich session and do not persist it in memory.
 
-- [ ] **Step 6: Run CLI tests and a real PTY scenario**
+- [x] **Step 6: Run CLI tests and a real PTY scenario**
 
 Run:
 
@@ -436,7 +436,7 @@ expect -c '
 
 Expected: the launch screen is ready, `/model` and `:model` share the same command behavior, and the prompt redraw is not duplicated.
 
-- [ ] **Step 7: Commit live cards**
+- [x] **Step 7: Commit live cards**
 
 ```bash
 git add apps/cli/src/tui-session.ts apps/cli/src/tui-renderer.ts apps/cli/src/index.ts apps/cli/tests/tui-session.test.ts apps/cli/tests/tui-renderer.test.ts apps/cli/tests/interactive.test.ts
@@ -458,19 +458,19 @@ git commit -m "feat(cli): render live tool cards"
 - Consumes: `apps/desktop/public/signal-loom.svg`, CLI command registry and final brand naming.
 - Produces: consistent Signal Loom usage instructions and a documented canonical TTY profile.
 
-- [ ] **Step 1: Add Desktop brand contract assertions**
+- [x] **Step 1: Add Desktop brand contract assertions**
 
 Assert the HTML references the SVG, exposes accessible brand text, and preserves existing session/workbench IDs.
 
-- [ ] **Step 2: Tune Desktop brand sizing**
+- [x] **Step 2: Tune Desktop brand sizing**
 
 Use the same geometry and semantic colors as the CLI mark. Keep the SVG decorative mark `aria-hidden` and expose `dev-agent` as the accessible brand name.
 
-- [ ] **Step 3: Document rich TTY behavior**
+- [x] **Step 3: Document rich TTY behavior**
 
 Document `/` and `:` command aliases, `READY`/`THINKING`/`STREAMING` states, the canonical terminal profile, and the fact that `pnpm cli` is workspace-only while `dev-agent` is the installed command for external projects.
 
-- [ ] **Step 4: Run Desktop and documentation tests**
+- [x] **Step 4: Run Desktop and documentation tests**
 
 Run:
 
@@ -482,7 +482,7 @@ git diff --check
 
 Expected: all tests pass and the new documentation remains linked from `docs/README.md`.
 
-- [ ] **Step 5: Commit the integration docs**
+- [x] **Step 5: Commit the integration docs**
 
 ```bash
 git add apps/desktop/public/index.html apps/desktop/public/styles.css apps/desktop/tests/server.test.ts apps/desktop/README.md apps/cli/README.md README.md docs/README.md
@@ -501,7 +501,7 @@ git commit -m "docs: describe Signal Loom terminal experience"
 - Consumes: completed CLI rich TTY, Desktop server, canonical PTY capture.
 - Produces: verified screenshots, PTY transcripts, and final test evidence.
 
-- [ ] **Step 1: Build the workspace and CLI package**
+- [x] **Step 1: Build the workspace and CLI package**
 
 Run:
 
@@ -512,7 +512,7 @@ pnpm --filter @dev-agent/desktop run build
 
 Expected: both builds exit successfully.
 
-- [ ] **Step 2: Run the focused and full test suites**
+- [x] **Step 2: Run the focused and full test suites**
 
 Run:
 
@@ -525,15 +525,15 @@ git diff --check
 
 Expected: CLI and Desktop suites pass with zero failures and no whitespace errors.
 
-- [ ] **Step 3: Capture rich TTY at 80, 100, 120, and 160 columns**
+- [x] **Step 3: Capture rich TTY at 80, 100, 120, and 160 columns**
 
 Use an `expect` PTY fixture that starts the CLI, captures the welcome screen, opens `/` and `:`, inserts a multiline prompt, exercises history, sends `Ctrl-L`, then exits. Strip ANSI only for width assertions; retain ANSI output for visual inspection.
 
-- [ ] **Step 4: Capture a live tool-card scenario**
+- [x] **Step 4: Capture a live tool-card scenario**
 
 Run a deterministic provider/tool fixture that produces a tool call, progress, approval, result, and validation. Verify there is one card per stable ID, no duplicate prompt, and no secret/control sequence leakage.
 
-- [ ] **Step 5: Verify compatibility modes**
+- [x] **Step 5: Verify compatibility modes**
 
 Run:
 
@@ -546,11 +546,11 @@ dev-agent --mcp-server --help
 
 Expected: no rich banner or raw terminal controls in machine-readable output, and all commands retain their existing exit behavior.
 
-- [ ] **Step 6: Inspect screenshots and terminal captures**
+- [x] **Step 6: Inspect screenshots and terminal captures**
 
 Check the launch hierarchy, input border, cursor, palette placement, card transitions, 80-column wrapping, 120-column canonical layout, and 160-column breathing room. Check Desktop at wide, medium, and mobile widths for the same Signal Loom mark.
 
-- [ ] **Step 7: Commit only after verification is green**
+- [x] **Step 7: Commit only after verification is green**
 
 ```bash
 git status --short
