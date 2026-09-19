@@ -108,11 +108,19 @@ export interface DoctorOptions {
   readonly nodeVersion?: string;
   /** Injectable for tests: returns the version banner, or undefined when missing. */
   readonly commandVersion?: (command: string) => Promise<string | undefined>;
+  /** Add a bounded npm registry check for the installed CLI version. */
+  readonly checkUpdate?: boolean;
+  readonly cliVersion?: string;
+  /** Injectable for tests: returns the published CLI version, or undefined on failure. */
+  readonly latestCliVersion?: () => Promise<string | undefined>;
   readonly probeRust?: (path: string) => Promise<RustProbeResult>;
 }
 
 const MIN_NODE_MAJOR = 20;
 const MAX_CONFIG_FILE_BYTES = 1024 * 1024; // 1 MiB
+const CLI_LATEST_URL = "https://registry.npmjs.org/@agent_cli%2fcli/latest";
+const MAX_UPDATE_RESPONSE_BYTES = 64 * 1024;
+const UPDATE_CHECK_TIMEOUT_MS = 5000;
 
 export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   const env = options.env ?? process.env;
@@ -161,6 +169,14 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
     await checkConfig(options.configPath ?? join(homedir(), ".dev-agent", "config.json"))
   );
   checks.push(await checkSessionDir(options.sessionDir));
+  if (options.checkUpdate === true) {
+    checks.push(
+      await checkCliUpdate(
+        options.cliVersion,
+        options.latestCliVersion ?? fetchLatestCliVersion
+      )
+    );
+  }
 
   const summary = { ok: 0, warn: 0, fail: 0 };
   for (const check of checks) {
@@ -216,6 +232,163 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
     configSource: options.configSource ?? "user",
   };
   return { executorMode, scope, runtime, checks, summary };
+}
+
+async function checkCliUpdate(
+  currentVersion: string | undefined,
+  getLatestVersion: () => Promise<string | undefined>
+): Promise<DoctorCheck> {
+  const current = currentVersion === undefined ? undefined : parseCliVersion(currentVersion);
+  if (current === undefined) {
+    return {
+      name: "cli update",
+      status: "warn",
+      detail: "current CLI version unavailable; the update check was skipped",
+    };
+  }
+
+  let latestText: string | undefined;
+  try {
+    latestText = await getLatestVersion();
+  } catch {
+    latestText = undefined;
+  }
+  const latest = latestText === undefined ? undefined : parseCliVersion(latestText);
+  if (latest === undefined) {
+    return {
+      name: "cli update",
+      status: "warn",
+      detail: "latest version unavailable; the update check was skipped",
+    };
+  }
+
+  const comparison = compareCliVersions(current, latest);
+  if (comparison >= 0) {
+    return {
+      name: "cli update",
+      status: "ok",
+      detail: `up to date: ${current.raw}`,
+    };
+  }
+  return {
+    name: "cli update",
+    status: "warn",
+    detail: `update available: current ${current.raw}, latest ${latest.raw}`,
+  };
+}
+
+interface ParsedCliVersion {
+  readonly raw: string;
+  readonly major: number;
+  readonly minor: number;
+  readonly patch: number;
+  readonly prerelease: readonly (number | string)[];
+}
+
+function parseCliVersion(value: string): ParsedCliVersion | undefined {
+  const raw = value.trim();
+  const match =
+    /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/.exec(raw);
+  if (!match) {
+    return undefined;
+  }
+  const prerelease =
+    match[4] === undefined
+      ? []
+      : match[4].split(".").map((part) => (/^\d+$/.test(part) ? Number(part) : part));
+  return {
+    raw,
+    major: Number(match[1]),
+    minor: Number(match[2]),
+    patch: Number(match[3]),
+    prerelease,
+  };
+}
+
+function compareCliVersions(left: ParsedCliVersion, right: ParsedCliVersion): number {
+  for (const [leftPart, rightPart] of [
+    [left.major, right.major],
+    [left.minor, right.minor],
+    [left.patch, right.patch],
+  ] as const) {
+    if (leftPart !== rightPart) {
+      return leftPart > rightPart ? 1 : -1;
+    }
+  }
+  if (left.prerelease.length === 0 && right.prerelease.length === 0) return 0;
+  if (left.prerelease.length === 0) return 1;
+  if (right.prerelease.length === 0) return -1;
+  const length = Math.max(left.prerelease.length, right.prerelease.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftPart = left.prerelease[index];
+    const rightPart = right.prerelease[index];
+    if (leftPart === undefined) return -1;
+    if (rightPart === undefined) return 1;
+    if (leftPart === rightPart) continue;
+    if (typeof leftPart === "number" && typeof rightPart === "string") return -1;
+    if (typeof leftPart === "string" && typeof rightPart === "number") return 1;
+    return leftPart > rightPart ? 1 : -1;
+  }
+  return 0;
+}
+
+async function fetchLatestCliVersion(): Promise<string | undefined> {
+  if (typeof fetch !== "function") {
+    return undefined;
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS);
+  timeout.unref?.();
+  try {
+    const response = await fetch(CLI_LATEST_URL, {
+      headers: { accept: "application/json" },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      return undefined;
+    }
+    const body = await readBoundedResponse(response);
+    if (body === undefined) {
+      return undefined;
+    }
+    const parsed = JSON.parse(body) as { version?: unknown };
+    return typeof parsed.version === "string" && parseCliVersion(parsed.version)
+      ? parsed.version
+      : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function readBoundedResponse(response: Response): Promise<string | undefined> {
+  const reader = response.body?.getReader();
+  if (reader === undefined) {
+    return undefined;
+  }
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = "";
+  try {
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        text += decoder.decode();
+        return text;
+      }
+      bytes += chunk.value.byteLength;
+      if (bytes > MAX_UPDATE_RESPONSE_BYTES) {
+        await reader.cancel();
+        return undefined;
+      }
+      text += decoder.decode(chunk.value, { stream: true });
+    }
+  } catch {
+    return undefined;
+  } finally {
+    reader.releaseLock();
+  }
 }
 
 export function printDoctorReport(report: DoctorReport): void {

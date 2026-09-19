@@ -196,6 +196,11 @@ Options:
   Combine with `--json` for `{ checks, summary }`. The runtime metadata reports
   the selected source and, without paths, a successful runtime identity or a
   stable managed-cache diagnosis (target/state/reason).
+- `--doctor --check-update` - add a bounded, read-only npm registry check for
+  `@agent_cli/cli`. It reports whether the installed CLI is current or a newer
+  version is available; network or registry failures become a warning, and it
+  never installs or changes npm configuration. Combine with `--json` to keep
+  the result machine-readable.
 - `--session-delete <id>` - delete a stored session file; a missing session is
   reported (`deleted: false` with `--json`) without failing
 - `--session-rename <old> <new>` - rename a stored session; refuses to overwrite

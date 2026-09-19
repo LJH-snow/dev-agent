@@ -219,6 +219,81 @@ test("runDoctor warns about a malformed config", async () => {
   }
 });
 
+test("runDoctor reports an available CLI update", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-update-"));
+  try {
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir: dir,
+      configPath: join(dir, "config.json"),
+      env: {},
+      checkUpdate: true,
+      cliVersion: "0.1.8",
+      latestCliVersion: async () => "0.1.9",
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+
+    const update = checkFor(report, "cli update");
+    assert.deepEqual(update, {
+      name: "cli update",
+      status: "warn",
+      detail: "update available: current 0.1.8, latest 0.1.9",
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor reports when the CLI is already current", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-update-"));
+  try {
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir: dir,
+      configPath: join(dir, "config.json"),
+      env: {},
+      checkUpdate: true,
+      cliVersion: "0.1.9",
+      latestCliVersion: async () => "0.1.8",
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+
+    const update = checkFor(report, "cli update");
+    assert.deepEqual(update, {
+      name: "cli update",
+      status: "ok",
+      detail: "up to date: 0.1.9",
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("runDoctor degrades update checks to a warning when registry is unavailable", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-update-"));
+  try {
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir: dir,
+      configPath: join(dir, "config.json"),
+      env: {},
+      checkUpdate: true,
+      cliVersion: "0.1.8",
+      latestCliVersion: async () => undefined,
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+
+    const update = checkFor(report, "cli update");
+    assert.deepEqual(update, {
+      name: "cli update",
+      status: "warn",
+      detail: "latest version unavailable; the update check was skipped",
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("--doctor human output labels the executor mode", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-"));
   try {

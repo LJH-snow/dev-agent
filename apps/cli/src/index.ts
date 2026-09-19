@@ -165,6 +165,7 @@ const CLI_USAGE = [
   "  --json                           Emit machine-readable output",
   "  --tools                          List available tools without a provider",
   "  --doctor                         Check the local runtime environment",
+  "  --check-update                   Check npm for a newer CLI version (with --doctor)",
   "  -v, --version                    Print the CLI version",
   "  -h, --help                       Show this help",
 ].join("\n");
@@ -179,6 +180,7 @@ const PREVIEW_EXCLUSIVE_FLAGS = [
   "--cleanup-evidence",
   "--export-evidence",
   "--doctor",
+  "--check-update",
   "--mcp-server",
   "--reset-memory",
   "--compact",
@@ -223,6 +225,7 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--audit-max-files": "one",
   "--audit-max-bytes": "one",
   "--doctor": "none",
+  "--check-update": "none",
   "--mcp-server": "none",
   "--reset-memory": "none",
   "--no-stream": "none",
@@ -816,6 +819,11 @@ export async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  if (args.includes("--check-update") && !args.includes("--doctor")) {
+    emitCliError("--check-update requires --doctor.", jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
   const previewCombinationError = validatePreviewCliCombination(args, previewEvidence);
   if (previewCombinationError) {
     emitCliError(previewCombinationError, jsonErrorOutput);
@@ -1067,6 +1075,8 @@ export async function main(argv: string[]): Promise<void> {
       rustBinaryPath,
       sessionDir: sessionDir(workingDirectory, projectState),
       configPath,
+      checkUpdate: args.includes("--check-update"),
+      cliVersion: version,
       projectState,
       configSource: configFlag || process.env.DEV_AGENT_CONFIG_FILE
         ? "explicit"

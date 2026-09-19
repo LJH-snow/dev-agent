@@ -118,6 +118,16 @@ test("--cwd is accepted alongside a normal operation", async () => {
   });
 });
 
+test("--check-update requires the doctor operation", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--check-update", "--tools"], dir);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /--check-update requires --doctor/);
+    assert.equal(result.stdout, "");
+  });
+});
+
 test("--once does not treat the next flag as its prompt", async () => {
   await withSessionDir(async (dir) => {
     const result = await runCli(["--once", "--json"], dir);

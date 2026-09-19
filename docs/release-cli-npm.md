@@ -89,6 +89,15 @@ dev-agent --cwd /path/to/your-project --project-state --tools
 
 全局安装后的 `dev-agent` 不依赖当前仓库、workspace symlink 或开发机上的绝对路径。CLI 的基础 JavaScript bundle 可以使用 `LocalExecutor` 运行；没有模型请求的 `--version`、`--tools` 和 `--index` 不要求 API key。
 
+需要确认全局安装版本是否落后时，可运行：
+
+```bash
+dev-agent --doctor --check-update
+dev-agent --doctor --check-update --json
+```
+
+该检查只读取 npm registry 的公开版本元数据，有界超时并在网络不可用时降级为 warning；它不会自动安装、升级或修改 npm 配置。
+
 `pnpm cli` 仍然是本仓库的 workspace 开发脚本。它适合在 checkout 内调试，不是其他项目调用全局 CLI 的安装方式。
 
 ## 工作目录选择规则
