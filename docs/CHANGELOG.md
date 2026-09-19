@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-19（index refresh cancellation and bounded processing）
+
+- `index refresh` now accepts `SIGINT` cancellation, reports a stable
+  metadata-only cancellation result, and preserves the previous index until
+  the refreshed payload is atomically committed.
+- Index discovery and processing expose deterministic progress phases;
+  source reads and symbol scans use a bounded worker pool, while unchanged
+  files continue to reuse their persisted source and symbols.
+- Cold start, incremental reuse, delete, rename, cancellation, recovery,
+  bounded concurrency, and provider-free `index refresh/status/clear`
+  compatibility are covered by the CLI and package tests.
+- This is workspace-only `@agent_cli/cli@0.1.8` candidate work after the
+  published `0.1.7` release; it is not part of the published npm tarball or
+  `v0.1.7` GitHub Release.
+
 ## 2026-09-18（index compatibility and bounded input follow-ups）
 
 - `index status` accepts legacy v1 signatures with `mtimeMs` and `size`;

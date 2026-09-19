@@ -1,4 +1,5 @@
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
@@ -37,8 +38,62 @@ export interface IndexReport {
   readonly updatedAt: string;
 }
 
+export type IndexProgressPhase = "discovering" | "processing" | "persisting";
+
+export interface IndexProgress {
+  readonly phase: IndexProgressPhase;
+  readonly completed: number;
+  readonly total: number;
+  readonly active: number;
+  readonly reused: number;
+  readonly rescanned: number;
+}
+
+export interface IndexDirectoryOptions {
+  readonly signal?: AbortSignal;
+  readonly onProgress?: (progress: IndexProgress) => void;
+  readonly concurrency?: number;
+}
+
+export class IndexRefreshCancelledError extends Error {
+  readonly code = "INDEX_REFRESH_CANCELLED" as const;
+  readonly progress: IndexProgress;
+
+  constructor(progress: IndexProgress) {
+    super("index refresh cancelled");
+    this.name = "IndexRefreshCancelledError";
+    this.progress = progress;
+  }
+}
+
+export type IndexRefreshResult =
+  | { readonly status: "completed"; readonly report: IndexReport }
+  | { readonly status: "cancelled"; readonly progress: IndexProgress };
+
+export async function refreshIndexDirectory(
+  rootInput: string,
+  maxDepth: number = DEFAULT_MAX_DEPTH,
+  excludeInputs: readonly string[] = [],
+  indexPathInput?: string,
+  options: IndexDirectoryOptions = {}
+): Promise<IndexRefreshResult> {
+  try {
+    return {
+      status: "completed",
+      report: await indexDirectory(rootInput, maxDepth, excludeInputs, indexPathInput, options),
+    };
+  } catch (error) {
+    if (error instanceof IndexRefreshCancelledError) {
+      return { status: "cancelled", progress: error.progress };
+    }
+    throw error;
+  }
+}
+
 const DEFAULT_MAX_DEPTH = 8;
 const MAX_INDEX_INPUT_BYTES = 16 * 1024 * 1024; // 16 MiB
+const DEFAULT_INDEX_CONCURRENCY = 4;
+const MAX_INDEX_CONCURRENCY = 8;
 
 /** Directories that never belong in a source index. */
 const SKIPPED_DIRECTORIES = new Set([
@@ -108,13 +163,34 @@ export async function indexDirectory(
   rootInput: string,
   maxDepth: number = DEFAULT_MAX_DEPTH,
   excludeInputs: readonly string[] = [],
-  indexPathInput?: string
+  indexPathInput?: string,
+  options: IndexDirectoryOptions = {}
 ): Promise<IndexReport> {
   const root = resolve(rootInput);
   const excludes = normalizeExcludePaths(root, excludeInputs);
   const indexPath = indexPathInput === undefined
     ? join(root, ".dev-agent", "index.json")
     : resolve(indexPathInput);
+  const concurrency = normalizeConcurrency(options.concurrency);
+  let progress: IndexProgress = {
+    phase: "discovering",
+    completed: 0,
+    total: 0,
+    active: 0,
+    reused: 0,
+    rescanned: 0,
+  };
+  const reportProgress = (next: IndexProgress): void => {
+    progress = next;
+    options.onProgress?.(next);
+  };
+  const throwIfCancelled = (): void => {
+    if (options.signal?.aborted) {
+      throw new IndexRefreshCancelledError(progress);
+    }
+  };
+  throwIfCancelled();
+
   const ignore = await createProjectIgnoreMatcher(root);
   const info = await stat(root);
   if (!info.isDirectory()) {
@@ -124,6 +200,7 @@ export async function indexDirectory(
   const signatures = new Map<string, FileSignature>();
   const warnings: IndexWarning[] = [];
   const matchedExcludes = new Set<string>();
+  let discovered = 0;
   await collectFiles(
     root,
     root,
@@ -134,40 +211,120 @@ export async function indexDirectory(
     matchedExcludes,
     excludes,
     ignore,
-    true
+    true,
+    throwIfCancelled,
+    () => {
+      discovered += 1;
+      reportProgress({
+        phase: "discovering",
+        completed: discovered,
+        total: 0,
+        active: 0,
+        reused: 0,
+        rescanned: 0,
+      });
+    }
   );
 
+  throwIfCancelled();
   const previous = await readPersistedIndex(indexPath);
   const previousSymbols = groupSymbolsByFile(previous?.symbols ?? []);
+  const entries = [...signatures.entries()];
+  const processed: Array<{
+    readonly filePath: string;
+    readonly source: string;
+    readonly symbols: readonly CodeSymbol[];
+  } | undefined> = new Array(entries.length);
+  let nextEntry = 0;
+  let completed = 0;
+  let active = 0;
+  let reused = 0;
+  let rescanned = 0;
+
+  const processEntry = async (): Promise<void> => {
+    for (;;) {
+      throwIfCancelled();
+      const entryIndex = nextEntry;
+      nextEntry += 1;
+      if (entryIndex >= entries.length) {
+        return;
+      }
+
+      const entry = entries[entryIndex];
+      if (!entry) {
+        return;
+      }
+      const [filePath, signature] = entry;
+      active += 1;
+      try {
+        reportProgress({
+          phase: "processing",
+          completed,
+          total: entries.length,
+          active,
+          reused,
+          rescanned,
+        });
+        throwIfCancelled();
+
+        const previousSource = previous?.files[filePath];
+        const previousSignature = previous?.signatures[filePath];
+        if (
+          typeof previousSource === "string" &&
+          previousSignature &&
+          previousSignature.mtimeMs === signature.mtimeMs &&
+          previousSignature.size === signature.size &&
+          previousSignature.ctimeMs === signature.ctimeMs
+        ) {
+          processed[entryIndex] = {
+            filePath,
+            source: previousSource,
+            symbols: previousSymbols.get(filePath) ?? [],
+          };
+          reused += 1;
+        } else {
+          const source = await readSource(filePath);
+          throwIfCancelled();
+          if (source !== undefined) {
+            processed[entryIndex] = {
+              filePath,
+              source,
+              symbols: scanFile(source, filePath),
+            };
+            rescanned += 1;
+          }
+        }
+      } finally {
+        active -= 1;
+        completed += 1;
+        reportProgress({
+          phase: "processing",
+          completed,
+          total: entries.length,
+          active,
+          reused,
+          rescanned,
+        });
+      }
+    }
+  };
+
+  const workerCount = Math.min(concurrency, Math.max(1, entries.length));
+  await Promise.all(Array.from({ length: workerCount }, () => processEntry()));
+  throwIfCancelled();
+
   const files = new Map<string, string>();
   const symbols: CodeSymbol[] = [];
-  let reused = 0;
-
-  for (const [filePath, signature] of signatures) {
-    const previousSource = previous?.files[filePath];
-    const previousSignature = previous?.signatures[filePath];
-    if (
-      typeof previousSource === "string" &&
-      previousSignature &&
-      previousSignature.mtimeMs === signature.mtimeMs &&
-      previousSignature.size === signature.size &&
-      previousSignature.ctimeMs === signature.ctimeMs
-    ) {
-      files.set(filePath, previousSource);
-      symbols.push(...(previousSymbols.get(filePath) ?? []));
-      reused += 1;
+  for (const [entryIndex, result] of processed.entries()) {
+    if (!result) {
+      const entry = entries[entryIndex];
+      if (entry) {
+        signatures.delete(entry[0]);
+      }
       continue;
     }
-
-    const source = await readSource(filePath);
-    if (source === undefined) {
-      // The file vanished or is unreadable: leave it out of the index instead
-      // of claiming a signature for a source we never stored.
-      signatures.delete(filePath);
-      continue;
-    }
-    files.set(filePath, source);
-    symbols.push(...scanFile(source, filePath));
+    files.set(result.filePath, result.source);
+    symbols.push(...result.symbols);
   }
 
   const updatedAt = new Date().toISOString();
@@ -187,8 +344,18 @@ export async function indexDirectory(
       excluded: matchedExcludes.size,
     },
   };
+  throwIfCancelled();
   await mkdir(dirname(indexPath), { recursive: true });
-  await writeFile(indexPath, `${JSON.stringify(payload)}\n`, "utf8");
+  reportProgress({
+    phase: "persisting",
+    completed: entries.length,
+    total: entries.length,
+    active: 0,
+    reused,
+    rescanned,
+  });
+  throwIfCancelled();
+  await writeIndexAtomically(indexPath, `${JSON.stringify(payload)}\n`, options.signal, progress);
 
   return {
     path: root,
@@ -218,8 +385,11 @@ async function collectFiles(
   matchedExcludes: Set<string>,
   excludes: ReadonlySet<string>,
   ignore: ProjectIgnoreMatcher,
-  isRoot: boolean
+  isRoot: boolean,
+  throwIfCancelled: () => void,
+  onFile: () => void
 ): Promise<void> {
+  throwIfCancelled();
   if (depth > maxDepth) {
     return;
   }
@@ -242,6 +412,7 @@ async function collectFiles(
   entries.sort((left, right) => comparePathNames(left.name, right.name));
 
   for (const entry of entries) {
+    throwIfCancelled();
     const entryPath = join(dir, entry.name);
     if (excludes.has(entryPath)) {
       matchedExcludes.add(entryPath);
@@ -264,7 +435,9 @@ async function collectFiles(
         matchedExcludes,
         excludes,
         ignore,
-        false
+        false,
+        throwIfCancelled,
+        onFile
       );
       continue;
     }
@@ -288,9 +461,42 @@ async function collectFiles(
         size: info.size,
         ctimeMs: info.ctimeMs,
       });
+      onFile();
     } catch {
       // Skip unreadable files instead of failing the whole scan.
     }
+  }
+}
+
+function normalizeConcurrency(value: number | undefined): number {
+  if (value === undefined) {
+    return DEFAULT_INDEX_CONCURRENCY;
+  }
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error("index refresh concurrency must be a positive integer");
+  }
+  return Math.min(value, MAX_INDEX_CONCURRENCY);
+}
+
+async function writeIndexAtomically(
+  indexPath: string,
+  contents: string,
+  signal: AbortSignal | undefined,
+  progress: IndexProgress
+): Promise<void> {
+  if (signal?.aborted) {
+    throw new IndexRefreshCancelledError(progress);
+  }
+  const temporaryPath = `${indexPath}.tmp-${randomUUID()}`;
+  try {
+    await writeFile(temporaryPath, contents, "utf8");
+    if (signal?.aborted) {
+      throw new IndexRefreshCancelledError(progress);
+    }
+    await rename(temporaryPath, indexPath);
+  } catch (error) {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
+    throw error;
   }
 }
 

@@ -417,3 +417,28 @@ Fresh verification on 2026-09-19 passed the serialized Desktop focused suite
 at **132/132** and the main-tree `pnpm verify` gate with exit code **0**,
 ending in `=== all selected gates passed ===`. This validates the mitigation
 for the reproduced cross-file race; it does not authorize release by itself.
+
+### Follow-up: cancellable and bounded index refresh
+
+On 2026-09-19, the workspace `0.1.8` candidate added the next index-refresh
+slice without changing the existing CLI, persisted index, or metadata-only
+status contracts:
+
+- `index refresh` accepts `SIGINT`, returns a stable cancellation result, and
+  leaves the previous index untouched until an atomic write commits.
+- Discovery, processing, and persistence report deterministic progress
+  metadata; processing uses a bounded worker pool capped at eight readers.
+- The new tests cover cancellation and recovery, bounded concurrency, and an
+  already-aborted request. Existing CLI tests continue to cover cold start,
+  incremental reuse, deletion, rename, and `index refresh/status/clear`.
+- Focused verification passed: CLI **328/328**, code intelligence **43/43**,
+  tools **132/132**, documentation contracts **57/57**, and
+  `git diff --check`.
+- The final main-tree `pnpm verify` also passed with TypeScript package suites
+  at model **65/65**, executor **54/54**, code intelligence **43/43**, MCP
+  **65/65**, runtime manager **23/23**, agent core **131/131**, tools
+  **132/132**, Desktop **132/132**, and CLI **328/328**; Rust passed
+  **48/48** library tests, **6/6** binary tests, and real integration
+  **11/11**.
+- The candidate remains workspace-only and unpublished. No tag, npm publish,
+  GitHub Release, or new remote publication was performed by this slice.

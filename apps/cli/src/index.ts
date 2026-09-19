@@ -100,7 +100,7 @@ import { executeProviderCommand, type ProviderCommand } from "./provider-command
 import { formatModelSelectionMetadata, resolveModelSelection, type ModelSelection, type ModelSelectionResult } from "./model-profiles.js";
 import { FallbackModelProvider } from "./fallback-provider.js";
 import { executeMcpCommand, type McpManagementResult, type McpProbe } from "./mcp-command.js";
-import { indexDirectory } from "./index-command.js";
+import { indexDirectory, refreshIndexDirectory, type IndexProgress } from "./index-command.js";
 import { clearIndex, getIndexStatus } from "@dev-agent/code-intelligence";
 import {
   createAnthropicProvider,
@@ -528,27 +528,85 @@ async function runExplicitCliCommand(
         .flatMap((arg, index) => (arg === "--exclude" ? [args[index + 1]] : []))
         .filter((path): path is string => path !== undefined)
         .map((path) => resolve(workingDirectory, path));
-      const report = await indexDirectory(workingDirectory, undefined, excludePaths, indexFile);
-      const publicReport = {
-        command: "index refresh",
-        files: report.files,
-        symbols: report.symbols,
-        reused: report.reused,
-        cacheHits: report.cacheHits,
-        cacheMisses: report.cacheMisses,
-        cacheHitRate: report.cacheHitRate,
-        languages: report.languages,
-        skipped: report.skipped,
-        warnings: report.warnings,
-        excluded: report.excluded,
-        errors: report.errors,
-        updatedAt: report.updatedAt,
+      const controller = new AbortController();
+      let progressLine = false;
+      const onSigint = () => controller.abort();
+      const clearProgressLine = (): void => {
+        if (progressLine) {
+          process.stderr.write("\r\x1b[2K");
+          progressLine = false;
+        }
       };
-      if (jsonOutput) {
-        console.log(JSON.stringify(publicReport, null, 2));
-      } else {
-        console.log(`Indexed ${report.files} files / ${report.symbols} symbols (${report.reused} reused).`);
-        console.log(`Cache hit rate: ${(report.cacheHitRate * 100).toFixed(1)}%; errors: ${report.errors}; updated: ${safeTerminalText(report.updatedAt)}`);
+      const onProgress = (progress: IndexProgress): void => {
+        if (
+          jsonOutput ||
+          !process.stderr.isTTY ||
+          progress.phase !== "processing" ||
+          progress.total === 0
+        ) {
+          return;
+        }
+        process.stderr.write(`\rIndexing ${progress.completed}/${progress.total} files...`);
+        progressLine = true;
+      };
+      process.once("SIGINT", onSigint);
+      try {
+        const result = await refreshIndexDirectory(
+          workingDirectory,
+          undefined,
+          excludePaths,
+          indexFile,
+          { signal: controller.signal, onProgress }
+        );
+        if (result.status === "cancelled") {
+          clearProgressLine();
+          const cancellation = {
+            command: "index refresh",
+            status: "cancelled",
+            cancelled: true,
+            phase: result.progress.phase,
+            completed: result.progress.completed,
+            total: result.progress.total,
+            active: result.progress.active,
+            reused: result.progress.reused,
+            rescanned: result.progress.rescanned,
+          };
+          if (jsonOutput) {
+            console.log(JSON.stringify(cancellation, null, 2));
+          } else {
+            console.error(
+              `Index refresh cancelled after ${result.progress.completed}/${result.progress.total} files.`
+            );
+          }
+          process.exitCode = 130;
+          return;
+        }
+        clearProgressLine();
+        const report = result.report;
+        const publicReport = {
+          command: "index refresh",
+          files: report.files,
+          symbols: report.symbols,
+          reused: report.reused,
+          cacheHits: report.cacheHits,
+          cacheMisses: report.cacheMisses,
+          cacheHitRate: report.cacheHitRate,
+          languages: report.languages,
+          skipped: report.skipped,
+          warnings: report.warnings,
+          excluded: report.excluded,
+          errors: report.errors,
+          updatedAt: report.updatedAt,
+        };
+        if (jsonOutput) {
+          console.log(JSON.stringify(publicReport, null, 2));
+        } else {
+          console.log(`Indexed ${report.files} files / ${report.symbols} symbols (${report.reused} reused).`);
+          console.log(`Cache hit rate: ${(report.cacheHitRate * 100).toFixed(1)}%; errors: ${report.errors}; updated: ${safeTerminalText(report.updatedAt)}`);
+        }
+      } finally {
+        clearProgressLine();
+        process.removeListener("SIGINT", onSigint);
       }
     } catch (error) {
       emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
