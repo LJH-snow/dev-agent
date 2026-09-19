@@ -143,6 +143,7 @@ test("code-search schema explains its default scope and position inputs", () => 
   assert.match(properties.file?.description ?? "", /required for position-based references and definition/i);
   assert.match(properties.line?.description ?? "", /1-based/i);
   assert.match(properties.column?.description ?? "", /1-based/i);
+  assert.match(tool.description, /conservative lexical lookup/i);
 });
 
 test("search schema guides short literal queries and empty-result recovery", () => {
@@ -220,26 +221,88 @@ test("code-search references mode locates symbol usages via TypeScript language 
   await rm(dir, { recursive: true, force: true });
 });
 
-test("code-search position lookup rejects unsupported source languages", async () => {
+test("code-search references mode finds lexical references in Python", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-python-"));
   await writeFile(
     join(dir, "app.py"),
-    "class AuthenticationError(Exception):\n    pass\n"
+    [
+      "class AuthenticationError(Exception):",
+      "    pass",
+      "",
+      "def load() -> None:",
+      "    raise AuthenticationError()",
+    ].join("\n")
   );
 
   const tool: any = new CodeSearchTool();
+  const result = await tool.execute(
+    {
+      mode: "references",
+      file: join(dir, "app.py"),
+      line: 1,
+      column: 0,
+    },
+    { sessionId: "ctx-test", workingDirectory: dir }
+  );
+
+  assert.equal(result.mode, "references");
+  assert.equal(result.symbol, "AuthenticationError");
+  assert.equal(result.resolution, "lexical");
+  assert.equal(result.count, 2);
+  assert.ok(result.references.some((ref) => ref.line === 5));
+  assert.ok(result.references.every((ref) => ref.filePath === join(dir, "app.py")));
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("code-search Python references accept a query without a position", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-python-query-"));
+  await writeFile(
+    join(dir, "app.py"),
+    [
+      "class AuthenticationError(Exception):",
+      "    pass",
+      "",
+      "def load() -> None:",
+      "    raise AuthenticationError()",
+    ].join("\n")
+  );
+
+  const tool: any = new CodeSearchTool();
+  const result = await tool.execute(
+    {
+      mode: "references",
+      query: "AuthenticationError",
+      path: join(dir, "app.py"),
+    },
+    { sessionId: "ctx-test", workingDirectory: dir }
+  );
+
+  assert.equal(result.resolution, "lexical");
+  assert.equal(result.approximate, true);
+  assert.equal(result.count, 2);
+  assert.ok(result.references.some((ref) => ref.line === 5));
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("code-search position lookup rejects unsupported source languages", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-rust-"));
+  await writeFile(join(dir, "lib.rs"), "fn example() {}\n");
+  const tool: any = new CodeSearchTool();
+
   await assert.rejects(
     () =>
       tool.execute(
         {
           mode: "references",
-          file: join(dir, "app.py"),
+          file: join(dir, "lib.rs"),
           line: 1,
-          column: 7,
+          column: 4,
         },
         { sessionId: "ctx-test", workingDirectory: dir }
       ),
-    /only supports TypeScript\/JavaScript source files/
+    /only supports TypeScript\/JavaScript\/Python source files/
   );
 
   await rm(dir, { recursive: true, force: true });

@@ -8,7 +8,7 @@ Implemented in phase 1:
 - `ShellTool` - run local commands through the executor
 - `GitTool` - run git commands through the executor
 - `SearchTool` - search code with ripgrep
-- `CodeSearchTool` - scan TypeScript/JavaScript files and return ranked,
+- `CodeSearchTool` - scan TypeScript/JavaScript/Python/Rust files and return ranked,
   kind-filterable symbol matches with `score`, `reasons`, `signature`, and
   container metadata
 - `createDefaultTools` - creates the default tool set from one executor
@@ -157,9 +157,14 @@ and filesystem and code-search paths are resolved relative to it. `code-search`
 also accepts `kind` and `limit` inputs to keep agent queries focused. Its
 `search` mode and query-based `definition` mode use the shared symbol index;
 their `path` may be a directory or a single source file. Position-based
-`references` and `definition` use `file`, `line`, and optional `column`, and
-are supported only for TypeScript/JavaScript; use `search` for Python/Rust
-reference lookup. Omit `path` to scan the current project working directory.
+`references` and `definition` use `file`, `line`, and optional `column`.
+For either mode, query-based and position-based inputs are mutually exclusive.
+TypeScript/JavaScript use semantic language-service results; Python uses
+conservative lexical results by position or symbol query, marked with
+`resolution: "lexical"` and `approximate: true`, so callers should verify
+those leads with a source read.
+Use `search` for Rust reference lookup. Omit `path` to scan the current
+project working directory.
 For source review, `filesystem read` accepts `lineNumbers: true` to prefix the
 returned content with exact source line numbers without changing the default
 raw-content response.
@@ -186,5 +191,6 @@ after that scan, so the next process starts from a valid cache.
 The scanned file set matches `dev-agent --index`: `.ts`/`.tsx`/`.mts`/`.cts`,
 `.js`/`.jsx`/`.mjs`/`.cjs`, `.py`, and `.rs`, up to depth 8, skipping
 `node_modules`, `dist`, `.git`, `.next`, `.cache`, and `.dev-agent`. Symbol
-search covers all four languages; `references` and `definition` stay
-TypeScript/JavaScript because they use the TypeScript language service.
+search covers all four languages; `references` and `definition` use the
+TypeScript language service for TypeScript/JavaScript and a labeled lexical
+fallback for Python.

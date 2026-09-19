@@ -499,7 +499,8 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
   changed files, so the next process starts from a current cache; an index that
   exists but is corrupt is replaced with a freshly scanned one. The scan scope
   matches `--index`, so Python/Rust symbols are never pruned from a reused
-  index; `references`/`definition` remain TypeScript/JavaScript
+  index; `references`/`definition` use semantic TypeScript/JavaScript lookup
+  and a labeled lexical fallback for Python, including query-based references
 - A narrow `code-search` call (`maxDepth`) only replaces the entries inside that
   depth: deeper entries stay in the index instead of being pruned as "deleted"
 - `code-search` references/definition validate the requested position against

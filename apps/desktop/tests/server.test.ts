@@ -199,6 +199,12 @@ test("GET / serves the chat UI", async () => {
     assert.match(contentType, /text\/html/);
     const html = await res.text();
     assert.match(html, /dev-agent/);
+    assert.match(html, /class="workbench"/);
+    assert.match(html, /class="session-rail"/);
+    assert.match(html, /class="inspector-shell"/);
+    assert.match(html, /id="toggle-inspector"/);
+    assert.match(html, /id="runtime-inspector"/);
+    assert.match(html, /\/public\/styles\.css/);
     assert.match(html, /tool-progress/);
     assert.match(html, /changesets\/rollback/);
     assert.match(html, /createElement\("pre"\)/);

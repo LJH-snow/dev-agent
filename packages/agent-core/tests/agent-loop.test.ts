@@ -229,6 +229,141 @@ test("agent loop reports a thrown tool error back to the model", async () => {
   assert.equal(entries.at(-1).content, "recovered");
 });
 
+test("agent loop stops repeated identical tool failures before maxTurns", async () => {
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "broken",
+    description: "Always fails.",
+    async execute() {
+      throw new Error("still broken");
+    },
+  });
+  let modelCalls = 0;
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return {
+        content: "",
+        toolCalls: [{ id: `call-${modelCalls}`, name: "broken", input: { value: 1 } }],
+      };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-repeat-failure", memory);
+  const loop = new AgentLoop({
+    model,
+    tools,
+    maxTurns: 8,
+    maxRepeatedToolFailures: 2,
+  });
+  const result = await loop.run(context, "stop repeating the broken call");
+
+  assert.equal(result.state.status, "error");
+  assert.equal(modelCalls, 2);
+  assert.deepEqual(JSON.parse(result.state.lastError ?? "{}"), {
+    code: "tool_loop_detected",
+    tool: "broken",
+    repeated: 2,
+  });
+  const entries = await memory.entries();
+  assert.match(entries.at(-1)?.content ?? "", /\[error\].*tool_loop_detected/);
+  assert.match(entries.at(-2)?.content ?? "", /tool_loop_detected/);
+});
+
+test("agent loop allows a changed tool input to recover after a failure", async () => {
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "sometimes-broken",
+    description: "Fails only for the first input.",
+    async execute(input) {
+      if ((input as { value?: string }).value === "first") {
+        throw new Error("try a different value");
+      }
+      return { ok: true };
+    },
+  });
+  let modelCalls = 0;
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      if (modelCalls === 1) {
+        return {
+          content: "",
+          toolCalls: [{ id: "call-first", name: "sometimes-broken", input: { value: "first" } }],
+        };
+      }
+      if (modelCalls === 2) {
+        return {
+          content: "",
+          toolCalls: [{ id: "call-second", name: "sometimes-broken", input: { value: "second" } }],
+        };
+      }
+      return { content: "recovered", toolCalls: [] };
+    },
+  };
+
+  const context = createAgentContext("agent-recover-after-failure", new InMemoryMemory());
+  const loop = new AgentLoop({
+    model,
+    tools,
+    maxTurns: 4,
+    maxRepeatedToolFailures: 2,
+  });
+  const result = await loop.run(context, "recover with a changed input");
+
+  assert.equal(result.state.status, "done");
+  assert.equal(modelCalls, 3);
+});
+
+test("agent loop can finalize from gathered evidence after a max-turn stop", async () => {
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "inspect",
+    description: "Returns inspected evidence.",
+    async execute() {
+      return { evidence: "verified" };
+    },
+  });
+  let modelCalls = 0;
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat(_messages, options) {
+      modelCalls += 1;
+      if ((options?.tools?.length ?? 0) > 0) {
+        return {
+          content: "",
+          toolCalls: [{ id: "call-inspect", name: "inspect", input: {} }],
+        };
+      }
+      return {
+        content: "问题：证据已收集。严重性：中。证据：verified。",
+        toolCalls: [],
+      };
+    },
+  };
+
+  const context = createAgentContext("agent-finalize-budget", new InMemoryMemory());
+  const loop = new AgentLoop({
+    model,
+    tools,
+    budget: { maxTurns: 1 },
+    finalizeOnMaxTurns: true,
+  });
+  const result = await loop.run(context, "inspect and summarize");
+
+  assert.equal(result.state.status, "done");
+  assert.equal(result.state.turns, 1);
+  assert.equal(modelCalls, 2);
+  const entries = await result.memory.entries();
+  assert.match(entries.at(-1)?.content ?? "", /证据已收集/);
+});
+
 test("a tool that keeps failing still ends at maxTurns", async () => {
   const tools = new AgentToolRegistry();
   tools.register({

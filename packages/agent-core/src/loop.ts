@@ -65,6 +65,17 @@ export interface AgentLoopOptions {
   readonly onValidation?: (result: ValidationResult, context: AgentContext) => void;
   readonly toolDefaults?: ToolDefaults;
   readonly contextBudget?: ContextBudget;
+  /**
+   * Stops a run after the same tool failure (tool, input, and error) repeats
+   * this many times. Omit to preserve the historical loop behavior.
+   */
+  readonly maxRepeatedToolFailures?: number;
+  /**
+   * Makes one no-tools model call to turn gathered evidence into a final
+   * answer when the model-turn limit is reached. Omit to preserve the
+   * historical budget error behavior.
+   */
+  readonly finalizeOnMaxTurns?: boolean;
 }
 
 /**
@@ -106,6 +117,12 @@ interface RunState {
   totalUsage: ChatUsage | undefined;
 }
 
+interface ToolExecutionResult {
+  readonly output: string;
+  readonly failed: boolean;
+  readonly errorMessage?: string;
+}
+
 export class AgentLoop {
   private readonly model: ModelProvider;
   private readonly tools?: ToolCollection;
@@ -133,12 +150,20 @@ export class AgentLoop {
   private readonly onValidation?: (result: ValidationResult, context: AgentContext) => void;
   private readonly toolDefaults?: ToolDefaults;
   private readonly contextBudget?: ContextBudget;
+  private readonly maxRepeatedToolFailures?: number;
+  private readonly finalizeOnMaxTurns: boolean;
   /** Digest of the entries trimmed off so far, grown incrementally. */
   private summaryState?: { count: number; text: string; lastEntryId?: string };
 
   constructor(options: AgentLoopOptions) {
     if (options.maxTurns !== undefined && options.maxTurns < 1) {
       throw new Error("maxTurns must be at least 1");
+    }
+    if (
+      options.maxRepeatedToolFailures !== undefined &&
+      (!Number.isInteger(options.maxRepeatedToolFailures) || options.maxRepeatedToolFailures < 1)
+    ) {
+      throw new Error("maxRepeatedToolFailures must be a positive integer");
     }
     this.model = options.model;
     this.tools = options.tools;
@@ -162,6 +187,8 @@ export class AgentLoop {
     this.onValidation = options.onValidation;
     this.toolDefaults = options.toolDefaults;
     this.contextBudget = options.contextBudget;
+    this.maxRepeatedToolFailures = options.maxRepeatedToolFailures;
+    this.finalizeOnMaxTurns = options.finalizeOnMaxTurns === true;
   }
 
   async run(
@@ -180,6 +207,8 @@ export class AgentLoop {
     };
     let updatedAt = new Date().toISOString();
     let completed = false;
+    let loopError: string | undefined;
+    const repeatedToolFailures = new Map<string, number>();
     const runState: RunState = {
       context,
       signal: options.signal,
@@ -255,7 +284,33 @@ export class AgentLoop {
                   )
               : undefined,
           };
-          const result = await this.runToolSafely(executionCall, toolContext, options.signal);
+          const executionResult = await this.runToolSafely(
+            executionCall,
+            toolContext,
+            options.signal
+          );
+          let result = executionResult.output;
+          if (
+            executionResult.failed &&
+            this.maxRepeatedToolFailures !== undefined &&
+            executionResult.errorMessage !== undefined
+          ) {
+            const failureKey = createToolFailureKey(
+              executionCall.name,
+              executionCall.input,
+              executionResult.errorMessage
+            );
+            const failureCount = (repeatedToolFailures.get(failureKey) ?? 0) + 1;
+            repeatedToolFailures.set(failureKey, failureCount);
+            if (failureCount >= this.maxRepeatedToolFailures) {
+              loopError = JSON.stringify({
+                code: "tool_loop_detected",
+                tool: executionCall.name,
+                repeated: failureCount,
+              });
+              result = `${result}\n${loopError}`;
+            }
+          }
           runState.budget?.recordToolOutput(result);
           this.onToolResult?.({ name: call.name, output: result }, context);
           await this.recordAppliedChangeSet(preparation, result, context);
@@ -280,17 +335,30 @@ export class AgentLoop {
           await memory.append(
             createMemoryEntry("tool", memoryResult, { toolCallId: call.id, toolName: call.name })
           );
+          if (loopError) {
+            break;
+          }
         }
 
+        if (loopError) {
+          break;
+        }
         completed = toolCalls.length === 0;
       }
 
+      if (loopError) {
+        await memory.append(createMemoryEntry("assistant", `[error] ${loopError}`));
+      }
+      if (!completed && !loopError && this.finalizeOnMaxTurns) {
+        const finalized = await this.finalizeAfterMaxTurns(memory, context, runState, state);
+        if (finalized) {
+          return finalized;
+        }
+      }
       state = {
         ...state,
-        status: completed ? "done" : "error",
-        lastError: completed
-          ? undefined
-          : state.lastError ?? "Max turns reached without a final answer",
+        status: loopError ? "error" : completed ? "done" : "error",
+        lastError: loopError ?? (completed ? undefined : state.lastError ?? "Max turns reached without a final answer"),
       };
       updatedAt = new Date().toISOString();
       return { ...context, state, updatedAt, usage: runState.totalUsage };
@@ -305,6 +373,12 @@ export class AgentLoop {
           this.onBudgetExceeded?.(error, context);
         } catch {
           // Budget observability must not change the deterministic stop result.
+        }
+        if (error.budget === "maxTurns" && this.finalizeOnMaxTurns) {
+          const finalized = await this.finalizeAfterMaxTurns(memory, context, runState, state);
+          if (finalized) {
+            return finalized;
+          }
         }
       }
       const message = error instanceof BudgetExceededError
@@ -477,15 +551,66 @@ export class AgentLoop {
     call: ToolCall,
     context: ToolExecutionContext,
     signal: AbortSignal | undefined
-  ): Promise<string> {
+  ): Promise<ToolExecutionResult> {
     try {
-      return await runTool(this.tools!, call, context, this.toolDefaults);
+      return {
+        output: await runTool(this.tools!, call, context, this.toolDefaults),
+        failed: false,
+      };
     } catch (error) {
       if (signal?.aborted) {
         throw error;
       }
       const message = error instanceof Error ? error.message : String(error);
-      return JSON.stringify({ error: message });
+      return {
+        output: JSON.stringify({ error: message }),
+        failed: true,
+        errorMessage: message,
+      };
+    }
+  }
+
+  private async finalizeAfterMaxTurns(
+    memory: AgentMemory,
+    context: AgentContext,
+    runState: RunState,
+    state: AgentState
+  ): Promise<AgentContext | undefined> {
+    try {
+      runState.budget?.beforeModelCall({ countTurn: false });
+      const messages = await this.buildMessages(memory, context, runState);
+      messages.push({
+        role: "user",
+        content:
+          "The tool-call budget is exhausted. Do not call any tools. " +
+          "Answer the current request using only verified evidence already present in this conversation. " +
+          "Do not invent a defect from normal type aliases, shared imports, repeated props, or generic maintainability concerns. " +
+          "If the evidence does not prove incorrect behavior, a violated contract, a failing test, or a concrete security impact, " +
+          "use 问题：未验证到可复现缺陷 and 严重性：不适用 as the first two fields, and say 无需修复 instead of guessing.",
+      });
+      const completion = await this.model.chat(messages, {
+        tools: [],
+        signal: runState.signal,
+      });
+      if (completion.usage) {
+        await this.recordUsage(runState, completion.usage);
+      }
+      runState.budget?.recordModelOutput(completion.content, completion.usage);
+      if (!completion.content.trim() || (completion.toolCalls?.length ?? 0) > 0) {
+        return undefined;
+      }
+      await memory.append(createMemoryEntry("assistant", completion.content, { toolCalls: [] }));
+      return {
+        ...context,
+        state: { ...state, status: "done", lastError: undefined },
+        updatedAt: new Date().toISOString(),
+        usage: runState.totalUsage,
+      };
+    } catch (error) {
+      if (runState.signal?.aborted) {
+        throw error;
+      }
+      return undefined;
     }
   }
 
@@ -694,6 +819,38 @@ function isSuccessfulApply(
   } catch {
     return false;
   }
+}
+
+function createToolFailureKey(name: string, input: unknown, error: string): string {
+  return `${name}\u0000${stableSerialize(input)}\u0000${error}`;
+}
+
+function stableSerialize(value: unknown): string {
+  const seen = new WeakSet<object>();
+  const normalize = (current: unknown): unknown => {
+    if (current === null || typeof current !== "object") {
+      return current;
+    }
+    if (seen.has(current)) {
+      return "[Circular]";
+    }
+    seen.add(current);
+    if (Array.isArray(current)) {
+      const normalized = current.map((item) => normalize(item));
+      seen.delete(current);
+      return normalized;
+    }
+    const record = current as Record<string, unknown>;
+    const normalized: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      normalized[key] = normalize(record[key]);
+    }
+    seen.delete(current);
+    return normalized;
+  };
+
+  const serialized = JSON.stringify(normalize(value));
+  return serialized === undefined ? String(value) : serialized;
 }
 
 

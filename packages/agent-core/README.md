@@ -5,6 +5,10 @@ Core agent runtime: agent loop, context, memory, and agent state.
 Implemented in phase 1:
 
 - `AgentLoop` - model and tool orchestration loop with a max turn limit
+- Optional `AgentLoopOptions.maxRepeatedToolFailures` stops a one-run loop when
+  the same failing tool call repeats without progress
+- Optional `AgentLoopOptions.finalizeOnMaxTurns` gives the model one final
+  no-tools turn to format verified evidence when a run reaches its turn limit
 - `AgentLoop`'s optional `contextBudget` - character budget for the history sent
   to the model. It keeps the newest entries that fit, never splits an assistant
   tool call from its tool results, always keeps the system prompt, and announces

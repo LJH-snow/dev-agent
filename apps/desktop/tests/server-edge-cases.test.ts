@@ -229,6 +229,11 @@ test("GET /public/ serves a real static asset", async () => {
     const body = await res.text();
     assert.match(body, /id="rename-session"/, "the rename control should be served");
     assert.match(body, /\/rename/, "the rename button should call the rename endpoint");
+
+    const styles = await fetch(`${base}/public/styles.css`);
+    assert.equal(styles.status, 200);
+    assert.match(styles.headers.get("content-type") || "", /text\/css/);
+    assert.match(await styles.text(), /\.workbench|--accent/);
   });
 });
 

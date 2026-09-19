@@ -93,7 +93,7 @@ export interface CodeSearchCacheStats {
 export class CodeSearchTool implements Tool {
   readonly name = "code-search" as const;
   readonly description =
-    "Scan TypeScript/JavaScript/Python/Rust source files. The path defaults to the project working directory. Search and query-based definition lookup use the shared symbol index; position-based reference lookup and go-to-definition cover TypeScript/JavaScript.";
+    "Scan TypeScript/JavaScript/Python/Rust source files. The path defaults to the project working directory. Search and query-based definition lookup use the shared symbol index; TypeScript/JavaScript use position-based reference and definition lookup, while Python uses conservative lexical lookup by position or query.";
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
@@ -101,12 +101,12 @@ export class CodeSearchTool implements Tool {
         enum: [...modes],
         type: "string",
         description:
-          "Use search for symbol lookup, definition with a query or file position, or references with a file position.",
+          "Use search for symbol lookup, definition with a query or file position, or references with a file position; Python references also accept a symbol query. Query and line/column inputs are mutually exclusive.",
       },
       query: {
         type: "string",
         description:
-          "Required for search mode and query-based definition lookup; the symbol name or search text.",
+          "Required for search mode and query-based definition lookup; the symbol name or search text. Do not combine it with line or column.",
       },
       path: {
         type: "string",
@@ -131,7 +131,7 @@ export class CodeSearchTool implements Tool {
       file: {
         type: "string",
         description:
-          "Required for position-based references and definition; a TypeScript/JavaScript source file. Use this field instead of path for the source file.",
+          "Required for position-based references and definition; a TypeScript/JavaScript/Python source file. Use this field instead of path for the source file.",
       },
       line: {
         type: "integer",
@@ -167,6 +167,16 @@ export class CodeSearchTool implements Tool {
   async execute(input: unknown, context?: ToolExecutionContext): Promise<unknown> {
     const record = asRecord(input);
     const mode = parseMode(record.mode);
+    const hasPositionInput = record.line !== undefined || record.column !== undefined;
+    if (
+      (mode === "references" || mode === "definition") &&
+      record.query !== undefined &&
+      hasPositionInput
+    ) {
+      throw new Error(
+        `code-search ${mode} mode cannot combine query with line or column; omit query for position lookup or omit line/column for query lookup`
+      );
+    }
     const pathValue = typeof record.path === "string" && record.path.length > 0 ? record.path : ".";
     const workingDirectory = context?.workingDirectory ?? process.cwd();
     const enforceWorkingDirectory = context !== undefined;
@@ -257,6 +267,44 @@ export class CodeSearchTool implements Tool {
       };
     }
 
+    if (
+      mode === "references" &&
+      record.query !== undefined &&
+      record.line === undefined &&
+      record.column === undefined
+    ) {
+      const query = requireString(record.query, "query");
+      const queryFileInput = record.file === undefined ? fileFromPath : record.file;
+      let queryFile: string | undefined;
+      if (queryFileInput !== undefined) {
+        queryFile = await resolveWorkspacePath(
+          workingDirectory,
+          resolve(root, requireString(queryFileInput, "file")),
+          enforceWorkingDirectory
+        );
+        assertSourceAvailable(scan.sources, queryFile);
+        if (extname(queryFile) !== ".py") {
+          throw new Error(
+            `code-search references query lookup only supports Python source files; use file and line for TypeScript/JavaScript`
+          );
+        }
+      }
+      const sources = queryFile
+        ? new Map([[queryFile, scan.sources.get(queryFile)!]])
+        : scan.sources;
+      const limit = record.limit === undefined ? defaultLimit : parsePositiveInt(record.limit, "limit");
+      const references = findPythonReferences(sources, query).slice(0, limit);
+      return {
+        mode,
+        query,
+        path: queryFile ?? root,
+        resolution: "lexical",
+        approximate: true,
+        count: references.length,
+        references,
+      };
+    }
+
     // The scan indexes absolute paths, so a relative `file` must be resolved
     // against the scanned root (the working directory by default).
     const fileInput = record.file === undefined ? fileFromPath : record.file;
@@ -271,13 +319,56 @@ export class CodeSearchTool implements Tool {
       enforceWorkingDirectory
     );
     const line = parseLineOrColumn(record.line, "line");
-    const column = record.column === undefined
+    const column = extname(file) === ".py" && record.column === 0
       ? 1
-      : parseLineOrColumn(record.column, "column");
+      : record.column === undefined
+        ? 1
+        : parseLineOrColumn(record.column, "column");
     assertPositionWithinSource(scan.sources.get(file), file, line, column);
+    if (extname(file) === ".py") {
+      const source = scan.sources.get(file);
+      const symbol = pythonIdentifierAtPosition(source, line, column, file);
+      if (mode === "references") {
+        const references = findPythonReferences(scan.sources, symbol);
+        return {
+          mode,
+          file,
+          line,
+          column,
+          symbol,
+          resolution: "lexical",
+          approximate: true,
+          count: references.length,
+          references,
+        };
+      }
+
+      const matches = scan.index.searchSymbols({
+        query: symbol,
+        limit: record.limit === undefined ? defaultLimit : parsePositiveInt(record.limit, "limit"),
+      });
+      const definition =
+        matches.find(({ symbol: match }) => match.name === symbol && match.filePath === file)?.symbol ??
+        matches.find(({ symbol: match }) => match.name === symbol)?.symbol;
+      return {
+        mode,
+        file,
+        line,
+        column,
+        symbol,
+        resolution: "index",
+        definition,
+        results: matches.map(({ symbol: match, score, reasons }) => ({
+          ...match,
+          score,
+          reasons,
+        })),
+      };
+    }
+
     if (!typeScriptExtensions.has(extname(file))) {
       throw new Error(
-        `code-search ${mode} mode only supports TypeScript/JavaScript source files; use search mode for ${file}`
+        `code-search ${mode} mode only supports TypeScript/JavaScript/Python source files; use search mode for ${file}`
       );
     }
     const referenceIndex = new TypeScriptReferenceIndex({
@@ -590,6 +681,194 @@ function assertPositionWithinSource(
       `code-search column ${column} is beyond the end of line ${line} in ${file}`
     );
   }
+}
+
+interface PythonToken {
+  readonly name: string;
+  readonly line: number;
+  readonly column: number;
+  readonly lineText: string;
+}
+
+/**
+ * Python does not have a language service in this package yet. Keep the
+ * fallback deliberately conservative and label its results as lexical so
+ * callers do not mistake token matches for semantic references.
+ */
+function findPythonReferences(
+  sources: ReadonlyMap<string, string>,
+  symbol: string
+): Array<{
+  readonly filePath: string;
+  readonly line: number;
+  readonly column: number;
+  readonly isWriteAccess: boolean;
+  readonly snippet: string;
+}> {
+  const references: Array<{
+    readonly filePath: string;
+    readonly line: number;
+    readonly column: number;
+    readonly isWriteAccess: boolean;
+    readonly snippet: string;
+  }> = [];
+
+  for (const [filePath, source] of sources) {
+    if (extname(filePath) !== ".py") {
+      continue;
+    }
+    for (const token of scanPythonTokens(source)) {
+      if (token.name !== symbol) {
+        continue;
+      }
+      references.push({
+        filePath,
+        line: token.line,
+        column: token.column,
+        isWriteAccess: isPythonWriteAccess(token, symbol),
+        snippet: compactSnippet(token.lineText),
+      });
+    }
+  }
+
+  return references;
+}
+
+function pythonIdentifierAtPosition(
+  source: string | undefined,
+  line: number,
+  column: number,
+  file: string
+): string {
+  if (source === undefined) {
+    throw new Error(`code-search could not read source file ${file}`);
+  }
+  const lineText = source.split("\n")[line - 1] ?? "";
+  const target = column - 1;
+  const tokens = scanPythonTokens(lineText);
+  const declaration = /^\s*(?:async\s+)?(?:def|class)\s+([A-Za-z_][A-Za-z0-9_]*)\b/.exec(lineText);
+  if (declaration?.[1] && (column <= 1 || target < lineText.search(/\S/))) {
+    return declaration[1];
+  }
+  const match = tokens.find(
+    (candidate) => target >= candidate.column - 1 && target < candidate.column - 1 + candidate.name.length
+  );
+  if (match) {
+    return match.name;
+  }
+  if (column <= 1 && tokens[0]) {
+    return tokens[0].name;
+  }
+  throw new Error(
+    `code-search could not identify a Python symbol at ${file}:${line}:${column}; use search mode with a query`
+  );
+}
+
+function assertSourceAvailable(
+  sources: ReadonlyMap<string, string>,
+  file: string
+): void {
+  if (!sources.has(file)) {
+    throw new Error(`code-search could not read source file ${file}`);
+  }
+}
+
+function scanPythonTokens(source: string): PythonToken[] {
+  const tokens: PythonToken[] = [];
+  const lines = source.split("\n");
+  let tripleQuote: "'" | '"' | undefined;
+
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+    const lineText = lines[lineIndex] ?? "";
+    let index = 0;
+
+    while (index < lineText.length) {
+      if (tripleQuote !== undefined) {
+        const end = lineText.indexOf(tripleQuote.repeat(3), index);
+        if (end < 0) {
+          break;
+        }
+        index = end + 3;
+        tripleQuote = undefined;
+        continue;
+      }
+
+      const character = lineText[index] ?? "";
+      if (character === "#") {
+        break;
+      }
+      if (character === "'" || character === '"') {
+        if (lineText.slice(index, index + 3) === character.repeat(3)) {
+          tripleQuote = character;
+          index += 3;
+          continue;
+        }
+        index = skipPythonString(lineText, index, character);
+        continue;
+      }
+      if (isIdentifierStart(character)) {
+        const start = index;
+        index += 1;
+        while (index < lineText.length && isIdentifierPart(lineText[index] ?? "")) {
+          index += 1;
+        }
+        tokens.push({
+          name: lineText.slice(start, index),
+          line: lineIndex + 1,
+          column: start + 1,
+          lineText,
+        });
+        continue;
+      }
+      index += 1;
+    }
+  }
+
+  return tokens;
+}
+
+function skipPythonString(line: string, start: number, quote: "'" | '"'): number {
+  let escaped = false;
+  for (let index = start + 1; index < line.length; index += 1) {
+    const character = line[index] ?? "";
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character === quote) {
+      return index + 1;
+    }
+  }
+  return line.length;
+}
+
+function isIdentifierStart(value: string): boolean {
+  return /^[A-Za-z_]$/.test(value);
+}
+
+function isIdentifierPart(value: string): boolean {
+  return /^[A-Za-z0-9_]$/.test(value);
+}
+
+function isPythonWriteAccess(token: PythonToken, symbol: string): boolean {
+  const trimmed = token.lineText.trimStart();
+  return (
+    new RegExp(`^(?:async\\s+)?(?:def|class)\\s+${escapeRegExp(symbol)}\\b`).test(trimmed) ||
+    new RegExp(`\\b${escapeRegExp(symbol)}\\s*=(?!=)`).test(token.lineText)
+  );
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function compactSnippet(value: string): string {
+  const text = value.trim().replace(/\s+/g, " ");
+  return text.length > 200 ? `${text.slice(0, 200)}...` : text;
 }
 
 function parseSymbolKind(value: unknown): SymbolKind {

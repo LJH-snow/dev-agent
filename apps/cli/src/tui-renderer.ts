@@ -25,6 +25,10 @@ export interface CommandHintsOptions {
   width?: number;
 }
 
+export interface BlockOptions {
+  width?: number;
+}
+
 export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":help", description: "Show available commands" },
   { command: ":clear", description: "Clear the terminal view" },
@@ -296,6 +300,15 @@ function renderLabeledLine(label: string, value: string, width: number): string 
   return fitLine(`${label}: ${redactSensitiveText(sanitizeTerminalText(value))}`, width);
 }
 
+export function renderSignalMark(requestedWidth?: number): string {
+  const width = normalizeWidth(requestedWidth);
+  return [
+    colorize(fitLine("  /\\  /\\", width), "teal"),
+    colorize(fitLine(" <  <>  >", width), "amber"),
+    colorize(fitLine("  \\/--\\/", width), "teal"),
+  ].join("\n");
+}
+
 export function renderWelcome({
   provider,
   model,
@@ -307,7 +320,8 @@ export function renderWelcome({
   const width = normalizeWidth(requestedWidth);
   const contentWidth = Math.max(1, width - 2);
   const fields = [
-    colorize(padRight("Dev Agent", contentWidth), "cyan"),
+    colorize(padRight("SIGNAL WEAVE", contentWidth), "bold"),
+    colorize(padRight("dev-agent // local workbench", contentWidth), "dim"),
     "",
     renderLabeledLine("Provider", provider, contentWidth),
     renderLabeledLine("Model", model, contentWidth),
@@ -316,7 +330,7 @@ export function renderWelcome({
     renderLabeledLine("Working directory", workingDirectory, contentWidth),
   ];
 
-  return box(fields, width).join("\n");
+  return [renderSignalMark(width), box(fields, width).join("\n")].join("\n");
 }
 
 export interface RuntimeStatusOptions {
@@ -333,20 +347,22 @@ export function renderRuntimeStatus({
   width: requestedWidth,
 }: RuntimeStatusOptions): string {
   const width = normalizeWidth(requestedWidth);
+  const state = streaming ? "LIVE / streaming" : "READY / idle";
   const lines = [
-    colorize(fitLine("Runtime", width), "cyan"),
+    colorize(fitLine("SIGNAL RAIL", width), "teal"),
+    colorize(fitLine(`  ${state}`, width), streaming ? "green" : "dim"),
     renderLabeledLine("Provider", provider, width),
     renderLabeledLine("Model", model, width),
-    renderLabeledLine("Streaming", streaming ? "enabled" : "disabled", width),
+    renderLabeledLine("Transport", streaming ? "streaming" : "single response", width),
   ];
   return lines.join("\n");
 }
 
 export function renderUserMessage(text: string, options: { width?: number } = {}): string {
   const width = normalizeWidth(options.width);
-  const lines = [colorize(fitLine("You", width), "yellow")];
+  const lines = [colorize(fitLine("YOU // INPUT", width), "amber")];
   for (const sourceLine of redactSensitiveText(sanitizeTerminalText(text)).split("\n")) {
-    lines.push(...wrapPrefixed(sourceLine, "> ", width));
+    lines.push(...wrapPrefixed(sourceLine, ">> ", width));
   }
   return lines.join("\n");
 }
@@ -356,8 +372,8 @@ export function renderAssistantMessage(
   options: AssistantMessageOptions = {}
 ): string {
   const width = normalizeWidth(options.width);
-  const label = options.label ?? "Assistant";
-  return [colorize(fitLine(label, width), "green"), ...renderMarkdown(text, width)].join("\n");
+  const label = options.label ?? "AGENT // RESPONSE";
+  return [colorize(fitLine(label, width), "teal"), ...renderMarkdown(text, width)].join("\n");
 }
 
 export function renderCommandHints(
@@ -365,7 +381,7 @@ export function renderCommandHints(
   options: CommandHintsOptions = {}
 ): string {
   const width = normalizeWidth(options.width);
-  const lines = [colorize(fitLine("Commands", width), "cyan")];
+  const lines = [colorize(fitLine("COMMANDS // DECK", width), "teal")];
 
   for (const entry of commands) {
     const command = typeof entry === "string" ? entry : entry.command;
@@ -382,4 +398,64 @@ export function renderCommandHints(
   }
 
   return lines.join("\n");
+}
+
+export function renderToolCall(
+  name: string,
+  detail = "",
+  options: BlockOptions = {}
+): string {
+  const width = normalizeWidth(options.width);
+  const safeName = redactSensitiveText(sanitizeTerminalText(name));
+  const safeDetail = redactSensitiveText(sanitizeTerminalText(detail));
+  const lines = [colorize(fitLine(`> TOOL / ${safeName}`, width), "blue")];
+  if (safeDetail) {
+    lines.push(...wrapPrefixed(safeDetail, "  input: ", width));
+  }
+  return lines.join("\n");
+}
+
+export function renderToolResult(
+  name: string,
+  output: string,
+  options: BlockOptions = {}
+): string {
+  const width = normalizeWidth(options.width);
+  const safeName = redactSensitiveText(sanitizeTerminalText(name));
+  const safeOutput = redactSensitiveText(sanitizeTerminalText(output));
+  return [
+    colorize(fitLine(`< TOOL RESULT / ${safeName}`, width), "dim"),
+    ...wrapPrefixed(safeOutput, "  ", width),
+  ].join("\n");
+}
+
+export function renderApprovalMessage(
+  tool: string,
+  decision: string,
+  detail = "",
+  options: BlockOptions = {}
+): string {
+  const width = normalizeWidth(options.width);
+  const safeTool = redactSensitiveText(sanitizeTerminalText(tool));
+  const safeDetail = redactSensitiveText(sanitizeTerminalText(detail));
+  const normalized = decision.trim().toLowerCase();
+  const color = normalized === "allow" || normalized === "allow-always" ? "green" : "amber";
+  const marker = normalized === "allow" || normalized === "allow-always" ? "OK" : normalized === "deny" ? "NO" : "??";
+  const lines = [colorize(fitLine(`! APPROVAL / ${safeTool}`, width), color)];
+  lines.push(...wrapPrefixed(`${marker} ${safeDetail || "decision recorded"}`, "  ", width));
+  return lines.join("\n");
+}
+
+export function renderValidationMessage(
+  status: string,
+  summary: string,
+  options: BlockOptions = {}
+): string {
+  const width = normalizeWidth(options.width);
+  const normalized = status.trim().toLowerCase();
+  const color = normalized === "passed" ? "green" : normalized === "failed" || normalized === "blocked" ? "red" : "amber";
+  return [
+    colorize(fitLine(`+ VALIDATION / ${sanitizeTerminalText(status)}`, width), color),
+    ...wrapPrefixed(redactSensitiveText(sanitizeTerminalText(summary)), "  ", width),
+  ].join("\n");
 }

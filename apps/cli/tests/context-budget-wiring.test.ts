@@ -178,8 +178,14 @@ test("CLI system prompt requires source-grounded findings", async () => {
     assert.match(system.content, /one concrete evidence path/i);
     assert.match(system.content, /risk is verified/i);
     assert.match(system.content, /unsupported.*not evidence/i);
+    assert.match(system.content, /lexical for Python/i);
+    assert.match(system.content, /containing class and indentation/i);
+    assert.match(system.content, /normal shared-type usage/i);
+    assert.match(system.content, /undefined or unimported/i);
     assert.match(system.content, /do not repeat identical tool calls/i);
     assert.match(system.content, /definition-only.*not a defect/i);
+    assert.match(system.content, /问题：未验证到可复现缺陷/);
+    assert.match(system.content, /严重性：不适用/);
     assert.match(system.content, /问题.*严重性.*证据.*风险.*建议修复方向/s);
     assert.match(system.content, /do not turn a symbol description into a finding/i);
     assert.match(system.content, /addresses the current task/i);

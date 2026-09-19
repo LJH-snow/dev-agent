@@ -60,9 +60,13 @@ import { LiveAssistantRenderer } from "./tui-stream.js";
 import {
   DEFAULT_COMMAND_HINTS,
   redactSensitiveText,
+  renderApprovalMessage,
   renderAssistantMessage,
   renderCommandHints,
   renderRuntimeStatus,
+  renderToolCall,
+  renderToolResult,
+  renderValidationMessage,
   renderWelcome,
   sanitizeTerminalText,
 } from "./tui-renderer.js";
@@ -124,6 +128,7 @@ const packageMetadata = createRequire(import.meta.url)("../package.json") as { v
 const version = packageMetadata.version ?? "0.0.0";
 const DEFAULT_ONCE_CONTEXT_CHARS = 4000;
 const DEFAULT_ONCE_TOOL_OUTPUT_CHARS = 6000;
+const DEFAULT_ONCE_MAX_REPEATED_TOOL_FAILURES = 2;
 const defaultSystemPrompt = [
   "You are dev-agent, a coding agent. Use tools when they help answer the user.",
   "Ground findings in actual tool output; cite path:line and verify every cited location in current source.",
@@ -133,10 +138,13 @@ const defaultSystemPrompt = [
   "If a read-only tool fails or search returns no matches, retry with a different read-only approach; request lineNumbers for source reads or use search when line numbers are missing; state uncertainty and separate findings from recommendations.",
   "For a broad audit, choose one concrete evidence path, gather enough evidence, then answer instead of repeating speculative searches.",
   "For a scoped review, stop calling tools once one risk is verified and draft the requested final answer.",
-  "A zero-result position lookup from an unsupported language is not evidence of no references; use search instead.",
+  "Position-based code-search references and definitions are semantic for TypeScript/JavaScript and lexical for Python; treat Python results with resolution=lexical or approximate=true as leads that must be verified with source reads. A zero-result position lookup from an unsupported language is not evidence of no references; use search instead.",
+  "For Python type or model audits, inspect the containing class and indentation before claiming recursion; a field in one class that refers to a separately defined config class with the same name is ordinary nesting, not self-reference. Never infer a runtime defect from name equality alone; verify with the complete class body, imports, and tests when available.",
+  "Do not turn normal shared-type usage, ReturnType aliases, repeated prop annotations, or a symbol being imported by many files into a defect by itself. A risk requires verified incorrect behavior, a violated contract, a failing test, a concrete security impact, or another specific consequence; otherwise report 未验证到可复现缺陷 instead of inventing a maintainability finding.",
+  "Never claim a Python name is undefined or unimported from code-search results alone. For missing-name or import findings, use literal search for exact import statements and read the file header; a definition result with a line number resolves the symbol at that position and is not a query result.",
   "Do not repeat identical tool calls or invalid inputs; after a tool error, change the input or choose a different tool.",
   "A definition-only result is not a defect; for unused-code claims, read the implementation and search the whole project for the exact symbol.",
-  "For audit requests, the final answer must contain the labels 问题、严重性、证据、风险、建议修复方向; if no defect is verified, say so explicitly, and do not turn a symbol description into a finding.",
+  "For audit requests, the final answer must contain the labels 问题、严重性、证据、风险、建议修复方向. If no concrete defect is verified, use 问题：未验证到可复现缺陷 and 严重性：不适用 as the first two fields; do not put a normal symbol, import, or usage pattern in the 问题 field, do not turn a symbol description into a finding, and say 无需修复 under 建议修复方向 unless a separate improvement is explicitly requested.",
   "Before finalizing, check that the answer addresses the current task and includes every section the user requested; do not end with only a symbol lookup or generic summary.",
 ].join(" ");
 const CLI_USAGE = [
@@ -1524,6 +1532,9 @@ export async function main(argv: string[]): Promise<void> {
           .filter((part) => part.length > 0)
           .join("\n\n"),
       maxTurns: resolveMaxTurns(config, 8),
+      maxRepeatedToolFailures:
+        oncePrompt === undefined ? undefined : DEFAULT_ONCE_MAX_REPEATED_TOOL_FAILURES,
+      finalizeOnMaxTurns: oncePrompt !== undefined,
       budget: resolveAgentLoopBudget(config, args),
       contextBudget: buildContextBudget(config, oncePrompt !== undefined),
       toolDefaults:
@@ -1542,7 +1553,17 @@ export async function main(argv: string[]): Promise<void> {
           });
         }
         // Nothing may interleave with the JSON document on stdout.
-        if (!jsonOutput && outcome.decision === "deny") {
+        if (!jsonOutput && richUi) {
+          const review = request.review;
+          const detail = review
+            ? `${review.files.length} file(s), +${review.additions}/-${review.deletions}`
+            : outcome.reason ?? "tool call decision recorded";
+          process.stdout.write(
+            `${renderApprovalMessage(request.toolName, outcome.decision, detail, {
+              width: resolveTerminalWidth(),
+            })}\n`
+          );
+        } else if (!jsonOutput && outcome.decision === "deny") {
           const line = `[denied] ${safeTerminalText(request.toolName)} ${safeTerminalText(
             outcome.reason ?? ""
           )}`.trimEnd();
@@ -1552,7 +1573,7 @@ export async function main(argv: string[]): Promise<void> {
       onValidation: (result) => {
         validations.push(result);
         if (!jsonOutput) {
-          printValidationResult(result);
+          printValidationResult(result, richUi, resolveTerminalWidth());
         }
       },
       validation,
@@ -1572,8 +1593,11 @@ export async function main(argv: string[]): Promise<void> {
       onToolProgress: (progress) => {
         if (!jsonOutput) {
           const total = progress.total === undefined ? "" : `/${progress.total}`;
+          const line = `[tool-progress] ${safeTerminalText(progress.name)} ${progress.progress}${total}`;
           process.stdout.write(
-            `[tool-progress] ${safeTerminalText(progress.name)} ${progress.progress}${total}\n`
+            `${richUi
+              ? colorize(`  ↗ ${line}`, "blue")
+              : line}\n`
           );
         }
       },
@@ -2403,7 +2427,7 @@ async function interactive(
               )
             );
           } else {
-            printValidationResult(validation);
+            printValidationResult(validation, ui.rich, ui.width);
           }
         } catch (error) {
           if (!interrupted) {
@@ -2543,7 +2567,17 @@ export async function runExplicitValidation(
   return result;
 }
 
-function printValidationResult(result: ValidationResult): void {
+function printValidationResult(
+  result: ValidationResult,
+  richUi = false,
+  width = 80
+): void {
+  if (richUi) {
+    process.stdout.write(
+      `${renderValidationMessage(result.status, result.summary, { width })}\n`
+    );
+    return;
+  }
   process.stdout.write(
     `[validation] ${safeTerminalText(result.status)}: ${safeTerminalText(
       result.summary
@@ -3110,7 +3144,11 @@ class StreamingRun {
         const separator = clearedThinking || committedLive ? "" : "\n";
         const line = `[tool] ${safeTerminalText(call.name)}${preview}`;
         process.stdout.write(
-          `${separator}${this.richUi ? colorize(line, "cyan") : line}\n`
+          `${separator}${
+            this.richUi
+              ? renderToolCall(call.name, preview.trim(), { width: this.terminalWidth })
+              : line
+          }\n`
         );
       },
       onToolResult: (result) => {
@@ -3119,7 +3157,9 @@ class StreamingRun {
         this.commitLive();
         const line = `[tool-result] ${safeTerminalText(result.name)}: ${summary}`;
         process.stdout.write(
-          `${this.richUi ? colorize(line, "dim") : line}\n`
+          `${this.richUi
+            ? renderToolResult(result.name, summary, { width: this.terminalWidth })
+            : line}\n`
         );
       },
     };

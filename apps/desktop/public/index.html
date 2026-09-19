@@ -4,6 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>dev-agent</title>
+  <link rel="icon" href="data:," />
   <style>
     :root {
       --bg: #ffffff;
@@ -156,75 +157,147 @@
       .desktop-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
   </style>
+  <link rel="stylesheet" href="/public/styles.css" />
 </head>
 <body>
-  <header>
-    <span>dev-agent</span>
-    <div class="header-status">
-      <select id="session" title="Session" aria-label="Session"></select>
-      <button type="button" id="new-session" title="New session" aria-label="New session">+</button>
-      <button type="button" id="rename-session" title="Rename session">Rename</button>
-      <button type="button" id="delete-session" title="Delete session">Delete</button>
-      <button type="button" id="export-session" title="Download transcript">Download</button>
-      <button type="button" id="preview-evidence" title="Preview evidence summary" aria-expanded="false" aria-controls="evidence-preview">Evidence</button>
-      <button type="button" id="stop" title="Stop the running request" disabled>Stop</button>
-      <span class="status" id="usage" aria-label="Usage"></span>
-      <span class="status" id="status" role="status" aria-live="polite" aria-atomic="true">idle</span>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-lockup">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <div class="brand-copy">
+          <span class="eyebrow">Local workbench</span>
+          <strong>dev-agent</strong>
+        </div>
+      </div>
+      <div class="topbar-context" aria-label="Workspace context">
+        <span class="context-pill">active workspace</span>
+        <span class="topbar-divider" aria-hidden="true"></span>
+        <span class="topbar-label">agent coordination surface</span>
+      </div>
+      <div class="header-status">
+        <span class="status" id="usage" aria-label="Usage"></span>
+        <span class="status" id="status" role="status" aria-live="polite" aria-atomic="true">idle</span>
+        <button type="button" id="stop" title="Stop the running request" disabled>Stop</button>
+      </div>
+    </header>
+    <div class="workbench">
+      <aside class="session-rail" aria-label="Session navigation">
+        <div class="rail-heading">
+          <div>
+            <span class="section-kicker">Workspace</span>
+            <h2>Sessions</h2>
+          </div>
+          <button type="button" id="new-session" title="New session" aria-label="New session">+</button>
+        </div>
+        <label class="session-picker">
+          <span class="rail-label">Active session</span>
+          <select id="session" title="Session" aria-label="Session"></select>
+        </label>
+        <div class="session-meta">
+          <strong id="session-meta-id">desktop-default</strong>
+          <span id="session-meta">Ready for a new run.</span>
+        </div>
+        <div class="rail-actions" aria-label="Session actions">
+          <button type="button" id="rename-session" title="Rename session">Rename</button>
+          <button type="button" id="delete-session" title="Delete session">Delete</button>
+          <button type="button" id="export-session" title="Download transcript">Download</button>
+          <button type="button" id="preview-evidence" title="Preview evidence summary" aria-expanded="false" aria-controls="evidence-preview">Evidence</button>
+        </div>
+        <div class="rail-footer">
+          <strong>Signal weave</strong>
+          <span>Sessions, tools, approvals, and validation stay in one local workbench.</span>
+        </div>
+      </aside>
+      <main class="conversation-workspace">
+        <div class="conversation-toolbar">
+          <div class="conversation-heading">
+            <div>
+              <span class="section-kicker">Conversation</span>
+              <h1>Agent run</h1>
+            </div>
+          </div>
+          <div class="conversation-meta">
+            <span>Live stream with guarded tools and evidence-aware validation.</span>
+            <button
+              type="button"
+              id="toggle-inspector"
+              class="inspector-toggle"
+              title="Show runtime inspector"
+              aria-controls="runtime-inspector"
+              aria-expanded="false"
+            >Inspector</button>
+          </div>
+        </div>
+        <div id="messages"><div class="empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
+        <form class="composer" id="form">
+          <div class="composer-toolbar">
+            <span>Prompt the agent</span>
+            <span>Enter to send · Shift+Enter for a new line</span>
+          </div>
+          <div class="composer-actions">
+            <textarea id="input" rows="1" aria-label="Message" placeholder="Describe the work you want the agent to coordinate…"></textarea>
+            <button type="submit" id="send">Send</button>
+          </div>
+        </form>
+      </main>
+      <aside id="runtime-inspector" class="inspector-shell" aria-label="Runtime inspector">
+        <div class="inspector-heading">
+          <div>
+            <span class="inspector-label">Inspector</span>
+            <h2>Runtime signal</h2>
+          </div>
+        </div>
+        <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="desktop-status-title" class="desktop-status-title">Runtime status</div>
+              <div id="desktop-status-note" class="desktop-status-note" role="status">Loading metadata-only status…</div>
+            </div>
+            <button type="button" id="desktop-status-refresh" class="desktop-status-refresh" title="Refresh runtime status">Refresh</button>
+          </div>
+          <div class="desktop-status-grid">
+            <div class="desktop-status-item"><span class="desktop-status-label">Executor</span><strong id="desktop-status-executor" class="desktop-status-value">—</strong><span id="desktop-status-executor-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label">Runtime</span><strong id="desktop-status-runtime" class="desktop-status-value">—</strong><span id="desktop-status-runtime-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label">Workspace</span><strong id="desktop-status-workspace" class="desktop-status-value">—</strong></div>
+            <div class="desktop-status-item"><span class="desktop-status-label">MCP</span><strong id="desktop-status-mcp" class="desktop-status-value">—</strong><span id="desktop-status-mcp-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label">Managed runtime</span><strong id="desktop-status-managed-runtime" class="desktop-status-value">—</strong><span id="desktop-status-managed-runtime-state" class="desktop-status-state">—</span><span id="desktop-status-managed-runtime-guidance" class="desktop-status-guidance">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label">Provider</span><strong id="desktop-status-provider" class="desktop-status-value">—</strong><span id="desktop-status-provider-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label">Model</span><strong id="desktop-status-model" class="desktop-status-value">—</strong><span id="desktop-status-model-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label">Approval</span><strong id="desktop-status-approval" class="desktop-status-value">—</strong><span id="desktop-status-approval-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label">Validation</span><strong id="desktop-status-validation" class="desktop-status-value">—</strong><span id="desktop-status-validation-state" class="desktop-status-state">—</span></div>
+          </div>
+        </section>
+        <section id="evidence-preview" class="evidence-preview" hidden aria-busy="false" aria-labelledby="evidence-preview-title" aria-live="polite">
+          <div class="evidence-preview-header">
+            <div>
+              <div id="evidence-preview-title" class="evidence-preview-title">Evidence summary</div>
+              <div id="evidence-preview-status" class="evidence-preview-status" role="status">Choose Evidence to load a metadata-only summary.</div>
+            </div>
+          </div>
+          <div class="evidence-preview-grid">
+            <div class="evidence-preview-item">
+              <span class="evidence-preview-label">Validations</span>
+              <strong id="evidence-preview-validations" class="evidence-preview-value">—</strong>
+            </div>
+            <div class="evidence-preview-item">
+              <span class="evidence-preview-label">Change sets</span>
+              <strong id="evidence-preview-change-sets" class="evidence-preview-value">—</strong>
+            </div>
+            <div class="evidence-preview-item">
+              <span class="evidence-preview-label">Files</span>
+              <strong id="evidence-preview-files" class="evidence-preview-value">—</strong>
+            </div>
+            <div class="evidence-preview-item">
+              <span class="evidence-preview-label">Estimated export size</span>
+              <strong id="evidence-preview-bytes" class="evidence-preview-value">—</strong>
+            </div>
+          </div>
+          <div id="evidence-preview-retention-note" class="evidence-preview-note">Applied change-set guards stay for validation.</div>
+          <button type="button" id="evidence-preview-refresh" class="evidence-preview-refresh">Refresh</button>
+        </section>
+      </aside>
     </div>
-  </header>
-  <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
-    <div class="desktop-status-header">
-      <div>
-        <div id="desktop-status-title" class="desktop-status-title">Runtime status</div>
-        <div id="desktop-status-note" class="desktop-status-note" role="status">Loading metadata-only status…</div>
-      </div>
-      <button type="button" id="desktop-status-refresh" class="desktop-status-refresh" title="Refresh runtime status">Refresh</button>
-    </div>
-    <div class="desktop-status-grid">
-      <div class="desktop-status-item"><span class="desktop-status-label">Executor</span><strong id="desktop-status-executor" class="desktop-status-value">—</strong><span id="desktop-status-executor-state" class="desktop-status-state">—</span></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">Runtime</span><strong id="desktop-status-runtime" class="desktop-status-value">—</strong><span id="desktop-status-runtime-state" class="desktop-status-state">—</span></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">Workspace</span><strong id="desktop-status-workspace" class="desktop-status-value">—</strong></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">MCP</span><strong id="desktop-status-mcp" class="desktop-status-value">—</strong><span id="desktop-status-mcp-state" class="desktop-status-state">—</span></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">Managed runtime</span><strong id="desktop-status-managed-runtime" class="desktop-status-value">—</strong><span id="desktop-status-managed-runtime-state" class="desktop-status-state">—</span><span id="desktop-status-managed-runtime-guidance" class="desktop-status-guidance">—</span></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">Provider</span><strong id="desktop-status-provider" class="desktop-status-value">—</strong><span id="desktop-status-provider-state" class="desktop-status-state">—</span></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">Model</span><strong id="desktop-status-model" class="desktop-status-value">—</strong><span id="desktop-status-model-state" class="desktop-status-state">—</span></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">Approval</span><strong id="desktop-status-approval" class="desktop-status-value">—</strong><span id="desktop-status-approval-state" class="desktop-status-state">—</span></div>
-      <div class="desktop-status-item"><span class="desktop-status-label">Validation</span><strong id="desktop-status-validation" class="desktop-status-value">—</strong><span id="desktop-status-validation-state" class="desktop-status-state">—</span></div>
-    </div>
-  </section>
-  <section id="evidence-preview" class="evidence-preview" hidden aria-busy="false" aria-labelledby="evidence-preview-title" aria-live="polite">
-    <div class="evidence-preview-header">
-      <div>
-        <div id="evidence-preview-title" class="evidence-preview-title">Evidence summary</div>
-        <div id="evidence-preview-status" class="evidence-preview-status" role="status">Choose Evidence to load a metadata-only summary.</div>
-      </div>
-    </div>
-    <div class="evidence-preview-grid">
-      <div class="evidence-preview-item">
-        <span class="evidence-preview-label">Validations</span>
-        <strong id="evidence-preview-validations" class="evidence-preview-value">—</strong>
-      </div>
-      <div class="evidence-preview-item">
-        <span class="evidence-preview-label">Change sets</span>
-        <strong id="evidence-preview-change-sets" class="evidence-preview-value">—</strong>
-      </div>
-      <div class="evidence-preview-item">
-        <span class="evidence-preview-label">Files</span>
-        <strong id="evidence-preview-files" class="evidence-preview-value">—</strong>
-      </div>
-      <div class="evidence-preview-item">
-        <span class="evidence-preview-label">Estimated export size</span>
-        <strong id="evidence-preview-bytes" class="evidence-preview-value">—</strong>
-      </div>
-    </div>
-    <div id="evidence-preview-retention-note" class="evidence-preview-note">Applied change-set guards stay for validation.</div>
-    <button type="button" id="evidence-preview-refresh" class="evidence-preview-refresh">Refresh</button>
-  </section>
-  <div id="messages"><div class="empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
-  <form class="composer" id="form">
-    <textarea id="input" rows="1" aria-label="Message" placeholder="Type a message — Enter to send, Shift+Enter for a new line"></textarea>
-    <button type="submit" id="send">Send</button>
-  </form>
+  </div>
   <script>
     const messages = document.getElementById("messages");
     const form = document.getElementById("form");
@@ -233,11 +306,15 @@
     const status = document.getElementById("status");
     const usage = document.getElementById("usage");
     const sessionSelect = document.getElementById("session");
+    const sessionMetaId = document.getElementById("session-meta-id");
+    const sessionMeta = document.getElementById("session-meta");
     const newSessionButton = document.getElementById("new-session");
     const renameSessionButton = document.getElementById("rename-session");
     const deleteSessionButton = document.getElementById("delete-session");
     const exportSessionButton = document.getElementById("export-session");
     const previewEvidenceButton = document.getElementById("preview-evidence");
+    const toggleInspectorButton = document.getElementById("toggle-inspector");
+    const inspectorShell = document.getElementById("runtime-inspector");
     const evidencePreviewPanel = document.getElementById("evidence-preview");
     const evidencePreviewStatus = document.getElementById("evidence-preview-status");
     const evidencePreviewValidations = document.getElementById("evidence-preview-validations");
@@ -292,6 +369,16 @@
 
     function setStatus(text) { status.textContent = text; }
 
+    function syncInspectorToggle() {
+      const canCollapse = window.matchMedia("(min-width: 681px) and (max-width: 900px)").matches;
+      if (!canCollapse) {
+        inspectorShell.classList.remove("is-open");
+        toggleInspectorButton.setAttribute("aria-expanded", "false");
+        toggleInspectorButton.textContent = "Inspector";
+        toggleInspectorButton.title = "Show runtime inspector";
+      }
+    }
+
     function setDesktopStatusValue(valueElement, stateElement, value, state) {
       valueElement.textContent = typeof value === "string" && value ? value : "—";
       stateElement.textContent = typeof state === "string" && state ? state : "—";
@@ -325,6 +412,20 @@
         payload.validation.policy,
         (payload.validation.enabled ? "enabled" : "unknown") + " · last " + validationResult
       );
+    }
+
+    function resetDesktopStatus(note) {
+      desktopStatusNote.textContent = note;
+      setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, "—", "—");
+      setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, "—", "—");
+      desktopStatusWorkspace.textContent = "—";
+      setDesktopStatusValue(desktopStatusMcp, desktopStatusMcpState, "—", "—");
+      setDesktopStatusValue(desktopStatusManagedRuntime, desktopStatusManagedRuntimeState, "—", "—");
+      desktopStatusManagedRuntimeGuidance.textContent = "—";
+      setDesktopStatusValue(desktopStatusProvider, desktopStatusProviderState, "—", "—");
+      setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, "—", "—");
+      setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, "—", "—");
+      setDesktopStatusValue(desktopStatusValidation, desktopStatusValidationState, "—", "—");
     }
 
     function managedRuntimeGuidance(state) {
@@ -363,17 +464,7 @@
         desktopStatusNote.textContent = "Metadata only — no keys, paths, source, or raw errors are shown.";
       } catch {
         if (controller.signal.aborted || requestId !== desktopStatusRequestId || sessionId !== currentSessionId) return;
-        desktopStatusNote.textContent = "Runtime status unavailable.";
-        setDesktopStatusValue(desktopStatusExecutor, desktopStatusExecutorState, "—", "—");
-        setDesktopStatusValue(desktopStatusRuntime, desktopStatusRuntimeState, "—", "—");
-        desktopStatusWorkspace.textContent = "—";
-        setDesktopStatusValue(desktopStatusMcp, desktopStatusMcpState, "—", "—");
-        setDesktopStatusValue(desktopStatusManagedRuntime, desktopStatusManagedRuntimeState, "—", "—");
-        desktopStatusManagedRuntimeGuidance.textContent = "—";
-        setDesktopStatusValue(desktopStatusProvider, desktopStatusProviderState, "—", "—");
-        setDesktopStatusValue(desktopStatusModel, desktopStatusModelState, "—", "—");
-        setDesktopStatusValue(desktopStatusApproval, desktopStatusApprovalState, "—", "—");
-        setDesktopStatusValue(desktopStatusValidation, desktopStatusValidationState, "—", "—");
+        resetDesktopStatus("Runtime status unavailable.");
       } finally {
         if (requestId === desktopStatusRequestId) {
           desktopStatusController = null;
@@ -405,6 +496,7 @@
         hasCost = false;
       }
       renderUsage();
+      renderSessionMeta(summary);
     }
 
     function formatEvidencePreviewBytes(value) {
@@ -550,6 +642,13 @@
         parts.push(evidence.protectedChangeSets + " protected");
       }
       return parts.join(" · ");
+    }
+
+    function renderSessionMeta(summary) {
+      sessionMetaId.textContent = currentSessionId || "no active session";
+      sessionMeta.textContent = currentSessionId
+        ? (formatSessionSummary(summary) || "Ready for a new run.")
+        : "Create a session to begin.";
     }
 
     async function loadSessions() {
@@ -772,6 +871,14 @@
       setStatus("session " + currentSessionId);
     });
 
+    toggleInspectorButton.addEventListener("click", () => {
+      const isOpen = inspectorShell.classList.toggle("is-open");
+      toggleInspectorButton.setAttribute("aria-expanded", String(isOpen));
+      toggleInspectorButton.textContent = isOpen ? "Hide inspector" : "Inspector";
+      toggleInspectorButton.title = isOpen ? "Hide runtime inspector" : "Show runtime inspector";
+    });
+    window.addEventListener("resize", syncInspectorToggle);
+
     desktopStatusRefreshButton.addEventListener("click", () => {
       if (currentSessionId !== null) loadDesktopStatus(currentSessionId);
     });
@@ -794,7 +901,15 @@
       totalCost = 0;
       hasCost = false;
       renderUsage();
-      await Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]);
+      renderSessionMeta(null);
+      messages.innerHTML = "";
+      currentAssistant = null;
+      currentToolProgress = null;
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = "Ask dev-agent anything. Tools run in your working directory.";
+      messages.appendChild(empty);
+      resetDesktopStatus("New session will initialize on the first run.");
       setStatus("new session");
     });
 
@@ -819,6 +934,7 @@
       totalCost = 0;
       hasCost = false;
       renderUsage();
+      renderSessionMeta(null);
       await loadSessions();
       await Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]);
       setStatus("session deleted");
@@ -1026,6 +1142,7 @@
           finalStatus = parsed.status === "aborted" ? "aborted" : "idle";
           setStatus(parsed.status === "aborted" ? "aborted" : "done · " + parsed.turns + " turn(s)");
           loadSessions();
+          loadDesktopStatus(currentSessionId);
           break;
       }
     }
@@ -1163,6 +1280,7 @@
     }
 
     loadSessions().then(() => Promise.all([loadHistory(currentSessionId), loadDesktopStatus(currentSessionId)]));
+    syncInspectorToggle();
   </script>
 </body>
 </html>

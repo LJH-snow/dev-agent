@@ -4,9 +4,14 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 import {
+  renderApprovalMessage,
   renderAssistantMessage,
   renderCommandHints,
+  renderRuntimeStatus,
+  renderToolCall,
+  renderToolResult,
   renderUserMessage,
+  renderValidationMessage,
   renderWelcome,
 } from "../dist/tui-renderer.js";
 
@@ -28,6 +33,29 @@ test("welcome render includes provider, model, status, session, and working dire
   assert.match(output, /streaming/i);
   assert.match(output, /session-123/);
   assert.match(output, /\/Users\/example\/project/);
+  assert.match(output, /SIGNAL WEAVE/);
+  assert.match(output, /SIGNAL WEAVE|\/\\  \/\\/);
+});
+
+test("rich renderer uses semantic blocks for runtime, tools, approvals, and validation", () => {
+  const output = [
+    renderRuntimeStatus({
+      provider: "OpenAI",
+      model: "gpt-5",
+      streaming: true,
+      width: 48,
+    }),
+    renderToolCall("shell", "{\"command\":\"pwd\"}", { width: 48 }),
+    renderToolResult("shell", "workspace ready", { width: 48 }),
+    renderApprovalMessage("filesystem", "allow", "2 file(s), +8/-2", { width: 48 }),
+    renderValidationMessage("passed", "workspace checks passed", { width: 48 }),
+  ].join("\n");
+
+  assert.match(output, /SIGNAL RAIL/);
+  assert.match(output, /> TOOL \/ shell/);
+  assert.match(output, /< TOOL RESULT \/ shell/);
+  assert.match(output, /APPROVAL \/ filesystem/);
+  assert.match(output, /VALIDATION \/ passed/);
 });
 
 test("assistant render gives markdown headings and fenced code a clear layout", () => {

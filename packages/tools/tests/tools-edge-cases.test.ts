@@ -380,8 +380,23 @@ test("code-search position modes explain that file and line are required", async
   const tool: any = new CodeSearchTool();
 
   await assert.rejects(
-    () => tool.execute({ mode: "references", query: "ErrorCode", path: "." }),
+    () => tool.execute({ mode: "references", path: "." }),
     /requires file and line.*use search mode or definition with query/i
+  );
+});
+
+test("code-search rejects query and position inputs being mixed", async () => {
+  const tool: any = new CodeSearchTool();
+
+  await assert.rejects(
+    () =>
+      tool.execute({
+        mode: "definition",
+        query: "Protocol",
+        file: "app/agents/protocols.py",
+        line: 17,
+      }),
+    /cannot combine query with line or column.*omit query for position lookup/i
   );
 });
 
