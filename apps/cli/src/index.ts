@@ -124,6 +124,27 @@ const packageMetadata = createRequire(import.meta.url)("../package.json") as { v
 const version = packageMetadata.version ?? "0.0.0";
 const defaultSystemPrompt =
   "You are dev-agent, a coding agent. Use tools when they help answer the user.";
+const CLI_USAGE = [
+  "Usage: dev-agent [options] [prompt]",
+  "",
+  "Commands:",
+  "  review [options]                 Review working-tree or base/head metadata",
+  "  plan [options]                   Create a metadata-only workflow plan",
+  "  apply [options]                  Apply a reviewed workflow plan",
+  "  config validate|show [options]   Validate or show effective config",
+  "  runtime status|install|path|remove",
+  "  index status|refresh|clear       Manage the persisted code index",
+  "  init [options]                   Initialize project-scoped state",
+  "",
+  "Common options:",
+  "  --cwd <path>                     Use a different working directory",
+  "  --project-state                  Store config and sessions in the project",
+  "  --json                           Emit machine-readable output",
+  "  --tools                          List available tools without a provider",
+  "  --doctor                         Check the local runtime environment",
+  "  -v, --version                    Print the CLI version",
+  "  -h, --help                       Show this help",
+].join("\n");
 
 /** Flags that would turn a preview invocation into another operation. */
 const PREVIEW_EXCLUSIVE_FLAGS = [
@@ -160,6 +181,8 @@ const PREVIEW_EXCLUSIVE_FLAGS = [
 const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> = {
   "--version": "none",
   "-v": "none",
+  "--help": "none",
+  "-h": "none",
   "--tools": "none",
   "--metadata": "none",
   "--session-list": "none",
@@ -233,35 +256,86 @@ type ExplicitCliCommand =
   | { readonly kind: "mcp"; readonly action: "list" | "status" | "validate" | "test" }
   | { readonly kind: "index"; readonly action: "status" | "refresh" | "clear" };
 
-function parseExplicitCliCommand(args: readonly string[]): ExplicitCliCommand | undefined {
-  if (args[0] === "init") {
+function parseExplicitCliCommandAt(
+  args: readonly string[],
+  offset: number
+): ExplicitCliCommand | undefined {
+  const first = args[offset];
+  const second = args[offset + 1];
+  if (first === "init") {
     return { kind: "init" };
   }
-  if (args[0] === "config" && (args[1] === "validate" || args[1] === "show")) {
-    return { kind: "config", action: args[1] };
+  if (first === "config" && (second === "validate" || second === "show")) {
+    return { kind: "config", action: second };
   }
   if (
-    args[0] === "runtime" &&
-    (args[1] === "status" || args[1] === "install" || args[1] === "path" || args[1] === "remove")
+    first === "runtime" &&
+    (second === "status" ||
+      second === "install" ||
+      second === "path" ||
+      second === "remove")
   ) {
-    return { kind: "runtime", action: args[1] };
+    return { kind: "runtime", action: second };
   }
-  if (args[0] === "review" || args[0] === "plan" || args[0] === "apply") {
-    return { kind: "workflow", action: args[0] };
+  if (first === "review" || first === "plan" || first === "apply") {
+    return { kind: "workflow", action: first };
   }
-  if (args[0] === "providers" && (args[1] === "list" || args[1] === "status" || args[1] === "test")) {
-    return { kind: "provider", resource: "providers", action: args[1] };
+  if (
+    first === "providers" &&
+    (second === "list" || second === "status" || second === "test")
+  ) {
+    return { kind: "provider", resource: "providers", action: second };
   }
-  if (args[0] === "models" && (args[1] === "list" || args[1] === "current")) {
-    return { kind: "provider", resource: "models", action: args[1] };
+  if (first === "models" && (second === "list" || second === "current")) {
+    return { kind: "provider", resource: "models", action: second };
   }
-  if (args[0] === "mcp" && (args[1] === "list" || args[1] === "status" || args[1] === "validate" || args[1] === "test")) {
-    return { kind: "mcp", action: args[1] };
+  if (
+    first === "mcp" &&
+    (second === "list" ||
+      second === "status" ||
+      second === "validate" ||
+      second === "test")
+  ) {
+    return { kind: "mcp", action: second };
   }
-  if (args[0] === "index" && (args[1] === "status" || args[1] === "refresh" || args[1] === "clear")) {
-    return { kind: "index", action: args[1] };
+  if (
+    first === "index" &&
+    (second === "status" || second === "refresh" || second === "clear")
+  ) {
+    return { kind: "index", action: second };
   }
   return undefined;
+}
+
+function parseExplicitCliCommand(args: readonly string[]): ExplicitCliCommand | undefined {
+  return parseExplicitCliCommandAt(args, 0);
+}
+
+function findExplicitCommandStart(args: readonly string[]): number | undefined {
+  for (let index = 0; index < args.length; index += 1) {
+    if (parseExplicitCliCommandAt(args, index) !== undefined) {
+      return index;
+    }
+    const arity = CLI_FLAGS[args[index] ?? ""];
+    if (arity === "two") {
+      index += 2;
+    } else if (arity === "one") {
+      index += 1;
+    } else if (arity === "optional") {
+      const next = args[index + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        index += 1;
+      }
+    }
+  }
+  return undefined;
+}
+
+function normalizeExplicitCommandArgs(args: readonly string[]): readonly string[] {
+  const commandStart = findExplicitCommandStart(args);
+  return commandStart === undefined || commandStart === 0
+    ? args
+    : [...args.slice(commandStart), ...args.slice(0, commandStart)];
 }
 
 function explicitCommandPrefixLength(args: readonly string[]): number {
@@ -703,7 +777,12 @@ async function runExplicitCliCommand(
 }
 
 export async function main(argv: string[]): Promise<void> {
-  const args = argv.slice(2);
+  const rawArgs = argv.slice(2);
+  if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
+    console.log(CLI_USAGE);
+    return;
+  }
+  const args = normalizeExplicitCommandArgs(rawArgs);
   const jsonOutput = args.includes("--json");
   const previewEvidence = args.includes("--preview-evidence");
   const exportEvidence = args.includes("--export-evidence");

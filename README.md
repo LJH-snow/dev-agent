@@ -65,6 +65,7 @@ bin from the target project:
 ```bash
 npm install -g @agent_cli/cli
 cd /path/to/other-project
+dev-agent --help
 dev-agent --version
 dev-agent --cwd /path/to/other-project --index . --json
 dev-agent --session other-project --once "list files in the current directory"
@@ -76,6 +77,13 @@ dev-agent review --cwd /path/to/other-project --json --non-interactive
 dev-agent plan --cwd /path/to/other-project --changes-file changes.json --plan-file plan.json --session ci --json --non-interactive
 dev-agent apply --cwd /path/to/other-project --changes-file changes.json --plan-file plan.json --session ci --json --non-interactive
 ```
+
+Global options may appear before or after an explicit command, so both
+`dev-agent --cwd /path/to/other-project review --json --non-interactive` and
+`dev-agent review --cwd /path/to/other-project --json --non-interactive` are
+valid. If the installed command reports older behavior, check
+`command -v dev-agent` and `dev-agent --version`; a previous global install can
+shadow the latest package. Update it with `npm install -g @agent_cli/cli@latest`.
 
 Managed Rust runtime installation is explicit and fail-closed. The npm package does
 not download binaries in `postinstall`; `runtime install` verifies the fixed release

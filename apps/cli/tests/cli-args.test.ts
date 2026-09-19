@@ -51,6 +51,40 @@ test("an unknown flag is rejected instead of silently ignored", async () => {
   });
 });
 
+test("--help prints command usage without starting a session", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--help"], dir);
+
+    assert.equal(result.code, 0);
+    assert.equal(result.stderr, "");
+    assert.match(result.stdout, /Usage: dev-agent/);
+    assert.match(result.stdout, /\breview\b/);
+    assert.deepEqual(await readdir(dir), []);
+  });
+});
+
+test("global options may precede an explicit command", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--cwd", dir, "review", "--json", "--non-interactive"], dir);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(result.stderr, "");
+    assert.deepEqual(JSON.parse(result.stdout), {
+      command: "review",
+      mode: "working-tree",
+      status: "skipped",
+      changedFiles: [],
+      summary: {
+        changedFiles: 0,
+        additions: 0,
+        deletions: 0,
+        reason: "not_git_repository",
+      },
+      warnings: ["not_git_repository"],
+    });
+  });
+});
+
 test("a flag cannot be consumed as another flag's value", async () => {
   await withSessionDir(async (dir) => {
     const result = await runCli(["--session", "--once", "hi"], dir);
