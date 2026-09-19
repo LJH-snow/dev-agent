@@ -404,16 +404,16 @@ Record completed tasks, preserved findings, remaining evidence gaps, exact
 verification commands, and the next human decision. Do not claim the project
 is release-ready merely because local tests pass.
 
-### Known remaining risk: Desktop test-file race
+### Desktop test-file race: mitigated
 
 An independent worktree reproduced a real test-harness race: the Desktop edge
 case suite temporarily replaces `public/index.html` while another Desktop test
 file can read the same path concurrently, causing an intermittent `404`.
-Commit `8d0dafb` proposes the narrow fix of adding
-`--test-concurrency=1` to the Desktop test script. The current main-tree
-`apps/desktop/package.json` still has the concurrent script.
+After the candidate changes were committed, the equivalent narrow fix landed
+in main as commit `310cbce`: the Desktop test script now uses
+`--test-concurrency=1`. No cherry-pick of `8d0dafb` was performed.
 
-Do not cherry-pick that commit before the current dirty candidate changes are
-committed. After that handoff point, evaluate the equivalent change and rerun
-the main-tree `pnpm verify`. The current single successful `pnpm verify` does
-not prove that this race is eliminated.
+Fresh verification on 2026-09-19 passed the serialized Desktop focused suite
+at **132/132** and the main-tree `pnpm verify` gate with exit code **0**,
+ending in `=== all selected gates passed ===`. This validates the mitigation
+for the reproduced cross-file race; it does not authorize release by itself.
