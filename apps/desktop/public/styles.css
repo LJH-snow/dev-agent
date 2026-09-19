@@ -706,6 +706,39 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
   font-size: 11px;
 }
 
+.msg.error {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: min(820px, 100%);
+}
+
+.error-message {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.error-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 7px;
+}
+
+.error-actions button {
+  padding: 6px 9px;
+  border-color: rgba(255, 141, 134, .45);
+  background: transparent;
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.error-actions button:hover {
+  background: rgba(255, 141, 134, .12);
+}
+
 .msg.error::before, .msg.denied::before { background: var(--red); }
 
 .msg.approval {

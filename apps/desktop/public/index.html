@@ -462,6 +462,8 @@
         "action.delete": "Delete",
         "action.download": "Download",
         "action.evidence": "Evidence",
+        "action.retry": "Retry",
+        "action.retryTitle": "Retry this request",
         "action.send": "Send",
         "action.refresh": "Refresh",
         "workspace.label": "Workspace",
@@ -669,6 +671,8 @@
         "action.delete": "删除",
         "action.download": "下载",
         "action.evidence": "证据",
+        "action.retry": "重试",
+        "action.retryTitle": "重试此请求",
         "action.send": "发送",
         "action.refresh": "刷新",
         "workspace.label": "工作区",
@@ -1857,6 +1861,43 @@
       return div;
     }
 
+    function retryRequest(message, sessionId, button) {
+      if (sessionId !== currentSessionId || activeChatSessionId !== null) return;
+      button.disabled = true;
+      input.value = message;
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 160) + "px";
+      form.requestSubmit();
+    }
+
+    function appendErrorMessage(text, retryMessage, sessionId) {
+      const wasAtBottom = isMessagesAtBottom();
+      const div = document.createElement("div");
+      div.className = "msg error";
+      const content = document.createElement("span");
+      content.className = "error-message";
+      content.textContent = text;
+      div.appendChild(content);
+
+      if (retryMessage && sessionId) {
+        const actions = document.createElement("div");
+        actions.className = "error-actions";
+        const retry = document.createElement("button");
+        retry.type = "button";
+        setLocalizedNode(retry, "action.retry");
+        retry.setAttribute("data-i18n-title", "action.retryTitle");
+        retry.title = t("action.retryTitle");
+        retry.dataset.retry = "true";
+        retry.addEventListener("click", () => retryRequest(retryMessage, sessionId, retry));
+        actions.appendChild(retry);
+        div.appendChild(actions);
+      }
+
+      messages.appendChild(div);
+      scrollMessagesToBottom(wasAtBottom);
+      return div;
+    }
+
     function ensureReasoning() {
       if (!currentReasoning) {
         const wasAtBottom = isMessagesAtBottom();
@@ -2261,7 +2302,7 @@
         if (!res.ok || !res.body) {
           if (!isCurrentChatRequest(requestSessionId, requestId)) return;
           const text = await res.text().catch(() => "");
-          appendMessage("error", "Request failed: " + (text || res.status));
+          appendErrorMessage("Request failed: " + (text || res.status), message, requestSessionId);
           recordRunEvent("error", {});
           setStatus("error");
           return;
@@ -2277,13 +2318,17 @@
           while ((idx = buffer.indexOf("\n\n")) >= 0) {
             const block = buffer.slice(0, idx);
             buffer = buffer.slice(idx + 2);
-            handleEvent(block, requestSessionId, requestId);
+            handleEvent(block, requestSessionId, requestId, message);
           }
         }
       } catch (err) {
         if (!isCurrentChatRequest(requestSessionId, requestId)) return;
         if (err?.name === "AbortError") return;
-        appendMessage("error", err instanceof Error ? err.message : String(err));
+        appendErrorMessage(
+          err instanceof Error ? err.message : String(err),
+          message,
+          requestSessionId
+        );
         recordRunEvent("error", {});
         setStatus("error");
       } finally {
@@ -2312,7 +2357,7 @@
       }
     });
 
-    function handleEvent(block, sessionId, requestId) {
+    function handleEvent(block, sessionId, requestId, message) {
       if (!isCurrentChatRequest(sessionId, requestId)) return;
       let eventType = "message";
       let data = "";
@@ -2393,7 +2438,7 @@
           markEvidencePreviewStale();
           break;
         case "error":
-          appendMessage("error", parsed.message || "unknown error");
+          appendErrorMessage(parsed.message || "unknown error", message, sessionId);
           break;
         case "done":
           finalStatus = parsed.status === "aborted" ? "aborted" : "idle";

@@ -31,7 +31,7 @@ test("GET / isolates late chat events while old sessions keep running", async ()
     assert.match(html, /let activeChatSessionId = null/);
     assert.match(html, /function isCurrentChatRequest\(sessionId, requestId\)/);
     assert.match(html, /if \(!isCurrentChatRequest\(sessionId, requestId\)\) return;/);
-    assert.match(html, /handleEvent\(block, requestSessionId, requestId\)/);
+    assert.match(html, /handleEvent\(block, requestSessionId, requestId, message\)/);
     assert.match(html, /activeChatSessionId = requestSessionId/);
     assert.match(
       html,
