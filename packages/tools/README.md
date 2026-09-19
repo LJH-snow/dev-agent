@@ -154,7 +154,13 @@ workspace.
 Built-in tools accept an optional context object with `sessionId` and
 `workingDirectory`. Shell/git/search commands run in that working directory,
 and filesystem and code-search paths are resolved relative to it. `code-search`
-also accepts `kind` and `limit` inputs to keep agent queries focused.
+also accepts `kind` and `limit` inputs to keep agent queries focused. Its
+`search` mode and query-based `definition` mode use the shared symbol index;
+position-based `references` and `definition` use `file`, `line`, and optional
+`column`. Omit `path` to scan the current project working directory. For
+source review, `filesystem read` accepts `lineNumbers: true` to prefix the
+returned content with exact source line numbers without changing the default
+raw-content response.
 
 `filesystem read` counts lines the way an editor does: a trailing newline
 terminates the last line instead of starting an empty one, so `"a\nb\n"` is two

@@ -103,6 +103,35 @@ test("CLI trims the history it sends when DEV_AGENT_MAX_CONTEXT_CHARS is set", a
   }
 });
 
+test("CLI system prompt requires source-grounded findings", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-system-prompt-"));
+  const provider = await startCapturingProvider();
+  try {
+    const result = await runCli(["--once", "review the project", "--no-stream"], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "openai",
+      OPENAI_API_KEY: "test-key",
+      OPENAI_BASE_URL: provider.baseUrl,
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const system = provider.requests[0]?.messages.find((message) => message.role === "system");
+    assert.ok(system, "the provider should receive a system message");
+    assert.match(system.content, /ground findings in actual tool output/i);
+    assert.match(system.content, /README|AGENTS|roadmap/i);
+    assert.match(system.content, /path:line|verify.*location/i);
+    assert.match(system.content, /uncertain|cannot verify/i);
+    assert.match(system.content, /read-only tool fails|retry/i);
+    assert.match(system.content, /search when line numbers are missing/i);
+    assert.match(system.content, /lineNumbers for source reads/i);
+    assert.match(system.content, /requested paths and symbols/i);
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("CLI sends the full history when no budget is configured", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-budget-"));
   const provider = await startCapturingProvider();

@@ -277,7 +277,9 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
 - `JsonFileCodeIndex` with JSON persistence and incremental updates
 - `TypeScriptReferenceIndex` for reference search and go-to-definition via the
   TypeScript language service in `@dev-agent/code-intelligence`
-- `code-search` tool now supports `search` (default), `references`, and `definition`
+- `code-search` tool now supports `search` (default), query-based or position-based
+  `definition`, and position-based `references`; omitted `path` scans the current
+  project working directory
 - Model contracts plus OpenAI, Anthropic, Gemini, and Ollama providers in `@dev-agent/model`
 - Built-in filesystem, shell, git, and search tools in `@dev-agent/tools`
 - Executor contract in `@dev-agent/executor` with `cwd`, `env`, stdin `input`,

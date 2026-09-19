@@ -132,6 +132,19 @@ test("default tools register under expected names", () => {
   assert.deepEqual(names, ["code-search", "filesystem", "git", "search", "shell"]);
 });
 
+test("code-search schema explains its default scope and position inputs", () => {
+  const tool = new CodeSearchTool();
+  const properties = tool.parameters?.properties as Record<string, { description?: string }>;
+
+  assert.match(tool.description, /path defaults to the project working directory/i);
+  assert.match(tool.description, /query-based definition lookup/i);
+  assert.match(properties.path?.description ?? "", /defaults to the project working directory/i);
+  assert.match(properties.query?.description ?? "", /query-based definition/i);
+  assert.match(properties.file?.description ?? "", /required for position-based references and definition/i);
+  assert.match(properties.line?.description ?? "", /1-based/i);
+  assert.match(properties.column?.description ?? "", /1-based/i);
+});
+
 test("code-search tool scans a project and returns matching symbols", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-"));
   await mkdir(join(dir, "src"));

@@ -79,9 +79,15 @@ test("read returns a line range and marks truncation", async () => {
   const lines = Array.from({ length: 10 }, (_, index) => `line-${index + 1}`);
   await withFile(lines.join("\n"), async (path) => {
     const tool: any = new FilesystemTool();
-    const slice = await tool.execute({ action: "read", path, offset: 3, limit: 2 });
+    const slice = await tool.execute({
+      action: "read",
+      path,
+      offset: 3,
+      limit: 2,
+      lineNumbers: true,
+    });
 
-    assert.equal(slice.content, "line-3\nline-4");
+    assert.equal(slice.content, "3: line-3\n4: line-4");
     assert.equal(slice.startLine, 3);
     assert.equal(slice.endLine, 4);
     assert.equal(slice.totalLines, 10);
@@ -107,6 +113,9 @@ test("read counts a trailing newline as a terminator, not an empty line", async 
     assert.equal(all.totalLines, 3, "a trailing newline must not add a line");
     assert.equal(all.content, "one\ntwo\nthree");
     assert.equal(all.endLine, 3);
+
+    const numbered = await tool.execute({ action: "read", path, lineNumbers: true });
+    assert.equal(numbered.content, "1: one\n2: two\n3: three");
 
     const last = await tool.execute({ action: "read", path, offset: 3 });
     assert.equal(last.content, "three");
@@ -146,6 +155,21 @@ test("read reports zero lines for an empty file", async () => {
     assert.equal(all.totalLines, 0);
     assert.equal(all.content, "");
     assert.equal(all.truncated, false);
+  });
+});
+
+test("line-numbered reads use bounded pages by default", async () => {
+  const lines = Array.from({ length: 125 }, (_, index) => `line-${index + 1}`);
+  await withFile(lines.join("\n"), async (path) => {
+    const tool: any = new FilesystemTool();
+    const page = await tool.execute({ action: "read", path, lineNumbers: true });
+
+    assert.equal(page.startLine, 1);
+    assert.equal(page.endLine, 120);
+    assert.equal(page.totalLines, 125);
+    assert.equal(page.truncated, true);
+    assert.match(page.content, /^1: line-1\n/);
+    assert.match(page.content, /120: line-120$/);
   });
 });
 

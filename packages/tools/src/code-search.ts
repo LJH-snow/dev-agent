@@ -93,22 +93,56 @@ export interface CodeSearchCacheStats {
 export class CodeSearchTool implements Tool {
   readonly name = "code-search" as const;
   readonly description =
-    "Scan TypeScript/JavaScript/Python/Rust source files. Supports symbol search by name; reference lookup and go-to-definition cover TypeScript/JavaScript.";
+    "Scan TypeScript/JavaScript/Python/Rust source files. The path defaults to the project working directory. Search and query-based definition lookup use the shared symbol index; position-based reference lookup and go-to-definition cover TypeScript/JavaScript.";
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
-      mode: { enum: [...modes], type: "string" },
-      query: { type: "string" },
-      path: { type: "string" },
-      maxDepth: { type: "integer", minimum: 0 },
+      mode: {
+        enum: [...modes],
+        type: "string",
+        description:
+          "Use search for symbol lookup, definition with a query or file position, or references with a file position.",
+      },
+      query: {
+        type: "string",
+        description:
+          "Required for search mode and query-based definition lookup; the symbol name or search text.",
+      },
+      path: {
+        type: "string",
+        description:
+          "Directory to scan; defaults to the project working directory. Do not use this for the source file in references or definition mode.",
+      },
+      maxDepth: {
+        type: "integer",
+        minimum: 0,
+        description: "Maximum directory depth for the scan.",
+      },
       kind: {
         enum: [...symbolKinds],
         type: "string",
+        description: "Optional symbol kind filter for search mode.",
       },
-      limit: { type: "integer", minimum: 0 },
-      file: { type: "string" },
-      line: { type: "integer", minimum: 1 },
-      column: { type: "integer", minimum: 1 },
+      limit: {
+        type: "integer",
+        minimum: 0,
+        description: "Maximum number of search results.",
+      },
+      file: {
+        type: "string",
+        description:
+          "Required for position-based references and definition; a TypeScript/JavaScript source file. Use this field instead of path for the source file.",
+      },
+      line: {
+        type: "integer",
+        minimum: 1,
+        description: "Required for position-based references and definition; 1-based source line.",
+      },
+      column: {
+        type: "integer",
+        minimum: 1,
+        description: "Required for position-based references and definition; 1-based source column.",
+      },
     },
     required: [],
   };
@@ -135,20 +169,36 @@ export class CodeSearchTool implements Tool {
     const mode = parseMode(record.mode);
     const pathValue = typeof record.path === "string" && record.path.length > 0 ? record.path : ".";
     const workingDirectory = context?.workingDirectory ?? process.cwd();
+    const enforceWorkingDirectory = context !== undefined;
+    let scanPath = pathValue;
+    let fileFromPath: string | undefined;
+    if (mode !== "search" && pathValue !== ".") {
+      const pathCandidate = await resolveWorkspacePath(
+        workingDirectory,
+        pathValue,
+        enforceWorkingDirectory
+      );
+      if (await isRegularFile(pathCandidate)) {
+        scanPath = ".";
+        if (record.file === undefined) {
+          fileFromPath = pathCandidate;
+        }
+      }
+    }
     const root = await resolveWorkspacePath(
       workingDirectory,
-      pathValue,
-      context !== undefined
+      scanPath,
+      enforceWorkingDirectory
     );
     const maxDepth = record.maxDepth === undefined
       ? defaultMaxDepth
       : parsePositiveInt(record.maxDepth, "maxDepth");
+    const scan = await this.loadScan(root, maxDepth);
 
     if (mode === "search") {
       const query = requireString(record.query, "query");
       const limit = record.limit === undefined ? defaultLimit : parsePositiveInt(record.limit, "limit");
       const kind = record.kind === undefined ? undefined : parseSymbolKind(record.kind);
-      const scan = await this.loadScan(root, maxDepth);
       const matches = scan.index.searchSymbols({
         query,
         limit,
@@ -167,18 +217,46 @@ export class CodeSearchTool implements Tool {
       };
     }
 
+    if (
+      mode === "definition" &&
+      record.line === undefined &&
+      record.column === undefined &&
+      record.query !== undefined
+    ) {
+      const query = requireString(record.query, "query");
+      const limit = record.limit === undefined ? defaultLimit : parsePositiveInt(record.limit, "limit");
+      const kind = record.kind === undefined ? undefined : parseSymbolKind(record.kind);
+      const matches = scan.index.searchSymbols({
+        query,
+        limit,
+        kinds: kind ? [kind] : undefined,
+      });
+      return {
+        mode,
+        query,
+        path: root,
+        count: matches.length,
+        definition: matches[0]?.symbol,
+        results: matches.map(({ symbol, score, reasons }) => ({
+          ...symbol,
+          score,
+          reasons,
+        })),
+      };
+    }
+
     // The scan indexes absolute paths, so a relative `file` must be resolved
     // against the scanned root (the working directory by default).
+    const fileInput = record.file === undefined ? fileFromPath : record.file;
     const file = await resolveWorkspacePath(
       workingDirectory,
-      resolve(root, requireString(record.file, "file")),
-      context !== undefined
+      resolve(root, requireString(fileInput, "file")),
+      enforceWorkingDirectory
     );
     const line = parseLineOrColumn(record.line, "line");
     const column = record.column === undefined
       ? 1
       : parseLineOrColumn(record.column, "column");
-    const scan = await this.loadScan(root, maxDepth);
     assertPositionWithinSource(scan.sources.get(file), file, line, column);
     const referenceIndex = new TypeScriptReferenceIndex({
       files: typeScriptSources(scan.sources),
@@ -443,6 +521,14 @@ function requireString(value: unknown, field: string): string {
     throw new Error(`code-search ${field} must be a non-empty string`);
   }
   return value;
+}
+
+async function isRegularFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
 }
 
 function parsePositiveInt(value: unknown, field: string): number {

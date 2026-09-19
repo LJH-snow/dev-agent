@@ -312,6 +312,36 @@ test("code-search definition mode accepts a path relative to the working directo
   });
 });
 
+test("code-search definition mode accepts a source file passed as path", async () => {
+  await withTempDir("dev-agent-cs-file-in-path-", async (dir) => {
+    await writeSearchProject(dir);
+    const tool: any = new CodeSearchTool();
+
+    const result = await tool.execute(
+      { mode: "definition", path: "src/agent.ts", line: 6, column: 5 },
+      { sessionId: "s", workingDirectory: dir }
+    );
+
+    assert.ok(result.definition, "expected a definition result when path names the source file");
+  });
+});
+
+test("code-search definition mode resolves a symbol query without a position", async () => {
+  await withTempDir("dev-agent-cs-query-def-", async (dir) => {
+    await writeSearchProject(dir);
+    const tool: any = new CodeSearchTool();
+
+    const result = await tool.execute(
+      { mode: "definition", query: "findAgent" },
+      { sessionId: "s", workingDirectory: dir }
+    );
+
+    assert.equal(result.definition.name, "findAgent");
+    assert.equal(result.definition.filePath, join(dir, "src", "agent.ts"));
+    assert.equal(result.definition.line, 1);
+  });
+});
+
 test("code-search search mode filters by symbol kind", async () => {
   await withTempDir("dev-agent-cs-kind-", async (dir) => {
     await writeSearchProject(dir);

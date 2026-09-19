@@ -50,6 +50,8 @@ export type FilesystemAction =
 
 /** Reading without an explicit limit stops after this many lines. */
 const DEFAULT_READ_LIMIT = 2000;
+/** Line-numbered source pages stay small enough for low-context models. */
+const DEFAULT_LINE_NUMBERED_READ_LIMIT = 120;
 const MAX_LIST_ENTRIES = 256;
 const MAX_CHANGE_SETS = 64;
 
@@ -75,6 +77,7 @@ interface FilesystemInput {
   readonly newText?: string;
   readonly offset?: number;
   readonly limit?: number;
+  readonly lineNumbers?: boolean;
   readonly hunks?: readonly PatchHunk[];
   readonly changes?: readonly FilesystemMutationInput[];
   readonly changeSetId?: string;
@@ -130,7 +133,7 @@ interface StoredChangeSet {
 export class FilesystemTool implements Tool {
   readonly name = "filesystem" as const;
   readonly description =
-    "Read (optionally a line range), preview and review writes, atomically apply or rollback a change set, write, edit by replacing a unique snippet, patch several snippets atomically, list, stat, or create directories on the local filesystem.";
+    "Read (optionally a line range); set lineNumbers=true to prefix content with exact source line numbers. Also preview and review writes, atomically apply or rollback a change set, write, edit by replacing a unique snippet, patch several snippets atomically, list, stat, or create directories on the local filesystem.";
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
@@ -155,6 +158,10 @@ export class FilesystemTool implements Tool {
       newText: { type: "string", description: "Replacement text for an edit; may be empty." },
       offset: { type: "integer", minimum: 1, description: "First line to read (1-based)." },
       limit: { type: "integer", minimum: 1, description: "Maximum lines to read." },
+      lineNumbers: {
+        type: "boolean",
+        description: "For read, prefix content with exact source line numbers.",
+      },
       hunks: {
         type: "array",
         description: "Patch hunks; every hunk must match exactly once or nothing is written.",
@@ -206,7 +213,9 @@ export class FilesystemTool implements Tool {
         return readFileRange(
           await targetPath(resolveRequiredPath(params)),
           params.offset ?? 1,
-          params.limit ?? DEFAULT_READ_LIMIT
+          params.limit ??
+            (params.lineNumbers ? DEFAULT_LINE_NUMBERED_READ_LIMIT : DEFAULT_READ_LIMIT),
+          params.lineNumbers === true
         );
       case "write": {
         const target = await targetPath(resolveRequiredPath(params));
@@ -609,6 +618,10 @@ function parseFilesystemInput(input: unknown): FilesystemInput {
   }
   const offset = parseOptionalPositiveInt(record.offset, "offset");
   const limit = parseOptionalPositiveInt(record.limit, "limit");
+  const lineNumbers = record.lineNumbers === undefined ? undefined : record.lineNumbers;
+  if (lineNumbers !== undefined && typeof lineNumbers !== "boolean") {
+    throw new Error("filesystem lineNumbers must be a boolean when provided");
+  }
   const hunks = parseHunks(record.hunks);
   if (action === "patch" && hunks.length === 0) {
     throw new Error("filesystem patch requires a non-empty hunks array");
@@ -622,6 +635,7 @@ function parseFilesystemInput(input: unknown): FilesystemInput {
     newText: typeof newText === "string" ? newText : undefined,
     offset,
     limit,
+    lineNumbers,
     hunks,
   };
 }
@@ -1268,7 +1282,8 @@ function isMissingPathError(error: unknown): boolean {
 async function readFileRange(
   path: string,
   offset: number,
-  limit: number
+  limit: number,
+  includeLineNumbers: boolean
 ): Promise<Record<string, unknown>> {
   await assertReadFileSize(path, MAX_READ_FILE_BYTES);
   const source = await readFile(path, "utf8");
@@ -1290,10 +1305,13 @@ async function readFileRange(
   }
   const startLine = Math.min(offset, totalLines);
   const endLine = Math.min(startLine + limit - 1, totalLines);
+  const selectedLines = lines.slice(startLine - 1, endLine);
 
   return {
     path,
-    content: lines.slice(startLine - 1, endLine).join("\n"),
+    content: includeLineNumbers
+      ? selectedLines.map((line, index) => `${startLine + index}: ${line}`).join("\n")
+      : selectedLines.join("\n"),
     startLine,
     endLine,
     totalLines,
