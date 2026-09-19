@@ -59,6 +59,20 @@ test("rich renderer uses semantic blocks for runtime, tools, approvals, and vali
   assert.match(output, /VALIDATION \/ passed/);
 });
 
+test("runtime state is independent from streaming transport capability", () => {
+  const output = renderRuntimeStatus({
+    provider: "OpenAI",
+    model: "gpt-5",
+    streaming: true,
+    runState: "ready",
+    width: 48,
+  });
+
+  assert.match(output, /READY \/ idle/);
+  assert.match(output, /Transport: streaming/);
+  assert.doesNotMatch(output, /LIVE \/ streaming/);
+});
+
 test("signal divider keeps the weave motif inside narrow terminal widths", () => {
   const output = renderSignalDivider("TOOLS", { width: 24 });
 

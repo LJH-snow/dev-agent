@@ -357,6 +357,7 @@ test(
       stdout += chunk.toString();
     });
     try {
+      await waitFor(() => stdout.includes("READY"), 5000);
       await waitFor(() => stdout.includes("\u001b[1A\u001b[2K\r"), 5000);
       await waitFor(() => stdout.includes("Thinking…"), 2000);
       await waitFor(() => stdout.includes("[state=done turns=1]"), 5000);
