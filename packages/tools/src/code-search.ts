@@ -1,5 +1,5 @@
 import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   createProjectIgnoreMatcher,
@@ -111,7 +111,7 @@ export class CodeSearchTool implements Tool {
       path: {
         type: "string",
         description:
-          "Directory to scan; defaults to the project working directory. Do not use this for the source file in references or definition mode.",
+          "Directory to scan, or a source file to scope search/query-based definition; defaults to the project working directory. Use file for position-based references and definition.",
       },
       maxDepth: {
         type: "integer",
@@ -172,15 +172,21 @@ export class CodeSearchTool implements Tool {
     const enforceWorkingDirectory = context !== undefined;
     let scanPath = pathValue;
     let fileFromPath: string | undefined;
-    if (mode !== "search" && pathValue !== ".") {
+    let fileScope: string | undefined;
+    if (pathValue !== ".") {
       const pathCandidate = await resolveWorkspacePath(
         workingDirectory,
         pathValue,
         enforceWorkingDirectory
       );
       if (await isRegularFile(pathCandidate)) {
-        scanPath = ".";
-        if (record.file === undefined) {
+        scanPath = dirname(pathCandidate);
+        if (
+          mode === "search" ||
+          (mode === "definition" && record.line === undefined && record.column === undefined)
+        ) {
+          fileScope = pathCandidate;
+        } else if (record.file === undefined) {
           fileFromPath = pathCandidate;
         }
       }
@@ -204,12 +210,15 @@ export class CodeSearchTool implements Tool {
         limit,
         kinds: kind ? [kind] : undefined,
       });
+      const scopedMatches = fileScope
+        ? matches.filter(({ symbol }) => symbol.filePath === fileScope)
+        : matches;
       return {
         mode,
         query,
-        path: root,
-        count: matches.length,
-        results: matches.map(({ symbol, score, reasons }) => ({
+        path: fileScope ?? root,
+        count: scopedMatches.length,
+        results: scopedMatches.map(({ symbol, score, reasons }) => ({
           ...symbol,
           score,
           reasons,
@@ -231,13 +240,16 @@ export class CodeSearchTool implements Tool {
         limit,
         kinds: kind ? [kind] : undefined,
       });
+      const scopedMatches = fileScope
+        ? matches.filter(({ symbol }) => symbol.filePath === fileScope)
+        : matches;
       return {
         mode,
         query,
-        path: root,
-        count: matches.length,
-        definition: matches[0]?.symbol,
-        results: matches.map(({ symbol, score, reasons }) => ({
+        path: fileScope ?? root,
+        count: scopedMatches.length,
+        definition: scopedMatches[0]?.symbol,
+        results: scopedMatches.map(({ symbol, score, reasons }) => ({
           ...symbol,
           score,
           reasons,
@@ -248,6 +260,11 @@ export class CodeSearchTool implements Tool {
     // The scan indexes absolute paths, so a relative `file` must be resolved
     // against the scanned root (the working directory by default).
     const fileInput = record.file === undefined ? fileFromPath : record.file;
+    if (fileInput === undefined) {
+      throw new Error(
+        `code-search ${mode} mode requires file and line; use search mode or definition with query for query-only lookup`
+      );
+    }
     const file = await resolveWorkspacePath(
       workingDirectory,
       resolve(root, requireString(fileInput, "file")),
@@ -258,6 +275,11 @@ export class CodeSearchTool implements Tool {
       ? 1
       : parseLineOrColumn(record.column, "column");
     assertPositionWithinSource(scan.sources.get(file), file, line, column);
+    if (!typeScriptExtensions.has(extname(file))) {
+      throw new Error(
+        `code-search ${mode} mode only supports TypeScript/JavaScript source files; use search mode for ${file}`
+      );
+    }
     const referenceIndex = new TypeScriptReferenceIndex({
       files: typeScriptSources(scan.sources),
     });

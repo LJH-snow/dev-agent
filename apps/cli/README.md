@@ -92,7 +92,11 @@ and the optional Rust sandbox boundary.
 
 Options:
 
-- `--once <prompt>` - run a single prompt and exit
+- `--once <prompt>` - run a single prompt and exit; persisted history is bounded
+  to 4,000 characters by default and individual tool results to 6,000
+  characters so one-shot runs do not overflow small model contexts. Set
+  `DEV_AGENT_MAX_CONTEXT_CHARS` or `maxContextChars` to override the history
+  bound.
 - `--cwd <path>` - use an explicit working directory for filesystem, shell, git,
   search, code-search, MCP, and validation operations; the directory must exist.
   Filesystem, search, code-search, and MCP child-process paths are bounded to

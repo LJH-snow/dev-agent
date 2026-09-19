@@ -342,6 +342,25 @@ test("code-search definition mode resolves a symbol query without a position", a
   });
 });
 
+test("code-search search mode accepts a source file passed as path", async () => {
+  await withTempDir("dev-agent-cs-file-search-", async (dir) => {
+    await writeSearchProject(dir);
+    await writeFile(join(dir, "src", "other.ts"), "export function findAgentElsewhere() {}\n");
+    const tool: any = new CodeSearchTool();
+
+    const result = await tool.execute(
+      { mode: "search", query: "findAgent", path: "src/agent.ts" },
+      { sessionId: "s", workingDirectory: dir }
+    );
+
+    assert.ok(result.count > 0, "expected a symbol result in the selected source file");
+    assert.ok(
+      result.results.every((entry) => entry.filePath === join(dir, "src", "agent.ts")),
+      "expected file-scoped search results"
+    );
+  });
+});
+
 test("code-search search mode filters by symbol kind", async () => {
   await withTempDir("dev-agent-cs-kind-", async (dir) => {
     await writeSearchProject(dir);
@@ -355,6 +374,15 @@ test("code-search search mode filters by symbol kind", async () => {
     assert.ok(result.count >= 1, `expected at least 1 class match, got ${result.count}`);
     assert.ok(result.results.every((entry) => entry.kind === "class"));
   });
+});
+
+test("code-search position modes explain that file and line are required", async () => {
+  const tool: any = new CodeSearchTool();
+
+  await assert.rejects(
+    () => tool.execute({ mode: "references", query: "ErrorCode", path: "." }),
+    /requires file and line.*use search mode or definition with query/i
+  );
 });
 
 test("code-search search mode honors the limit", async () => {

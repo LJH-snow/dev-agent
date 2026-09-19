@@ -145,6 +145,16 @@ test("code-search schema explains its default scope and position inputs", () => 
   assert.match(properties.column?.description ?? "", /1-based/i);
 });
 
+test("search schema guides short literal queries and empty-result recovery", () => {
+  const tool = new SearchTool(new LocalExecutor());
+  const properties = tool.parameters?.properties as Record<string, { description?: string }>;
+
+  assert.match(tool.description, /short literal or symbol pattern/i);
+  assert.match(tool.description, /no matches/i);
+  assert.match(properties.query?.description ?? "", /short literal/i);
+  assert.match(properties.path?.description ?? "", /defaults to the project working directory/i);
+});
+
 test("code-search tool scans a project and returns matching symbols", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-"));
   await mkdir(join(dir, "src"));
@@ -205,6 +215,31 @@ test("code-search references mode locates symbol usages via TypeScript language 
   assert.ok(
     result.references.some((ref) => ref.snippet.includes("runAgent")),
     "expected at least one reference to include the runAgent snippet"
+  );
+
+  await rm(dir, { recursive: true, force: true });
+});
+
+test("code-search position lookup rejects unsupported source languages", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-python-"));
+  await writeFile(
+    join(dir, "app.py"),
+    "class AuthenticationError(Exception):\n    pass\n"
+  );
+
+  const tool: any = new CodeSearchTool();
+  await assert.rejects(
+    () =>
+      tool.execute(
+        {
+          mode: "references",
+          file: join(dir, "app.py"),
+          line: 1,
+          column: 7,
+        },
+        { sessionId: "ctx-test", workingDirectory: dir }
+      ),
+    /only supports TypeScript\/JavaScript source files/
   );
 
   await rm(dir, { recursive: true, force: true });

@@ -156,9 +156,11 @@ Built-in tools accept an optional context object with `sessionId` and
 and filesystem and code-search paths are resolved relative to it. `code-search`
 also accepts `kind` and `limit` inputs to keep agent queries focused. Its
 `search` mode and query-based `definition` mode use the shared symbol index;
-position-based `references` and `definition` use `file`, `line`, and optional
-`column`. Omit `path` to scan the current project working directory. For
-source review, `filesystem read` accepts `lineNumbers: true` to prefix the
+their `path` may be a directory or a single source file. Position-based
+`references` and `definition` use `file`, `line`, and optional `column`, and
+are supported only for TypeScript/JavaScript; use `search` for Python/Rust
+reference lookup. Omit `path` to scan the current project working directory.
+For source review, `filesystem read` accepts `lineNumbers: true` to prefix the
 returned content with exact source line numbers without changing the default
 raw-content response.
 

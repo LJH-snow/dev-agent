@@ -11,13 +11,23 @@ interface SearchInput {
 
 export class SearchTool implements Tool {
   readonly name = "search" as const;
-  readonly description = "Search code and text with ripgrep.";
+  readonly description =
+    "Search code and text with ripgrep. Use a short literal or symbol pattern; if there are no matches, inspect the directory or file layout instead of repeating near-identical natural-language queries.";
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
-      query: { type: "string" },
-      path: { type: "string" },
-      filesOnly: { type: "boolean" },
+      query: {
+        type: "string",
+        description: "A short literal, symbol, filename, or ripgrep pattern to search for.",
+      },
+      path: {
+        type: "string",
+        description: "Directory or file to search; defaults to the project working directory.",
+      },
+      filesOnly: {
+        type: "boolean",
+        description: "Return matching file paths without matching lines.",
+      },
     },
     required: ["query"],
   };

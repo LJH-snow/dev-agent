@@ -33,6 +33,52 @@ async function startCapturingProvider() {
   };
 }
 
+async function startToolCallingProvider(toolName, toolInput) {
+  const requests = [];
+  const server = createServer((req, res) => {
+    let body = "";
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => {
+      const parsed = JSON.parse(body);
+      requests.push(parsed);
+      const hasToolResult = parsed.messages.some((message) => message.role === "tool");
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: hasToolResult
+                ? { content: "done" }
+                : {
+                    content: "",
+                    tool_calls: [
+                      {
+                        id: "call_context_budget",
+                        type: "function",
+                        function: {
+                          name: toolName,
+                          arguments: JSON.stringify(toolInput),
+                        },
+                      },
+                    ],
+                  },
+            },
+          ],
+        })
+      );
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const { port } = server.address() as any;
+  return {
+    baseUrl: `http://127.0.0.1:${port}/v1`,
+    requests,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+}
+
 async function seedSession(dir, entryCount) {
   const entries = [];
   for (let index = 0; index < entryCount; index += 1) {
@@ -126,6 +172,17 @@ test("CLI system prompt requires source-grounded findings", async () => {
     assert.match(system.content, /search when line numbers are missing/i);
     assert.match(system.content, /lineNumbers for source reads/i);
     assert.match(system.content, /requested paths and symbols/i);
+    assert.match(system.content, /newest user request as authoritative/i);
+    assert.match(system.content, /never invent paths/i);
+    assert.match(system.content, /search returns no matches/i);
+    assert.match(system.content, /one concrete evidence path/i);
+    assert.match(system.content, /risk is verified/i);
+    assert.match(system.content, /unsupported.*not evidence/i);
+    assert.match(system.content, /do not repeat identical tool calls/i);
+    assert.match(system.content, /definition-only.*not a defect/i);
+    assert.match(system.content, /问题.*严重性.*证据.*风险.*建议修复方向/s);
+    assert.match(system.content, /do not turn a symbol description into a finding/i);
+    assert.match(system.content, /addresses the current task/i);
   } finally {
     await provider.close();
     await rm(dir, { recursive: true, force: true });
@@ -143,7 +200,7 @@ test("CLI sends the full history when no budget is configured", async () => {
       OPENAI_API_KEY: "test-key",
       OPENAI_BASE_URL: provider.baseUrl,
       DEV_AGENT_MEMORY_FILE: memoryFile,
-      DEV_AGENT_MAX_CONTEXT_CHARS: "",
+      DEV_AGENT_MAX_CONTEXT_CHARS: "100000",
     });
 
     assert.equal(result.code, 0, result.stderr);
@@ -151,6 +208,61 @@ test("CLI sends the full history when no budget is configured", async () => {
     const contents = request.messages.map((message) => message.content);
     assert.ok(!contents.some((content) => content.startsWith("[context]")));
     assert.ok(contents.some((content) => content.startsWith("entry-0-")));
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI bounds one-shot history by default", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-default-budget-"));
+  const provider = await startCapturingProvider();
+  try {
+    const memoryFile = await seedSession(dir, 80);
+    const result = await runCli(["--once", "hello", "--no-stream"], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "openai",
+      OPENAI_API_KEY: "test-key",
+      OPENAI_BASE_URL: provider.baseUrl,
+      DEV_AGENT_MEMORY_FILE: memoryFile,
+      DEV_AGENT_MAX_CONTEXT_CHARS: "",
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const [request] = provider.requests;
+    const contents = request.messages.map((message) => message.content);
+    assert.ok(contents.some((content) => content.startsWith("[context]")));
+    assert.ok(!contents.some((content) => content.startsWith("entry-0-")));
+    assert.ok(contents.some((content) => content.includes("entry-79-")));
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("CLI bounds oversized tool results before the next model turn", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-tool-output-budget-"));
+  const provider = await startToolCallingProvider("search", { query: "needle", path: "." });
+  try {
+    await writeFile(join(dir, "large.txt"), `needle ${"x".repeat(30000)}\n`, "utf8");
+    const result = await runCli(["--cwd", dir, "--once", "find the evidence", "--no-stream"], {
+      ...process.env,
+      DEV_AGENT_MODEL_PROVIDER: "openai",
+      OPENAI_API_KEY: "test-key",
+      OPENAI_BASE_URL: provider.baseUrl,
+      DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+    });
+
+    assert.equal(result.code, 0, result.stderr);
+    const secondRequest = provider.requests[1];
+    assert.ok(secondRequest, "the CLI should make a second request after the tool call");
+    const toolMessage = secondRequest.messages.find((message) => message.role === "tool");
+    assert.ok(toolMessage, "the second request should include the tool result");
+    assert.match(toolMessage.content, /truncated/);
+    assert.ok(
+      toolMessage.content.length < 9000,
+      `expected a bounded tool result, got ${toolMessage.content.length} characters`
+    );
   } finally {
     await provider.close();
     await rm(dir, { recursive: true, force: true });

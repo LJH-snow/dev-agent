@@ -122,12 +122,22 @@ import {
 
 const packageMetadata = createRequire(import.meta.url)("../package.json") as { version?: string };
 const version = packageMetadata.version ?? "0.0.0";
+const DEFAULT_ONCE_CONTEXT_CHARS = 4000;
+const DEFAULT_ONCE_TOOL_OUTPUT_CHARS = 6000;
 const defaultSystemPrompt = [
   "You are dev-agent, a coding agent. Use tools when they help answer the user.",
   "Ground findings in actual tool output; cite path:line and verify every cited location in current source.",
   "README, AGENTS.md, plans, roadmaps, changelogs, and comments are background, not proof.",
-  "Stay within the requested paths and symbols; do not substitute unrelated files.",
-  "If a read-only tool fails, retry with another; request lineNumbers for source reads or use search when line numbers are missing; state uncertainty and separate findings from recommendations.",
+  "Treat the newest user request as authoritative; use older turns only when the user explicitly refers to them.",
+  "Stay within the requested paths and symbols; for broad audits inspect the workspace layout before choosing files, and never invent paths.",
+  "If a read-only tool fails or search returns no matches, retry with a different read-only approach; request lineNumbers for source reads or use search when line numbers are missing; state uncertainty and separate findings from recommendations.",
+  "For a broad audit, choose one concrete evidence path, gather enough evidence, then answer instead of repeating speculative searches.",
+  "For a scoped review, stop calling tools once one risk is verified and draft the requested final answer.",
+  "A zero-result position lookup from an unsupported language is not evidence of no references; use search instead.",
+  "Do not repeat identical tool calls or invalid inputs; after a tool error, change the input or choose a different tool.",
+  "A definition-only result is not a defect; for unused-code claims, read the implementation and search the whole project for the exact symbol.",
+  "For audit requests, the final answer must contain the labels 问题、严重性、证据、风险、建议修复方向; if no defect is verified, say so explicitly, and do not turn a symbol description into a finding.",
+  "Before finalizing, check that the answer addresses the current task and includes every section the user requested; do not end with only a symbol lookup or generic summary.",
 ].join(" ");
 const CLI_USAGE = [
   "Usage: dev-agent [options] [prompt]",
@@ -1515,7 +1525,11 @@ export async function main(argv: string[]): Promise<void> {
           .join("\n\n"),
       maxTurns: resolveMaxTurns(config, 8),
       budget: resolveAgentLoopBudget(config, args),
-      contextBudget: buildContextBudget(config),
+      contextBudget: buildContextBudget(config, oncePrompt !== undefined),
+      toolDefaults:
+        oncePrompt === undefined
+          ? undefined
+          : { maxOutputChars: DEFAULT_ONCE_TOOL_OUTPUT_CHARS },
       approval,
       onApproval: (request, outcome) => {
         if (request.review) {
@@ -1831,11 +1845,15 @@ export function createWorkspaceResource(workingDirectory: string): McpServerReso
 }
 
 function buildContextBudget(
-  config: CliConfig
+  config: CliConfig,
+  once = false
 ): { maxChars?: number; summarize?: boolean; summaryMaxChars?: number } | undefined {
   const maxChars = resolveMaxContextChars(config);
   const summarize = resolveSummarizeContext(config);
   const summaryMaxChars = resolveSummaryMaxChars(config);
+  if (once && maxChars === undefined && !summarize) {
+    return { maxChars: DEFAULT_ONCE_CONTEXT_CHARS };
+  }
   if (maxChars === undefined && !summarize) {
     return undefined;
   }
