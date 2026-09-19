@@ -44,7 +44,7 @@ import {
   type SessionMetadata,
   type AgentLoopBudget,
 } from "@dev-agent/agent-core";
-import { assertWorkingDirectory, createExecutor } from "@dev-agent/executor";
+import { assertWorkingDirectory, createExecutor, getExecutorMode } from "@dev-agent/executor";
 import {
   createMcpServer,
   McpServerSession,
@@ -1644,6 +1644,8 @@ export async function main(argv: string[]): Promise<void> {
       provider: provider.id,
       model: provider.model,
       streaming: streamingEnabled,
+      mcpCount: mcpSessions.length,
+      executor: getExecutorMode(executor),
       session: tuiSession,
       sessionId: normalizedSessionId,
       workingDirectory,
@@ -1911,6 +1913,7 @@ function buildContextBudget(
 /** Filled in by the interactive loop so approval prompts share its reader. */
 interface QuestionBox {
   ask?: (prompt: string) => Promise<string>;
+  onApprovalRequest?: (tool: string, detail: string, diff?: string) => void;
 }
 
 interface ReviewRecord {
@@ -1984,6 +1987,7 @@ function buildApprovalPolicy(
       const question = `${safeTerminalText(reason ?? "dangerous call")}\nRun ${safeTerminalText(
         request.toolName
       )} anyway? [y/N/a] `;
+      questionBox.onApprovalRequest?.(request.toolName, reason ?? "dangerous call");
       const answer = questionBox.ask
         ? await questionBox.ask(question)
         : await readLineFromStdin(question);
@@ -2018,6 +2022,15 @@ async function requestReviewedCall(
     : `${safeTerminalText(reason ?? "dangerous call")}\nRun ${safeTerminalText(
         request.toolName
       )} anyway? [y/N/a] `;
+  const reviewDiff = request.review?.files
+    .map((file) => file.diff ? safeTerminalText(file.diff) : "")
+    .filter((diff) => diff.length > 0)
+    .join("\n");
+  questionBox.onApprovalRequest?.(
+    request.toolName,
+    reason ?? (isReview ? "filesystem change review" : "dangerous call"),
+    reviewDiff || undefined
+  );
   const answer = questionBox.ask
     ? await questionBox.ask(prompt)
     : await readLineFromStdin(prompt);
@@ -2258,6 +2271,8 @@ interface InteractiveUiOptions {
   readonly provider: string;
   readonly model: string;
   readonly streaming: boolean;
+  readonly mcpCount?: number;
+  readonly executor?: string;
   readonly session?: TuiSessionModel;
   readonly sessionId: string;
   readonly workingDirectory: string;
@@ -2306,6 +2321,9 @@ async function interactive(
     }
     return rl?.question(prompt) ?? "";
   };
+  questionBox.onApprovalRequest = (tool, detail, diff) => {
+    streaming.approvalRequested(tool, detail, diff);
+  };
 
   let interrupted = false;
   let abort: AbortController | undefined;
@@ -2350,6 +2368,8 @@ async function interactive(
         provider: ui.provider,
         model: ui.model,
         streaming: ui.streaming,
+        mcpCount: ui.mcpCount,
+        executor: ui.executor,
         runState: ui.session?.snapshot().state ?? "ready",
         sessionId: ui.sessionId,
         workingDirectory: ui.workingDirectory,
@@ -2429,6 +2449,19 @@ async function interactive(
               ui.streaming ? "enabled" : "disabled"
             }`
           );
+        }
+        continue;
+      }
+
+      if (command === ":cards" || command === ":collapse" || command === ":expand") {
+        if (!ui.rich) {
+          console.log("Card folding is available only in an interactive terminal.");
+          continue;
+        }
+        if (command === ":cards") {
+          streaming.showLatestCard();
+        } else {
+          streaming.setLatestCardCollapsed(command === ":collapse");
         }
         continue;
       }
@@ -3125,6 +3158,7 @@ class StreamingRun {
   private streamingStateVisible = false;
   private renderedCardId: string | undefined;
   private renderedCardLineCount = 0;
+  private readonly collapsedCardIds = new Set<string>();
   private startedAt?: number;
   private firstTokenAt?: number;
 
@@ -3228,21 +3262,51 @@ class StreamingRun {
     this.renderedCardLineCount = 0;
   }
 
+  approvalRequested(tool: string, detail: string, diff?: string): string {
+    const id = this.session.dispatch({
+      type: "approval-request",
+      tool,
+      detail,
+      ...(diff === undefined ? {} : { diff }),
+    });
+    if (this.richUi) this.renderCard(id);
+    return id;
+  }
+
   approvalResolved(tool: string, decision: string, detail: string): void {
     const existing = [...this.session.snapshot().cards]
       .reverse()
       .find((card) => card.kind === "approval" && card.name === tool && card.status === "approval");
-    const approvalId = existing?.id ?? this.session.dispatch({
-      type: "approval-request",
-      tool,
-      detail,
-    });
+    const approvalId = existing?.id ?? this.approvalRequested(tool, detail);
     this.session.dispatch({
       type: "approval-resolved",
       decision,
       id: approvalId,
     });
     if (this.richUi) this.renderCard(approvalId);
+  }
+
+  showLatestCard(): void {
+    const card = this.latestCard();
+    if (!card) {
+      process.stdout.write("No tool cards recorded yet.\n");
+      return;
+    }
+    this.renderCard(card.id, { append: true });
+  }
+
+  setLatestCardCollapsed(collapsed: boolean): void {
+    const card = this.latestCard();
+    if (!card) {
+      process.stdout.write("No tool cards recorded yet.\n");
+      return;
+    }
+    if (collapsed) {
+      this.collapsedCardIds.add(card.id);
+    } else {
+      this.collapsedCardIds.delete(card.id);
+    }
+    this.renderCard(card.id, { append: true });
   }
 
   validationResult(status: string, summary: string): void {
@@ -3351,15 +3415,20 @@ class StreamingRun {
     };
   }
 
-  private renderCard(id: string): void {
+  private renderCard(id: string, options: { append?: boolean } = {}): void {
     const card = this.session.snapshot().cards.find((candidate) => candidate.id === id);
     if (!card) return;
 
-    if (this.renderedCardId === id && this.renderedCardLineCount > 0) {
+    if (!options.append && this.renderedCardId === id && this.renderedCardLineCount > 0) {
       process.stdout.write(clearRenderedBlock(this.renderedCardLineCount));
     }
-    const rendered = renderToolCard(card, { width: this.terminalWidth });
+    const rendered = renderToolCard(card, {
+      width: this.terminalWidth,
+      collapsed: this.collapsedCardIds.has(id),
+    });
     process.stdout.write(`${rendered}\n`);
+
+    if (options.append) return;
 
     const stable = card.status !== "running" && card.status !== "approval" && card.status !== "validation";
     if (stable) {
@@ -3369,6 +3438,10 @@ class StreamingRun {
       this.renderedCardId = id;
       this.renderedCardLineCount = rendered.split("\n").length;
     }
+  }
+
+  private latestCard() {
+    return this.session.snapshot().cards.at(-1);
   }
 
   private announceState(state: TuiRunState): void {

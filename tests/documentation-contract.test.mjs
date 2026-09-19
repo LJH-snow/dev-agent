@@ -96,6 +96,8 @@ test("documentation index points to the current source-of-truth documents", () =
     "docs/superpowers/plans/2026-09-15-release-provenance-audit.md",
     "docs/superpowers/plans/2026-09-15-cancellation-boundary-audit.md",
     "docs/superpowers/plans/2026-09-15-overnight-development-goals.md",
+    "docs/superpowers/plans/2026-09-19-signal-loom-cli-tui.md",
+    "docs/superpowers/specs/2026-09-19-desktop-cli-workbench-design.md",
     "docs/release-cli-npm.md",
     "docs/release-state.json",
   ]) {
@@ -131,6 +133,8 @@ test("documentation index points to the current source-of-truth documents", () =
     "superpowers/plans/2026-09-15-release-provenance-audit.md",
     "superpowers/plans/2026-09-15-cancellation-boundary-audit.md",
     "superpowers/plans/2026-09-15-overnight-development-goals.md",
+    "superpowers/plans/2026-09-19-signal-loom-cli-tui.md",
+    "superpowers/specs/2026-09-19-desktop-cli-workbench-design.md",
     "release-cli-npm.md",
     "release-state.json",
   ]) {

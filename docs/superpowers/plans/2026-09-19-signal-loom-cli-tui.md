@@ -8,6 +8,14 @@
 
 **Tech Stack:** TypeScript, Node.js built-ins (`node:readline`, `node:tty`, `node:events`), ANSI escape sequences, existing `tui-mode.ts`, `tui-renderer.ts`, `colors.ts`, Node test runner, `expect` PTY tests, existing Desktop vanilla HTML/CSS.
 
+**Implementation status (September 19, 2026):** Complete. The Signal Loom brand,
+rich run-state model, bordered editor, `/` and `:` palette, live cards with
+approval diffs and local collapse/expand commands, Desktop SVG integration, and
+compatibility boundaries are implemented. Verification completed with CLI
+`356/356`, Desktop `132/132`, documentation `57/57`, real PTY sessions at
+80/100/120/160 columns, and a live Desktop HTTP check for the Signal Loom SVG
+asset.
+
 **Spec:** `docs/superpowers/specs/2026-09-19-desktop-cli-workbench-design.md`
 
 ## Global Constraints
@@ -37,7 +45,7 @@
 - Consumes: existing renderer exports and the current interactive subprocess helpers.
 - Produces: executable tests that define `SignalLoom`, `TuiRunState`, input reducer, command palette, and live-card behavior for later tasks.
 
-- [ ] **Step 1: Write the failing brand and startup tests**
+- [x] **Step 1: Write the failing brand and startup tests**
 
 Add tests that import the future brand renderer and assert the launch surface is bounded, recognizable, and starts in `READY`:
 
@@ -62,7 +70,7 @@ test("Signal Loom launch surface contains the mark, tips, and ready state", () =
 });
 ```
 
-- [ ] **Step 2: Write the failing state-machine tests**
+- [x] **Step 2: Write the failing state-machine tests**
 
 Define expected transitions before implementation:
 
@@ -91,7 +99,7 @@ test("approval and validation are explicit states", () => {
 });
 ```
 
-- [ ] **Step 3: Write the failing input reducer tests**
+- [x] **Step 3: Write the failing input reducer tests**
 
 The reducer must cover cursor movement, insertion, newline, history, palette, escape, and clear without requiring a TTY:
 
@@ -109,7 +117,7 @@ test("input reducer supports multiline editing and command palette filtering", (
 });
 ```
 
-- [ ] **Step 4: Write the failing tool-card tests**
+- [x] **Step 4: Write the failing tool-card tests**
 
 Cover running, completed, failed, cancelled, approval, validation, stable card IDs, and bounded rendering:
 
@@ -127,7 +135,7 @@ test("tool card updates in place instead of duplicating call and result blocks",
 });
 ```
 
-- [ ] **Step 5: Run the focused tests to confirm RED**
+- [x] **Step 5: Run the focused tests to confirm RED**
 
 Run:
 
@@ -138,7 +146,7 @@ pnpm --filter @agent_cli/cli exec node --test tests-dist/tui-brand.test.js tests
 
 Expected: compilation or test failures because the new modules and interfaces do not exist yet. Do not weaken assertions to make the tests pass.
 
-- [ ] **Step 6: Commit the contract tests**
+- [x] **Step 6: Commit the contract tests**
 
 ```bash
 git add apps/cli/tests/tui-renderer.test.ts apps/cli/tests/interactive.test.ts apps/cli/tests/tui-input.test.ts apps/cli/tests/tui-session.test.ts apps/cli/tests/tui-brand.test.ts
@@ -166,7 +174,7 @@ git commit -m "test(cli): define Signal Loom TTY contracts"
   - `renderSignalLoomWordmark(options?: { width?: number; color?: boolean }): string`
   - `renderSignalLoomSvg(): string` as the checked-in Desktop asset.
 
-- [ ] **Step 1: Add failing display-width cases**
+- [x] **Step 1: Add failing display-width cases**
 
 Extend width tests with ASCII, CJK, combining marks, and common emoji:
 
@@ -180,15 +188,15 @@ test("display width counts terminal cells rather than JavaScript code points", (
 });
 ```
 
-- [ ] **Step 2: Implement bounded width helpers**
+- [x] **Step 2: Implement bounded width helpers**
 
 Implement a small deterministic table for combining marks, East Asian wide ranges, and common emoji ranges. Keep ambiguous-width characters at one cell for macOS compatibility. Ensure truncation never splits a surrogate pair or combining sequence.
 
-- [ ] **Step 3: Implement the Signal Loom terminal mark**
+- [x] **Step 3: Implement the Signal Loom terminal mark**
 
 Use the existing angular geometry as the base, but expose stable compact and full variants. The full launch mark must contain the central `<>` connector; the compact mark must fit within 8 columns and remain readable with `NO_COLOR`.
 
-- [ ] **Step 4: Add the SVG brand asset**
+- [x] **Step 4: Add the SVG brand asset**
 
 Create an editable SVG with:
 
@@ -199,11 +207,11 @@ Create an editable SVG with:
 - no gradients, raster images, or embedded external resources;
 - a monochrome-safe geometry.
 
-- [ ] **Step 5: Integrate the SVG into Desktop**
+- [x] **Step 5: Integrate the SVG into Desktop**
 
 Replace the existing CSS-only brand mark with the SVG asset while keeping the existing `.brand-mark` sizing contract and accessible `aria-hidden` behavior. Add a server HTML assertion that `/public/signal-loom.svg` is referenced.
 
-- [ ] **Step 6: Run focused brand and width tests**
+- [x] **Step 6: Run focused brand and width tests**
 
 Run:
 
@@ -216,7 +224,7 @@ pnpm --filter @dev-agent/desktop run test
 
 Expected: brand, width, and Desktop asset tests pass; unrelated interactive tests remain unchanged.
 
-- [ ] **Step 7: Commit the brand layer**
+- [x] **Step 7: Commit the brand layer**
 
 ```bash
 git add apps/cli/src/tui-width.ts apps/cli/src/tui-brand.ts apps/cli/src/tui-renderer.ts apps/cli/tests/tui-renderer.test.ts apps/desktop/public/signal-loom.svg apps/desktop/public/index.html apps/desktop/public/styles.css apps/desktop/tests/server.test.ts
@@ -240,7 +248,7 @@ git commit -m "feat: add Signal Loom brand assets"
   - `interface TuiStateSnapshot { state: TuiRunState; cards: readonly ToolCard[]; usage?: UsageSummary }`
   - `class TuiSessionModel { dispatch(event): string | void; snapshot(): TuiStateSnapshot }`
 
-- [ ] **Step 1: Expand renderer input types**
+- [x] **Step 1: Expand renderer input types**
 
 Change `renderWelcome` to accept `runState` separately from `streaming` transport capability:
 
@@ -258,19 +266,19 @@ export interface WelcomeOptions {
 }
 ```
 
-- [ ] **Step 2: Implement the state reducer**
+- [x] **Step 2: Implement the state reducer**
 
 Use explicit events for turn start, first token, tool start/progress/finish, approval request/resolution, validation start/result, completion, failure, and interruption. Invalid late events must not move a completed or interrupted turn back into an active state.
 
-- [ ] **Step 3: Wire state transitions into `runPrompt` and callbacks**
+- [x] **Step 3: Wire state transitions into `runPrompt` and callbacks**
 
 At interactive startup, initialize `TuiSessionModel` with `ready`. On prompt submission dispatch `turn-start`; on the first token dispatch `assistant-token`; on approval/validation/tool callbacks dispatch corresponding events; on completion dispatch `turn-complete`; on exceptions dispatch `turn-error`; on Ctrl-C dispatch `turn-interrupted`.
 
-- [ ] **Step 4: Fix the launch screen status**
+- [x] **Step 4: Fix the launch screen status**
 
 Pass `runState: "ready"` to `renderWelcome` and show `streaming` only as a transport capability label. `:model` must show `READY / idle` before a turn and `LIVE / streaming` only during an active turn.
 
-- [ ] **Step 5: Run state and interactive regression tests**
+- [x] **Step 5: Run state and interactive regression tests**
 
 Run:
 
@@ -280,7 +288,7 @@ pnpm --filter @agent_cli/cli run test
 
 Expected: all existing CLI tests plus the new state tests pass, and the screenshot-equivalent launch output no longer reports an idle session as `Status: streaming`.
 
-- [ ] **Step 6: Commit the state model**
+- [x] **Step 6: Commit the state model**
 
 ```bash
 git add apps/cli/src/tui-session.ts apps/cli/src/index.ts apps/cli/src/tui-renderer.ts apps/cli/tests/tui-session.test.ts apps/cli/tests/tui-renderer.test.ts
@@ -303,7 +311,7 @@ git commit -m "feat(cli): model rich TTY run states"
   - `function renderInputEditor(state: InputEditorState, width: number): string[]`
   - `class RichInputController { read(): Promise<string | null>; close(): void; redraw(): void }`
 
-- [ ] **Step 1: Define key events and reducer tests**
+- [x] **Step 1: Define key events and reducer tests**
 
 Represent escape sequences as named keys before reducing them:
 
@@ -319,19 +327,19 @@ type InputKey =
 
 Test insertion, cursor movement, newline, history, palette filtering, Tab completion, escape, clear, and submit independently from raw stdin.
 
-- [ ] **Step 2: Implement the pure reducer**
+- [x] **Step 2: Implement the pure reducer**
 
 Keep the editor state immutable. Enter submits only when the palette is closed and `shift` is false; Shift+Enter inserts `\n`. Up/Down navigate history when the cursor is on the first/last logical line and otherwise move within multiline content.
 
-- [ ] **Step 3: Implement command palette matching**
+- [x] **Step 3: Implement command palette matching**
 
 Normalize both `/command` and `:command` to the same command registry. Match by command prefix first, then description substring. Preserve the typed prefix in the completion result and never execute a command during Tab completion.
 
-- [ ] **Step 4: Implement ANSI rendering**
+- [x] **Step 4: Implement ANSI rendering**
 
 Render a top border, prompt marker, wrapped content, cursor position, optional palette rows, and bottom border. Use display-cell width for every line. Keep palette rows bounded so the input box cannot push the terminal beyond the viewport.
 
-- [ ] **Step 5: Implement raw-mode controller**
+- [x] **Step 5: Implement raw-mode controller**
 
 Only `RichInputController` may call `stdin.setRawMode(true)`. It must:
 
@@ -342,11 +350,11 @@ Only `RichInputController` may call `stdin.setRawMode(true)`. It must:
 - reject or cancel cleanly on Ctrl-C;
 - leave `readline/promises` untouched for non-rich paths.
 
-- [ ] **Step 6: Replace rich `rl.question()`**
+- [x] **Step 6: Replace rich `rl.question()`**
 
 Use `RichInputController.read()` in the rich branch and keep the current `rl.question()` branch for non-rich mode. Route approval prompts through the same controller so they cannot open a second stdin reader.
 
-- [ ] **Step 7: Run PTY and reducer tests**
+- [x] **Step 7: Run PTY and reducer tests**
 
 Run:
 
@@ -356,7 +364,7 @@ pnpm --filter @agent_cli/cli run test
 
 Expected: scripted key sequences pass, rich TTY input is not duplicated, Ctrl-C cancels the active run, and pipe/JSON tests remain unchanged.
 
-- [ ] **Step 8: Commit the input editor**
+- [x] **Step 8: Commit the input editor**
 
 ```bash
 git add apps/cli/src/tui-input.ts apps/cli/src/index.ts apps/cli/tests/tui-input.test.ts apps/cli/tests/interactive.test.ts

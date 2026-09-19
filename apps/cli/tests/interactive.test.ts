@@ -106,7 +106,7 @@ function launchRich({ provider, memoryFile, openAiBaseUrl }: InteractiveOptions)
   const expectScript = `
     log_user 1
     spawn {${process.execPath}} {${cliPath}}
-    expect "SIGNAL WEAVE"
+    expect "SIGNAL LOOM"
     send "unique-user-prompt\\r"
     expect "Thinking…"
     expect -exact {[state=done turns=1]}
@@ -133,7 +133,7 @@ function launchRichCtrlC({ provider, memoryFile, openAiBaseUrl }: InteractiveOpt
   const expectScript = `
     log_user 1
     spawn {${process.execPath}} {${cliPath}}
-    expect "SIGNAL WEAVE"
+    expect "SIGNAL LOOM"
     send "interrupt-me\\r"
     expect "Thinking…"
     set childPid [exec pgrep -P [pid] -f {dist/index.js}]

@@ -57,6 +57,7 @@ export type TuiSessionEvent =
       readonly type: "approval-request";
       readonly tool: string;
       readonly detail?: string;
+      readonly diff?: string;
       readonly id?: string;
     }
   | {
@@ -181,6 +182,7 @@ export class TuiSessionModel {
           name: event.tool,
           status: "approval",
           ...(event.detail === undefined ? {} : { detail: event.detail }),
+          ...(event.diff === undefined ? {} : { diff: event.diff }),
           startedAt: now(),
         });
         this.state = "waiting-approval";

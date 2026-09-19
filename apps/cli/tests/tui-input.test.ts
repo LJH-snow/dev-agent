@@ -55,3 +55,13 @@ test("input reducer uses tab to complete a matching command without submitting",
   assert.equal(state.value, "/help");
   assert.equal(state.submitted, false);
 });
+
+test("input reducer submits an exact command match on the first Enter", () => {
+  let state = createInputEditorState();
+  state = reduceInputKey(state, { type: "text", value: "/" });
+  state = reduceInputKey(state, { type: "text", value: "help" });
+  state = reduceInputKey(state, { type: "enter", shift: false });
+
+  assert.equal(state.submitted, true);
+  assert.equal(state.submittedValue, "/help");
+});

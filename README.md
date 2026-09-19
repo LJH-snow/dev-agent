@@ -85,6 +85,36 @@ valid. If the installed command reports older behavior, check
 `command -v dev-agent` and `dev-agent --version`; a previous global install can
 shadow the latest package. Update it with `npm install -g @agent_cli/cli@latest`.
 
+## Rich terminal workbench
+
+When `dev-agent` runs in a real terminal with both stdin and stdout attached,
+it uses the Signal Loom rich terminal workbench. The launch screen starts in
+`READY`, then the status rail moves through thinking, streaming, tool-running,
+approval, and validation states while the existing agent loop runs. The editor
+supports multiline prompts, history, command completion, and both `/` and `:`
+command aliases:
+
+```text
+/help       :help
+/model      :model
+/clear      :clear
+/cards      :cards
+/collapse   :collapse
+/expand     :expand
+/quit       :quit
+```
+
+Use Tab to complete a command, Shift+Enter for a newline, Ctrl-L to redraw the
+surface, `:collapse`/`:expand` to inspect the latest tool card, and Ctrl-C to
+cancel the active request or exit an idle session. The
+rich path is limited to interactive TTYs; pipes, `--once`, `--json`,
+`--mcp-server` retain their stable non-rich contracts. `NO_COLOR=1` keeps the
+rich layout but removes color while preserving the cursor controls required for
+live redraw. The
+full interaction and compatibility boundary is recorded in the
+[Signal Loom TTY plan](docs/superpowers/plans/2026-09-19-signal-loom-cli-tui.md)
+and [workbench design](docs/superpowers/specs/2026-09-19-desktop-cli-workbench-design.md).
+
 Managed Rust runtime installation is explicit and fail-closed. The npm package does
 not download binaries in `postinstall`; `runtime install` verifies the fixed release
 manifest, target, SHA-256, and runtime protocol/version before atomically populating

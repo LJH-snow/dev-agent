@@ -35,10 +35,17 @@ export interface BlockOptions {
   width?: number;
 }
 
+export interface ToolCardRenderOptions extends BlockOptions {
+  collapsed?: boolean;
+}
+
 export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":help", description: "Show available commands" },
   { command: ":clear", description: "Clear the terminal view" },
   { command: ":model", description: "Show the current provider and model" },
+  { command: ":cards", description: "Show the latest tool card" },
+  { command: ":collapse", description: "Collapse the latest tool card" },
+  { command: ":expand", description: "Expand the latest tool card" },
   { command: ":validate <changeSetId>", description: "Rerun trusted checks" },
   { command: ":cleanup ...", description: "Prune metadata-only evidence" },
   { command: ":quit", description: "Exit the session (also exit / quit)" },
@@ -341,7 +348,7 @@ export function renderWelcome({
   const stateLabel = formatRunState(state);
   const fields = [
     colorize(padRight("DEV AGENT", contentWidth), "bold"),
-    colorize(padRight("SIGNAL WEAVE // local coding workbench", contentWidth), "dim"),
+    colorize(padRight("SIGNAL LOOM // local coding workbench", contentWidth), "dim"),
     "",
     renderLabeledLine("Provider", provider, contentWidth),
     renderLabeledLine("Model", model, contentWidth),
@@ -488,9 +495,10 @@ export function renderToolResult(
 
 export function renderToolCard(
   card: ToolCard,
-  options: BlockOptions = {}
+  options: ToolCardRenderOptions = {}
 ): string {
   const width = normalizeWidth(options.width);
+  const collapsed = options.collapsed === true;
   const status = card.status.toUpperCase().replaceAll("-", " ");
   const marker = card.status === "completed" || card.status === "passed"
     ? "✓"
@@ -512,8 +520,16 @@ export function renderToolCard(
     colorize(fitLine(`${marker} ${safeName}`, width), statusColor),
   ];
 
+  if (collapsed) {
+    lines.push(colorize(fitLine("  ▸ collapsed; expand this card to inspect details", width), "dim"));
+    return lines.join("\n");
+  }
+
   if (card.input) lines.push(...wrapPrefixed(redactSensitiveText(sanitizeTerminalText(card.input)), "  input: ", width));
   if (card.detail) lines.push(...wrapPrefixed(redactSensitiveText(sanitizeTerminalText(card.detail)), "  ", width));
+  if (card.status === "approval") {
+    lines.push(...wrapPrefixed("[allow] [deny] [always allow]", "  actions: ", width));
+  }
   if (card.output) lines.push(...wrapPrefixed(redactSensitiveText(sanitizeTerminalText(card.output)), "  output: ", width));
   if (card.diff) {
     lines.push(colorize(fitLine("  diff:", width), "dim"));
@@ -521,6 +537,13 @@ export function renderToolCard(
   }
 
   return lines.join("\n");
+}
+
+export function renderCardUpdate(
+  card: ToolCard,
+  options: ToolCardRenderOptions = {}
+): string {
+  return renderToolCard(card, options);
 }
 
 export function renderApprovalMessage(

@@ -94,8 +94,11 @@ export function reduceInputKey(
     if (state.palette.open && state.palette.matches.length > 0) {
       const selected = state.palette.matches[state.palette.selected] ?? state.palette.matches[0];
       if (selected) {
-        const replacement = replaceCurrentLine(state.value, selected.command);
-        return { ...state, ...replacement, palette: updatePalette(replacement.value, commands) };
+        const line = state.value.split("\n").at(-1) ?? "";
+        if (line.trim() !== selected.command) {
+          const replacement = replaceCurrentLine(state.value, selected.command);
+          return { ...state, ...replacement, palette: updatePalette(replacement.value, commands) };
+        }
       }
     }
     return { ...state, submitted: true, submittedValue: state.value, palette: EMPTY_PALETTE };
@@ -187,7 +190,10 @@ export interface RichInputControllerOptions {
     pause?: () => void;
     resume?: () => void;
   };
-  readonly output: NodeJS.WritableStream;
+  readonly output: NodeJS.WritableStream & {
+    on?: (event: string, listener: () => void) => unknown;
+    off?: (event: string, listener: () => void) => unknown;
+  };
   readonly width: () => number;
   readonly history?: readonly string[];
   readonly commands: readonly CommandHint[];
@@ -208,6 +214,9 @@ export class RichInputController {
   private readonly onEnd = (): void => {
     this.resolveRead(null);
   };
+  private readonly onResize = (): void => {
+    if (this.waiting) this.redraw();
+  };
 
   constructor(private readonly options: RichInputControllerOptions) {
     this.state = createInputEditorState(options.history);
@@ -218,6 +227,7 @@ export class RichInputController {
     this.options.input.resume?.();
     this.options.input.on("data", this.onData);
     this.options.input.once("end", this.onEnd);
+    this.options.output.on?.("resize", this.onResize);
     this.setRawMode(true);
     const result = new Promise<string | null>((resolve, reject) => {
       this.waiting = { resolve, reject };
@@ -229,6 +239,7 @@ export class RichInputController {
   close(): void {
     this.options.input.off("data", this.onData);
     this.options.input.off("end", this.onEnd);
+    this.options.output.off?.("resize", this.onResize);
     this.setRawMode(false);
     this.options.input.pause?.();
     this.resolveRead(null);
@@ -265,6 +276,7 @@ export class RichInputController {
       this.renderedLineCount = 0;
       this.options.input.off("data", this.onData);
       this.options.input.off("end", this.onEnd);
+      this.options.output.off?.("resize", this.onResize);
       this.setRawMode(false);
       this.options.input.pause?.();
       this.resolveRead(value);

@@ -15,6 +15,12 @@ pnpm --filter @dev-agent/desktop run start
 
 Then open the printed URL (default `http://127.0.0.1:4317`) in a browser.
 
+The Desktop shell uses the same Signal Loom workbench language as the rich CLI:
+the checked-in [`signal-loom.svg`](public/signal-loom.svg) asset supplies the
+header mark, while the existing status, conversation, approval, validation, and
+evidence surfaces remain backed by the current server contracts. The SVG is
+served as a local static asset and does not add a runtime dependency.
+
 Configure the model provider the same way as the CLI, via environment variables:
 
 - `DEV_AGENT_MODEL_PROVIDER` — `ollama` (default), `openai`, `anthropic`, `gemini`

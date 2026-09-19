@@ -43,8 +43,8 @@ test("welcome render includes provider, model, status, session, and working dire
   assert.match(output, /streaming/i);
   assert.match(output, /session-123/);
   assert.match(output, /\/Users\/example\/project/);
-  assert.match(output, /SIGNAL WEAVE/);
-  assert.match(output, /SIGNAL WEAVE|\/\\  \/\\/);
+  assert.match(output, /SIGNAL LOOM/);
+  assert.match(output, /SIGNAL LOOM|\/\\  \/\\/);
 });
 
 test("rich renderer uses semantic blocks for runtime, tools, approvals, and validation", () => {
@@ -212,6 +212,8 @@ test("default command hints use the CLI's colon commands", () => {
   assert.match(output, /:help/);
   assert.match(output, /:clear/);
   assert.match(output, /:model/);
+  assert.match(output, /:collapse/);
+  assert.match(output, /:expand/);
   assert.match(output, /:validate/);
   assert.match(output, /:cleanup/);
   assert.match(output, /:quit/);

@@ -247,17 +247,28 @@ Running without `--once` starts an interactive session. Each prompt continues
 from the previous run, so `[state=… turns=…]` counts the whole session and
 `[usage]` accumulates instead of reporting one prompt at a time. In a real terminal
 (where both stdin and stdout are TTYs), the CLI uses a rich presentation with a
-welcome panel, provider/model/streaming status, a `›` input prompt, separate user
-and assistant sections, live Markdown-aware streaming, and command hints. The
-rich presentation is intentionally disabled for pipes, CI, `--json`, `--once`,
-and `--mcp-server`, which keep the stable line-oriented or JSON contracts.
+welcome panel, Signal Loom mark, provider/model/executor status, a bordered
+multiline editor, separate user and assistant sections, live Markdown-aware
+streaming, command completion, and live tool cards. The launch state is always
+`READY`; transport capability (`streaming`) is shown separately from the active
+run state. During a request, the status rail moves through `THINKING`,
+`STREAMING`, tool-running, approval, and validation states, and rapid tokens are
+coalesced into bounded live redraws.
 
-Rich interactive commands are `:help`, `:clear`, `:model`, and `:quit`; `exit`
-and `quit` remain accepted aliases. During a request, `Thinking…` is shown until
-the first token, tool activity, completion, failure, or cancellation, and rapid
-tokens are coalesced into bounded live redraws. The readline echo is the single
-user-input rendering, so the same prompt is not printed again as a separate
-`You` block. Use `:validate <changeSetId>` for a guarded validation rerun, or
+Rich interactive commands accept either `/` or `:` prefixes:
+`/help`/`:help`, `/clear`/`:clear`, `/model`/`:model`,
+`/cards`/`:cards`, `/collapse`/`:collapse`, `/expand`/`:expand`, and
+`/quit`/`:quit`;
+`exit` and `quit` remain accepted aliases. Tab completes a command, Shift+Enter
+inserts a newline, Escape dismisses the palette, Ctrl-L redraws the rich
+surface, and Ctrl-C cancels the request in flight or exits an idle session.
+`:cards` prints the latest live card, while `:collapse` and `:expand` append a
+compact folded or expanded view of the latest card without changing the
+underlying session state.
+The rich presentation is intentionally disabled for pipes, CI, `--json`,
+`--once`, `--mcp-server`, and other non-TTY paths, which keep the stable
+line-oriented or JSON contracts. Use `:validate <changeSetId>` for a guarded
+validation rerun, or
 `:cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]`
 for explicit metadata-only evidence cleanup. Cleanup reports removed validations,
 removed change sets, protected applied guards, remaining counts, and the current

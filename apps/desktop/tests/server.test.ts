@@ -207,6 +207,7 @@ test("GET / serves the chat UI", async () => {
     assert.match(html, /id="theme-toggle"/);
     assert.match(html, /data-theme/);
     assert.match(html, /\/public\/styles\.css/);
+    assert.match(html, /rel="icon" href="\/public\/signal-loom\.svg"/);
     assert.match(html, /src="\/public\/signal-loom\.svg"/);
     assert.match(html, /aria-label="dev-agent Signal Loom workbench"/);
     assert.match(html, /tool-progress/);

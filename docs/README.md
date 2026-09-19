@@ -38,6 +38,9 @@ numbered items 62/63/64 in the root README Roadmap.
   [v63 progress](day-plan-v63-progress.md), [v64 plan](day-plan-v64.md), and [v64 progress](day-plan-v64-progress.md).
   The [v65 Desktop/CLI workbench plan](day-plan-v65.md) and [v65 progress record](day-plan-v65-progress.md)
   record the approved Scheme A experience polish and its browser/TTY evidence.
+  The current Signal Loom rich CLI/Desktop workbench is specified in the
+  [workbench design](superpowers/specs/2026-09-19-desktop-cli-workbench-design.md)
+  and implemented according to the [Signal Loom TTY plan](superpowers/plans/2026-09-19-signal-loom-cli-tui.md).
   The [2026-09-18 overnight plan](superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
   its [progress record](superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
   and the [v0.1.7 Desktop candidate checklist](release-candidate-checklist-v0.1.7-desktop.md)
@@ -96,6 +99,10 @@ dev-agent/
   canonical export size. It does not replace transcript Download or add audit-export authority;
   the shell also exposes explicit labels, focus-visible styling, live status, and preview loading
   semantics for keyboard and assistive-technology users.
+- **apps/cli rich workbench**: real TTY sessions use the Signal Loom renderer,
+  explicit run-state and live-card models, and a raw multiline input controller.
+  Pipe, `--once`, JSON, MCP server, and other non-rich paths retain their existing
+  line-oriented contracts.
 
 ## Policy Language: Starlark
 
