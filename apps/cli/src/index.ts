@@ -2103,17 +2103,20 @@ function readLineFromStdin(question: string): Promise<string> {
     let buffer = "";
     let bufferBytes = 0;
     const decoder = new StringDecoder("utf8");
-    const cleanup = (): void => {
+    const cleanup = (destroyInput = false): void => {
       process.stdin.off("data", onData);
       process.stdin.off("end", onEnd);
       process.stdin.pause();
+      if (destroyInput && !process.stdin.isTTY) {
+        process.stdin.destroy();
+      }
     };
     const onData = (chunk: Buffer | string): void => {
       const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       const newline = bytes.indexOf(0x0a);
       const lineBytes = newline >= 0 ? bytes.subarray(0, newline) : bytes;
       if (bufferBytes + lineBytes.byteLength > MAX_APPROVAL_INPUT_BYTES) {
-        cleanup();
+        cleanup(true);
         resolve("");
         return;
       }
