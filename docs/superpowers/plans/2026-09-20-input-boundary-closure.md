@@ -43,14 +43,14 @@
 - `StreamOutputBudget.addJson(value: unknown)` counts the UTF-8 bytes of `JSON.stringify(value)`.
 - A provider cancels its reader before rethrowing `StreamOutputLimitError`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add a helper test proving UTF-8 byte accounting and a provider stream test
 proving that a response over the fixed limit cancels its reader and rejects
 with `stream_output_limit`. Keep each individual wire line below the existing
 `1 MiB` line limit so the cumulative guard is the failure being tested.
 
-- [ ] **Step 2: Run the model tests and confirm RED**
+- [x] **Step 2: Run the model tests and confirm RED**
 
 ```sh
 pnpm --filter @dev-agent/model run test
@@ -59,28 +59,28 @@ pnpm --filter @dev-agent/model run test
 Expected: the new cumulative-limit tests fail because the current providers
 keep appending content/tool fragments until the stream ends.
 
-- [ ] **Step 3: Implement the shared stream budget**
+- [x] **Step 3: Implement the shared stream budget**
 
 Create `StreamOutputBudget` in `stream-budget.ts`. Count text, reasoning,
 tool-call ids/names/argument fragments, and provider function-call payloads
 before appending them or invoking token callbacks. Throw
 `StreamOutputLimitError` when the next append would exceed `16 MiB`.
 
-- [ ] **Step 4: Integrate cancellation into all providers**
+- [x] **Step 4: Integrate cancellation into all providers**
 
 Use one budget instance per `streamChat` call in OpenAI, Anthropic, Gemini,
 and Ollama. Catch `StreamOutputLimitError`, call `reader.cancel()`, then
 rethrow. Leave normal completion, malformed-line skipping, usage reporting,
 and tool-call parsing unchanged.
 
-- [ ] **Step 5: Run focused and package regressions**
+- [x] **Step 5: Run focused and package regressions**
 
 ```sh
 pnpm --filter @dev-agent/model run test
 pnpm --filter @dev-agent/agent-core run test
 ```
 
-- [ ] **Step 6: Commit the task**
+- [x] **Step 6: Commit the task**
 
 ```sh
 git add packages/model/src packages/model/tests
@@ -112,7 +112,7 @@ git commit -m "fix: cap cumulative provider streams"
   write if its UTF-8 bytes exceed `16 MiB`, leaving the previous valid file
   untouched.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Add small-fixture tests using test-only constructor limits of two files and
 ten source bytes to prove code-search rejects a scan before returning partial
@@ -121,7 +121,7 @@ previous `index.json` remains byte-for-byte unchanged. Add a persistence test
 that builds a candidate JSON payload over `16 MiB` and proves write-back is
 skipped.
 
-- [ ] **Step 2: Run the focused tests and confirm RED**
+- [x] **Step 2: Run the focused tests and confirm RED**
 
 ```sh
 pnpm --filter @dev-agent/tools run test
@@ -131,7 +131,7 @@ pnpm --filter @agent_cli/cli run test
 Expected: the new limit tests fail because directory discovery and index
 serialization currently have no total budget.
 
-- [ ] **Step 3: Add bounded discovery**
+- [x] **Step 3: Add bounded discovery**
 
 Replace unbounded directory materialization in the code-search and CLI index
 walkers with async directory iteration. Count only supported, non-ignored,
@@ -139,21 +139,21 @@ regular files after `stat`. Before adding a file, check both the file-count and
 source-byte budget. Throw the stable limit error before reading or mutating the
 cache when the next file would cross a boundary.
 
-- [ ] **Step 4: Guard persistence**
+- [x] **Step 4: Guard persistence**
 
 Serialize the complete candidate index into a UTF-8 buffer before writing.
 When it exceeds `16 MiB`, skip the write and keep the previous index file.
 Preserve best-effort search behavior for code-search and existing atomic-write
 cleanup for the CLI index command.
 
-- [ ] **Step 5: Run focused and compatibility tests**
+- [x] **Step 5: Run focused and compatibility tests**
 
 ```sh
 pnpm --filter @dev-agent/tools run test
 pnpm --filter @agent_cli/cli run test
 ```
 
-- [ ] **Step 6: Commit the task**
+- [x] **Step 6: Commit the task**
 
 ```sh
 git add packages/tools/src/code-search.ts packages/tools/tests apps/cli/src/index-command.ts apps/cli/tests/index-command.test.ts
@@ -177,7 +177,7 @@ git commit -m "fix: bound code index discovery"
 - The internal `findUnexpectedRollbackEntry` helper accepts an injected
   `AsyncIterable<Dirent>` for deterministic early-exit testing.
 
-- [ ] **Step 1: Write the failing regression test**
+- [x] **Step 1: Write the failing regression test**
 
 Add a unit test for `findUnexpectedRollbackEntry` with an async generator that
 throws if entries after the first unexpected entry are consumed. Assert the
@@ -186,7 +186,7 @@ created directory containing an unexpected file and assert rollback is
 rejected, the unexpected file remains, and the error still contains
 `cannot rollback non-empty directory`.
 
-- [ ] **Step 2: Run the filesystem changeset test and confirm RED**
+- [x] **Step 2: Run the filesystem changeset test and confirm RED**
 
 ```sh
 pnpm --filter @dev-agent/tools run test
@@ -195,19 +195,19 @@ pnpm --filter @dev-agent/tools run test
 Expected: the new helper test fails because the current implementation has no
 injectable early-exit iterator.
 
-- [ ] **Step 3: Replace `readdir()` with early-exit iteration**
+- [x] **Step 3: Replace `readdir()` with early-exit iteration**
 
 Add a small helper around `opendir()` that checks entries one at a time,
 returns on the first unexpected path, and closes the directory handle in all
 paths. Do not change change-set schemas or rollback ordering.
 
-- [ ] **Step 4: Run regression tests**
+- [x] **Step 4: Run regression tests**
 
 ```sh
 pnpm --filter @dev-agent/tools run test
 ```
 
-- [ ] **Step 5: Commit the task**
+- [x] **Step 5: Commit the task**
 
 ```sh
 git add packages/tools/src/filesystem.ts packages/tools/tests/filesystem-changeset.test.ts
@@ -230,13 +230,13 @@ git commit -m "fix: bound rollback directory inspection"
 - The function removes listeners and pauses stdin before resolving overflow.
 - Normal `y`, `n`, newline, EOF, and piped approval behavior remains unchanged.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Pipe an approval response containing `4 KiB + 1` bytes without a newline and
 assert the CLI exits with the existing denial result and never runs the
 dangerous tool. Add a UTF-8 case so the limit is measured in bytes.
 
-- [ ] **Step 2: Run the approval tests and confirm RED**
+- [x] **Step 2: Run the approval tests and confirm RED**
 
 ```sh
 pnpm --filter @agent_cli/cli run test
@@ -245,19 +245,19 @@ pnpm --filter @agent_cli/cli run test
 Expected: the oversized input currently reaches EOF or remains buffered rather
 than resolving as an immediate denial.
 
-- [ ] **Step 3: Implement the byte-boundary guard**
+- [x] **Step 3: Implement the byte-boundary guard**
 
 Count each incoming chunk with `Buffer.byteLength`. On overflow, call the
 same cleanup path used by newline/EOF and resolve `""`. Do not echo the
 untrusted input or add raw input to the error output.
 
-- [ ] **Step 4: Run CLI regressions**
+- [x] **Step 4: Run CLI regressions**
 
 ```sh
 pnpm --filter @agent_cli/cli run test
 ```
 
-- [ ] **Step 5: Commit the task**
+- [x] **Step 5: Commit the task**
 
 ```sh
 git add apps/cli/src/index.ts apps/cli/tests/approval.test.ts apps/cli/tests/non-interactive.test.ts
@@ -276,13 +276,13 @@ git commit -m "fix: bound CLI approval input"
 - Modify: `.superpowers/sdd/2026-09-18-next-development-plan/task-2-audit.md`
 - Modify: `apps/cli/README.md`
 
-- [ ] **Step 1: Record task results in the ledger**
+- [x] **Step 1: Record task results in the ledger**
 
 For each completed task, record the commit range, focused test command, exact
 test count, reviewer verdict, and any parked minor finding. Record any ruling
 in the form `Ruling: <decision> - <reason> - <cost if wrong>`.
 
-- [ ] **Step 2: Update public documentation**
+- [x] **Step 2: Update public documentation**
 
 Document the provider cumulative stream cap, code-index discovery/write-back
 limits, rollback early-exit guarantee, and approval-input denial behavior.

@@ -55,3 +55,21 @@
 - The five reproducible audit findings are closed. The four
   `NEEDS-EVIDENCE` rows remain open; this is a verified development state,
   not a release authorization.
+
+## 2026-09-20 input-boundary closure
+
+- Implemented the shared 16 MiB UTF-8 cumulative stream budget across OpenAI,
+  Anthropic, Gemini, and Ollama, including reader cancellation and tool-call
+  fragment accounting.
+- Added code-search and CLI index discovery limits of 100,000 eligible files
+  and 256 MiB of eligible source bytes, with no partial cache/index install.
+  Oversized 16 MiB serialized write-back preserves the previous valid index.
+- Replaced rollback directory materialization with early-exit `opendir()`
+  iteration and preserved the existing conflict behavior.
+- Added a 4 KiB UTF-8 CLI approval boundary. Overflow denies safely, cleans up
+  listeners, and closes non-TTY input so a one-shot producer without EOF does
+  not hang.
+- Focused evidence is green: model 72/72, Agent Core 134/134, tools 151/151,
+  and CLI 391/391. Task-level reviews are clean; the documented
+  normal-newline/open-non-TTY compatibility observation remains parked.
+- Final workspace, Rust, native macOS, and push gates are still pending.

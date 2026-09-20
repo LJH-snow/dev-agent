@@ -180,7 +180,10 @@ Options:
   key for the rest of the session (`npm test` also covers
   `npm test -- --watch`), or `review-writes` (show the real filesystem diff and
   apply it only after an explicit `y`; dangerous shell/git calls keep their
-  existing approval rules; EOF or a read failure denies it)
+  existing approval rules; EOF or a read failure denies it). Approval input
+  before the first newline is capped at `4 KiB` of UTF-8 bytes; an oversized
+  answer denies the tool without echoing the answer and closes a non-TTY input
+  stream.
 - `--json` - machine-readable output for `--once`, `--tools`, `--metadata`,
   `--session-list`, `--compact`, and `--cleanup-evidence`; implies `--no-stream`
   so nothing else is written to stdout. Prompt results include structured
@@ -302,6 +305,10 @@ Non-streaming provider success JSON is read with a streamed bounded JSON reader 
 an over-limit response is rejected and its reader is cancelled before provider schemas are parsed.
 Provider streaming lines are buffered with a fixed `1 MiB` limit; an over-limit line
 cancels its stream and rejects before the unbounded buffer can grow.
+Across one streamed provider response, text, reasoning, and accumulated tool-call
+fragments share a `16 MiB` UTF-8 budget. The provider reader is cancelled before
+the next fragment can exceed that budget, and the caller receives a stable
+`stream_output_limit` error.
 Filesystem writes, edits, patches, and reviewed postimages are capped at
 `16 MiB` of UTF-8 content before a file is changed or a diff is retained.
 `NO_COLOR=1` disables color ANSI in rich TTY mode, but cursor movement and clear-line
@@ -399,6 +406,9 @@ Persisted memory files use the same fixed `16 MiB` read limit; oversized session
 files are rejected before their bytes enter memory. Memory file writes enforce
 the same `16 MiB` write limit; an oversized write is rejected before the file
 changes, so a session cannot outgrow its read limit.
+Rollback checks created directories with early-exit `opendir()` iteration. It
+stops at the first unexpected entry, preserves the existing postimage conflict
+message, and leaves the unexpected file untouched when rollback is denied.
 
 ### Change-set validation
 
@@ -571,10 +581,14 @@ and Rust. It records signatures and refresh metadata in the index, so subsequent
 searches can reuse unchanged files. Default generated/vendor/cache directories,
 root `.gitignore`, root `.ignore`, and explicit `--exclude` rules are applied in
 that order. The scanner skips source files above the fixed `16 MiB` scan limit
-before reading them; smaller files remain indexed. `index clear` is
-confirmation-gated.
+before reading them; smaller files remain indexed. Each scan also stops with a
+stable metadata-only error if it would include more than `100,000` eligible files
+or `256 MiB` of eligible source bytes, and it never installs a partial index.
+`index clear` is confirmation-gated.
 A persisted code index above the fixed `16 MiB` read limit is skipped in favor
-of a full scan instead of loading its bytes into memory.
+of a full scan instead of loading its bytes into memory. If a code-search
+write-back would exceed `16 MiB`, the write is skipped and the previous valid
+index remains untouched.
 
 ## Configuration file
 

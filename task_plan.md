@@ -50,3 +50,19 @@ Verification completed on 2026-09-20:
   `Info.plist` lint passed.
 - The five reproducible audit findings are closed. Four `NEEDS-EVIDENCE`
   decisions remain open.
+
+### Phase 4: Input-boundary closure (verification in progress)
+
+The 2026-09-20 follow-up plan at
+`docs/superpowers/plans/2026-09-20-input-boundary-closure.md` closes the four
+remaining input-boundary decisions with fixed, non-configurable contracts.
+
+- [x] Cap cumulative provider stream output at 16 MiB of UTF-8 bytes.
+- [x] Bound code-search/index discovery at 100,000 files and 256 MiB of
+      eligible source bytes.
+- [x] Preserve the previous index when discovery or serialized write-back
+      exceeds its limit.
+- [x] Make rollback directory inspection asynchronous and early-exit.
+- [x] Deny CLI approval input over 4 KiB before the first newline.
+- [ ] Run the final workspace, Rust, and native macOS gates.
+- [ ] Push the feature branch after the final review.
