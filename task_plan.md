@@ -51,7 +51,7 @@ Verification completed on 2026-09-20:
 - The five reproducible audit findings are closed. Four `NEEDS-EVIDENCE`
   decisions remain open.
 
-### Phase 4: Input-boundary closure (verification in progress)
+### Phase 4: Input-boundary closure (verified)
 
 The 2026-09-20 follow-up plan at
 `docs/superpowers/plans/2026-09-20-input-boundary-closure.md` closes the four
@@ -71,7 +71,7 @@ remaining input-boundary decisions with fixed, non-configurable contracts.
 Final verification completed on 2026-09-20:
 
 - `pnpm build` and `pnpm verify` passed.
-- CLI passed 391/391; Desktop 138/138; model 72/72; tools 151/151;
+- CLI passed 392/392; Desktop 138/138; model 72/72; tools 151/151;
   documentation contracts 57/57; Rust unit/bin/doc tests 54/54; real Rust
   integration 11/11.
 - Swift package tests passed 8/8; native launcher verification and

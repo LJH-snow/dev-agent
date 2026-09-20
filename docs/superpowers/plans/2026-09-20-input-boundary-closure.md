@@ -300,7 +300,7 @@ git diff --check
 ```
 
 - Evidence on 2026-09-20: `pnpm build` passed; `pnpm verify` passed with CLI
-  391/391, Desktop 138/138, model 72/72, tools 151/151, documentation
+  392/392, Desktop 138/138, model 72/72, tools 151/151, documentation
   contracts 57/57, Rust unit/bin/doc tests 54/54, and real Rust integration
   11/11. Swift package tests passed 8/8, the native launcher verification
   passed with no residual app process, `Info.plist` lint passed, and

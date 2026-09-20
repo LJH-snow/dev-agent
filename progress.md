@@ -70,13 +70,13 @@
   listeners, and closes non-TTY input so a one-shot producer without EOF does
   not hang.
 - Focused evidence is green: model 72/72, Agent Core 134/134, tools 151/151,
-  and CLI 391/391. Task-level reviews are clean; the documented
+  and CLI 392/392. Task-level reviews are clean; the documented
   normal-newline/open-non-TTY compatibility observation remains parked.
 
 ## 2026-09-20 final verification
 
 - Rebuilt the full TypeScript workspace and passed `pnpm verify`.
-- Final counts: CLI 391/391, Desktop 138/138, model 72/72, tools 151/151,
+- Final counts: CLI 392/392, Desktop 138/138, model 72/72, tools 151/151,
   documentation contracts 57/57, Rust unit/bin/doc tests 54/54, and real Rust
   integration 11/11.
 - Swift package tests passed 8/8. Native launcher verification passed without
@@ -84,3 +84,6 @@
   passed.
 - Kept the branch local. No npm publish, tag, GitHub Release, or push was
   performed.
+- Final whole-branch review of `e1ebee8..b92eb7a` was clean with no Critical
+  or Important findings. The two Minor observations were addressed before
+  delivery.

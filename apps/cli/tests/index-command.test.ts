@@ -112,6 +112,11 @@ test("--index reports an oversized serialized write and preserves the previous i
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-write-limit-"));
   const indexPath = join(dir, ".dev-agent", "index.json");
   try {
+    await writeFile(join(dir, "seed.ts"), "export const seed = 1;\n", "utf8");
+    const baseline = await runCli(["--index", dir, "--json"]);
+    assert.equal(baseline.code, 0, baseline.stderr);
+    const previousIndex = await readFile(indexPath);
+
     const source = `/*${"x".repeat(16 * 1024 * 1024 - 256)}*/\nexport const kept = 1;\n`;
     assert.ok(Buffer.byteLength(source, "utf8") < 16 * 1024 * 1024);
     await writeFile(join(dir, "large.ts"), source, "utf8");
@@ -120,9 +125,9 @@ test("--index reports an oversized serialized write and preserves the previous i
 
     assert.equal(result.code, 0, result.stderr);
     const report = JSON.parse(result.stdout);
-    assert.equal(report.files, 1);
+    assert.equal(report.files, 2);
     assert.equal(report.written, false);
-    await assert.rejects(readFile(indexPath), { code: "ENOENT" });
+    assert.deepEqual(await readFile(indexPath), previousIndex);
 
     const human = await runCli(["--index", dir]);
     assert.equal(human.code, 0, human.stderr);
