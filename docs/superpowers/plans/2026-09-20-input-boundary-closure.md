@@ -288,7 +288,7 @@ Document the provider cumulative stream cap, code-index discovery/write-back
 limits, rollback early-exit guarantee, and approval-input denial behavior.
 Keep the audit's four original boundary rows updated with exact evidence.
 
-- [ ] **Step 3: Run all gates**
+- [x] **Step 3: Run all gates**
 
 ```sh
 pnpm build
@@ -299,12 +299,18 @@ plutil -lint "dist/Signal Loom Desktop.app/Contents/Info.plist"
 git diff --check
 ```
 
-- [ ] **Step 4: Push the feature branch**
+- Evidence on 2026-09-20: `pnpm build` passed; `pnpm verify` passed with CLI
+  391/391, Desktop 138/138, model 72/72, tools 151/151, documentation
+  contracts 57/57, Rust unit/bin/doc tests 54/54, and real Rust integration
+  11/11. Swift package tests passed 8/8, the native launcher verification
+  passed with no residual app process, `Info.plist` lint passed, and
+  `git diff --check` passed.
 
-```sh
-git push origin codex/desktop-cli-workbench
-```
+- [x] **Step 4: Keep delivery local until explicitly requested**
 
-The final report must name the pushed commit, exact gate counts, and any
+No package publish, tag, GitHub Release, or branch push was performed. A push
+remains an explicit user-controlled follow-up after review.
+
+The final report must name the verified commit, exact gate counts, and any
 remaining evidence or product decisions. Do not call the project release-ready
 without separate release authorization.

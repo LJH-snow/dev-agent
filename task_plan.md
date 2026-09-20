@@ -64,5 +64,15 @@ remaining input-boundary decisions with fixed, non-configurable contracts.
       exceeds its limit.
 - [x] Make rollback directory inspection asynchronous and early-exit.
 - [x] Deny CLI approval input over 4 KiB before the first newline.
-- [ ] Run the final workspace, Rust, and native macOS gates.
-- [ ] Push the feature branch after the final review.
+- [x] Run the final workspace, Rust, and native macOS gates.
+- [x] Keep the verified branch local; no package publish, tag, GitHub Release,
+      or push was performed.
+
+Final verification completed on 2026-09-20:
+
+- `pnpm build` and `pnpm verify` passed.
+- CLI passed 391/391; Desktop 138/138; model 72/72; tools 151/151;
+  documentation contracts 57/57; Rust unit/bin/doc tests 54/54; real Rust
+  integration 11/11.
+- Swift package tests passed 8/8; native launcher verification and
+  `Info.plist` lint passed; `git diff --check` passed.
