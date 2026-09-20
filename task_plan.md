@@ -65,8 +65,8 @@ remaining input-boundary decisions with fixed, non-configurable contracts.
 - [x] Make rollback directory inspection asynchronous and early-exit.
 - [x] Deny CLI approval input over 4 KiB before the first newline.
 - [x] Run the final workspace, Rust, and native macOS gates.
-- [x] Keep the verified branch local; no package publish, tag, GitHub Release,
-      or push was performed.
+- [x] Push the verified feature branch after the final review. No package
+      publish, tag, or GitHub Release was performed.
 
 Final verification completed on 2026-09-20:
 
@@ -76,3 +76,5 @@ Final verification completed on 2026-09-20:
   integration 11/11.
 - Swift package tests passed 8/8; native launcher verification and
   `Info.plist` lint passed; `git diff --check` passed.
+- Final whole-branch review was clean with no Critical or Important findings.
+- `codex/desktop-cli-workbench` was pushed to GitHub at `7c35d79`.

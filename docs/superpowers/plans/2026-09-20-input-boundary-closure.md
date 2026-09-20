@@ -306,11 +306,15 @@ git diff --check
   passed with no residual app process, `Info.plist` lint passed, and
   `git diff --check` passed.
 
-- [x] **Step 4: Keep delivery local until explicitly requested**
+- [x] **Step 4: Push the feature branch**
 
-No package publish, tag, GitHub Release, or branch push was performed. A push
-remains an explicit user-controlled follow-up after review.
+After the final review and verification gates passed, push the verified feature
+branch to GitHub. Do not publish a package, create a tag, or create a GitHub
+Release without separate authorization.
 
-The final report must name the verified commit, exact gate counts, and any
+- Evidence on 2026-09-20: `git push origin codex/desktop-cli-workbench`
+  advanced the remote branch from `e1ebee8` to `7c35d79`.
+
+The final report must name the pushed commit, exact gate counts, and any
 remaining evidence or product decisions. Do not call the project release-ready
 without separate release authorization.

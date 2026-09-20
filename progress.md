@@ -82,8 +82,8 @@
 - Swift package tests passed 8/8. Native launcher verification passed without
   leaving an app process behind; `Info.plist` lint and `git diff --check`
   passed.
-- Kept the branch local. No npm publish, tag, GitHub Release, or push was
-  performed.
+- Pushed `codex/desktop-cli-workbench` to GitHub at `7c35d79`. No npm
+  publish, tag, or GitHub Release was performed.
 - Final whole-branch review of `e1ebee8..b92eb7a` was clean with no Critical
   or Important findings. The two Minor observations were addressed before
   delivery.
