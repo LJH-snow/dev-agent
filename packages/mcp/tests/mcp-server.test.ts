@@ -96,6 +96,38 @@ test("tools/call reports a failing tool as an error result", async () => {
   assert.equal(response.result.content[0].text, "kaboom");
 });
 
+test("unexpected errors are bounded by the configured frame size", async () => {
+  const maxFrameBytes = 160;
+  const server = createMcpServer({
+    tools: [],
+    maxFrameBytes,
+    resources: [
+      {
+        uri: "dev-agent://explodes",
+        read: () => {
+          throw new Error("x".repeat(1000));
+        },
+      },
+    ],
+  });
+
+  const rawResponse = await server.handleMessage(
+    JSON.stringify({
+      jsonrpc: "2.0",
+      id: 41,
+      method: "resources/read",
+      params: { uri: "dev-agent://explodes" },
+    })
+  );
+
+  assert.ok(rawResponse);
+  assert.ok(Buffer.byteLength(rawResponse, "utf8") <= maxFrameBytes);
+  const response = JSON.parse(rawResponse);
+  assert.equal(response.error.code, -32603);
+  assert.equal(response.result, undefined);
+  assert.match(response.error.message, /frame size/i);
+});
+
 test("calling an unknown tool is an invalid-params error", async () => {
   const server = createMcpServer({ tools: [echoTool()] });
 

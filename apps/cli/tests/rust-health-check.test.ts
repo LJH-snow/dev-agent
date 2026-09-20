@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -81,6 +81,26 @@ test("probe treats a legacy response without protocol version as zero", async ()
     } else {
       process.env.MOCK_EXECUTOR_OMIT_PROTOCOL_VERSION = previous;
     }
+  }
+});
+
+test("probe rejects a response frame above the transport limit", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-rust-health-limit-"));
+  const binary = join(directory, "oversized-runtime.mjs");
+  try {
+    await writeFile(
+      binary,
+      "#!/usr/bin/env node\nprocess.stdout.write(Buffer.alloc(8 * 1024 * 1024 + 5, 120));\n",
+      "utf8"
+    );
+    await chmod(binary, 0o755);
+
+    await assert.rejects(
+      () => probeRustBinary(binary),
+      /Rust executor response exceeds the .* byte frame limit/
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

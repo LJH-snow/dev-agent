@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -69,6 +69,24 @@ test("filesystem tool rejects non-string content instead of writing an empty fil
       () => tool.execute({ action: "write", path: join(dir, "x.txt"), content: { a: 1 } }),
       /filesystem content must be a string when provided/
     );
+  });
+});
+
+test("filesystem tool rejects write content above the 16 MiB limit", async () => {
+  await withTempDir("dev-agent-fs-write-limit-", async (dir) => {
+    const path = join(dir, "too-large.txt");
+    const tool: any = new FilesystemTool();
+
+    await assert.rejects(
+      () =>
+        tool.execute({
+          action: "write",
+          path,
+          content: "x".repeat(16 * 1024 * 1024 + 1),
+        }),
+      /filesystem file exceeds the 16 MiB write limit/
+    );
+    assert.equal(await lstat(path).then(() => true, () => false), false);
   });
 });
 

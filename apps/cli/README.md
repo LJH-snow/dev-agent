@@ -118,8 +118,10 @@ Options:
 - `--metadata` - print metadata for the selected session and exit, including the
   accumulated token usage and a metadata-only `evidenceSummary` when the session
   has any
-- `--session-list` - list saved sessions, newest first; `--json` includes each
-  session's accumulated `usage` (`null` when it never reported tokens) and its
+- `--session-list` - list saved sessions, newest first. The JSON form is an
+  object with `sessions`, `truncated`, and `total`; it keeps the newest 256
+  `.json` sessions, counts all matching entries, and includes each session's
+  accumulated `usage` (`null` when it never reported tokens) and its
   metadata-only `evidenceSummary`
 - `--cleanup-evidence` - explicitly prune metadata-only evidence for the selected
   session and exit. Optional `--max-validations <n>`, `--max-change-sets <n>`, and
@@ -195,7 +197,9 @@ Options:
   as a warning instead of being silently ignored. Exits 1 when any check fails.
   Combine with `--json` for `{ checks, summary }`. The runtime metadata reports
   the selected source and, without paths, a successful runtime identity or a
-  stable managed-cache diagnosis (target/state/reason).
+  stable managed-cache diagnosis (target/state/reason). Doctor caps external
+  command-version output at `64 KiB`, Rust probe frames at `8 MiB`, and Rust
+  probe stderr at `16 KiB`.
 - `--doctor --check-update` - add a bounded, read-only npm registry check for
   `@agent_cli/cli`. It reports whether the installed CLI is current or a newer
   version is available; network or registry failures become a warning, and it
@@ -298,6 +302,8 @@ Non-streaming provider success JSON is read with a streamed bounded JSON reader 
 an over-limit response is rejected and its reader is cancelled before provider schemas are parsed.
 Provider streaming lines are buffered with a fixed `1 MiB` limit; an over-limit line
 cancels its stream and rejects before the unbounded buffer can grow.
+Filesystem writes, edits, patches, and reviewed postimages are capped at
+`16 MiB` of UTF-8 content before a file is changed or a diff is retained.
 `NO_COLOR=1` disables color ANSI in rich TTY mode, but cursor movement and clear-line
 sequences required for live redraw remain.
 ### Managed Rust runtime

@@ -172,9 +172,9 @@ Expected: the documented flow matches the script and artifact path.
 - [x] Run `./script/build_and_run.sh --verify`.
 - [x] Inspect `dist/Signal Loom Desktop.app` with `plutil`, `file`, and
       `codesign --display --verbose` where available; do not claim signing.
-- [ ] Confirm the app opens through `/usr/bin/open -n` after the checkout folder
+- [x] Confirm the app opens through `/usr/bin/open -n` after the checkout folder
       has been granted to the non-Developer-ID-signed app, and the child Node server is
-      cleaned up after termination.
+      cleaned up after termination (verified locally on September 20, 2026).
 - [x] Update this plan's remaining verification checkboxes and record any
       remaining limitation.
 
@@ -186,4 +186,6 @@ folder authorization. In that case Node can block while reading the project
 metadata. The default script launcher and `--verify` use the executable from
 the terminal context; `DEV_AGENT_DESKTOP_LAUNCH_SERVICES=1` is available for
 testing the real `/usr/bin/open -n` path after granting the app access in
-System Settings > Privacy & Security > Files and Folders.
+System Settings > Privacy & Security > Files and Folders. On this checkout,
+LaunchServices started the staged app successfully and the watchdog removed
+the child Node server after the app was terminated.

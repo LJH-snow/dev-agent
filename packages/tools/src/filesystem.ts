@@ -28,12 +28,22 @@ import type { Tool, ToolExecutionContext } from "./index.js";
 import { canonicalWorkingDirectory, resolveWorkspacePath } from "./workspace-path.js";
 
 const MAX_READ_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
+const MAX_WRITE_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
 
 async function assertReadFileSize(path: string, maxBytes: number): Promise<void> {
   const fileStat = await lstat(path);
   if (fileStat.size > maxBytes) {
     throw new Error(
       `filesystem file exceeds the ${maxBytes / (1024 * 1024)} MiB read limit`
+    );
+  }
+}
+
+function assertWriteFileSize(content: string, maxBytes: number): void {
+  const size = Buffer.byteLength(content, "utf8");
+  if (size > maxBytes) {
+    throw new Error(
+      `filesystem file exceeds the ${maxBytes / (1024 * 1024)} MiB write limit`
     );
   }
 }
@@ -219,7 +229,9 @@ export class FilesystemTool implements Tool {
         );
       case "write": {
         const target = await targetPath(resolveRequiredPath(params));
-        await writeFile(target, params.content ?? "", "utf8");
+        const content = params.content ?? "";
+        assertWriteFileSize(content, MAX_WRITE_FILE_BYTES);
+        await writeFile(target, content, "utf8");
         return { ok: true, path: target };
       }
       case "edit":
@@ -762,6 +774,7 @@ async function prepareMutation(
       afterText = calculatePatch(beforeBytes!.toString("utf8"), change.hunks!, target);
       break;
   }
+  assertWriteFileSize(afterText, MAX_WRITE_FILE_BYTES);
   const afterBytes = Buffer.from(afterText, "utf8");
   const review = createChangeSetFileReview({
     path: target,
@@ -1344,6 +1357,7 @@ async function editFile(
   await assertReadFileSize(path, MAX_READ_FILE_BYTES);
   const source = await readFile(path, "utf8");
   const updated = calculateEdit(source, oldText, newText, path);
+  assertWriteFileSize(updated, MAX_WRITE_FILE_BYTES);
   await writeFile(path, updated, "utf8");
   return { ok: true, path, replacements: 1 };
 }
@@ -1385,6 +1399,7 @@ async function patchFile(
   await assertReadFileSize(path, MAX_READ_FILE_BYTES);
   const source = await readFile(path, "utf8");
   const working = calculatePatch(source, hunks, path);
+  assertWriteFileSize(working, MAX_WRITE_FILE_BYTES);
   await writeFile(path, working, "utf8");
   return { ok: true, path, hunks: hunks.length };
 }

@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { performance } from "node:perf_hooks";
 import { join, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
-import { opendir, readdir, rename, rm, stat } from "node:fs/promises";
+import { opendir, rename, rm, stat } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -137,6 +137,7 @@ const version = packageMetadata.version ?? "0.0.0";
 const DEFAULT_ONCE_CONTEXT_CHARS = 4000;
 const DEFAULT_ONCE_TOOL_OUTPUT_CHARS = 6000;
 const DEFAULT_ONCE_MAX_REPEATED_TOOL_FAILURES = 2;
+const MAX_SESSION_LIST_ENTRIES = 256;
 const defaultSystemPrompt = [
   "You are dev-agent, a coding agent. Use tools when they help answer the user.",
   "Ground findings in actual tool output; cite path:line and verify every cited location in current source.",
@@ -2138,60 +2139,92 @@ async function listSessions(
   projectState = false
 ): Promise<void> {
   const directory = sessionDir(baseDirectory, projectState);
-  let entries: string[];
+  const printEmpty = (): void => {
+    console.log(
+      jsonOutput
+        ? JSON.stringify({ sessions: [], truncated: false, total: 0 })
+        : "No sessions found."
+    );
+  };
+  const candidates: SessionListCandidate[] = [];
+  let total = 0;
   try {
-    entries = await readdir(directory);
+    const handle = await opendir(directory);
+    for await (const entry of handle) {
+      if (!entry.name.endsWith(".json")) {
+        continue;
+      }
+      total += 1;
+      let candidate: SessionListCandidate;
+      try {
+        const info = await stat(join(directory, entry.name));
+        candidate = {
+          file: entry.name,
+          size: info.size,
+          modified: info.mtime,
+          metadataReadable: true,
+        };
+      } catch {
+        candidate = {
+          file: entry.name,
+          size: 0,
+          modified: new Date(0),
+          metadataReadable: false,
+        };
+      }
+      insertNewestSessionCandidate(candidates, candidate);
+    }
   } catch (error) {
     if (isNodeError(error) && error.code === "ENOENT") {
-      console.log(jsonOutput ? "[]" : "No sessions found.");
+      printEmpty();
       return;
     }
     throw error;
   }
 
-  const sessionFiles = entries.filter((name) => name.endsWith(".json"));
-  if (sessionFiles.length === 0) {
-    console.log(jsonOutput ? "[]" : "No sessions found.");
+  if (candidates.length === 0) {
+    printEmpty();
     return;
   }
 
-  const rows: Array<{
-    file: string;
-    size: number;
-    modified: Date;
-    usage?: ChatUsage;
-    evidenceSummary?: EvidenceSummary;
-  }> = [];
-  for (const file of sessionFiles) {
-    const filePath = join(directory, file);
+  const rows: SessionListRow[] = [];
+  for (const candidate of candidates) {
+    if (!candidate.metadataReadable) {
+      rows.push(candidate);
+      continue;
+    }
     try {
-      const info = await stat(filePath);
+      const filePath = join(directory, candidate.file);
       const memory = new FileMemory({ filePath });
       const metadata = await memory.getMetadata();
       const evidenceSummary = await memory.evidenceSummary();
       rows.push({
-        file,
-        size: info.size,
-        modified: info.mtime,
+        file: candidate.file,
+        size: candidate.size,
+        modified: candidate.modified,
         usage: metadata?.usage,
         evidenceSummary,
       });
     } catch {
-      rows.push({ file, size: 0, modified: new Date(0) });
+      rows.push(candidate);
     }
   }
 
-  rows.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+  rows.sort(compareSessionListRows);
   if (jsonOutput) {
     console.log(
       JSON.stringify(
-        rows.map((row) => ({
-          file: row.file,
-          size: row.size,
-          modifiedAt: row.modified.toISOString(),
-          usage: row.usage ?? null,
-          evidenceSummary: row.evidenceSummary ?? null,
-        })),
+        {
+          sessions: rows.map((row) => ({
+            file: row.file,
+            size: row.size,
+            modifiedAt: row.modified.toISOString(),
+            usage: row.usage ?? null,
+            evidenceSummary: row.evidenceSummary ?? null,
+          })),
+          truncated: total > rows.length,
+          total,
+        },
         null,
         2
       )
@@ -2208,6 +2241,51 @@ async function listSessions(
     console.log(
       `  ${file.padEnd(32)} ${String(row.size).padStart(10)} bytes${tokens}${evidence}  ${row.modified.toISOString()}`
     );
+  }
+}
+
+interface SessionListRow {
+  file: string;
+  size: number;
+  modified: Date;
+  usage?: ChatUsage;
+  evidenceSummary?: EvidenceSummary;
+}
+
+interface SessionListCandidate extends SessionListRow {
+  metadataReadable: boolean;
+}
+
+function compareSessionListRows(left: SessionListRow, right: SessionListRow): number {
+  const modified = right.modified.getTime() - left.modified.getTime();
+  if (modified !== 0) {
+    return modified;
+  }
+  if (left.file < right.file) {
+    return -1;
+  }
+  if (left.file > right.file) {
+    return 1;
+  }
+  return 0;
+}
+
+function insertNewestSessionCandidate(
+  candidates: SessionListCandidate[],
+  candidate: SessionListCandidate
+): void {
+  const insertionIndex = candidates.findIndex(
+    (existing) => compareSessionListRows(candidate, existing) < 0
+  );
+  if (insertionIndex < 0) {
+    if (candidates.length < MAX_SESSION_LIST_ENTRIES) {
+      candidates.push(candidate);
+    }
+    return;
+  }
+  candidates.splice(insertionIndex, 0, candidate);
+  if (candidates.length > MAX_SESSION_LIST_ENTRIES) {
+    candidates.pop();
   }
 }
 

@@ -71,11 +71,13 @@ test("--session-list --json prints the session files as JSON", async () => {
     });
 
     assert.equal(result.code, 0, result.stderr);
-    const sessions = JSON.parse(result.stdout);
-    assert.equal(sessions.length, 1);
-    assert.equal(sessions[0].file, "demo.json");
-    assert.ok(typeof sessions[0].size === "number");
-    assert.ok(!Number.isNaN(Date.parse(sessions[0].modifiedAt)));
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.total, 1);
+    assert.equal(payload.truncated, false);
+    assert.equal(payload.sessions.length, 1);
+    assert.equal(payload.sessions[0].file, "demo.json");
+    assert.ok(typeof payload.sessions[0].size === "number");
+    assert.ok(!Number.isNaN(Date.parse(payload.sessions[0].modifiedAt)));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

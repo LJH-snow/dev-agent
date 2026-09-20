@@ -211,7 +211,7 @@ temporary absolute path or source content.
   size/time/shape guard, the covering test, and one of `PRESERVE`, `FIX`, or
   `NEEDS-EVIDENCE`.
 
-- [ ] **Step 1: Build an inventory**
+- [x] **Step 1: Build an inventory**
 
 Search for:
 
@@ -221,18 +221,25 @@ rg -n "readFile|readFileSync|createReadStream|JSON\.parse|JSON\.stringify|readdi
   packages/mcp/src packages/model/src packages/runtime-manager/src runtime/rust/src
 ```
 
-- [ ] **Step 2: Trace each candidate to its caller and test**
+- [x] **Step 2: Trace each candidate to its caller and test**
 
 For every candidate, record whether input is bounded before bytes are loaded,
 whether output is metadata-only, and which test proves the behavior. Do not
 classify a path as a bug solely because it uses `readFile`; identify the actual
 attacker-controlled or project-controlled input and the observable impact.
 
-- [ ] **Step 3: Produce a bounded decision list**
+- [x] **Step 3: Produce a bounded decision list**
 
 The report must end with a table containing exact file paths, a reproduction
 command for each `FIX`, and the reason each `PRESERVE` item is already covered.
 The main agent will decide whether to create another implementation task.
+
+Audit completed on 2026-09-20. The decision list and follow-up reproductions are
+recorded in `.superpowers/sdd/2026-09-18-next-development-plan/task-2-audit.md`.
+The five reproducible gaps were assigned to the follow-up hardening slice in
+`docs/superpowers/plans/2026-09-20-eight-hour-hardening.md` and are now covered
+by focused regression tests. The four `NEEDS-EVIDENCE` items remain unchanged
+until their contracts are defined.
 
 ---
 

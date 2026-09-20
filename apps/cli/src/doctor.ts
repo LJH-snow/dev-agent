@@ -4,7 +4,11 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { resolveExecutorMode, type ExecutorMode } from "@dev-agent/executor";
+import {
+  DEFAULT_RUST_EXECUTOR_MAX_FRAME_BYTES,
+  resolveExecutorMode,
+  type ExecutorMode,
+} from "@dev-agent/executor";
 import { redactSensitiveText, sanitizeTerminalText } from "./tui-renderer.js";
 
 export type DoctorStatus = "ok" | "warn" | "fail";
@@ -120,6 +124,8 @@ const MIN_NODE_MAJOR = 20;
 const MAX_CONFIG_FILE_BYTES = 1024 * 1024; // 1 MiB
 const CLI_LATEST_URL = "https://registry.npmjs.org/@agent_cli%2fcli/latest";
 const MAX_UPDATE_RESPONSE_BYTES = 64 * 1024;
+const MAX_COMMAND_VERSION_BYTES = 64 * 1024;
+const MAX_RUST_PROBE_STDERR_BYTES = 16 * 1024;
 const UPDATE_CHECK_TIMEOUT_MS = 5000;
 
 export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
@@ -624,13 +630,25 @@ function doctorErrorCode(error: unknown): string {
 function defaultCommandVersion(command: string): Promise<string | undefined> {
   return new Promise((resolve) => {
     const child = spawn(command, ["--version"], { stdio: ["ignore", "pipe", "pipe"] });
-    let output = "";
-    child.stdout.on("data", (chunk: Buffer) => {
-      output += chunk.toString();
+    let output = Buffer.alloc(0);
+    let oversized = false;
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (output.length + bytes.length > MAX_COMMAND_VERSION_BYTES) {
+        oversized = true;
+        child.kill();
+        return;
+      }
+      output = Buffer.concat([output, bytes]);
     });
+    child.stderr.resume();
     child.on("error", () => resolve(undefined));
     child.on("close", (code) => {
-      const firstLine = output.split("\n")[0]?.trim();
+      if (oversized) {
+        resolve(undefined);
+        return;
+      }
+      const firstLine = output.toString("utf8").split("\n")[0]?.trim();
       resolve(code === 0 && firstLine ? firstLine : undefined);
     });
   });
@@ -640,16 +658,68 @@ function defaultCommandVersion(command: string): Promise<string | undefined> {
 export function probeRustBinary(path: string): Promise<RustProbeResult> {
   return new Promise((resolve, reject) => {
     const child = spawn(path, { stdio: ["pipe", "pipe", "pipe"] });
-    let stdout = Buffer.alloc(0);
-    let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout = Buffer.concat([stdout, chunk]);
+    const maxFrameBytes = DEFAULT_RUST_EXECUTOR_MAX_FRAME_BYTES;
+    const maxOutputBytes = maxFrameBytes + 4;
+    const stdoutChunks: Buffer[] = [];
+    const stderrChunks: Buffer[] = [];
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let oversized = false;
+    let frameLengthChecked = false;
+
+    const stopForOversizedResponse = (): void => {
+      if (oversized) {
+        return;
+      }
+      oversized = true;
+      child.kill();
+    };
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      if (oversized) {
+        return;
+      }
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      if (stdoutBytes + bytes.length > maxOutputBytes) {
+        stopForOversizedResponse();
+        return;
+      }
+      stdoutChunks.push(bytes);
+      stdoutBytes += bytes.length;
+      if (!frameLengthChecked && stdoutBytes >= 4) {
+        frameLengthChecked = true;
+        const prefix = Buffer.concat(stdoutChunks, stdoutBytes);
+        if (prefix.readUInt32BE(0) > maxFrameBytes) {
+          stopForOversizedResponse();
+        }
+      }
     });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      if (stderrBytes >= MAX_RUST_PROBE_STDERR_BYTES) {
+        return;
+      }
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const remaining = MAX_RUST_PROBE_STDERR_BYTES - stderrBytes;
+      const bounded = bytes.subarray(0, remaining);
+      stderrChunks.push(bounded);
+      stderrBytes += bounded.length;
     });
-    child.on("error", reject);
+    child.on("error", (error) => {
+      if (!oversized) {
+        reject(error);
+      }
+    });
     child.on("close", (code) => {
+      if (oversized) {
+        reject(
+          new Error(
+            `Rust executor response exceeds the ${maxFrameBytes} byte frame limit`
+          )
+        );
+        return;
+      }
+      const stdout = Buffer.concat(stdoutChunks, stdoutBytes);
+      const stderr = Buffer.concat(stderrChunks, stderrBytes).toString("utf8");
       if (code !== 0) {
         reject(new Error(`Rust executor exited with code ${code}: ${stderr}`));
         return;
