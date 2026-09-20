@@ -173,6 +173,41 @@ test("--approval ask runs the command when the answer starts with y", async () =
   }
 });
 
+test("--approval ask denies pre-newline input over the byte limit", async (t) => {
+  const inputs = [
+    ["ASCII", `y${"x".repeat(4 * 1024)}`],
+    ["UTF-8", `y${"é".repeat(2_048)}`],
+  ] as const;
+
+  for (const [label, input] of inputs) {
+    await t.test(label, async () => {
+      const { dir, target } = await setup();
+      const provider = await startStubProvider({ command: "chmod", args: ["777", target] });
+      try {
+        const result = await runCli(
+          ["--once", "run it", "--no-stream", "--approval", "ask"],
+          {
+            ...process.env,
+            DEV_AGENT_MODEL_PROVIDER: "openai",
+            OPENAI_API_KEY: "test-key",
+            OPENAI_BASE_URL: provider.baseUrl,
+            DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+          },
+          input
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stdout, /\[denied\] shell/);
+        assert.doesNotMatch(result.stderr, new RegExp(input.slice(0, 32)));
+        assert.notEqual(await modeOf(target), 0o777, "the oversized approval must not run");
+      } finally {
+        await provider.close();
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
 async function writeConfig(dir, config) {
   const configDir = join(dir, ".dev-agent");
   await mkdir(configDir, { recursive: true });

@@ -138,6 +138,7 @@ const DEFAULT_ONCE_CONTEXT_CHARS = 4000;
 const DEFAULT_ONCE_TOOL_OUTPUT_CHARS = 6000;
 const DEFAULT_ONCE_MAX_REPEATED_TOOL_FAILURES = 2;
 const MAX_SESSION_LIST_ENTRIES = 256;
+export const MAX_APPROVAL_INPUT_BYTES = 4 * 1024;
 const defaultSystemPrompt = [
   "You are dev-agent, a coding agent. Use tools when they help answer the user.",
   "Ground findings in actual tool output; cite path:line and verify every cited location in current source.",
@@ -2099,17 +2100,27 @@ function readLineFromStdin(question: string): Promise<string> {
   process.stderr.write(question);
   return new Promise((resolve) => {
     let buffer = "";
+    let bufferBytes = 0;
     const cleanup = (): void => {
       process.stdin.off("data", onData);
       process.stdin.off("end", onEnd);
       process.stdin.pause();
     };
     const onData = (chunk: Buffer | string): void => {
-      buffer += chunk.toString();
-      const newline = buffer.indexOf("\n");
+      const text = chunk.toString();
+      const newline = text.indexOf("\n");
+      const line = newline >= 0 ? text.slice(0, newline) : text;
+      const lineBytes = Buffer.byteLength(line, "utf8");
+      if (bufferBytes + lineBytes > MAX_APPROVAL_INPUT_BYTES) {
+        cleanup();
+        resolve("");
+        return;
+      }
+      buffer += line;
+      bufferBytes += lineBytes;
       if (newline >= 0) {
         cleanup();
-        resolve(buffer.slice(0, newline));
+        resolve(buffer);
       }
     };
     const onEnd = (): void => {
