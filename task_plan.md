@@ -100,3 +100,27 @@ and hand off.
 
 Completed on 2026-09-20. No npm publish, tag, GitHub Release, signing,
 notarization, or package upload was performed.
+
+### Phase 6: Runtime events and Ink CLI migration (active)
+
+The design and execution plan are recorded in:
+
+- `docs/superpowers/specs/2026-09-20-runtime-events-and-ink-cli-design.md`
+- `docs/superpowers/plans/2026-09-20-runtime-events-ink-cli.md`
+
+- [x] Record the shared Runtime Event, behavior-evaluation, checkpoint,
+      Skills, Hooks, tool metadata, and Ink migration design.
+- [x] Record the task-by-task implementation plan and acceptance gates.
+- [ ] Add `@dev-agent/runtime-events` and emit versioned events from AgentLoop.
+- [ ] Project the shared events into CLI and Desktop.
+- [ ] Add root `evals/` behavior tests for queue, streaming, approval,
+      cancellation, resize, EOF, and tool-loop behavior.
+- [ ] Add FileMemory-backed checkpoint metadata.
+- [ ] Add bounded Skills and Hooks registries.
+- [ ] Add tool risk, confirmation, and result-format metadata.
+- [ ] Migrate rich TTY rendering to Ink 6/React 19 while preserving non-rich
+      output contracts.
+- [ ] Run focused tests, `pnpm test:evals`, `pnpm verify`, and diff checks.
+
+Scheduler, additional sandbox backends, ACP, and A2A remain explicitly
+deferred until the single-agent event and evaluation contracts are stable.

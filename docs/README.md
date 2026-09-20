@@ -41,6 +41,10 @@ numbered items 62/63/64 in the root README Roadmap.
   The current Signal Loom rich CLI/Desktop workbench is specified in the
   [workbench design](superpowers/specs/2026-09-19-desktop-cli-workbench-design.md)
   and implemented according to the [Signal Loom TTY plan](superpowers/plans/2026-09-19-signal-loom-cli-tui.md).
+  The next shared-runtime migration is specified in the
+  [Runtime Events and Ink CLI design](superpowers/specs/2026-09-20-runtime-events-and-ink-cli-design.md)
+  and tracked in the
+  [Runtime Events and Ink CLI plan](superpowers/plans/2026-09-20-runtime-events-ink-cli.md).
   The [2026-09-18 overnight plan](superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
   its [progress record](superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
   and the [v0.1.7 Desktop candidate checklist](release-candidate-checklist-v0.1.7-desktop.md)
@@ -61,6 +65,7 @@ dev-agent/
 │   └── desktop/          Local web server with streaming chat UI (SSE)
 ├── packages/
 │   ├── agent-core/       Agent loop, context, memory, agent state
+│   ├── runtime-events/   Shared versioned runtime event contracts (planned)
 │   ├── model/            Unified LLM provider (OpenAI, Anthropic, Gemini, Ollama)
 │   ├── tools/            Tool registry + built-in tools (fs, shell, git, search, code-search)
 │   ├── mcp/              MCP client, reconnect backoff, notification debounce
@@ -72,6 +77,11 @@ dev-agent/
 ├── docs/                 This documentation
 └── tests/                Test suites
 ```
+
+The planned `evals/` directory contains PTY-level behavior evaluations for the
+rich CLI. It is intentionally separate from package unit tests because it
+checks the user-visible queue, cursor, approval, resize, and interruption
+contracts.
 
 ## Module Responsibilities
 
