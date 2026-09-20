@@ -78,3 +78,25 @@ Final verification completed on 2026-09-20:
   `Info.plist` lint passed; `git diff --check` passed.
 - Final whole-branch review was clean with no Critical or Important findings.
 - `codex/desktop-cli-workbench` was pushed to GitHub at `7c35d79`.
+
+### Phase 5: Native macOS local bundle polish (complete)
+
+The implementation plan at
+`docs/superpowers/plans/2026-09-20-native-macos-local-bundle-polish.md`
+keeps the native shell local while making the staged app easier to recognize
+and hand off.
+
+- [x] Generate `SignalLoom.icns` from the canonical Signal Loom SVG during
+      app staging.
+- [x] Add `CFBundleIconFile` metadata to the generated app bundle.
+- [x] Add non-launching `--package`/`package` mode with a local ZIP and
+      SHA-256 sidecar.
+- [x] Document the checkout-bound archive and its unsigned, non-notarized
+      limitation.
+- [x] Add the native bundle contract to the fixed TypeScript verification
+      gate.
+- [x] Run focused native checks, full `pnpm verify`, app launch verification,
+      archive inspection, and checksum verification.
+
+Completed on 2026-09-20. No npm publish, tag, GitHub Release, signing,
+notarization, or package upload was performed.

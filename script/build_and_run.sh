@@ -12,6 +12,10 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/SignalLoomDesktop"
 SERVER_SCRIPT="$ROOT_DIR/apps/desktop/dist/index.js"
+ICON_SOURCE="$ROOT_DIR/apps/desktop/public/signal-loom.svg"
+ICON_FILE="SignalLoom.icns"
+LOCAL_ARCHIVE="$DIST_DIR/Signal Loom Desktop-local.zip"
+LOCAL_ARCHIVE_CHECKSUM="$LOCAL_ARCHIVE.sha256"
 APP_PROCESS_NAME="SignalLoomDesktop"
 BUNDLE_ID="com.signal-loom.desktop"
 MIN_SYSTEM_VERSION="13.0"
@@ -31,6 +35,34 @@ kill_existing_app() {
   done < <(
     /usr/bin/pgrep -f "$SERVER_SCRIPT" || true
   )
+}
+
+stage_app_icon() {
+  if [[ ! -x /usr/bin/sips || ! -x /usr/bin/iconutil ]]; then
+    echo "macOS sips and iconutil are required to stage the Signal Loom icon." >&2
+    exit 1
+  fi
+  if [[ ! -f "$ICON_SOURCE" ]]; then
+    echo "Signal Loom icon source is missing: $ICON_SOURCE" >&2
+    exit 1
+  fi
+
+  local iconset="$SWIFT_BUILD_DIR/SignalLoom.iconset"
+  rm -rf "$iconset"
+  mkdir -p "$iconset"
+
+  local size
+  local retina_size
+  for size in 16 32 128 256 512; do
+    retina_size=$((size * 2))
+    /usr/bin/sips -s format png -z "$size" "$size" "$ICON_SOURCE" \
+      --out "$iconset/icon_${size}x${size}.png" >/dev/null
+    /usr/bin/sips -s format png -z "$retina_size" "$retina_size" "$ICON_SOURCE" \
+      --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+  done
+
+  /usr/bin/iconutil -c icns "$iconset" -o "$APP_RESOURCES/$ICON_FILE"
+  rm -rf "$iconset"
 }
 
 stage_app() {
@@ -79,6 +111,8 @@ stage_app() {
   <string>Signal Loom Desktop</string>
   <key>CFBundleDisplayName</key>
   <string>Signal Loom Desktop</string>
+  <key>CFBundleIconFile</key>
+  <string>$ICON_FILE</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>LSMinimumSystemVersion</key>
@@ -88,6 +122,27 @@ stage_app() {
 </dict>
 </plist>
 PLIST
+
+  stage_app_icon
+}
+
+package_app() {
+  stage_app
+
+  local archive_tmp="$LOCAL_ARCHIVE.tmp.$$"
+  local checksum_tmp="$LOCAL_ARCHIVE_CHECKSUM.tmp.$$"
+  /usr/bin/ditto -c -k --sequesterRsrc --keepParent \
+    "$APP_BUNDLE" "$archive_tmp"
+  /bin/mv "$archive_tmp" "$LOCAL_ARCHIVE"
+
+  (
+    cd "$DIST_DIR"
+    /usr/bin/shasum -a 256 "$(basename "$LOCAL_ARCHIVE")" >"$checksum_tmp"
+  )
+  /bin/mv "$checksum_tmp" "$LOCAL_ARCHIVE_CHECKSUM"
+
+  echo "Local app archive: $LOCAL_ARCHIVE"
+  echo "SHA-256 sidecar: $LOCAL_ARCHIVE_CHECKSUM"
 }
 
 open_app() {
@@ -174,34 +229,40 @@ verify_app() {
   exit 1
 }
 
-kill_existing_app
-
 case "$MODE" in
   run)
+    kill_existing_app
     stage_app
     launch_app
     ;;
   --verify|verify)
+    kill_existing_app
     stage_app
     launch_app_direct
     verify_app
     ;;
+  --package|package)
+    package_app
+    ;;
   --debug|debug)
+    kill_existing_app
     stage_app
     lldb -- "$APP_BINARY"
     ;;
   --logs|logs)
+    kill_existing_app
     stage_app
     launch_app
     exec /usr/bin/log stream --info --style compact --predicate "process == \"$APP_PROCESS_NAME\""
     ;;
   --telemetry|telemetry)
+    kill_existing_app
     stage_app
     launch_app
     exec /usr/bin/log stream --info --style compact --predicate "subsystem == \"$BUNDLE_ID\""
     ;;
   *)
-    echo "usage: $0 [run|--verify|--debug|--logs|--telemetry]" >&2
+    echo "usage: $0 [run|--verify|--package|--debug|--logs|--telemetry]" >&2
     exit 2
     ;;
 esac

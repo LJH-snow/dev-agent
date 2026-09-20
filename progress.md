@@ -87,3 +87,24 @@
 - Final whole-branch review of `e1ebee8..b92eb7a` was clean with no Critical
   or Important findings. The two Minor observations were addressed before
   delivery.
+
+## 2026-09-20 native macOS local bundle polish
+
+- Saved and executed
+  `docs/superpowers/plans/2026-09-20-native-macos-local-bundle-polish.md`.
+- The native launcher now generates `SignalLoom.icns` from
+  `apps/desktop/public/signal-loom.svg` and records it in the staged
+  `Info.plist`.
+- Added `./script/build_and_run.sh --package`, which creates the
+  checkout-bound `dist/Signal Loom Desktop-local.zip` and
+  `dist/Signal Loom Desktop-local.zip.sha256` without launching the app.
+- Native bundle contract tests passed **2/2**; Swift package tests passed
+  **8/8**; the staged app passed `/health` launch verification and left no
+  residual native app or child Desktop server process.
+- `pnpm build` passed and the complete `pnpm verify` gate passed with CLI
+  **392/392**, Desktop **138/138**, model **72/72**, tools **151/151**,
+  documentation **57/57**, native bundle contract **2/2**, Rust
+  unit/bin/doc tests **54/54**, and real Rust integration **11/11**.
+- Archive contents and the SHA-256 sidecar were verified from `dist/`.
+- No npm publish, tag, GitHub Release, signing, notarization, or package
+  upload was performed.

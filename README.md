@@ -73,6 +73,20 @@ Run the bounded build and health check when validating a checkout:
 ./script/build_and_run.sh --verify
 ```
 
+Create a local, checkout-bound archive of the same app bundle without
+launching it:
+
+```bash
+./script/build_and_run.sh --package
+(cd dist && shasum -a 256 -c "Signal Loom Desktop-local.zip.sha256")
+```
+
+The archive includes the Signal Loom app icon generated from the checked-in
+`apps/desktop/public/signal-loom.svg` asset. It is intended for moving this
+checkout on the same machine or keeping a local artifact, not for distribution:
+the bundle records the current project root and Node executable path, does not
+bundle Node, and is not Developer ID signed or notarized.
+
 The first version is a local development application and is not Developer ID
 signed or notarized. Node.js is resolved from the current environment and
 recorded in the app bundle; Node is not bundled. The launcher starts the app
