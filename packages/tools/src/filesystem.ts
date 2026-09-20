@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Dirent } from "node:fs";
 import {
   chmod,
   lstat,
@@ -6,7 +7,6 @@ import {
   open,
   opendir,
   readFile,
-  readdir,
   rename,
   rmdir,
   stat,
@@ -957,17 +957,48 @@ async function preflightRollback(record: StoredChangeSet): Promise<void> {
         `filesystem change set ${record.review.changeSetId} postimage conflict at ${directory}`
       );
     }
-    const entries = await readdir(directory);
-    const unexpectedEntries = entries.filter((entry) => {
-      const entryPath = resolve(directory, entry);
-      return !createdDirectorySet.has(entryPath) && !rollbackFileSet.has(entryPath);
-    });
-    if (unexpectedEntries.length > 0) {
-      throw new Error(
-        `filesystem change set ${record.review.changeSetId} cannot rollback non-empty directory ${directory}`
+    const directoryHandle = await opendir(directory);
+    try {
+      const unexpectedPath = await findUnexpectedRollbackEntry(
+        directory,
+        directoryHandle,
+        createdDirectorySet,
+        rollbackFileSet
       );
+      if (unexpectedPath !== undefined) {
+        throw new Error(
+          `filesystem change set ${record.review.changeSetId} cannot rollback non-empty directory ${directory}`
+        );
+      }
+    } finally {
+      try {
+        await directoryHandle.close();
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !("code" in error) ||
+          error.code !== "ERR_DIR_CLOSED"
+        ) {
+          throw error;
+        }
+      }
     }
   }
+}
+
+export async function findUnexpectedRollbackEntry(
+  directory: string,
+  entries: AsyncIterable<Dirent>,
+  createdDirectorySet: ReadonlySet<string>,
+  rollbackFileSet: ReadonlySet<string>
+): Promise<string | undefined> {
+  for await (const entry of entries) {
+    const entryPath = resolve(directory, entry.name);
+    if (!createdDirectorySet.has(entryPath) && !rollbackFileSet.has(entryPath)) {
+      return entryPath;
+    }
+  }
+  return undefined;
 }
 
 function assertAppliedChangeSetRecord(record: AppliedChangeSetRecord): void {
