@@ -1,6 +1,7 @@
 import { readBoundedJsonResponse } from "./json-response.js";
 import { MAX_STREAM_LINE_BYTES, assertBoundedLineBuffer } from "./line-reader.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
+import { StreamOutputBudget, StreamOutputLimitError } from "./stream-budget.js";
 import type {
   ChatCompletion,
   ChatMessage,
@@ -139,6 +140,7 @@ export class OpenAIProvider implements ModelProvider {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const budget = new StreamOutputBudget();
     let content = "";
     let buffer = "";
     let finished = false;
@@ -169,18 +171,29 @@ export class OpenAIProvider implements ModelProvider {
         const delta = json.choices?.[0]?.delta;
         if (!delta) return;
         if (delta.content) {
+          budget.addText(delta.content);
           content += delta.content;
           options.onToken?.(delta.content);
         }
         for (const call of delta.tool_calls ?? []) {
           const index = call.index ?? 0;
           const accumulated = toolCallDeltas.get(index) ?? { id: "", name: "", args: "" };
-          if (call.id) accumulated.id = call.id;
-          if (call.function?.name) accumulated.name = call.function.name;
-          if (call.function?.arguments) accumulated.args += call.function.arguments;
+          if (call.id) {
+            budget.addText(call.id);
+            accumulated.id = call.id;
+          }
+          if (call.function?.name) {
+            budget.addText(call.function.name);
+            accumulated.name = call.function.name;
+          }
+          if (call.function?.arguments) {
+            budget.addText(call.function.arguments);
+            accumulated.args += call.function.arguments;
+          }
           toolCallDeltas.set(index, accumulated);
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof StreamOutputLimitError) throw error;
         // skip malformed
       }
     };
@@ -203,6 +216,11 @@ export class OpenAIProvider implements ModelProvider {
       if (!finished && buffer.length > 0) {
         handleLine(buffer);
       }
+    } catch (error) {
+      if (error instanceof StreamOutputLimitError) {
+        await reader.cancel().catch(() => undefined);
+      }
+      throw error;
     } finally {
       reader.releaseLock();
     }

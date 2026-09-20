@@ -1,6 +1,7 @@
 import { readBoundedJsonResponse } from "./json-response.js";
 import { MAX_STREAM_LINE_BYTES, assertBoundedLineBuffer } from "./line-reader.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
+import { StreamOutputBudget, StreamOutputLimitError } from "./stream-budget.js";
 import type {
   ChatCompletion,
   ChatMessage,
@@ -122,6 +123,7 @@ export class OllamaProvider implements ModelProvider {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const budget = new StreamOutputBudget();
     let content = "";
     const toolCalls: ToolCall[] = [];
     let buffer = "";
@@ -137,17 +139,26 @@ export class OllamaProvider implements ModelProvider {
         }
         const delta = chunk.message?.content ?? "";
         if (delta) {
+          budget.addText(delta);
           content += delta;
           options.onToken?.(delta);
         }
         const reasoning = chunk.message?.thinking ?? chunk.message?.reasoning_content ?? "";
         if (reasoning) {
+          budget.addText(reasoning);
           options.onReasoning?.(reasoning);
         }
         for (const call of chunk.message?.tool_calls ?? []) {
+          if (call.function?.name) {
+            budget.addText(call.function.name);
+          }
+          if (call.function?.arguments !== undefined) {
+            budget.addJson(call.function.arguments);
+          }
           toolCalls.push(parseOllamaToolCall(call, toolCalls.length));
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof StreamOutputLimitError) throw error;
         // skip malformed line
       }
     };
@@ -168,6 +179,11 @@ export class OllamaProvider implements ModelProvider {
       if (buffer.length > 0) {
         handleLine(buffer);
       }
+    } catch (error) {
+      if (error instanceof StreamOutputLimitError) {
+        await reader.cancel().catch(() => undefined);
+      }
+      throw error;
     } finally {
       reader.releaseLock();
     }

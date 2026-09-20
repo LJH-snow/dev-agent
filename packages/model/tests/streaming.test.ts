@@ -26,8 +26,38 @@ function streamFromStrings(chunks) {
   return streamFromBytes(chunks.map((chunk) => encoder.encode(chunk)));
 }
 
+function cancellableStreamFromStrings(chunks) {
+  let cancelled = false;
+  let index = 0;
+  let closeTimer;
+  const stream = new ReadableStream({
+    pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(encoder.encode(chunks[index++]));
+        return;
+      }
+      if (!closeTimer) {
+        closeTimer = setTimeout(() => controller.close(), 50);
+      }
+    },
+    cancel() {
+      cancelled = true;
+      if (closeTimer) clearTimeout(closeTimer);
+    },
+  });
+  return {
+    response: new Response(stream, { status: 200 }),
+    wasCancelled: () => cancelled,
+  };
+}
+
 function openAIEvent(content) {
   return `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
+}
+
+function cumulativeLimitChunks(buildLine) {
+  const chunk = "x".repeat(1_000_000);
+  return Array.from({ length: 17 }, () => buildLine(chunk));
 }
 
 // ---------------------------------------------------------------------------
@@ -494,6 +524,125 @@ test("Ollama streamChat throws on a non-OK response", async () => {
     () => provider.streamChat([{ role: "user", content: "hi" }]),
     /Ollama stream request failed \(404\): missing model/
   );
+});
+
+// ---------------------------------------------------------------------------
+// Cumulative output budget
+// ---------------------------------------------------------------------------
+
+test("OpenAI streamChat rejects cumulative output over the limit and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks(openAIEvent)
+  );
+  const provider = createOpenAIProvider({
+    model: "gpt-4.1",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Anthropic streamChat rejects cumulative output over the limit and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks(
+      (text) =>
+        `data: ${JSON.stringify({
+          type: "content_block_delta",
+          delta: { type: "text_delta", text },
+        })}\n\n`
+    )
+  );
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Gemini streamChat rejects cumulative output over the limit and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks(
+      (text) =>
+        `data: ${JSON.stringify({
+          candidates: [{ content: { parts: [{ text }] } }],
+        })}\n\n`
+    )
+  );
+  const provider = createGeminiProvider({
+    model: "gemini-2.5-pro",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Ollama streamChat rejects cumulative output over the limit and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks((content) => `{"message":{"content":${JSON.stringify(content)}}}\n`)
+  );
+  const provider = createOllamaProvider({
+    model: "qwen3:4b-instruct",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
 });
 
 // ---------------------------------------------------------------------------
