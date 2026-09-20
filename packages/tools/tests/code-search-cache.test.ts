@@ -73,6 +73,77 @@ test("a deleted file is dropped from the cached index", async () => {
   }
 });
 
+test("a file-count scan limit rejects before caching a partial symbol index", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-file-limit-"));
+  try {
+    await writeFile(join(dir, "first.rs"), "fn first() {}\n", "utf8");
+    await writeFile(join(dir, "second.rs"), "fn second() {}\n", "utf8");
+    await writeFile(join(dir, "third.rs"), "fn third() {}\n", "utf8");
+    const tool: any = new (CodeSearchTool as any)({
+      maxFiles: 2,
+      maxSourceBytes: 1_000,
+    });
+
+    await assert.rejects(
+      tool.execute({ mode: "search", query: "first", path: dir }),
+      (error) => {
+        const candidate = error as any;
+        assert.equal(candidate.code, "CODE_SEARCH_SCAN_LIMIT_EXCEEDED");
+        assert.equal(candidate.dimension, "files");
+        assert.equal(candidate.limit, 2);
+        assert.equal(candidate.observed, 3);
+        assert.equal(candidate.message, "code-search scan files limit exceeded");
+        assert.ok(!candidate.message.includes(dir));
+        return true;
+      }
+    );
+    assert.deepEqual(tool.getCacheStats(), {
+      hits: 0,
+      misses: 0,
+      rescanned: 0,
+      loadedFromDisk: 0,
+      persisted: 0,
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a source-byte scan limit rejects before returning partial symbols", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-byte-limit-"));
+  try {
+    await writeFile(join(dir, "first.rs"), "fn a(){}", "utf8");
+    await writeFile(join(dir, "second.rs"), "fn b(){}", "utf8");
+    const tool: any = new (CodeSearchTool as any)({
+      maxFiles: 2,
+      maxSourceBytes: 10,
+    });
+
+    await assert.rejects(
+      tool.execute({ mode: "search", query: "a", path: dir }),
+      (error) => {
+        const candidate = error as any;
+        assert.equal(candidate.code, "CODE_SEARCH_SCAN_LIMIT_EXCEEDED");
+        assert.equal(candidate.dimension, "bytes");
+        assert.equal(candidate.limit, 10);
+        assert.equal(candidate.observed, 16);
+        assert.equal(candidate.message, "code-search scan bytes limit exceeded");
+        assert.ok(!candidate.message.includes(dir));
+        return true;
+      }
+    );
+    assert.deepEqual(tool.getCacheStats(), {
+      hits: 0,
+      misses: 0,
+      rescanned: 0,
+      loadedFromDisk: 0,
+      persisted: 0,
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("a file above the 16 MiB scan limit is skipped without indexing", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-oversize-"));
   try {

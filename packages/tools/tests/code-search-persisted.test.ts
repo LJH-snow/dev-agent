@@ -454,3 +454,56 @@ test("an oversized persisted index is skipped in favor of a full scan", async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("an oversized code-search write-back leaves the previous index untouched", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-persisted-write-limit-"));
+  const file = join(dir, "sample.ts");
+  const preservedFile = join(dir, "deep", "nested", "large.ts");
+  const indexPath = join(dir, ".dev-agent", "index.json");
+  const maxBytes = 16 * 1024 * 1024;
+  const preservedSource = "x".repeat(maxBytes - 6_000);
+  const candidateSource = `${SOURCE}${"y".repeat(10_000)}`;
+  const previousPayload = {
+    version: 1,
+    files: {
+      [file]: "old\n",
+      [preservedFile]: preservedSource,
+    },
+    symbols: [],
+    signatures: {
+      [file]: { mtimeMs: 1, size: 1, ctimeMs: 1 },
+      [preservedFile]: { mtimeMs: 1, size: preservedSource.length, ctimeMs: 1 },
+    },
+  };
+  const previousContents = `${JSON.stringify(previousPayload)}\n`;
+  const candidatePreview = `${JSON.stringify({
+    ...previousPayload,
+    files: {
+      ...previousPayload.files,
+      [file]: candidateSource,
+    },
+  })}\n`;
+
+  try {
+    assert.ok(Buffer.byteLength(previousContents, "utf8") < maxBytes);
+    assert.ok(Buffer.byteLength(candidatePreview, "utf8") > maxBytes);
+    await writeFile(file, candidateSource, "utf8");
+    await mkdir(join(dir, ".dev-agent"), { recursive: true });
+    await writeFile(indexPath, previousContents, "utf8");
+    const before = await readFile(indexPath);
+    const tool: any = new CodeSearchTool();
+
+    const result = await tool.execute({
+      mode: "search",
+      query: "realSymbol",
+      path: dir,
+      maxDepth: 0,
+    });
+
+    assert.equal(result.count, 1);
+    assert.equal(tool.getCacheStats().persisted, 0);
+    assert.deepEqual(await readFile(indexPath), before);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

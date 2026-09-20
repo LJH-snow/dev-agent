@@ -1,4 +1,4 @@
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
+import { opendir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
@@ -53,6 +53,8 @@ const defaultMaxDepth = 8;
 const defaultLimit = 50;
 const maxScanFileBytes = 16 * 1024 * 1024;
 const maxPersistedIndexBytes = 16 * 1024 * 1024; // 16 MiB
+const defaultMaxScanFiles = 100_000;
+const defaultMaxScanSourceBytes = 256 * 1024 * 1024;
 const modes: readonly Mode[] = ["search", "references", "definition"];
 const symbolKinds = new Set<SymbolKind>([
   "function",
@@ -88,6 +90,44 @@ export interface CodeSearchCacheStats {
   readonly loadedFromDisk: number;
   /** Times a changed scan was written back to that file. */
   readonly persisted: number;
+}
+
+export const CODE_SEARCH_SCAN_LIMIT_ERROR_CODE =
+  "CODE_SEARCH_SCAN_LIMIT_EXCEEDED" as const;
+
+export type CodeSearchScanLimitDimension = "files" | "bytes";
+
+export class CodeSearchScanLimitError extends Error {
+  readonly code = CODE_SEARCH_SCAN_LIMIT_ERROR_CODE;
+  readonly dimension: CodeSearchScanLimitDimension;
+  readonly limit: number;
+  readonly observed: number;
+
+  constructor(
+    dimension: CodeSearchScanLimitDimension,
+    limit: number,
+    observed: number
+  ) {
+    super(`code-search scan ${dimension} limit exceeded`);
+    this.name = "CodeSearchScanLimitError";
+    this.dimension = dimension;
+    this.limit = limit;
+    this.observed = observed;
+  }
+}
+
+export interface CodeSearchToolOptions {
+  /** Internal test seam; tool input never exposes scan-budget controls. */
+  readonly maxFiles?: number;
+  /** Internal test seam; tool input never exposes scan-budget controls. */
+  readonly maxSourceBytes?: number;
+}
+
+interface ScanBudget {
+  readonly maxFiles: number;
+  readonly maxSourceBytes: number;
+  files: number;
+  sourceBytes: number;
 }
 
 export class CodeSearchTool implements Tool {
@@ -155,6 +195,22 @@ export class CodeSearchTool implements Tool {
     loadedFromDisk: 0,
     persisted: 0,
   };
+
+  private readonly maxScanFiles: number;
+  private readonly maxScanSourceBytes: number;
+
+  constructor(options: CodeSearchToolOptions = {}) {
+    this.maxScanFiles = normalizeScanLimit(
+      options.maxFiles,
+      defaultMaxScanFiles,
+      "maxFiles"
+    );
+    this.maxScanSourceBytes = normalizeScanLimit(
+      options.maxSourceBytes,
+      defaultMaxScanSourceBytes,
+      "maxSourceBytes"
+    );
+  }
 
   /**
    * Returns how often a scan was served from cache, built from scratch, or
@@ -394,7 +450,19 @@ export class CodeSearchTool implements Tool {
   private async loadScan(root: string, maxDepth: number): Promise<CachedScan> {
     const cacheKey = `${root}\u0000${maxDepth}`;
     const ignore = await createProjectIgnoreMatcher(root);
-    const signatures = await collectSignatures(root, 0, maxDepth, ignore);
+    const signatures = await collectSignatures(
+      root,
+      0,
+      maxDepth,
+      ignore,
+      root,
+      {
+        maxFiles: this.maxScanFiles,
+        maxSourceBytes: this.maxScanSourceBytes,
+        files: 0,
+        sourceBytes: 0,
+      }
+    );
     let cached = this.cache.get(cacheKey);
     let replaceBrokenIndex = false;
 
@@ -540,7 +608,11 @@ export class CodeSearchTool implements Tool {
         symbols,
         signatures: Object.fromEntries(signatures),
       };
-      await writeFile(indexPath, `${JSON.stringify(payload)}\n`, "utf8");
+      const contents = Buffer.from(`${JSON.stringify(payload)}\n`, "utf8");
+      if (contents.byteLength > maxPersistedIndexBytes) {
+        return;
+      }
+      await writeFile(indexPath, contents);
       this.cacheStats.persisted += 1;
     } catch {
       // Refreshing the on-disk cache is best-effort; the search result stands.
@@ -887,48 +959,84 @@ async function collectSignatures(
   depth: number,
   maxDepth: number,
   ignore: ProjectIgnoreMatcher,
-  root: string = dir
+  root: string = dir,
+  budget: ScanBudget
 ): Promise<Map<string, FileSignature>> {
   const signatures = new Map<string, FileSignature>();
   if (depth > maxDepth) {
     return signatures;
   }
 
-  const entries = await readdir(dir, { withFileTypes: true });
-  for (const entry of entries) {
-    const entryPath = join(dir, entry.name);
-    const relativePath = relative(root, entryPath);
-    if (skippedDirectories.has(entry.name) || ignore.isIgnored(relativePath, entry.isDirectory())) {
-      continue;
-    }
-    if (entry.isDirectory()) {
-      if (!skippedDirectories.has(entry.name)) {
-        const nested = await collectSignatures(entryPath, depth + 1, maxDepth, ignore, root);
+  const directory = await opendir(dir);
+  try {
+    for await (const entry of directory) {
+      const entryPath = join(dir, entry.name);
+      const relativePath = relative(root, entryPath);
+      if (
+        skippedDirectories.has(entry.name) ||
+        ignore.isIgnored(relativePath, entry.isDirectory())
+      ) {
+        continue;
+      }
+      if (entry.isDirectory()) {
+        const nested = await collectSignatures(
+          entryPath,
+          depth + 1,
+          maxDepth,
+          ignore,
+          root,
+          budget
+        );
         for (const [filePath, signature] of nested) {
           signatures.set(filePath, signature);
         }
+        continue;
       }
-      continue;
-    }
 
-    if (!entry.isFile() || !supportedExtensions.has(extname(entry.name))) {
-      continue;
-    }
+      if (!supportedExtensions.has(extname(entry.name))) {
+        continue;
+      }
 
-    const filePath = entryPath;
-    try {
-      const info = await stat(filePath);
+      const filePath = entryPath;
+      let info;
+      try {
+        info = await stat(filePath);
+      } catch {
+        // Skip files that disappear or cannot be inspected mid-scan.
+        continue;
+      }
+      if (!info.isFile()) {
+        continue;
+      }
       if (info.size > maxScanFileBytes) {
         continue;
       }
+      const observedFiles = budget.files + 1;
+      if (observedFiles > budget.maxFiles) {
+        throw new CodeSearchScanLimitError(
+          "files",
+          budget.maxFiles,
+          observedFiles
+        );
+      }
+      const observedSourceBytes = budget.sourceBytes + info.size;
+      if (observedSourceBytes > budget.maxSourceBytes) {
+        throw new CodeSearchScanLimitError(
+          "bytes",
+          budget.maxSourceBytes,
+          observedSourceBytes
+        );
+      }
+      budget.files = observedFiles;
+      budget.sourceBytes = observedSourceBytes;
       signatures.set(filePath, {
         mtimeMs: info.mtimeMs,
         size: info.size,
         ctimeMs: info.ctimeMs,
       });
-    } catch {
-      // Skip files that disappear or cannot be inspected mid-scan.
     }
+  } finally {
+    await directory.close().catch(() => undefined);
   }
   return signatures;
 }
@@ -948,6 +1056,20 @@ async function isFile(path: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+function normalizeScanLimit(
+  value: number | undefined,
+  fallback: number,
+  field: string
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`code-search ${field} must be a non-negative integer`);
+  }
+  return value;
 }
 
 /**

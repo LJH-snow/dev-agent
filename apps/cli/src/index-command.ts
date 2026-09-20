@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, opendir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
@@ -15,6 +15,29 @@ export interface IndexWarning {
   readonly path: string;
   /** A stable filesystem error category, without the error message or path. */
   readonly code: "EACCES" | "EPERM" | "ENOENT" | "ENOTDIR" | "UNKNOWN";
+}
+
+export const INDEX_SCAN_LIMIT_ERROR_CODE = "INDEX_SCAN_LIMIT_EXCEEDED" as const;
+
+export type IndexScanLimitDimension = "files" | "bytes";
+
+export class IndexScanLimitError extends Error {
+  readonly code = INDEX_SCAN_LIMIT_ERROR_CODE;
+  readonly dimension: IndexScanLimitDimension;
+  readonly limit: number;
+  readonly observed: number;
+
+  constructor(
+    dimension: IndexScanLimitDimension,
+    limit: number,
+    observed: number
+  ) {
+    super(`index scan ${dimension} limit exceeded`);
+    this.name = "IndexScanLimitError";
+    this.dimension = dimension;
+    this.limit = limit;
+    this.observed = observed;
+  }
 }
 
 export interface IndexReport {
@@ -53,6 +76,10 @@ export interface IndexDirectoryOptions {
   readonly signal?: AbortSignal;
   readonly onProgress?: (progress: IndexProgress) => void;
   readonly concurrency?: number;
+  /** Internal test seam; no CLI flag exposes scan-budget controls. */
+  readonly maxFiles?: number;
+  /** Internal test seam; no CLI flag exposes scan-budget controls. */
+  readonly maxSourceBytes?: number;
 }
 
 export class IndexRefreshCancelledError extends Error {
@@ -92,6 +119,8 @@ export async function refreshIndexDirectory(
 
 const DEFAULT_MAX_DEPTH = 8;
 const MAX_INDEX_INPUT_BYTES = 16 * 1024 * 1024; // 16 MiB
+const DEFAULT_MAX_INDEX_FILES = 100_000;
+const DEFAULT_MAX_INDEX_SOURCE_BYTES = 256 * 1024 * 1024;
 const DEFAULT_INDEX_CONCURRENCY = 4;
 const MAX_INDEX_CONCURRENCY = 8;
 
@@ -153,6 +182,13 @@ interface FileSignature {
   readonly ctimeMs: number;
 }
 
+interface ScanBudget {
+  readonly maxFiles: number;
+  readonly maxSourceBytes: number;
+  files: number;
+  sourceBytes: number;
+}
+
 /**
  * Scans a directory and writes a JSON symbol index to
  * `<root>/.dev-agent/index.json`, using the same ignore rules as the
@@ -172,6 +208,16 @@ export async function indexDirectory(
     ? join(root, ".dev-agent", "index.json")
     : resolve(indexPathInput);
   const concurrency = normalizeConcurrency(options.concurrency);
+  const budget: ScanBudget = {
+    maxFiles: normalizeScanLimit(options.maxFiles, DEFAULT_MAX_INDEX_FILES, "maxFiles"),
+    maxSourceBytes: normalizeScanLimit(
+      options.maxSourceBytes,
+      DEFAULT_MAX_INDEX_SOURCE_BYTES,
+      "maxSourceBytes"
+    ),
+    files: 0,
+    sourceBytes: 0,
+  };
   let progress: IndexProgress = {
     phase: "discovering",
     completed: 0,
@@ -213,6 +259,7 @@ export async function indexDirectory(
     ignore,
     true,
     throwIfCancelled,
+    budget,
     () => {
       discovered += 1;
       reportProgress({
@@ -355,7 +402,8 @@ export async function indexDirectory(
     rescanned,
   });
   throwIfCancelled();
-  await writeIndexAtomically(indexPath, `${JSON.stringify(payload)}\n`, options.signal, progress);
+  const contents = Buffer.from(`${JSON.stringify(payload)}\n`, "utf8");
+  await writeIndexAtomically(indexPath, contents, options.signal, progress);
 
   return {
     path: root,
@@ -387,6 +435,7 @@ async function collectFiles(
   ignore: ProjectIgnoreMatcher,
   isRoot: boolean,
   throwIfCancelled: () => void,
+  budget: ScanBudget,
   onFile: () => void
 ): Promise<void> {
   throwIfCancelled();
@@ -394,9 +443,9 @@ async function collectFiles(
     return;
   }
 
-  let entries;
+  let directory;
   try {
-    entries = await readdir(dir, { withFileTypes: true });
+    directory = await opendir(dir);
   } catch (error) {
     if (isRoot) {
       throw error;
@@ -409,62 +458,95 @@ async function collectFiles(
     return;
   }
 
-  entries.sort((left, right) => comparePathNames(left.name, right.name));
-
-  for (const entry of entries) {
-    throwIfCancelled();
-    const entryPath = join(dir, entry.name);
-    if (excludes.has(entryPath)) {
-      matchedExcludes.add(entryPath);
-      continue;
-    }
-
-    const relativePath = relative(root, entryPath);
-    if (SKIPPED_DIRECTORIES.has(entry.name) || ignore.isIgnored(relativePath, entry.isDirectory())) {
-      continue;
-    }
-
-    if (entry.isDirectory()) {
-      await collectFiles(
-        join(dir, entry.name),
-        root,
-        depth + 1,
-        maxDepth,
-        signatures,
-        warnings,
-        matchedExcludes,
-        excludes,
-        ignore,
-        false,
-        throwIfCancelled,
-        onFile
-      );
-      continue;
-    }
-    if (!entry.isFile()) {
-      continue;
-    }
-
-    const language = LANGUAGE_BY_EXTENSION[extname(entry.name)];
-    if (!language) {
-      continue;
-    }
-
-    const filePath = entryPath;
-    try {
-      const info = await stat(filePath);
-      if (info.size > MAX_INDEX_INPUT_BYTES) {
+  try {
+    for await (const entry of directory) {
+      throwIfCancelled();
+      const entryPath = join(dir, entry.name);
+      if (excludes.has(entryPath)) {
+        matchedExcludes.add(entryPath);
         continue;
       }
+
+      const relativePath = relative(root, entryPath);
+      if (
+        SKIPPED_DIRECTORIES.has(entry.name) ||
+        ignore.isIgnored(relativePath, entry.isDirectory())
+      ) {
+        continue;
+      }
+
+      if (entry.isDirectory()) {
+        await collectFiles(
+          entryPath,
+          root,
+          depth + 1,
+          maxDepth,
+          signatures,
+          warnings,
+          matchedExcludes,
+          excludes,
+          ignore,
+          false,
+          throwIfCancelled,
+          budget,
+          onFile
+        );
+        continue;
+      }
+
+      const language = LANGUAGE_BY_EXTENSION[extname(entry.name)];
+      if (!language) {
+        continue;
+      }
+
+      const filePath = entryPath;
+      let info;
+      try {
+        info = await stat(filePath);
+      } catch {
+        // Skip files that disappear or cannot be inspected mid-scan.
+        continue;
+      }
+      if (!info.isFile() || info.size > MAX_INDEX_INPUT_BYTES) {
+        continue;
+      }
+
+      const observedFiles = budget.files + 1;
+      if (observedFiles > budget.maxFiles) {
+        throw new IndexScanLimitError("files", budget.maxFiles, observedFiles);
+      }
+      const observedSourceBytes = budget.sourceBytes + info.size;
+      if (observedSourceBytes > budget.maxSourceBytes) {
+        throw new IndexScanLimitError(
+          "bytes",
+          budget.maxSourceBytes,
+          observedSourceBytes
+        );
+      }
+
+      budget.files = observedFiles;
+      budget.sourceBytes = observedSourceBytes;
       signatures.set(filePath, {
         mtimeMs: info.mtimeMs,
         size: info.size,
         ctimeMs: info.ctimeMs,
       });
       onFile();
-    } catch {
-      // Skip unreadable files instead of failing the whole scan.
     }
+  } catch (error) {
+    if (error instanceof IndexScanLimitError || error instanceof IndexRefreshCancelledError) {
+      throw error;
+    }
+    if (isRoot) {
+      throw error;
+    }
+    warnings.push({
+      kind: "skipped-directory",
+      path: relative(root, dir) || ".",
+      code: classifyDirectoryError(error),
+    });
+  } finally {
+    await directory.close().catch(() => undefined);
   }
 }
 
@@ -480,16 +562,19 @@ function normalizeConcurrency(value: number | undefined): number {
 
 async function writeIndexAtomically(
   indexPath: string,
-  contents: string,
+  contents: Uint8Array,
   signal: AbortSignal | undefined,
   progress: IndexProgress
 ): Promise<void> {
   if (signal?.aborted) {
     throw new IndexRefreshCancelledError(progress);
   }
+  if (contents.byteLength > MAX_INDEX_INPUT_BYTES) {
+    return;
+  }
   const temporaryPath = `${indexPath}.tmp-${randomUUID()}`;
   try {
-    await writeFile(temporaryPath, contents, "utf8");
+    await writeFile(temporaryPath, contents);
     if (signal?.aborted) {
       throw new IndexRefreshCancelledError(progress);
     }
@@ -518,8 +603,18 @@ function normalizeExcludePaths(root: string, inputs: readonly string[]): Readonl
   return excludes;
 }
 
-function comparePathNames(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
+function normalizeScanLimit(
+  value: number | undefined,
+  fallback: number,
+  field: string
+): number {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`index refresh ${field} must be a non-negative integer`);
+  }
+  return value;
 }
 
 interface PersistedIndex {

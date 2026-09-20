@@ -15,6 +15,8 @@ import { spawn } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { refreshIndexDirectory } from "../dist/index-command.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
 
@@ -133,6 +135,44 @@ test("--index ignores an oversized persisted index and rescans its sources", asy
     const names = refreshed.symbols.map((symbol) => symbol.name);
     assert.ok(names.includes("real"));
     assert.ok(!names.includes("ghost"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("index refresh rejects a scan limit before replacing the previous index", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-scan-limit-"));
+  const indexPath = join(dir, ".dev-agent", "index.json");
+  try {
+    await writeFile(join(dir, "first.ts"), "export const first = 1;\n", "utf8");
+    const initial = await runCli(["--index", dir, "--json"]);
+    assert.equal(initial.code, 0, initial.stderr);
+    const before = await readFile(indexPath);
+
+    await writeFile(join(dir, "second.ts"), "export const second = 2;\n", "utf8");
+
+    await assert.rejects(
+      refreshIndexDirectory(
+        dir,
+        undefined,
+        [],
+        indexPath,
+        { maxFiles: 1, maxSourceBytes: 256 * 1024 * 1024 } as any
+      ),
+      (error) => {
+        const candidate = error as any;
+        assert.equal(candidate.code, "INDEX_SCAN_LIMIT_EXCEEDED");
+        assert.equal(candidate.dimension, "files");
+        assert.equal(candidate.limit, 1);
+        assert.equal(candidate.observed, 2);
+        assert.equal(candidate.message, "index scan files limit exceeded");
+        assert.ok(!candidate.message.includes(dir));
+        assert.ok(!JSON.stringify(candidate).includes(dir));
+        return true;
+      }
+    );
+
+    assert.deepEqual(await readFile(indexPath), before);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
