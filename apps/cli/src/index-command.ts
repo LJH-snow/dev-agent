@@ -43,6 +43,8 @@ export class IndexScanLimitError extends Error {
 export interface IndexReport {
   readonly path: string;
   readonly indexPath: string;
+  /** Whether the newly serialized index replaced the previous file. */
+  readonly written: boolean;
   readonly files: number;
   readonly symbols: number;
   /** Files whose stored source and symbols were reused because nothing changed. */
@@ -274,6 +276,9 @@ export async function indexDirectory(
   );
 
   throwIfCancelled();
+  warnings.sort((left, right) =>
+    comparePathNames(left.path, right.path) || comparePathNames(left.code, right.code)
+  );
   const previous = await readPersistedIndex(indexPath);
   const previousSymbols = groupSymbolsByFile(previous?.symbols ?? []);
   const entries = [...signatures.entries()].sort(([left], [right]) =>
@@ -412,11 +417,12 @@ export async function indexDirectory(
   });
   throwIfCancelled();
   const contents = Buffer.from(`${JSON.stringify(payload)}\n`, "utf8");
-  await writeIndexAtomically(indexPath, contents, options.signal, progress);
+  const written = await writeIndexAtomically(indexPath, contents, options.signal, progress);
 
   return {
     path: root,
     indexPath,
+    written,
     files: files.size,
     symbols: symbols.length,
     reused,
@@ -581,12 +587,12 @@ async function writeIndexAtomically(
   contents: Uint8Array,
   signal: AbortSignal | undefined,
   progress: IndexProgress
-): Promise<void> {
+): Promise<boolean> {
   if (signal?.aborted) {
     throw new IndexRefreshCancelledError(progress);
   }
   if (contents.byteLength > MAX_INDEX_INPUT_BYTES) {
-    return;
+    return false;
   }
   const temporaryPath = `${indexPath}.tmp-${randomUUID()}`;
   try {
@@ -595,6 +601,7 @@ async function writeIndexAtomically(
       throw new IndexRefreshCancelledError(progress);
     }
     await rename(temporaryPath, indexPath);
+    return true;
   } catch (error) {
     await rm(temporaryPath, { force: true }).catch(() => undefined);
     throw error;

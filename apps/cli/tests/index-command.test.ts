@@ -63,6 +63,7 @@ test("--index writes a symbol index and skips ignored directories", async () => 
 
     assert.equal(result.code, 0, result.stderr);
     const report = JSON.parse(result.stdout);
+    assert.equal(report.written, true);
     assert.equal(report.files, 2, "node_modules must be skipped");
     assert.ok(report.symbols >= 3, `expected several symbols, got ${report.symbols}`);
     assert.deepEqual(report.languages, { typescript: 1, python: 1 });
@@ -102,6 +103,31 @@ test("--index skips supported source files above the fixed 16 MiB read limit", a
     const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
     assert.deepEqual(Object.keys(index.files), [join(dir, "small.ts")]);
     assert.ok(!JSON.stringify(index).includes("skip"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--index reports an oversized serialized write and preserves the previous index", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-write-limit-"));
+  const indexPath = join(dir, ".dev-agent", "index.json");
+  try {
+    const source = `/*${"x".repeat(16 * 1024 * 1024 - 256)}*/\nexport const kept = 1;\n`;
+    assert.ok(Buffer.byteLength(source, "utf8") < 16 * 1024 * 1024);
+    await writeFile(join(dir, "large.ts"), source, "utf8");
+
+    const result = await runCli(["--index", dir, "--json"]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.files, 1);
+    assert.equal(report.written, false);
+    await assert.rejects(readFile(indexPath), { code: "ENOENT" });
+
+    const human = await runCli(["--index", dir]);
+    assert.equal(human.code, 0, human.stderr);
+    assert.match(human.stdout, /Index not written: serialized index exceeds the 16 MiB limit/);
+    assert.doesNotMatch(human.stdout, /Index written to/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -342,12 +368,17 @@ test("--index skips an unreadable child directory and completes", async (t) => {
   }
 
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-"));
-  const protectedDir = join(dir, "protected");
+  const protectedDirs = [
+    join(dir, "z-protected"),
+    join(dir, "a-protected"),
+  ];
   try {
     await writeFile(join(dir, "readable.ts"), "export const answer = 42;\n", "utf8");
-    await mkdir(protectedDir);
-    await writeFile(join(protectedDir, "hidden.ts"), "export const hidden = true;\n", "utf8");
-    await chmod(protectedDir, 0);
+    for (const protectedDir of protectedDirs) {
+      await mkdir(protectedDir);
+      await writeFile(join(protectedDir, "hidden.ts"), "export const hidden = true;\n", "utf8");
+      await chmod(protectedDir, 0);
+    }
 
     const result = await runCli(["--index", dir, "--json"]);
 
@@ -356,13 +387,17 @@ test("--index skips an unreadable child directory and completes", async (t) => {
     assert.doesNotThrow(() => JSON.parse(result.stdout));
     const report = JSON.parse(result.stdout);
     assert.equal(report.files, 1);
-    assert.equal(report.skipped, 1);
-    assert.equal(report.warnings.length, 1);
-    assert.equal(report.warnings[0].path, "protected");
-    assert.ok(["EACCES", "EPERM"].includes(report.warnings[0].code));
+    assert.equal(report.skipped, 2);
+    assert.deepEqual(
+      report.warnings.map((warning) => warning.path),
+      ["a-protected", "z-protected"]
+    );
+    assert.ok(report.warnings.every((warning) => ["EACCES", "EPERM"].includes(warning.code)));
     assert.ok(!JSON.stringify(report.warnings).includes(dir));
   } finally {
-    await chmod(protectedDir, 0o700).catch(() => undefined);
+    for (const protectedDir of protectedDirs) {
+      await chmod(protectedDir, 0o700).catch(() => undefined);
+    }
     await rm(dir, { recursive: true, force: true });
   }
 });

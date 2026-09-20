@@ -588,7 +588,8 @@ or `256 MiB` of eligible source bytes, and it never installs a partial index.
 A persisted code index above the fixed `16 MiB` read limit is skipped in favor
 of a full scan instead of loading its bytes into memory. If a code-search
 write-back would exceed `16 MiB`, the write is skipped and the previous valid
-index remains untouched.
+index remains untouched. CLI index reports expose `written: false` and human
+output states that the previous index was preserved.
 
 ## Configuration file
 

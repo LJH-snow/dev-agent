@@ -696,6 +696,7 @@ async function runExplicitCliCommand(
         const report = result.report;
         const publicReport = {
           command: "index refresh",
+          written: report.written,
           files: report.files,
           symbols: report.symbols,
           reused: report.reused,
@@ -714,6 +715,11 @@ async function runExplicitCliCommand(
         } else {
           console.log(`Indexed ${report.files} files / ${report.symbols} symbols (${report.reused} reused).`);
           console.log(`Cache hit rate: ${(report.cacheHitRate * 100).toFixed(1)}%; errors: ${report.errors}; updated: ${safeTerminalText(report.updatedAt)}`);
+          console.log(
+            report.written
+              ? "Index written."
+              : "Index not written: serialized index exceeds the 16 MiB limit; the previous index was preserved."
+          );
         }
       } finally {
         clearProgressLine();
@@ -1199,7 +1205,11 @@ export async function main(argv: string[]): Promise<void> {
           `Warning: skipped directory ${safeTerminalText(warning.path)} (${warning.code})`
         );
       }
-      console.log(`Index written to ${safeTerminalText(report.indexPath)}`);
+      console.log(
+        report.written
+          ? `Index written to ${safeTerminalText(report.indexPath)}`
+          : "Index not written: serialized index exceeds the 16 MiB limit; the previous index was preserved."
+      );
     }
     return;
   }
