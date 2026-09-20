@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -70,6 +70,32 @@ test("a deleted file is dropped from the cached index", async () => {
     assert.equal(tool.getCacheStats().rescanned, 1);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("code-search does not follow source symlinks outside the scan root", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-symlink-"));
+  const outside = await mkdtemp(join(tmpdir(), "dev-agent-code-search-outside-"));
+  try {
+    const outsideFile = join(outside, "outside.ts");
+    await writeFile(
+      outsideFile,
+      "export function outsideOnlySymbol() { return 1; }\n",
+      "utf8"
+    );
+    await symlink(outsideFile, join(dir, "linked.ts"));
+
+    const tool: any = new CodeSearchTool();
+    const result = await tool.execute({
+      mode: "search",
+      query: "outsideOnlySymbol",
+      path: dir,
+    });
+
+    assert.equal(result.count, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });
 

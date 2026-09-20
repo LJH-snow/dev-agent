@@ -276,7 +276,9 @@ export async function indexDirectory(
   throwIfCancelled();
   const previous = await readPersistedIndex(indexPath);
   const previousSymbols = groupSymbolsByFile(previous?.symbols ?? []);
-  const entries = [...signatures.entries()];
+  const entries = [...signatures.entries()].sort(([left], [right]) =>
+    comparePathNames(left, right)
+  );
   const processed: Array<{
     readonly filePath: string;
     readonly source: string;
@@ -373,6 +375,13 @@ export async function indexDirectory(
     files.set(result.filePath, result.source);
     symbols.push(...result.symbols);
   }
+  const orderedSignatures = new Map<string, FileSignature>();
+  for (const [filePath] of entries) {
+    const signature = signatures.get(filePath);
+    if (signature) {
+      orderedSignatures.set(filePath, signature);
+    }
+  }
 
   const updatedAt = new Date().toISOString();
   const cacheHits = reused;
@@ -382,7 +391,7 @@ export async function indexDirectory(
     version: 1,
     files: Object.fromEntries(files),
     symbols,
-    signatures: Object.fromEntries(signatures),
+    signatures: Object.fromEntries(orderedSignatures),
     refresh: {
       updatedAt,
       cacheHits,
@@ -493,6 +502,9 @@ async function collectFiles(
         );
         continue;
       }
+      if (!entry.isFile()) {
+        continue;
+      }
 
       const language = LANGUAGE_BY_EXTENSION[extname(entry.name)];
       if (!language) {
@@ -558,6 +570,10 @@ function normalizeConcurrency(value: number | undefined): number {
     throw new Error("index refresh concurrency must be a positive integer");
   }
   return Math.min(value, MAX_INDEX_CONCURRENCY);
+}
+
+function comparePathNames(left: string, right: string): number {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 async function writeIndexAtomically(

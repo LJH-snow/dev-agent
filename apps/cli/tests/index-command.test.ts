@@ -107,6 +107,38 @@ test("--index skips supported source files above the fixed 16 MiB read limit", a
   }
 });
 
+test("--index keeps file and symbol order stable and skips source symlinks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-order-"));
+  const outside = await mkdtemp(join(tmpdir(), "dev-agent-index-outside-"));
+  try {
+    await writeFile(join(dir, "z.ts"), "export function zSymbol() {}\n", "utf8");
+    await writeFile(join(dir, "a.ts"), "export function aSymbol() {}\n", "utf8");
+    const outsideFile = join(outside, "outside.ts");
+    await writeFile(
+      outsideFile,
+      "export function outsideOnlySymbol() {}\n",
+      "utf8"
+    );
+    await symlink(outsideFile, join(dir, "linked.ts"));
+
+    const result = await runCli(["--index", dir, "--json"]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
+    assert.deepEqual(Object.keys(index.files), [join(dir, "a.ts"), join(dir, "z.ts")]);
+    assert.deepEqual(Object.keys(index.signatures), [join(dir, "a.ts"), join(dir, "z.ts")]);
+    assert.deepEqual(
+      index.symbols.map((symbol) => symbol.name),
+      ["aSymbol", "zSymbol"]
+    );
+    assert.ok(!JSON.stringify(index).includes("outsideOnlySymbol"));
+    assert.equal(JSON.parse(result.stdout).files, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
 test("--index ignores an oversized persisted index and rescans its sources", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-persisted-limit-"));
   const sourcePath = join(dir, "sample.ts");

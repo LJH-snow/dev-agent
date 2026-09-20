@@ -992,6 +992,9 @@ async function collectSignatures(
         }
         continue;
       }
+      if (!entry.isFile()) {
+        continue;
+      }
 
       if (!supportedExtensions.has(extname(entry.name))) {
         continue;
