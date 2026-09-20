@@ -214,11 +214,7 @@ export class GeminiProvider implements ModelProvider {
               budget.addText(part.functionCall.name);
             }
             const input = part.functionCall.args ?? part.functionCall.arguments ?? {};
-            if (part.functionCall.args !== undefined) {
-              budget.addJson(part.functionCall.args);
-            } else if (part.functionCall.arguments !== undefined) {
-              budget.addJson(part.functionCall.arguments);
-            }
+            budget.addJson(input);
             toolCalls.push({
               id: `gemini-${toolCalls.length}`,
               name: part.functionCall.name ?? "unknown",

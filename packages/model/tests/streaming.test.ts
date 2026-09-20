@@ -409,6 +409,51 @@ test("Gemini streamChat collects functionCall parts", async () => {
   assert.deepEqual(completion.toolCalls?.[0]?.input, { action: "read", path: "a.txt" });
 });
 
+test("Gemini streamChat budgets arguments when args is null and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks(
+      (text) =>
+        `data: ${JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      name: "filesystem",
+                      args: null,
+                      arguments: { payload: text },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        })}\n\n`
+    )
+  );
+  const provider = createGeminiProvider({
+    model: "gemini-2.5-pro",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
+});
+
 // ---------------------------------------------------------------------------
 // Ollama
 // ---------------------------------------------------------------------------
