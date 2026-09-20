@@ -95,11 +95,23 @@ function runCliWithOpenInput(args, env, input): Promise<any> {
     let stdout = "";
     let stderr = "";
     let settled = false;
-    const timeout = setTimeout(() => {
+    let timeout: ReturnType<typeof setTimeout>;
+    const finish = (result): void => {
       if (settled) return;
       settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+    timeout = setTimeout(() => {
+      if (settled) return;
       child.kill("SIGTERM");
-      resolve({ code: null, stdout, stderr, timedOut: true });
+      const killTimeout = setTimeout(() => {
+        finish({ code: null, stdout, stderr, timedOut: true });
+      }, 500);
+      child.once("close", (code) => {
+        clearTimeout(killTimeout);
+        finish({ code, stdout, stderr, timedOut: true });
+      });
     }, 2_000);
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
@@ -109,10 +121,7 @@ function runCliWithOpenInput(args, env, input): Promise<any> {
     });
     child.stdin.write(input);
     child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      resolve({ code, stdout, stderr, timedOut: false });
+      finish({ code, stdout, stderr, timedOut: false });
     });
   });
 }
