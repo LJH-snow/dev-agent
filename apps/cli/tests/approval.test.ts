@@ -71,10 +71,16 @@ function runCli(args, env, input = undefined): Promise<any> {
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
     });
-    if (input !== undefined) {
-      child.stdin.end(input);
+    if (Array.isArray(input)) {
+      void (async () => {
+        for (const chunk of input) {
+          child.stdin.write(chunk);
+          await new Promise((resume) => setTimeout(resume, 10));
+        }
+        child.stdin.end();
+      })();
     } else {
-      child.stdin.end();
+      child.stdin.end(input);
     }
     child.on("close", (code) => resolve({ code, stdout, stderr }));
   });
@@ -167,6 +173,32 @@ test("--approval ask runs the command when the answer starts with y", async () =
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal(await modeOf(target), 0o777, "the approved command should have run");
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--approval ask accepts a split UTF-8 response below the byte limit", async () => {
+  const { dir, target } = await setup();
+  const provider = await startStubProvider({ command: "chmod", args: ["777", target] });
+  try {
+    const bytes = Buffer.from(`y${"é".repeat(2_047)}`, "utf8");
+    assert.equal(bytes.byteLength, 4 * 1024 - 1);
+    const result = await runCli(
+      ["--once", "run it", "--no-stream", "--approval", "ask"],
+      {
+        ...process.env,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: provider.baseUrl,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      },
+      [bytes.subarray(0, -1), bytes.subarray(-1)]
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(await modeOf(target), 0o777, "a valid response below the limit should run");
   } finally {
     await provider.close();
     await rm(dir, { recursive: true, force: true });

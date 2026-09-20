@@ -8,6 +8,7 @@ import { createInterface } from "node:readline/promises";
 import { opendir, rename, rm, stat } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
+import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -2101,29 +2102,31 @@ function readLineFromStdin(question: string): Promise<string> {
   return new Promise((resolve) => {
     let buffer = "";
     let bufferBytes = 0;
+    const decoder = new StringDecoder("utf8");
     const cleanup = (): void => {
       process.stdin.off("data", onData);
       process.stdin.off("end", onEnd);
       process.stdin.pause();
     };
     const onData = (chunk: Buffer | string): void => {
-      const text = chunk.toString();
-      const newline = text.indexOf("\n");
-      const line = newline >= 0 ? text.slice(0, newline) : text;
-      const lineBytes = Buffer.byteLength(line, "utf8");
-      if (bufferBytes + lineBytes > MAX_APPROVAL_INPUT_BYTES) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      const newline = bytes.indexOf(0x0a);
+      const lineBytes = newline >= 0 ? bytes.subarray(0, newline) : bytes;
+      if (bufferBytes + lineBytes.byteLength > MAX_APPROVAL_INPUT_BYTES) {
         cleanup();
         resolve("");
         return;
       }
-      buffer += line;
-      bufferBytes += lineBytes;
+      buffer += decoder.write(lineBytes);
+      bufferBytes += lineBytes.byteLength;
       if (newline >= 0) {
+        buffer += decoder.end();
         cleanup();
         resolve(buffer);
       }
     };
     const onEnd = (): void => {
+      buffer += decoder.end();
       cleanup();
       resolve(buffer);
     };
