@@ -95,6 +95,7 @@ function runCliWithOpenInput(args, env, input): Promise<any> {
     let stdout = "";
     let stderr = "";
     let settled = false;
+    let timedOut = false;
     let timeout: ReturnType<typeof setTimeout>;
     const finish = (result): void => {
       if (settled) return;
@@ -104,6 +105,7 @@ function runCliWithOpenInput(args, env, input): Promise<any> {
     };
     timeout = setTimeout(() => {
       if (settled) return;
+      timedOut = true;
       child.kill("SIGTERM");
       const killTimeout = setTimeout(() => {
         finish({ code: null, stdout, stderr, timedOut: true });
@@ -121,7 +123,7 @@ function runCliWithOpenInput(args, env, input): Promise<any> {
     });
     child.stdin.write(input);
     child.on("close", (code) => {
-      finish({ code, stdout, stderr, timedOut: false });
+      finish({ code, stdout, stderr, timedOut });
     });
   });
 }
@@ -239,6 +241,32 @@ test("--approval ask accepts a split UTF-8 response below the byte limit", async
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal(await modeOf(target), 0o777, "a valid response below the limit should run");
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--approval ask accepts exactly the byte limit", async () => {
+  const { dir, target } = await setup();
+  const provider = await startStubProvider({ command: "chmod", args: ["777", target] });
+  try {
+    const input = `y${"x".repeat(4 * 1024 - 1)}`;
+    assert.equal(Buffer.byteLength(input, "utf8"), 4 * 1024);
+    const result = await runCli(
+      ["--once", "run it", "--no-stream", "--approval", "ask"],
+      {
+        ...process.env,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: provider.baseUrl,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      },
+      input
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(await modeOf(target), 0o777, "the exact limit should still be accepted");
   } finally {
     await provider.close();
     await rm(dir, { recursive: true, force: true });
