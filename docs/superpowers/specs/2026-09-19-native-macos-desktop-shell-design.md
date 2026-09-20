@@ -1,6 +1,6 @@
 # Signal Loom Native macOS Desktop Shell Design
 
-**Date:** 2026-09-20  
+**Date:** 2026-09-19
 **Status:** Approved for implementation  
 **Decision:** Use a small native SwiftUI/AppKit application as the macOS shell and
 reuse the existing local TypeScript Desktop server inside it.
@@ -175,8 +175,12 @@ health endpoint succeeds.
   exits with success;
 - the staged artifact contains a valid `Info.plist`, executable, and resource
   files;
-- a real double-click-equivalent `/usr/bin/open -n` launch brings the app
-  forward and loads the existing Desktop URL;
+- a direct terminal-context launch brings the app forward and loads the
+  existing Desktop URL;
+- after macOS grants the non-Developer-ID-signed app access to a protected
+  checkout folder, a
+  real double-click-equivalent `/usr/bin/open -n` launch brings the app forward
+  and loads the existing Desktop URL;
 - stopping the app does not leave the child Node server running;
 - existing Desktop tests and the full TypeScript verification remain green.
 
@@ -186,4 +190,6 @@ health endpoint succeeds.
 - Do not copy Gemini/Codex artwork or proprietary assets.
 - Keep native source ASCII-first.
 - Keep the process bridge small and testable.
+- On macOS-protected checkout folders, document the LaunchServices/TCC
+  permission boundary instead of hiding a failed startup behind a blank view.
 - Do not publish packages or make network releases as part of this change.

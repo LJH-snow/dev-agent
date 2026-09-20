@@ -15,6 +15,25 @@ pnpm --filter @dev-agent/desktop run start
 
 Then open the printed URL (default `http://127.0.0.1:4317`) in a browser.
 
+From the repository root on macOS, the same server can run inside the native
+Signal Loom window:
+
+```bash
+./script/build_and_run.sh
+./script/build_and_run.sh --verify
+```
+
+The script stages `dist/Signal Loom Desktop.app` and chooses an ephemeral
+localhost port for the embedded server, so it does not compete with a browser
+instance on port `4317`. This is a local development shell that is not
+Developer ID signed or notarized; it expects Node.js and does not bundle a
+runtime. The default launcher starts the app executable from the terminal
+context because macOS privacy controls can restrict a non-Developer-ID-signed
+app launched through Finder or LaunchServices from reading a checkout under
+`Desktop` or `Documents`. Set
+`DEV_AGENT_DESKTOP_LAUNCH_SERVICES=1` to use `/usr/bin/open -n` explicitly and
+grant the app folder access in System Settings if macOS asks for it.
+
 The Desktop shell uses the same Signal Loom workbench language as the rich CLI:
 the checked-in [`signal-loom.svg`](public/signal-loom.svg) asset supplies the
 header mark, while the existing status, conversation, approval, validation, and

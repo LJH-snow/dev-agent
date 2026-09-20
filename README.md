@@ -56,6 +56,40 @@ pnpm package:smoke
 pnpm cli --version
 ```
 
+## Native macOS Desktop shell
+
+On macOS, the repository can also be opened as a native `Signal Loom Desktop`
+window. The local launcher builds the existing Desktop server, compiles the
+SwiftUI/AppKit shell, stages `dist/Signal Loom Desktop.app`, and starts the
+application:
+
+```bash
+./script/build_and_run.sh
+```
+
+Run the bounded build and health check when validating a checkout:
+
+```bash
+./script/build_and_run.sh --verify
+```
+
+The first version is a local development application and is not Developer ID
+signed or notarized. Node.js is resolved from the current environment and
+recorded in the app bundle; Node is not bundled. The launcher starts the app
+executable directly so a checkout inside macOS `Desktop` or `Documents`
+folders keeps the terminal's folder authorization. To explicitly exercise
+LaunchServices with `/usr/bin/open -n`, set
+`DEV_AGENT_DESKTOP_LAUNCH_SERVICES=1`; macOS may then require granting the app
+access to the checkout under System Settings > Privacy & Security > Files and
+Folders.
+
+The browser workflow remains available for web development:
+
+```bash
+pnpm --filter @dev-agent/desktop run build
+pnpm --filter @dev-agent/desktop run start
+```
+
 ## Using the CLI from another project
 
 The workspace command `pnpm cli` is for repository development only. For use

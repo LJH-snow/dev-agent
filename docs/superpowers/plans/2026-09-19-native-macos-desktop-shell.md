@@ -15,7 +15,7 @@ Swift, stages the `.app` bundle, and launches or verifies it.
 **Tech Stack:** Swift 6 / SwiftPM, SwiftUI, AppKit, WebKit, Foundation
 `Process`, existing TypeScript/pnpm Desktop server, shell, XCTest.
 
-**Spec:** `docs/superpowers/specs/2026-09-20-native-macos-desktop-shell-design.md`
+**Spec:** `docs/superpowers/specs/2026-09-19-native-macos-desktop-shell-design.md`
 
 ## Global Constraints
 
@@ -39,12 +39,12 @@ Swift, stages the `.app` bundle, and launches or verifies it.
 - Create: `apps/macos/SignalLoomDesktop/Sources/SignalLoomDesktop/Views/WebView.swift`
 - Create: `apps/macos/SignalLoomDesktop/Sources/SignalLoomDesktop/Support/AppTheme.swift`
 
-- [ ] Define a macOS 13+ executable target with a test target.
-- [ ] Add a `WindowGroup` with a 1440x900 default size and 960x640 minimum.
-- [ ] Set regular application activation and foreground the first window.
-- [ ] Add a dark startup/loading/failure surface that is visually consistent
+- [x] Define a macOS 13+ executable target with a test target.
+- [x] Add a `WindowGroup` with a 1440x900 default size and 960x640 minimum.
+- [x] Set regular application activation and foreground the first window.
+- [x] Add a dark startup/loading/failure surface that is visually consistent
       with Signal Loom but does not duplicate the web workbench.
-- [ ] Wrap `WKWebView` with `NSViewRepresentable` and load only after readiness.
+- [x] Wrap `WKWebView` with `NSViewRepresentable` and load only after readiness.
 
 **Verification:**
 
@@ -64,14 +64,14 @@ Expected: the executable target compiles before the process service is wired.
 - Create: `apps/macos/SignalLoomDesktop/Tests/SignalLoomDesktopTests/AppConfigurationTests.swift`
 - Create: `apps/macos/SignalLoomDesktop/Tests/SignalLoomDesktopTests/ServerReadinessTests.swift`
 
-- [ ] Resolve project root from `DEV_AGENT_PROJECT_ROOT`, then bundled
+- [x] Resolve project root from `DEV_AGENT_PROJECT_ROOT`, then bundled
       `project-root.txt`, then the current directory.
-- [ ] Resolve Node from `DEV_AGENT_NODE_PATH`, then bundled `node-path.txt`,
+- [x] Resolve Node from `DEV_AGENT_NODE_PATH`, then bundled `node-path.txt`,
       then known Homebrew/Volta/nvm/mise locations.
-- [ ] Derive `apps/desktop/dist/index.js` and validate it before launch.
-- [ ] Parse only the existing Desktop server listening line into a localhost
+- [x] Derive `apps/desktop/dist/index.js` and validate it before launch.
+- [x] Parse only the existing Desktop server listening line into a localhost
       URL.
-- [ ] Bound captured diagnostics and preserve no secrets or full environment
+- [x] Bound captured diagnostics and preserve no secrets or full environment
       values.
 
 **Verification:**
@@ -92,14 +92,14 @@ limit tests pass.
 - Modify: `apps/macos/SignalLoomDesktop/Sources/SignalLoomDesktop/Views/ContentView.swift`
 - Modify: `apps/macos/SignalLoomDesktop/Sources/SignalLoomDesktop/App/SignalLoomDesktopApp.swift`
 
-- [ ] Launch the existing server with host `127.0.0.1`, port `0`, project-root
+- [x] Launch the existing server with host `127.0.0.1`, port `0`, project-root
       working directory, and inherited provider configuration.
-- [ ] Read stdout/stderr without blocking the UI and detect readiness.
-- [ ] Poll `/health` with a bounded retry window before exposing the WebView.
-- [ ] Publish idle, starting, ready, failed, and stopped states on the main
+- [x] Read stdout/stderr without blocking the UI and detect readiness.
+- [x] Poll `/health` with a bounded retry window before exposing the WebView.
+- [x] Publish idle, starting, ready, failed, and stopped states on the main
       actor.
-- [ ] Support retry and idempotent start behavior.
-- [ ] Stop the child process and close pipes during app termination/deinit.
+- [x] Support retry and idempotent start behavior.
+- [x] Stop the child process and close pipes during app termination/deinit.
 
 **Verification:**
 
@@ -120,16 +120,17 @@ readiness.
 - Create: `.codex/environments/environment.toml`
 - Modify: `.gitignore`
 
-- [ ] Build `@dev-agent/desktop` before SwiftPM compilation.
-- [ ] Stage `dist/Signal Loom Desktop.app/Contents/MacOS/SignalLoomDesktop`.
-- [ ] Generate `Info.plist` with APPL metadata, bundle identifier, minimum
+- [x] Build `@dev-agent/desktop` before SwiftPM compilation.
+- [x] Stage `dist/Signal Loom Desktop.app/Contents/MacOS/SignalLoomDesktop`.
+- [x] Generate `Info.plist` with APPL metadata, bundle identifier, minimum
       macOS version, and `NSPrincipalClass`.
-- [ ] Copy `project-root.txt` and the resolved Node executable path into
+- [x] Copy `project-root.txt` and the resolved Node executable path into
       `Contents/Resources`.
-- [ ] Support `run`, `--verify`, `--debug`, `--logs`, and `--telemetry`.
-- [ ] Kill only the app-owned process before a rebuild and launch with
-      `/usr/bin/open -n`.
-- [ ] Ignore staged `.app` output and SwiftPM build products.
+- [x] Support `run`, `--verify`, `--debug`, `--logs`, and `--telemetry`.
+- [x] Kill only the app-owned process before a rebuild. The default launcher
+      uses the app executable directly; setting
+      `DEV_AGENT_DESKTOP_LAUNCH_SERVICES=1` uses `/usr/bin/open -n`.
+- [x] Ignore staged `.app` output and SwiftPM build products.
 
 **Verification:**
 
@@ -147,30 +148,42 @@ presence, and `/health` all succeed.
 - Modify: `README.md`
 - Modify: `apps/desktop/README.md`
 
-- [ ] Explain the local prerequisites: macOS, Node.js, pnpm, and a configured
+- [x] Explain the local prerequisites: macOS, Node.js, pnpm, and a configured
       provider.
-- [ ] Document the one-command build/run flow and the staged `.app` location.
-- [ ] Explain that the first implementation is local and unsigned, not a
-      distributable notarized release.
-- [ ] Keep browser startup instructions available for development.
+- [x] Document the one-command build/run flow and the staged `.app` location.
+- [x] Explain that the first implementation is local, not Developer ID signed,
+      and not a distributable notarized release.
+- [x] Keep browser startup instructions available for development.
 
 **Verification:**
 
 ```bash
-rg -n "Signal Loom Desktop|build_and_run|double-click|unsigned" README.md apps/desktop/README.md
+rg -n "Signal Loom Desktop|build_and_run|double-click|Developer ID|notarized" README.md apps/desktop/README.md
 ```
 
 Expected: the documented flow matches the script and artifact path.
 
 ## Task 6: Run complete verification and inspect the artifact
 
-- [ ] Run `swift test` and `swift build` for the native package.
-- [ ] Run `pnpm --filter @dev-agent/desktop run test`.
-- [ ] Run `pnpm --filter @agent_cli/cli run test`.
-- [ ] Run `pnpm build` and `git diff --check`.
-- [ ] Run `./script/build_and_run.sh --verify`.
-- [ ] Inspect `dist/Signal Loom Desktop.app` with `plutil`, `file`, and
+- [x] Run `swift test` and `swift build` for the native package.
+- [x] Run `pnpm --filter @dev-agent/desktop run test`.
+- [x] Run `pnpm --filter @agent_cli/cli run test`.
+- [x] Run `pnpm build` and `git diff --check`.
+- [x] Run `./script/build_and_run.sh --verify`.
+- [x] Inspect `dist/Signal Loom Desktop.app` with `plutil`, `file`, and
       `codesign --display --verbose` where available; do not claim signing.
-- [ ] Confirm the app opens through `/usr/bin/open -n` and the child Node
-      server is cleaned up after termination.
-- [ ] Update this plan's checkboxes and record any remaining limitation.
+- [ ] Confirm the app opens through `/usr/bin/open -n` after the checkout folder
+      has been granted to the non-Developer-ID-signed app, and the child Node server is
+      cleaned up after termination.
+- [x] Update this plan's remaining verification checkboxes and record any
+      remaining limitation.
+
+### Known local limitation
+
+When the checkout lives under a macOS-protected `Desktop` or `Documents`
+folder, LaunchServices may start the non-Developer-ID-signed app without the terminal's
+folder authorization. In that case Node can block while reading the project
+metadata. The default script launcher and `--verify` use the executable from
+the terminal context; `DEV_AGENT_DESKTOP_LAUNCH_SERVICES=1` is available for
+testing the real `/usr/bin/open -n` path after granting the app access in
+System Settings > Privacy & Security > Files and Folders.
