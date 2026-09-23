@@ -262,7 +262,7 @@ test("matching caller-owned role bindings select worker model, prompt, tools, an
     async chat(messages: readonly ChatMessage[], options?: ChatOptions) {
       roleRequests.push({
         messages,
-        toolNames: options?.tools?.map((tool) => tool.function.name) ?? [],
+        toolNames: options?.tools?.map((tool) => tool.name) ?? [],
       });
       roleCallCount += 1;
       return roleCallCount === 1
@@ -293,6 +293,7 @@ test("matching caller-owned role bindings select worker model, prompt, tools, an
       title: "Review implementation",
       role: "tester",
       instructions: "Inspect the behavior and report risks.",
+      maxAttempts: 1,
     }],
     workspaceProvider: fakeWorkspaceProvider(),
     workingDirectory: "/tmp/work",
@@ -302,8 +303,8 @@ test("matching caller-owned role bindings select worker model, prompt, tools, an
     toolAllowlistForTask: () => ["role-tool", "reviewed-only-tool"],
   }).promise;
 
-  assert.equal(result.tasks[0]?.status, "failed", "the role's one-turn budget stops before a second model call");
-  assert.equal(roleCallCount, 1);
+  assert.equal(roleCallCount, 1, "the role's one-turn budget stops before a second model call");
+  assert.equal(result.tasks[0]?.status, "failed");
   assert.deepEqual(baseModelCalls, []);
   assert.equal(roleToolRuns, 1);
   assert.equal(outsideRoleToolRuns, 0);
