@@ -10,7 +10,12 @@ const cliPath = join(__dirname, "..", "dist", "index.js");
 function runCli(args, env = {}): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
-      env: { ...process.env, DEV_AGENT_MODEL_PROVIDER: "ollama", ...env },
+      env: {
+        ...process.env,
+        DEV_AGENT_MCP_SERVERS: "[]",
+        DEV_AGENT_MODEL_PROVIDER: "ollama",
+        ...env,
+      },
       stdio: ["pipe", "pipe", "pipe"],
     });
 

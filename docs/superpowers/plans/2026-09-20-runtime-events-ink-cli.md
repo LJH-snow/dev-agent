@@ -10,6 +10,39 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-20-runtime-events-and-ink-cli-design.md`
 
+## Status (2026-09-20)
+
+Implementation is complete and verified. The shared runtime event contract,
+AgentLoop emission, CLI/Desktop projections, PTY behavior evaluations,
+metadata-only checkpoints, Skills, Hooks, tool metadata, and the Ink 6/React 19
+rich TTY migration are in the worktree. Final gates passed with CLI **407/407**,
+Desktop **139/139**, Agent Core **143/143**, Tools **152/152**, Runtime Events
+**3/3**, behavior evaluations **5/5**, documentation contracts **57/57**, and
+real Rust integration **11/11**. No package publish or release was performed.
+
+## Follow-up: compact layout and terminal scrollback
+
+The first Ink migration exposed two interaction regressions in short sessions:
+the fixed terminal-height root pushed the composer into a large empty area, and
+the changing transcript was repainted as one dynamic frame, so completed
+messages could not become terminal scrollback. The follow-up keeps the existing
+Ink architecture and:
+
+- removes the fixed viewport height and transcript flex fill;
+- commits terminal runs into Ink `Static` output after completion, interruption,
+  or failure;
+- keeps only the active run in the dynamic transcript region;
+- adds regression coverage for compact short sessions and non-repeated
+  completed answers.
+
+Focused verification completed on 2026-09-20:
+
+- CLI build passed.
+- Ink app tests passed **10/10**.
+- The full CLI suite passed **414/414** after the final source rebuild.
+- Rich CLI behavior evaluations passed **5/5**.
+- No package publish, release, or network distribution is performed.
+
 ## Global Constraints
 
 - Keep Node engine support at `>=20`; do not upgrade the CLI to Ink 7 because its current engine floor is Node 22.
@@ -39,13 +72,13 @@
   evaluation, checkpoint, Skills, Hooks, tool metadata, and deferred protocol
   phases.
 
-- [ ] **Step 2: Link the records from the documentation index**
+- [x] **Step 2: Link the records from the documentation index**
 
   Add the design and plan to the current execution-plan list in
   `docs/README.md` and add a new active phase to `task_plan.md` without
   changing historical verification records.
 
-- [ ] **Step 3: Validate the documents**
+- [x] **Step 3: Validate the documents**
 
   Run:
 
@@ -75,7 +108,7 @@
 - Consumes only TypeScript/Node standard types; it must not depend on CLI,
   Desktop, React, Ink, or tools.
 
-- [ ] **Step 1: Write failing event contract tests**
+- [x] **Step 1: Write failing event contract tests**
 
   Add tests that assert:
 
@@ -95,7 +128,7 @@
   Also test that payloads for `input.queued`, `tool.approval-requested`,
   `run.interrupted`, and `run.failed` remain distinguishable.
 
-- [ ] **Step 2: Run the focused test and verify the expected failure**
+- [x] **Step 2: Run the focused test and verify the expected failure**
 
   Run:
 
@@ -105,17 +138,17 @@
 
   Expected: the package or exported types are missing.
 
-- [ ] **Step 3: Implement the minimal package**
+- [x] **Step 3: Implement the minimal package**
 
   Define the discriminated union and sequence helper. `createRuntimeEvent`
   must copy payload objects, assign an ISO timestamp, and never accept a caller
   supplied sequence number.
 
-- [ ] **Step 4: Run the focused test**
+- [x] **Step 4: Run the focused test**
 
   Run the same command and expect all event contract tests to pass.
 
-- [ ] **Step 5: Build the workspace package**
+- [x] **Step 5: Build the workspace package**
 
   Run:
 
@@ -139,7 +172,7 @@
 - Produces optional `eventSink` support on `AgentLoopOptions`.
 - Existing callback behavior remains unchanged.
 
-- [ ] **Step 1: Write failing AgentLoop event tests**
+- [x] **Step 1: Write failing AgentLoop event tests**
 
   Build a deterministic provider and registry. Assert the event order:
 
@@ -156,7 +189,7 @@
   failure. Verify every event has one session id and strictly increasing
   sequence numbers.
 
-- [ ] **Step 2: Run the focused Agent Core tests**
+- [x] **Step 2: Run the focused Agent Core tests**
 
   Run:
 
@@ -166,7 +199,7 @@
 
   Expected: the new event tests fail because no event sink exists.
 
-- [ ] **Step 3: Add the optional event sink**
+- [x] **Step 3: Add the optional event sink**
 
   Add an `eventSink?: RuntimeEventSink` option and emit:
 
@@ -182,7 +215,7 @@
   The sink must be observational: a sink error is caught and cannot change the
   model result.
 
-- [ ] **Step 4: Run the focused and existing Agent Core tests**
+- [x] **Step 4: Run the focused and existing Agent Core tests**
 
   Run:
 
@@ -209,7 +242,7 @@
 - Desktop `StreamEvent` is a transport projection of `RuntimeEvent`.
 - CLI queue emits `input.submitted` and `input.queued`.
 
-- [ ] **Step 1: Write failing adapter tests**
+- [x] **Step 1: Write failing adapter tests**
 
   Assert that the same sequence of shared events produces:
 
@@ -218,7 +251,7 @@
   - one Desktop SSE event per shared event with the same `runId`;
   - queued input does not create a second active run.
 
-- [ ] **Step 2: Run focused adapter tests**
+- [x] **Step 2: Run focused adapter tests**
 
   Run:
 
@@ -230,13 +263,13 @@
   Expected: new adapter assertions fail until the projections consume the
   shared event shape.
 
-- [ ] **Step 3: Add projections without removing compatibility types**
+- [x] **Step 3: Add projections without removing compatibility types**
 
   Add `applyRuntimeEvent()` to the CLI session model and a Desktop mapping
   function. Keep legacy callback adapters in place until the Ink migration is
   green.
 
-- [ ] **Step 4: Run the focused suites**
+- [x] **Step 4: Run the focused suites**
 
   Run the commands from Step 2 and expect green results.
 
@@ -255,12 +288,12 @@
 - Launches the built CLI through a PTY and checks user-visible transcript
   invariants instead of importing renderer internals.
 
-- [ ] **Step 1: Write the failing queue and transcript evaluations**
+- [x] **Step 1: Write the failing queue and transcript evaluations**
 
   Cover two prompts submitted during a streaming run, exact provider request
   order, one occurrence of each answer, and no duplicated prompt/footer.
 
-- [ ] **Step 2: Run the evaluations before the Ink migration**
+- [x] **Step 2: Run the evaluations before the Ink migration**
 
   Run:
 
@@ -272,12 +305,12 @@
   Expected: the new evaluator either passes the existing ANSI path or exposes
   the exact baseline differences that the Ink renderer must preserve.
 
-- [ ] **Step 3: Add interruption, approval, resize, and EOF cases**
+- [x] **Step 3: Add interruption, approval, resize, and EOF cases**
 
   Use the existing deterministic provider fixtures and PTY helper. Assert
   Ctrl-C, Escape, visible `^C`, EOF, narrow width, and approval resolution.
 
-- [ ] **Step 4: Run the full evaluation matrix**
+- [x] **Step 4: Run the full evaluation matrix**
 
   Run `pnpm test:evals` and require all cases to pass before switching the
   default renderer.
@@ -297,14 +330,14 @@
   `FileMemoryCheckpointStore`, and `CheckpointRestoreResult`.
 - Consumes `AgentContext`, `FileMemory`, and persisted change-set evidence.
 
-- [ ] **Step 1: Write failing checkpoint tests**
+- [x] **Step 1: Write failing checkpoint tests**
 
   Create two memory entries and one applied change-set record. Assert that
   `create()` stores the session id, last entry id, entry count, and change-set
   id; `list()` and `inspect()` restore the same metadata after reopening the
   memory file.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
   Run:
 
@@ -314,14 +347,14 @@
 
   Expected: checkpoint symbols and persistence fields are missing.
 
-- [ ] **Step 3: Implement metadata-only restore**
+- [x] **Step 3: Implement metadata-only restore**
 
   Persist a bounded `checkpoints` array in the existing memory envelope. Use
   the current serialized file limit and retention policy. `restore()` returns
   the memory anchor and referenced evidence ids; it must not call filesystem
   rollback.
 
-- [ ] **Step 4: Run Agent Core tests**
+- [x] **Step 4: Run Agent Core tests**
 
   Run `pnpm --filter @dev-agent/agent-core test` and require memory,
   evidence, and checkpoint tests to pass.
@@ -344,26 +377,26 @@
 - Consumes the existing `systemPromptProvider`, `AgentToolRegistry`, and
   runtime event sink.
 
-- [ ] **Step 1: Write failing Skills tests**
+- [x] **Step 1: Write failing Skills tests**
 
   Create a temporary `.dev-agent/skills/review/SKILL.md`. Assert project-local
   loading, description parsing, fixed instruction-size limits, and on-demand
   activation without changing persisted user messages.
 
-- [ ] **Step 2: Write failing Hooks tests**
+- [x] **Step 2: Write failing Hooks tests**
 
   Register `before.model`, `after.model`, `before.tool`, `after.tool`,
   `session.start`, and `session.end` observers. Assert deterministic order,
   abort propagation, and that a thrown observer error is recorded but does not
   change a successful run.
 
-- [ ] **Step 3: Implement bounded registries**
+- [x] **Step 3: Implement bounded registries**
 
   Resolve project skills before user skills. Use explicit hook registration
   and removal handles. Pass sanitized event context and never expose raw
   credentials or full tool output to hooks.
 
-- [ ] **Step 4: Run focused Agent Core tests**
+- [x] **Step 4: Run focused Agent Core tests**
 
   Run:
 
@@ -394,13 +427,13 @@
 - Existing consumers remain valid because metadata is optional.
 - Policy and renderers can read normalized metadata through the registry.
 
-- [ ] **Step 1: Write failing metadata tests**
+- [x] **Step 1: Write failing metadata tests**
 
   Assert default metadata for every built-in tool and explicit overrides for
   filesystem mutation, shell execution, and read-only search. Assert that
   metadata never changes an approval decision without a policy result.
 
-- [ ] **Step 2: Run the focused test**
+- [x] **Step 2: Run the focused test**
 
   Run:
 
@@ -411,12 +444,12 @@
 
   Expected: metadata fields are absent or not normalized.
 
-- [ ] **Step 3: Implement metadata defaults and registry access**
+- [x] **Step 3: Implement metadata defaults and registry access**
 
   Add `risk`, `confirmation`, `resultFormat`, and `supportsProgress`. Keep the
   existing dangerous-pattern and reviewed-write policy authoritative.
 
-- [ ] **Step 4: Run the focused suites**
+- [x] **Step 4: Run the focused suites**
 
   Run the commands from Step 2 and require all tool and approval tests to pass.
 
@@ -433,12 +466,12 @@
 - Adds Ink 6.8.0, React 19, and matching React types only to the CLI package.
 - Keeps the workspace Node floor at 20.
 
-- [ ] **Step 1: Add the dependency contract test**
+- [x] **Step 1: Add the dependency contract test**
 
   Extend the CLI package-manifest test to assert that interactive rendering
   depends on Ink 6 and React 19 while the package engine remains `>=20`.
 
-- [ ] **Step 2: Run the manifest test and verify the expected failure**
+- [x] **Step 2: Run the manifest test and verify the expected failure**
 
   Run:
 
@@ -448,12 +481,12 @@
 
   Expected: the new dependency assertions fail before installation.
 
-- [ ] **Step 3: Install dependencies and enable JSX**
+- [x] **Step 3: Install dependencies and enable JSX**
 
   Add `ink@6.8.0`, `react@19`, and `@types/react@19`; set the CLI compiler
   `jsx` option to `react-jsx`. Do not add Ink to core packages.
 
-- [ ] **Step 4: Run build and manifest tests**
+- [x] **Step 4: Run build and manifest tests**
 
   Run:
 
@@ -486,13 +519,13 @@
 - `InkComposer` emits submitted strings and queue events through callbacks.
 - `terminal-adapter.ts` owns stdin/stdout lifecycle and Ink render/unmount.
 
-- [ ] **Step 1: Write failing component behavior tests**
+- [x] **Step 1: Write failing component behavior tests**
 
   Assert that rendering a fixed event transcript includes the Signal Loom mark,
   runtime summary, blue composer frame, one cursor marker, working-directory
   footer, queued prompt, tool card, and approval state.
 
-- [ ] **Step 2: Run the focused tests and verify the expected failure**
+- [x] **Step 2: Run the focused tests and verify the expected failure**
 
   Run:
 
@@ -502,25 +535,25 @@
 
   Expected: the Ink modules and components do not exist.
 
-- [ ] **Step 3: Implement the static transcript components**
+- [x] **Step 3: Implement the static transcript components**
 
   Use Ink `Box`, `Text`, `useInput`, and `useApp`. Keep colors and spacing
   centralized. Render the existing Signal Loom mark as text/ANSI-safe output;
   do not add a remote image dependency.
 
-- [ ] **Step 4: Implement the composer state machine**
+- [x] **Step 4: Implement the composer state machine**
 
   Support multiline text, cursor movement, history, command completion,
   queued prompts, submission, Ctrl-C, Escape, visible `^C`, EOF, and terminal
   width changes. Only the active composer owns the cursor.
 
-- [ ] **Step 5: Connect the app to the shared event projection**
+- [x] **Step 5: Connect the app to the shared event projection**
 
   Replace the rich TTY path's direct ANSI writes with the Ink adapter. Keep
   the old `RichInputController` available behind `DEV_AGENT_TUI=ansi` until
   the behavior evaluations pass.
 
-- [ ] **Step 6: Run focused CLI tests**
+- [x] **Step 6: Run focused CLI tests**
 
   Run:
 
@@ -545,12 +578,12 @@
 - `DEV_AGENT_TUI=ansi` selects the compatibility renderer.
 - Non-rich modes remain unchanged.
 
-- [ ] **Step 1: Add a failing default-selection test**
+- [x] **Step 1: Add a failing default-selection test**
 
   Assert that a TTY invocation selects Ink by default and that pipes, JSON,
   `--once`, and MCP server mode select the existing non-rich path.
 
-- [ ] **Step 2: Run the mode tests**
+- [x] **Step 2: Run the mode tests**
 
   Run:
 
@@ -560,12 +593,12 @@
 
   Expected: the rich path still selects the ANSI renderer.
 
-- [ ] **Step 3: Change only the rich TTY selection**
+- [x] **Step 3: Change only the rich TTY selection**
 
   Route rich TTY startup through `terminal-adapter.ts`, keep command handling
   and AgentLoop wiring unchanged, and retain the ANSI override.
 
-- [ ] **Step 4: Run all evaluations**
+- [x] **Step 4: Run all evaluations**
 
   Run:
 
@@ -593,12 +626,12 @@
 - Documents the shared event package, Ink default, ANSI fallback, eval gate,
   checkpoint semantics, Skills/Hooks boundaries, and deferred phases.
 
-- [ ] **Step 1: Update architecture and user-facing CLI documentation**
+- [x] **Step 1: Update architecture and user-facing CLI documentation**
 
   Document the new event flow and the exact environment variable for the ANSI
   fallback. Explicitly state that non-rich contracts are unchanged.
 
-- [ ] **Step 2: Run package and workspace verification**
+- [x] **Step 2: Run package and workspace verification**
 
   Run:
 
@@ -612,7 +645,7 @@
   Expected: all TypeScript, Rust, CLI, Desktop, behavior, and documentation
   gates pass.
 
-- [ ] **Step 3: Review the final diff**
+- [x] **Step 3: Review the final diff**
 
   Run:
 

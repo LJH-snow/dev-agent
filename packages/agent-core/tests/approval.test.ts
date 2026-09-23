@@ -10,6 +10,7 @@ import {
   denyDangerousPolicy,
   InMemoryMemory,
   normalizeApprovalKey,
+  type ApprovalRequest,
 } from "../dist/index.js";
 
 function scriptedModel(toolCall) {
@@ -231,13 +232,14 @@ test("filesystem patches outside the working directory are denied", async () => 
 
 test("the built-in pattern table flags dangerous shapes and allows normal ones", () => {
   const policy = denyDangerousPolicy();
-  const decide = (toolName, input) =>
+  const decide = (toolName, input, metadata?: ApprovalRequest["metadata"]) =>
     (
       policy.decide({
         toolName,
         input,
         sessionId: "s",
         workingDirectory: "/workspace",
+        ...(metadata === undefined ? {} : { metadata }),
       }) as { decision: string }
     ).decision;
 
@@ -289,7 +291,10 @@ test("the built-in pattern table flags dangerous shapes and allows normal ones",
   assert.equal(decide("git", { args: ["push", "origin", "main"] }), "allow");
   assert.equal(decide("git", { args: ["log", "--oneline"] }), "allow");
   assert.equal(decide("shell", { command: "echo", args: ["hello"] }), "allow");
-  assert.equal(decide("search", { query: "rm -rf" }), "allow");
+  assert.equal(decide("search", { query: "rm -rf" }, {
+    risk: "read-only",
+    confirmation: "never",
+  }), "allow");
 });
 
 test("no policy means no approval checks", async () => {

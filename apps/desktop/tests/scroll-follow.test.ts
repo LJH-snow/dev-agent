@@ -26,6 +26,13 @@ test("desktop message streaming preserves a reader's manual scroll position", as
     assert.equal(response.status, 200);
     const html = await response.text();
 
+    assert.match(html, /id="jump-to-latest"/);
+    assert.match(html, /data-i18n="conversation.newOutput"/);
+    assert.match(html, /aria-live="polite"/);
+    assert.match(html, /let pendingLiveOutput = false/);
+    assert.match(html, /function renderLiveOutputNotice\(\)/);
+    assert.match(html, /function clearPendingLiveOutput\(\)/);
+    assert.match(html, /function markLiveOutputPending\(\)/);
     assert.match(html, /const MESSAGE_SCROLL_THRESHOLD = 24/);
     assert.match(html, /function isMessagesAtBottom\(\)/);
     assert.match(
@@ -42,8 +49,18 @@ test("desktop message streaming preserves a reader's manual scroll position", as
     );
     assert.match(
       html,
+      /function scrollMessagesToBottom\(wasAtBottom = isMessagesAtBottom\(\)\) \{[\s\S]{0,260}markLiveOutputPending\(\);/
+    );
+    assert.match(
+      html,
       /case "token":[\s\S]{0,320}const wasAtBottom = isMessagesAtBottom\(\);[\s\S]{0,260}scrollMessagesToBottom\(wasAtBottom\);/
     );
+    assert.match(
+      html,
+      /messages\.addEventListener\("scroll", \(\) => \{[\s\S]{0,180}isMessagesAtBottom\(\)[\s\S]{0,120}clearPendingLiveOutput\(\)/
+    );
+    assert.match(html, /jumpToLatestButton\.addEventListener\("click"/);
+    assert.match(html, /resetLiveOutputNotice\(\)/);
   } finally {
     await close(server);
   }

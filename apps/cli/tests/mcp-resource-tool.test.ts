@@ -18,7 +18,10 @@ const mcpFixture = fileURLToPath(
  * back the tool result it received, so the test can assert on what the model
  * was actually given.
  */
-async function startStubProvider(uri: string): Promise<{ baseUrl: string; close: () => Promise<void> }> {
+async function startStubProvider(
+  toolName: string,
+  input: unknown,
+): Promise<{ baseUrl: string; close: () => Promise<void> }> {
   const server = createServer((req, res) => {
     let body = "";
     req.on("data", (chunk) => {
@@ -40,8 +43,8 @@ async function startStubProvider(uri: string): Promise<{ baseUrl: string; close:
                         id: "call_1",
                         type: "function",
                         function: {
-                          name: "fake:resource",
-                          arguments: JSON.stringify({ uri }),
+                          name: toolName,
+                          arguments: JSON.stringify(input),
                         },
                       },
                     ],
@@ -84,7 +87,7 @@ function runCli(args: readonly string[], env: NodeJS.ProcessEnv): Promise<any> {
 
 test("the MCP resource tool hands the model every content block", async () => {
   const uri = "file:///tmp/multi.txt";
-  const provider = await startStubProvider(uri);
+  const provider = await startStubProvider("fake:resource", { uri });
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-resource-"));
   try {
     const result = await runCli(["--once", "read the resource", "--no-stream"], {
@@ -102,6 +105,33 @@ test("the MCP resource tool hands the model every content block", async () => {
     assert.match(result.stdout, /FIRST-PART/);
     assert.match(result.stdout, /SECOND-PART/, "the second block must reach the model");
     assert.match(result.stdout, /THIRD-PART/, "the third block must reach the model");
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("deny-dangerous blocks an MCP action tool before it reaches the server", async () => {
+  const provider = await startStubProvider("fake:hello", { target: "production" });
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-mcp-action-approval-"));
+  try {
+    const result = await runCli(
+      ["--once", "publish the release", "--no-stream", "--approval", "deny-dangerous"],
+      {
+        ...process.env,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: provider.baseUrl,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+        DEV_AGENT_MCP_SERVERS: JSON.stringify([
+          { name: "fake", command: process.execPath, args: [mcpFixture] },
+        ]),
+      },
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /denied by policy/);
+    assert.doesNotMatch(result.stdout, /hello \{/);
   } finally {
     await provider.close();
     await rm(dir, { recursive: true, force: true });

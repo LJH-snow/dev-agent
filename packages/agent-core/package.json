@@ -14,7 +14,8 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "@dev-agent/model": "workspace:*"
+    "@dev-agent/model": "workspace:*",
+    "@dev-agent/runtime-events": "workspace:*"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

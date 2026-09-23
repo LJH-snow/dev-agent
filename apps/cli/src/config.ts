@@ -4,12 +4,31 @@ import { join, resolve } from "node:path";
 
 import type { PriceTable } from "@dev-agent/model";
 import type { ProviderManagementConfig } from "./provider-command.js";
+import { parseInkTheme, type InkThemeName } from "./ink/theme-types.js";
+import { validateCollaborationConfig } from "./config-validation.js";
 import {
   normalizeValidationPolicySettings,
   resolveValidationPolicy as resolveSharedValidationPolicy,
   type ValidationPolicy,
   type ValidationPolicySettings,
 } from "@dev-agent/tools";
+
+export interface SpecialistAgentBudgetConfig {
+  readonly maxTurns?: number;
+  readonly maxTokens?: number;
+  readonly maxDurationMs?: number;
+  readonly maxOutputChars?: number;
+}
+
+export interface SpecialistAgentConfig {
+  readonly id: string;
+  readonly instructions: string;
+  readonly provider?: string;
+  readonly model?: string;
+  /** Role-specific limits narrow the available collaboration tools. */
+  readonly toolAllowlist?: readonly string[];
+  readonly budget?: SpecialistAgentBudgetConfig;
+}
 
 export interface CliConfig extends ProviderManagementConfig {
   readonly defaultProvider?: string;
@@ -39,9 +58,18 @@ export interface CliConfig extends ProviderManagementConfig {
   /** USD-per-million-token prices keyed by model-name prefix. */
   readonly pricing?: PriceTable;
   readonly approvalMode?: ApprovalMode;
+  readonly theme?: InkThemeName;
   readonly approval?: {
     readonly allow?: readonly string[];
     readonly deny?: readonly string[];
+  };
+  /** Optional user-owned upper bound shared by every :team worker. */
+  readonly collaboration?: {
+    readonly toolAllowlist?: readonly string[];
+    /** @deprecated Scope review is mandatory; this setting is accepted but ignored. */
+    readonly reviewTaskToolScopes?: boolean;
+    /** Optional named roles for `:team plan` and matching `:team` task workers; configured roles replace planning defaults. */
+    readonly roles?: readonly SpecialistAgentConfig[];
   };
   readonly mcpServers?: ReadonlyArray<{
     readonly name?: string;
@@ -49,6 +77,7 @@ export interface CliConfig extends ProviderManagementConfig {
     readonly args?: readonly string[];
     readonly env?: Record<string, string>;
     readonly timeoutMs?: number;
+    readonly enabled?: boolean;
   }>;
 }
 
@@ -66,6 +95,59 @@ export function parseConfig(raw: string): CliConfig {
     ...(parsed as Record<string, unknown>),
     ...normalizeValidationPolicySettings(parsed),
   } as CliConfig;
+}
+
+export function resolveInkTheme(
+  config: CliConfig = {},
+  env: Env = process.env,
+): InkThemeName {
+  return parseInkTheme(env.DEV_AGENT_THEME) ??
+    parseInkTheme(config.theme) ??
+    "signal";
+}
+
+export type CollaborationToolAllowlistResolution =
+  | { readonly valid: true; readonly toolAllowlist?: readonly string[] }
+  | { readonly valid: false; readonly message: string };
+
+/**
+ * Resolves the user-owned collaboration ceiling without trusting the static
+ * CliConfig cast applied to JSON. Invalid safety configuration fails closed.
+ */
+export function resolveCollaborationToolAllowlist(
+  config: unknown,
+): CollaborationToolAllowlistResolution {
+  if (!isPlainRecord(config)) {
+    return { valid: false, message: "Configuration must be an object." };
+  }
+  if (!Object.prototype.hasOwnProperty.call(config, "collaboration")) {
+    return { valid: true };
+  }
+
+  const validation = validateCollaborationConfig(config.collaboration);
+  if (!validation.valid) {
+    const diagnostic = validation.diagnostics[0];
+    return {
+      valid: false,
+      message: diagnostic
+        ? `Invalid collaboration configuration at ${diagnostic.path}: ${diagnostic.message}`
+        : "Invalid collaboration configuration.",
+    };
+  }
+
+  if (!isPlainRecord(config.collaboration)) {
+    return { valid: false, message: "Invalid collaboration configuration." };
+  }
+  const toolAllowlist = config.collaboration.toolAllowlist;
+  return Array.isArray(toolAllowlist)
+    ? { valid: true, toolAllowlist: toolAllowlist as string[] }
+    : { valid: true };
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 const MAX_CONFIG_FILE_BYTES = 1024 * 1024; // 1 MiB

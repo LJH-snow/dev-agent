@@ -287,6 +287,58 @@ test("GET / exposes keyboard focus and async status semantics", async () => {
   }
 });
 
+test("GET /api/sessions/:id/trace returns bounded metadata-only trace", async () => {
+  const trace = {
+    schemaVersion: 1,
+    metadataOnly: true,
+    droppedRuns: 0,
+    runs: [
+      {
+        runId: "run-1",
+        status: "completed",
+        startedAt: "2026-09-20T10:00:00.000Z",
+        completedAt: "2026-09-20T10:00:00.100Z",
+        durationMs: 100,
+        turns: 1,
+        usage: { promptTokens: 4, completionTokens: 2, totalTokens: 6 },
+        spans: [],
+      },
+    ],
+  } as const;
+  const server = createDesktopServer({
+    session: {
+      getTraceSnapshot() {
+        return trace;
+      },
+      async run() {},
+    },
+  });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/sessions/desktop-default/trace`);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("cache-control"), "no-store");
+    assert.deepEqual(await response.json(), trace);
+    assert.doesNotMatch(JSON.stringify(trace), /prompt text|tool output|Users|secret/i);
+  } finally {
+    await close(server);
+  }
+});
+
+test("GET /api/sessions/:id/trace stays stable for legacy sessions", async () => {
+  const server = createDesktopServer({
+    session: { async run() {} },
+  });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/sessions/desktop-default/trace`);
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { error: "trace unavailable" });
+  } finally {
+    await close(server);
+  }
+});
+
 test("review approval SSE includes the change-set review", async () => {
   let rollbackCalls = [];
   const session = {

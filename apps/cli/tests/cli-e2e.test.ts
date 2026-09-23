@@ -13,7 +13,12 @@ function runCli(args, env = {}): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [cliEntry, ...args], {
       cwd: cliRoot,
-      env: { ...process.env, DEV_AGENT_MODEL_PROVIDER: "ollama", ...env },
+      env: {
+        ...process.env,
+        DEV_AGENT_MCP_SERVERS: "[]",
+        DEV_AGENT_MODEL_PROVIDER: "ollama",
+        ...env,
+      },
     });
     let stdout = "";
     let stderr = "";
@@ -189,6 +194,27 @@ test("CLI --compact reports zero removals for empty session", async () => {
     });
     assert.equal(code, 0);
     assert.match(stdout, /removed 0 entries/);
+  } finally {
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+});
+
+test("CLI --compact skips configured MCP startup", async () => {
+  const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-cli-"));
+  const sessionFile = join(sessionDir, "e2e.json");
+  try {
+    const { stdout, stderr, code } = await runCli(["--compact", "3"], {
+      DEV_AGENT_MEMORY_FILE: sessionFile,
+      DEV_AGENT_MCP_SERVERS: JSON.stringify([
+        {
+          name: "unavailable",
+          command: join(sessionDir, "missing-mcp-command"),
+        },
+      ]),
+    });
+    assert.equal(code, 0, stderr);
+    assert.match(stdout, /removed 0 entries/);
+    assert.equal(stderr, "");
   } finally {
     await rm(sessionDir, { recursive: true, force: true });
   }

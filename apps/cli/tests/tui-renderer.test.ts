@@ -212,6 +212,8 @@ test("default command hints use the CLI's colon commands", () => {
   assert.match(output, /:help/);
   assert.match(output, /:clear/);
   assert.match(output, /:model/);
+  assert.match(output, /:skills/);
+  assert.match(output, /:skill <name>/);
   assert.match(output, /:collapse/);
   assert.match(output, /:expand/);
   assert.match(output, /:validate/);
@@ -219,31 +221,6 @@ test("default command hints use the CLI's colon commands", () => {
   assert.match(output, /:quit/);
   assert.match(output, /exit \/ quit/);
   assert.doesNotMatch(output, /\/help/);
-});
-
-test("input footer shows the working directory and session metadata", async () => {
-  const module = await import("../dist/tui-renderer.js") as unknown as {
-    renderInputFooter?: (options: {
-      workingDirectory: string;
-      sessionId: string;
-      executor: string;
-      width: number;
-    }) => string;
-  };
-
-  assert.equal(typeof module.renderInputFooter, "function");
-  const output = module.renderInputFooter?.({
-    workingDirectory: "/workspace/project",
-    sessionId: "default",
-    executor: "local",
-    width: 64,
-  }) ?? "";
-
-  assert.match(output, /\/workspace\/project/);
-  assert.match(output, /default/);
-  assert.match(output, /local/);
-  assert.ok(displayWidth(output) <= 64);
-  assert.ok(displayWidth(output) < 64);
 });
 
 test("welcome frames leave a terminal safety column", () => {

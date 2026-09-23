@@ -1,5 +1,6 @@
 import { existsSync, realpathSync } from "node:fs";
 import { dirname, join, resolve, sep } from "node:path";
+import type { AgentToolMetadata } from "./tools.js";
 
 /**
  * Approval policies decide whether a tool call may run.
@@ -42,6 +43,8 @@ export interface ApprovalRequest {
   readonly input: unknown;
   readonly sessionId: string;
   readonly workingDirectory: string;
+  /** Trusted application-owned classification; never copied from MCP annotations. */
+  readonly metadata?: Pick<AgentToolMetadata, "risk" | "confirmation">;
   readonly review?: ChangeSetReview;
 }
 
@@ -140,6 +143,18 @@ export interface CompiledApprovalConfig {
   readonly patterns: readonly RegExp[];
 }
 
+export type ApprovalMode = "allow" | "deny-dangerous" | "ask" | "review-writes";
+
+export interface ApprovalPolicyFactoryOptions {
+  readonly mode: ApprovalMode;
+  readonly patterns?: readonly RegExp[];
+  readonly allowlist?: readonly string[];
+  /** Builds a reviewed execution input for filesystem mutations. */
+  readonly prepare?: ReviewWritesOptions["prepare"];
+  /** Supplies the UI or transport-specific approval interaction. */
+  readonly requestApproval?: ReviewWritesOptions["requestApproval"];
+}
+
 /**
  * Turns the config strings into what `denyDangerousPolicy` wants. Malformed
  * regular expressions are skipped (with the rest of the list still applied)
@@ -187,8 +202,9 @@ export function isFilesystemMutation(request: ApprovalRequest): boolean {
 }
 
 /**
- * Requires an interactive review for filesystem mutations while retaining the
- * existing dangerous-command policy for shell and git calls.
+ * Requires an interactive review for filesystem mutations and other tools
+ * whose trusted metadata requires confirmation, while retaining the existing
+ * command-specific policy for shell and git calls.
  */
 export function reviewWritesPolicy(options: ReviewWritesOptions): ApprovalPolicy {
   const dangerous = denyDangerousPolicy({
@@ -225,13 +241,22 @@ export function reviewWritesPolicy(options: ReviewWritesOptions): ApprovalPolicy
 
       const outcome = await dangerous.decide(request);
       const decision = typeof outcome === "string" ? outcome : outcome.decision;
-      if (decision === "allow" || !options.requestApproval) {
+      const confirmationReason = genericToolConfirmationReason(request);
+      if (decision === "allow" && confirmationReason === undefined) {
         return typeof outcome === "string" ? { decision: outcome } : outcome;
       }
       const reason = typeof outcome === "string" ? undefined : outcome.reason;
+      if (!options.requestApproval) {
+        return decision === "deny"
+          ? typeof outcome === "string" ? { decision: outcome } : outcome
+          : {
+              decision: "deny",
+              reason: `${confirmationReason ?? "tool call"} requires interactive approval`,
+            };
+      }
       return normalizeApprovalOutcome(
-        await options.requestApproval(request, reason),
-        `${reason ?? "dangerous call"} (declined)`
+        await options.requestApproval(request, reason ?? confirmationReason),
+        `${reason ?? confirmationReason ?? "dangerous call"} (declined)`
       );
     },
   };
@@ -255,6 +280,64 @@ function normalizeApprovalOutcome(
 /** Allows everything: the default, matching the behaviour before policies existed. */
 export function allowAllPolicy(): ApprovalPolicy {
   return { decide: () => ({ decision: "allow" }) };
+}
+
+/**
+ * Builds the shared approval-mode boundary used by CLI, Desktop, and MCP.
+ * Callers provide only their interaction and change-set adapters; dangerous
+ * matching, review-writes preparation, and mode fallback stay in Agent Core.
+ */
+export function createApprovalPolicy(
+  options: ApprovalPolicyFactoryOptions
+): ApprovalPolicy | undefined {
+  const patterns = [...(options.patterns ?? [])];
+  const allowlist = [...(options.allowlist ?? [])];
+
+  if (options.mode === "allow") {
+    return undefined;
+  }
+
+  if (options.mode === "deny-dangerous") {
+    return denyDangerousPolicy({ patterns, allowlist });
+  }
+
+  if (options.mode === "review-writes") {
+    return reviewWritesPolicy({
+      prepare:
+        options.prepare ??
+        (async () => {
+          throw new Error("filesystem tool is unavailable for write review");
+        }),
+      patterns,
+      allowlist,
+      requestApproval: options.requestApproval,
+    });
+  }
+
+  const dangerous = denyDangerousPolicy({ patterns, allowlist });
+  return {
+    async decide(request) {
+      const outcome = await dangerous.decide(request);
+      const decision = typeof outcome === "string" ? outcome : outcome.decision;
+      const confirmationReason = genericToolConfirmationReason(request);
+      if (decision === "allow" && confirmationReason === undefined) {
+        return typeof outcome === "string" ? { decision: outcome } : outcome;
+      }
+      const reason = typeof outcome === "string" ? undefined : outcome.reason;
+      if (!options.requestApproval) {
+        return decision === "deny"
+          ? typeof outcome === "string" ? { decision: outcome } : outcome
+          : {
+              decision: "deny",
+              reason: `${confirmationReason ?? "tool call"} requires interactive approval`,
+            };
+      }
+      return normalizeApprovalOutcome(
+        await options.requestApproval(request, reason ?? confirmationReason),
+        `${reason ?? confirmationReason ?? "dangerous call"} (declined)`
+      );
+    },
+  };
 }
 
 /** Denies commands that match a dangerous pattern or write outside the workspace. */
@@ -292,9 +375,53 @@ export function denyDangerousPolicy(options: DenyDangerousOptions = {}): Approva
         }
       }
 
+      const genericReason = genericToolDangerReason(request);
+      if (genericReason !== undefined) {
+        return { decision: "deny", reason: genericReason };
+      }
+
       return { decision: "allow" };
     },
   };
+}
+
+const BUILT_IN_APPROVAL_TOOLS = new Set(["filesystem", "git", "shell"]);
+
+/**
+ * Unknown tools fail closed. Known built-ins retain their argument-aware
+ * policies; their coarse risk metadata must not turn safe shell/git calls into
+ * unconditional prompts.
+ */
+function genericToolDangerReason(request: ApprovalRequest): string | undefined {
+  if (BUILT_IN_APPROVAL_TOOLS.has(request.toolName)) {
+    return undefined;
+  }
+  if (request.metadata === undefined) {
+    return "unclassified tools are denied by this approval policy";
+  }
+  if (request.metadata.risk === "dangerous") {
+    return "tool risk is classified as dangerous";
+  }
+  if (request.metadata.confirmation === "always") {
+    return "tool requires confirmation for every call";
+  }
+  return undefined;
+}
+
+/** Returns the approval reason for a generic tool requiring user confirmation. */
+function genericToolConfirmationReason(request: ApprovalRequest): string | undefined {
+  const dangerReason = genericToolDangerReason(request);
+  if (dangerReason !== undefined) {
+    return dangerReason;
+  }
+  if (
+    !BUILT_IN_APPROVAL_TOOLS.has(request.toolName) &&
+    request.metadata?.risk === "mutating" &&
+    request.metadata.confirmation === "on-risk"
+  ) {
+    return "mutating tool calls require interactive approval";
+  }
+  return undefined;
 }
 
 /** The command line a tool would run, when it runs one at all. */

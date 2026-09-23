@@ -59,6 +59,68 @@ test("agent loop asks the model, runs tools, and finishes with a final answer", 
   assert.equal(entries[3].content, "done");
 });
 
+test("a tool-free run omits tool schemas and reports zero available tools", async () => {
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "echo",
+    description: "Echoes the input.",
+    async execute() {
+      assert.fail("a tool-free run must not execute tools");
+    },
+  });
+
+  let lastOptions;
+  let lastMessages;
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat(messages, options) {
+      lastMessages = messages;
+      lastOptions = options;
+      return { content: "Hi! How can I help?" };
+    },
+  };
+  const loop = new AgentLoop({ model, tools });
+  const context = createAgentContext("tool-free-run", new InMemoryMemory());
+
+  const result = await loop.run(context, "hi", { toolAccess: "none" });
+
+  assert.equal(result.state.status, "done");
+  assert.equal(lastOptions?.tools, undefined);
+  assert.match(lastMessages?.[0]?.content ?? "", /Available tools: 0/);
+});
+
+test("a tool-free run fails closed if a provider returns an unadvertised tool call", async () => {
+  let executions = 0;
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "echo",
+    description: "Echoes the input.",
+    async execute() {
+      executions += 1;
+      return "must not run";
+    },
+  });
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      return {
+        content: "",
+        toolCalls: [{ id: "unexpected", name: "echo", input: {} }],
+      };
+    },
+  };
+  const loop = new AgentLoop({ model, tools });
+  const context = createAgentContext("tool-free-denial", new InMemoryMemory());
+
+  const result = await loop.run(context, "hi", { toolAccess: "none" });
+
+  assert.equal(result.state.status, "error");
+  assert.match(result.state.lastError ?? "", /tool-free run/);
+  assert.equal(executions, 0);
+});
+
 test("a run records provider usage into session metadata", async () => {
   const memory = new InMemoryMemory();
   const context = createAgentContext("usage-run", memory);
@@ -164,6 +226,197 @@ test("agent loop passes runtime context to tools and system prompt", async () =>
   assert.equal(result.sessionId, "session-1");
   assert.equal(result.workingDirectory, "/tmp/work");
   assert.match(lastMessages[0].content, /Working directory: \/tmp\/work/);
+});
+
+test("agent loop resolves a tool sandbox profile into the execution context", async () => {
+  let capturedContext;
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "capture-sandbox",
+    description: "Captures the tool sandbox context.",
+    async execute(_input, context) {
+      capturedContext = context;
+      return { ok: true };
+    },
+  });
+
+  let modelCalls = 0;
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return modelCalls === 1
+        ? {
+            content: "",
+            toolCalls: [{ id: "call-sandbox", name: "capture-sandbox", input: {} }],
+          }
+        : { content: "done", toolCalls: [] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-sandbox", memory, {
+    sessionId: "sandbox-session",
+    workingDirectory: "/tmp/work",
+  });
+  const profile = {
+    name: "sandbox-session",
+    network: "disabled" as const,
+    writablePaths: ["/tmp/work"],
+  };
+  const loop = new AgentLoop({
+    model,
+    tools,
+    maxTurns: 3,
+    toolSandboxProfile: (_toolName, current) => ({
+      ...profile,
+      writablePaths: [current.workingDirectory],
+    }),
+  });
+
+  const result = await loop.run(context, "capture sandbox");
+
+  assert.equal(result.state.status, "done");
+  assert.deepEqual(capturedContext.sandbox, profile);
+});
+
+test("agent loop requests one sandbox expansion and retries the same tool", async () => {
+  const capturedProfiles = [];
+  const capturedInputs = [];
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "network-tool",
+    description: "Needs network access after the first restricted attempt.",
+    async execute(input, context) {
+      capturedInputs.push(input);
+      capturedProfiles.push(context?.sandbox);
+      if (context?.sandbox?.network !== "enabled") {
+        throw Object.assign(new Error("network access denied"), {
+          code: "SANDBOX_DENIED",
+          capability: "network",
+        });
+      }
+      return { ok: true };
+    },
+  });
+
+  let modelCalls = 0;
+  const expansionRequests = [];
+  const events = [];
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return modelCalls === 1
+        ? {
+            content: "",
+            toolCalls: [{ id: "call-network", name: "network-tool", input: { url: "https://example.com" } }],
+          }
+        : { content: "network request completed", toolCalls: [] };
+    },
+  };
+
+  const memory = new InMemoryMemory();
+  const context = createAgentContext("agent-sandbox-expansion", memory, {
+    sessionId: "sandbox-expansion-session",
+    workingDirectory: "/tmp/work",
+  });
+  const loop = new AgentLoop({
+    model,
+    tools,
+    maxTurns: 3,
+    eventSink: (event: { type: string; data: unknown }) => events.push(event),
+    toolSandboxProfile: () => ({
+      name: "restricted",
+      network: "disabled",
+      writablePaths: ["/tmp/work"],
+    }),
+    onSandboxExpansion: (request: any) => {
+      expansionRequests.push(request);
+      return {
+        decision: "allow",
+        profile: {
+          ...request.profile,
+          name: "restricted+network",
+          network: "enabled",
+        },
+      };
+    },
+  } as any);
+
+  const result = await loop.run(context, "fetch the example page", { runId: "sandbox-run-1" });
+
+  assert.equal(result.state.status, "done");
+  assert.equal(modelCalls, 2);
+  assert.equal(expansionRequests.length, 1);
+  assert.equal(expansionRequests[0].toolName, "network-tool");
+  assert.equal(expansionRequests[0].error.capability, "network");
+  assert.deepEqual(capturedInputs, [
+    { url: "https://example.com" },
+    { url: "https://example.com" },
+  ]);
+  assert.equal(capturedProfiles.length, 2);
+  assert.equal(capturedProfiles[0].network, "disabled");
+  assert.equal(capturedProfiles[1].network, "enabled");
+  assert.ok(events.some((event) => event.type === "tool.sandbox-expansion-requested"));
+  assert.ok(events.some((event) => event.type === "tool.sandbox-expansion-resolved"));
+});
+
+test("agent loop reports a denied sandbox expansion without retrying", async () => {
+  let toolRuns = 0;
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "restricted-tool",
+    description: "Requires an expanded sandbox.",
+    async execute(_input, context) {
+      toolRuns += 1;
+      if (context?.sandbox?.network !== "enabled") {
+        throw Object.assign(new Error("network access denied"), {
+          code: "SANDBOX_DENIED",
+          capability: "network",
+        });
+      }
+      return { ok: true };
+    },
+  });
+
+  let modelCalls = 0;
+  const expansionRequests = [];
+  const model = {
+    id: "openai" as const,
+    model: "test-model",
+    async chat() {
+      modelCalls += 1;
+      return modelCalls === 1
+        ? {
+            content: "",
+            toolCalls: [{ id: "call-denied-expansion", name: "restricted-tool", input: {} }],
+          }
+        : { content: "I could not access the network.", toolCalls: [] };
+    },
+  };
+  const loop = new AgentLoop({
+    model,
+    tools,
+    maxTurns: 3,
+    toolSandboxProfile: () => ({ name: "restricted", network: "disabled" }),
+    onSandboxExpansion: (request: any) => {
+      expansionRequests.push(request);
+      return { decision: "deny", reason: "user denied network access" };
+    },
+  } as any);
+
+  const result = await loop.run(
+    createAgentContext("agent-sandbox-expansion-denied", new InMemoryMemory()),
+    "fetch the page"
+  );
+
+  assert.equal(result.state.status, "done");
+  assert.equal(toolRuns, 1);
+  assert.equal(expansionRequests.length, 1);
+  assert.equal(modelCalls, 2);
 });
 
 test("agent loop reports a missing tool back to the model", async () => {

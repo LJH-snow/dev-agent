@@ -6,6 +6,7 @@ import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatStreamOptions,
   ChatUsage,
   ModelProvider,
   ProviderConfig,
@@ -22,7 +23,8 @@ type AnthropicContentBlock =
       readonly id?: string;
       readonly name?: string;
       readonly input?: unknown;
-    };
+    }
+  | { readonly type: "thinking"; readonly thinking?: string };
 
 interface AnthropicResponse {
   readonly content?: readonly AnthropicContentBlock[];
@@ -73,6 +75,7 @@ export class AnthropicProvider implements ModelProvider {
     if (options.tools) {
       body.tools = options.tools.map(toAnthropicTool);
     }
+    addAnthropicThinkingOptions(body, this.model, options);
 
     const response = await requestWithRetry(
       "Anthropic request",
@@ -112,13 +115,20 @@ export class AnthropicProvider implements ModelProvider {
           };
         })
         .filter((call): call is ToolCall => call !== undefined),
+      reasoning: blocks
+        .filter((block): block is Extract<AnthropicContentBlock, { type: "thinking" }> =>
+          block.type === "thinking"
+        )
+        .map((block) => block.thinking ?? "")
+        .filter(Boolean)
+        .join(""),
       usage: applyAnthropicUsage(undefined, data.usage),
     };
   }
 
   async streamChat(
     messages: readonly ChatMessage[],
-    options: ChatOptions & { onToken?: (token: string) => void } = {}
+    options: ChatStreamOptions = {}
   ): Promise<ChatCompletion> {
     const system = messages
       .filter((m) => m.role === "system")
@@ -133,6 +143,7 @@ export class AnthropicProvider implements ModelProvider {
     if (system) body.system = system;
     if (options.temperature !== undefined) body.temperature = options.temperature;
     if (options.tools) body.tools = options.tools.map(toAnthropicTool);
+    addAnthropicThinkingOptions(body, this.model, options);
 
     const response = await requestWithRetry(
       "Anthropic stream request",
@@ -159,6 +170,7 @@ export class AnthropicProvider implements ModelProvider {
     const decoder = new TextDecoder();
     const budget = new StreamOutputBudget();
     let content = "";
+    let reasoning = "";
     let buffer = "";
     let usage: ChatUsage | undefined;
     const toolUses = new Map<number, { id: string; name: string; json: string }>();
@@ -172,7 +184,12 @@ export class AnthropicProvider implements ModelProvider {
           type?: string;
           index?: number;
           content_block?: { type?: string; id?: string; name?: string };
-          delta?: { type?: string; text?: string; partial_json?: string };
+          delta?: {
+            type?: string;
+            text?: string;
+            thinking?: string;
+            partial_json?: string;
+          };
           message?: { usage?: AnthropicWireUsage };
           usage?: AnthropicWireUsage;
         };
@@ -198,6 +215,11 @@ export class AnthropicProvider implements ModelProvider {
             budget.addText(json.delta.partial_json);
             accumulated.json += json.delta.partial_json;
           }
+        }
+        if (json.delta?.type === "thinking_delta" && json.delta.thinking) {
+          budget.addText(json.delta.thinking);
+          reasoning += json.delta.thinking;
+          options.onReasoning?.(json.delta.thinking);
         }
         const text = json.delta?.text;
         if (text) {
@@ -244,7 +266,12 @@ export class AnthropicProvider implements ModelProvider {
         input: parseJsonOrRaw(accumulated.json),
       }));
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
+    return {
+      content,
+      reasoning: reasoning || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage,
+    };
   }
 }
 
@@ -359,4 +386,24 @@ function toAnthropicTool(tool: ToolSchema): Record<string, unknown> {
     description: tool.description,
     input_schema: tool.parameters,
   };
+}
+
+function addAnthropicThinkingOptions(
+  body: Record<string, unknown>,
+  model: string,
+  options: ChatOptions,
+): void {
+  if (!supportsAnthropicAdaptiveEffort(model)) return;
+  if (options.adaptiveThinking) {
+    body.thinking = { type: "adaptive" };
+  }
+  if (options.reasoningEffort) {
+    body.output_config = { effort: options.reasoningEffort };
+  }
+}
+
+export function supportsAnthropicAdaptiveEffort(model: string): boolean {
+  return /^claude-(?:(?:opus|sonnet)-(?:4-(?:6|7|8)|5(?:-\d+)?)|(?:fable|mythos)-5(?:-\d+)?)(?:-|$)/i.test(
+    model.trim(),
+  );
 }

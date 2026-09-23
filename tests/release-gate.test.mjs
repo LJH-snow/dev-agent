@@ -86,6 +86,12 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
   );
 });
 
+test("root workspace tests serialize package suites to avoid cross-package contention", () => {
+  const repositoryRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
+  const rootPackage = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"));
+  assert.equal(rootPackage.scripts.test, "pnpm -r --workspace-concurrency=1 run test");
+});
+
 test("phase flags select only the requested fixed gate", () => {
   assert.deepEqual(parseGateArgs(["--typescript"]).modes, ["typescript"]);
   assert.deepEqual(parseGateArgs(["--rust"]).modes, ["rust"]);

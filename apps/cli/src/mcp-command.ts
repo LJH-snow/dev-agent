@@ -5,7 +5,7 @@ import type {
 } from "@dev-agent/mcp";
 
 const DEFAULT_MCP_TIMEOUT_MS = 30_000;
-const MCP_FIELDS = new Set(["name", "command", "args", "env", "timeoutMs"]);
+const MCP_FIELDS = new Set(["name", "command", "args", "env", "timeoutMs", "enabled"]);
 const CAPABILITY_FIELDS = [
   "tools",
   "resources",
@@ -30,13 +30,14 @@ export interface McpManagementConfig {
   readonly mcpServers?: readonly unknown[];
 }
 
-export type McpCommandAction = "list" | "status" | "validate" | "test";
+export type McpCommandAction = "list" | "status" | "validate" | "test" | "health";
 export type McpCommandName = `mcp ${McpCommandAction}`;
 
 export type McpServerState =
   | "configured"
   | "invalid"
   | "skipped"
+  | "disabled"
   | "ready"
   | "timeout"
   | "failed"
@@ -50,7 +51,8 @@ export type McpManagementReason =
   | "connection_failed"
   | "capability_changed"
   | "probe_failed"
-  | "cancelled";
+  | "cancelled"
+  | "disabled";
 
 export interface McpCapabilitySummary {
   readonly tools: boolean;
@@ -96,6 +98,7 @@ export interface McpServerSummary {
   readonly configured: number;
   readonly invalid: number;
   readonly skipped: number;
+  readonly disabled: number;
   readonly failed: number;
   readonly timedOut: number;
   readonly changed: number;
@@ -163,6 +166,7 @@ interface NormalizedServer {
   readonly config: McpClientConfig;
   readonly valid: boolean;
   readonly validationCodes: readonly string[];
+  readonly enabled: boolean;
   readonly rawName?: string;
 }
 
@@ -180,13 +184,25 @@ const ABORTED = Symbol("mcp-aborted");
 
 export function listMcpServers(options: McpManagementOptions = {}): McpManagementResult {
   const normalized = normalizeServers(options.config);
-  const servers = normalized.map((server) => metadataFor(server, server.valid ? "configured" : "invalid"));
+  const servers = normalized.map((server) =>
+    metadataFor(
+      server,
+      !server.valid ? "invalid" : server.enabled ? "configured" : "disabled",
+      server.enabled ? null : "disabled",
+    )
+  );
   return createResult("mcp list", servers, "list");
 }
 
 export function validateMcpServers(options: McpManagementOptions = {}): McpManagementResult {
   const normalized = normalizeServers(options.config);
-  const servers = normalized.map((server) => metadataFor(server, server.valid ? "configured" : "invalid"));
+  const servers = normalized.map((server) =>
+    metadataFor(
+      server,
+      !server.valid ? "invalid" : server.enabled ? "configured" : "disabled",
+      server.enabled ? null : "disabled",
+    )
+  );
   return createResult("mcp validate", servers, "validate");
 }
 
@@ -202,6 +218,12 @@ export async function testMcpServers(
   return inspectMcpServers("mcp test", options);
 }
 
+export async function healthMcpServers(
+  options: McpManagementOptions = {}
+): Promise<McpManagementResult> {
+  return inspectMcpServers("mcp health", options);
+}
+
 export async function executeMcpCommand(
   action: McpCommandAction,
   options: McpManagementOptions = {}
@@ -215,11 +237,13 @@ export async function executeMcpCommand(
       return statusMcpServers(options);
     case "test":
       return testMcpServers(options);
+    case "health":
+      return healthMcpServers(options);
   }
 }
 
 async function inspectMcpServers(
-  command: "mcp status" | "mcp test",
+  command: "mcp status" | "mcp test" | "mcp health",
   options: McpManagementOptions
 ): Promise<McpManagementResult> {
   const normalized = normalizeServers(options.config);
@@ -232,6 +256,10 @@ async function inspectMcpServers(
   for (const server of normalized) {
     if (!server.valid) {
       servers.push(metadataFor(server, "invalid"));
+      continue;
+    }
+    if (!server.enabled) {
+      servers.push(metadataFor(server, "disabled", "disabled"));
       continue;
     }
     if (!checker) {
@@ -315,6 +343,11 @@ function normalizeServer(raw: unknown, index: number): NormalizedServer {
     validationCodes.push("invalid_timeout");
   }
 
+  const enabled = raw.enabled;
+  if (enabled !== undefined && typeof enabled !== "boolean") {
+    validationCodes.push("invalid_enabled");
+  }
+
   const valid = validationCodes.length === 0;
   const clientConfig: McpClientConfig = {
     name: name ?? fallbackName,
@@ -335,6 +368,7 @@ function normalizeServer(raw: unknown, index: number): NormalizedServer {
     config: clientConfig,
     valid,
     validationCodes: stableUnique(validationCodes),
+    enabled: enabled !== false,
   };
 }
 
@@ -353,6 +387,7 @@ function invalidSyntheticServer(
     },
     valid: false,
     validationCodes,
+    enabled: false,
   };
 }
 
@@ -682,6 +717,7 @@ function summarizeServers(servers: readonly McpServerMetadata[]): McpServerSumma
     configured: servers.filter((server) => server.state === "configured").length,
     invalid: servers.filter((server) => server.state === "invalid").length,
     skipped: servers.filter((server) => server.state === "skipped").length,
+    disabled: servers.filter((server) => server.state === "disabled").length,
     failed: servers.filter((server) => server.state === "failed").length,
     timedOut: servers.filter((server) => server.state === "timeout").length,
     changed: servers.filter((server) => server.state === "changed").length,

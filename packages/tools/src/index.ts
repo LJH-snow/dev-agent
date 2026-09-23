@@ -1,33 +1,26 @@
+import {
+  AgentToolRegistry,
+  type AgentTool,
+  type ToolExecutionContext as AgentToolExecutionContext,
+} from "@dev-agent/agent-core";
+
 export type ToolName = "filesystem" | "shell" | "git" | "search" | "code-search";
 
-export interface ToolExecutionContext {
-  readonly sessionId: string;
-  readonly workingDirectory: string;
-  /** Aborted when the surrounding run is interrupted, so tools can stop work. */
-  readonly signal?: AbortSignal;
-}
+export type Tool = AgentTool & { readonly name: ToolName };
+export type ToolExecutionContext = AgentToolExecutionContext;
 
-export interface Tool {
-  readonly name: ToolName;
-  readonly description: string;
-  readonly parameters?: Record<string, unknown>;
-  execute(input: unknown, context?: ToolExecutionContext): Promise<unknown>;
-}
-
-export class ToolRegistry {
-  private readonly tools = new Map<ToolName, Tool>();
-
-  register(tool: Tool): this {
-    this.tools.set(tool.name, tool);
-    return this;
+/**
+ * Compatibility entry point for callers that historically imported the
+ * built-in registry from `@dev-agent/tools`. Agent Core owns the actual
+ * registry and metadata normalization.
+ */
+export class ToolRegistry extends AgentToolRegistry {
+  override get(name: string): Tool | undefined {
+    return super.get(name) as Tool | undefined;
   }
 
-  get(name: ToolName): Tool | undefined {
-    return this.tools.get(name);
-  }
-
-  list(): Tool[] {
-    return [...this.tools.values()];
+  override list(): Tool[] {
+    return super.list() as Tool[];
   }
 }
 
@@ -38,6 +31,7 @@ export * from "./shell.js";
 export * from "./git.js";
 export * from "./search.js";
 export * from "./code-search.js";
+export * from "./sandbox-profile.js";
 export * from "./create-default-tools.js";
 export * from "./validation-plan.js";
 export * from "./validation-runner.js";

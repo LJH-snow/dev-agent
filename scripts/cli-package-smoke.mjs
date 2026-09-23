@@ -64,12 +64,14 @@ async function main() {
     const packDirectory = join(stagingRoot, "pack");
     const installDirectory = join(stagingRoot, "install");
     const homeDirectory = join(stagingRoot, "home");
+    const cacheDirectory = join(stagingRoot, "npm-cache");
     const projectDirectory = join(stagingRoot, "external-project");
     const launcherDirectory = join(stagingRoot, "launcher");
     await Promise.all([
       mkdir(packDirectory, { recursive: true }),
       mkdir(installDirectory, { recursive: true }),
       mkdir(homeDirectory, { recursive: true }),
+      mkdir(cacheDirectory, { recursive: true }),
       mkdir(projectDirectory, { recursive: true }),
       mkdir(launcherDirectory, { recursive: true }),
     ]);
@@ -91,6 +93,11 @@ async function main() {
       ...process.env,
       HOME: homeDirectory,
       USERPROFILE: homeDirectory,
+      NPM_CONFIG_CACHE: cacheDirectory,
+      HTTP_PROXY: "",
+      HTTPS_PROXY: "",
+      ALL_PROXY: "",
+      NO_PROXY: "*",
       DEV_AGENT_MODEL_PROVIDER: "ollama",
       DEV_AGENT_SESSION_DIR: join(homeDirectory, "sessions"),
       DEV_AGENT_MEMORY_FILE: join(homeDirectory, "memory.json"),
@@ -102,6 +109,7 @@ async function main() {
       installDirectory,
       "--no-save",
       "--ignore-scripts",
+      "--prefer-offline",
       "--no-audit",
       "--no-fund",
       tarballPath,
@@ -153,7 +161,7 @@ async function main() {
     assert.equal(typeof installedManifest.dependencies?.typescript, "string");
     assert.deepEqual(
       Object.keys(installedManifest.dependencies ?? {}),
-      ["typescript"]
+      ["ink", "react", "signal-exit", "typescript"]
     );
 
     const installedBundlePath = join(

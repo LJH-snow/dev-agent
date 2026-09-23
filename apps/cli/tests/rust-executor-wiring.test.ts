@@ -9,6 +9,10 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
+const mockExecutorPath = join(
+  __dirname,
+  "../../../packages/executor/tests/mock-executor-binary.mjs"
+);
 
 const toolCallChunk = {
   choices: [
@@ -87,6 +91,7 @@ async function withCli(baseUrl, extraEnv, run) {
       ...process.env,
       NO_COLOR: "1",
       DEV_AGENT_MODEL_PROVIDER: "openai",
+      DEV_AGENT_MCP_SERVERS: "[]",
       OPENAI_API_KEY: "test-key",
       OPENAI_BASE_URL: baseUrl,
       DEV_AGENT_MEMORY_FILE: join(dir, "memory.json"),
@@ -123,6 +128,22 @@ test("without DEV_AGENT_RUST_BINARY the shell tool runs through LocalExecutor", 
     assert.equal(result.code, 0);
     assert.match(result.stdout, /\[tool-result\] shell: \{"stdout":"hi/);
     assert.match(result.stdout, /\[state=done/);
+  } finally {
+    await stub.close();
+  }
+});
+
+test("Rust sandbox routes built-in shell tools through sandboxed requests", async () => {
+  const stub = await startStubProvider();
+  try {
+    const result = await withCli(
+      stub.baseUrl,
+      { DEV_AGENT_RUST_BINARY: mockExecutorPath },
+      (env) => runCli(["--once", "run echo"], env)
+    );
+
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /\[tool-result\] shell: \{"stdout":"sandboxed:echo/);
   } finally {
     await stub.close();
   }

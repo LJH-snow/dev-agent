@@ -1,3 +1,5 @@
+import { parseInkTheme } from "./ink/theme-types.js";
+
 /** A diagnostic severity emitted by config validation. */
 export type ConfigDiagnosticSeverity = "error" | "warning";
 
@@ -47,7 +49,9 @@ const TOP_LEVEL_FIELDS = new Set([
   "validationPolicy",
   "pricing",
   "approvalMode",
+  "theme",
   "approval",
+  "collaboration",
   "mcpServers",
 ]);
 
@@ -61,7 +65,9 @@ const PRICE_FIELDS = new Set([
   "cachedInputPerMillion",
   "cacheCreationInputPerMillion",
 ]);
-const MCP_FIELDS = new Set(["name", "command", "args", "env", "timeoutMs"]);
+const MCP_FIELDS = new Set(["name", "command", "args", "env", "timeoutMs", "enabled"]);
+const COLLABORATION_FIELDS = new Set(["toolAllowlist", "reviewTaskToolScopes", "roles"]);
+const MAX_COLLABORATION_TOOL_ALLOWLIST = 256;
 
 /**
  * Validates the in-memory JSON-shaped value used by the CLI config reader.
@@ -116,8 +122,10 @@ export function validateConfigValue(value: unknown): ConfigValidationResult {
     );
   }
   validateApprovalMode(config, diagnostics);
+  validateTheme(config, diagnostics);
   validateApproval(config, diagnostics);
   validatePricing(config, diagnostics);
+  validateCollaboration(config, diagnostics);
   validateMcpServers(config, diagnostics);
 
   return resultFrom(diagnostics);
@@ -183,6 +191,24 @@ function validateModel(config: Record<string, unknown>, diagnostics: ConfigDiagn
   }
   if (value.trim() === "") {
     addDiagnostic(diagnostics, path, "invalid_model", `${path} must be a non-empty string.`);
+  }
+}
+
+function validateTheme(
+  config: Record<string, unknown>,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  if (!hasOwn(config, "theme")) return;
+  if (
+    typeof config.theme !== "string" ||
+    parseInkTheme(config.theme) === undefined
+  ) {
+    addDiagnostic(
+      diagnostics,
+      "theme",
+      "invalid_theme",
+      "theme must be one of: signal, mono, ember.",
+    );
   }
 }
 
@@ -647,6 +673,150 @@ function validatePriceNumber(
   }
 }
 
+export function validateCollaborationConfig(value: unknown): ConfigValidationResult {
+  const diagnostics: ConfigDiagnostic[] = [];
+  validateCollaborationValue(value, diagnostics);
+  return resultFrom(diagnostics);
+}
+
+function validateCollaboration(
+  config: Record<string, unknown>,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  if (!hasOwn(config, "collaboration")) return;
+  diagnostics.push(...validateCollaborationConfig(config.collaboration).diagnostics);
+}
+
+function validateCollaborationValue(
+  value: unknown,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  const path = "collaboration";
+  if (!isPlainRecord(value)) {
+    addDiagnostic(diagnostics, path, "invalid_type", `${path} must be an object.`);
+    return;
+  }
+  for (const key of Object.keys(value)) {
+    if (!COLLABORATION_FIELDS.has(key)) {
+      addDiagnostic(diagnostics, `${path}.${key}`, "unknown_field", "Unknown collaboration field.");
+    }
+  }
+
+  if (
+    hasOwn(value, "reviewTaskToolScopes") &&
+    typeof value.reviewTaskToolScopes !== "boolean"
+  ) {
+    addDiagnostic(
+      diagnostics,
+      `${path}.reviewTaskToolScopes`,
+      "invalid_type",
+      `${path}.reviewTaskToolScopes must be a boolean.`,
+    );
+  }
+
+  if (hasOwn(value, "toolAllowlist")) {
+    validateExactToolList(value.toolAllowlist, `${path}.toolAllowlist`, diagnostics);
+  }
+  if (!hasOwn(value, "roles")) return;
+
+  const rolesPath = `${path}.roles`;
+  const roles = value.roles;
+  if (!Array.isArray(roles)) {
+    addDiagnostic(diagnostics, rolesPath, "invalid_type", `${rolesPath} must be an array.`);
+    return;
+  }
+  if (roles.length < 1 || roles.length > 12) {
+    addDiagnostic(diagnostics, rolesPath, "invalid_length", `${rolesPath} must contain 1 to 12 roles.`);
+  }
+  const seenIds = new Set<string>();
+  roles.forEach((candidate, index) => {
+    const rolePath = `${rolesPath}[${index}]`;
+    if (!isPlainRecord(candidate)) {
+      addDiagnostic(diagnostics, rolePath, "invalid_type", `${rolePath} must be an object.`);
+      return;
+    }
+    const fields = new Set(["id", "instructions", "provider", "model", "toolAllowlist", "budget"]);
+    for (const key of Object.keys(candidate)) {
+      if (!fields.has(key)) {
+        addDiagnostic(diagnostics, `${rolePath}.${key}`, "unknown_field", "Unknown specialist role field.");
+      }
+    }
+    const id = candidate.id;
+    if (typeof id !== "string" || !/^[a-z][a-z0-9_-]{0,47}$/u.test(id)) {
+      addDiagnostic(diagnostics, `${rolePath}.id`, "invalid_role_id", `${rolePath}.id must be a lowercase identifier.`);
+    } else if (seenIds.has(id)) {
+      addDiagnostic(diagnostics, `${rolePath}.id`, "duplicate_role_id", `${rolePath}.id duplicates a role.`);
+    } else {
+      seenIds.add(id);
+    }
+    const instructions = candidate.instructions;
+    if (typeof instructions !== "string" || instructions.trim() === "" || instructions.length > 12_000) {
+      addDiagnostic(diagnostics, `${rolePath}.instructions`, "invalid_instructions", `${rolePath}.instructions must contain 1 to 12000 characters.`);
+    }
+    if (hasOwn(candidate, "provider") &&
+      (typeof candidate.provider !== "string" || !PROVIDERS.has(candidate.provider))) {
+      addDiagnostic(diagnostics, `${rolePath}.provider`, "invalid_provider", `${rolePath}.provider must be a supported provider.`);
+    }
+    if (hasOwn(candidate, "model") &&
+      (typeof candidate.model !== "string" || candidate.model.trim() === "" || candidate.model.length > 256)) {
+      addDiagnostic(diagnostics, `${rolePath}.model`, "invalid_model", `${rolePath}.model must contain 1 to 256 characters.`);
+    }
+    if (hasOwn(candidate, "toolAllowlist")) {
+      validateExactToolList(candidate.toolAllowlist, `${rolePath}.toolAllowlist`, diagnostics);
+    }
+    if (hasOwn(candidate, "budget")) {
+      const budgetPath = `${rolePath}.budget`;
+      const budget = candidate.budget;
+      if (!isPlainRecord(budget)) {
+        addDiagnostic(diagnostics, budgetPath, "invalid_type", `${budgetPath} must be an object.`);
+      } else {
+        for (const key of Object.keys(budget)) {
+          if (!["maxTurns", "maxTokens", "maxDurationMs", "maxOutputChars"].includes(key)) {
+            addDiagnostic(diagnostics, `${budgetPath}.${key}`, "unknown_field", "Unknown task budget field.");
+          } else if (key === "maxTurns") {
+            if (hasOwn(budget, key) && !isPositiveSafeInteger(budget[key])) {
+              addDiagnostic(diagnostics, `${budgetPath}.${key}`, "invalid_positive_integer", `${budgetPath}.${key} must be a positive integer.`);
+            }
+          } else {
+            validateNonNegativeIntegerField(budget, key, diagnostics, `${budgetPath}.`);
+          }
+        }
+      }
+    }
+  });
+}
+
+function validateExactToolList(
+  value: unknown,
+  fieldPath: string,
+  diagnostics: ConfigDiagnostic[],
+): void {
+  if (!Array.isArray(value)) {
+    addDiagnostic(diagnostics, fieldPath, "invalid_type", `${fieldPath} must be an array of exact tool names.`);
+    return;
+  }
+  if (value.length > MAX_COLLABORATION_TOOL_ALLOWLIST) {
+    addDiagnostic(diagnostics, fieldPath, "too_many_entries", `${fieldPath} must contain at most ${MAX_COLLABORATION_TOOL_ALLOWLIST} entries.`);
+  }
+  const seen = new Set<string>();
+  value.forEach((candidate, index) => {
+    const entryPath = `${fieldPath}[${index}]`;
+    if (typeof candidate !== "string") {
+      addDiagnostic(diagnostics, entryPath, "invalid_type", `${entryPath} must be a string.`);
+      return;
+    }
+    if (candidate.length === 0 || candidate.trim() !== candidate) {
+      addDiagnostic(diagnostics, entryPath, "invalid_string", `${entryPath} must be a non-empty exact tool name with no surrounding whitespace.`);
+      return;
+    }
+    if (seen.has(candidate)) {
+      addDiagnostic(diagnostics, entryPath, "duplicate_tool", `${entryPath} duplicates a tool name.`);
+      return;
+    }
+    seen.add(candidate);
+  });
+}
+
 function validateMcpServers(
   config: Record<string, unknown>,
   diagnostics: ConfigDiagnostic[],
@@ -712,6 +882,14 @@ function validateMcpServerEntry(
         `${path}.timeoutMs must be a positive integer.`,
       );
     }
+  }
+  if (hasOwn(server, "enabled") && typeof server.enabled !== "boolean") {
+    addDiagnostic(
+      diagnostics,
+      `${path}.enabled`,
+      "invalid_type",
+      `${path}.enabled must be a boolean.`,
+    );
   }
 }
 

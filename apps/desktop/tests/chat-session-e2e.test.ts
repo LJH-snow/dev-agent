@@ -28,6 +28,9 @@ const ENV_KEYS = [
 const mcpFixture = fileURLToPath(
   new URL("../../../packages/mcp/tests/cancelable-mcp-server.mjs", import.meta.url)
 );
+const mcpCapabilityFixture = fileURLToPath(
+  new URL("../../../packages/mcp/tests/fake-mcp-server.mjs", import.meta.url)
+);
 
 function applyEnv(values) {
   const saved = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
@@ -113,6 +116,25 @@ function mcpToolCall(name: string) {
               id: "mcp-call-1",
               type: "function",
               function: { name, arguments: "{}" },
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+function mcpToolCallWithInput(name: string, input: unknown) {
+  return {
+    choices: [
+      {
+        delta: {
+          tool_calls: [
+            {
+              index: 0,
+              id: "mcp-call-1",
+              type: "function",
+              function: { name, arguments: JSON.stringify(input) },
             },
           ],
         },
@@ -212,7 +234,10 @@ test("disconnecting the client cancels the running tool command", async () => {
     });
     assert.equal(response.status, 200);
 
-    assert.ok(await waitFor(() => exists(startedMarker)), "the tool command should start");
+    assert.ok(
+      await waitFor(() => exists(startedMarker), 10_000),
+      "the tool command should start"
+    );
 
     controller.abort();
     await assert.rejects(() => response.text());
@@ -271,6 +296,181 @@ test("the desktop stream emits MCP progress between tool and tool-result", async
     assert.match(text, /event: done/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await session.close();
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("desktop exposes MCP resources and prompts through the agent capability set", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-mcp-capabilities-"));
+  const provider = await startStubProvider((_parsed, count) =>
+    count === 1
+      ? [
+          mcpToolCallWithInput("capabilities:resource", {
+            uri: "file:///tmp/hello.md",
+          }),
+        ]
+      : [{ choices: [{ delta: { content: "resource consumed" } }] }]
+  );
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MCP_SERVERS: JSON.stringify([
+      { name: "capabilities", command: process.execPath, args: [mcpCapabilityFixture] },
+    ]),
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+
+  const session = new ChatSession({ sessionId: "default", workingDirectory: dir });
+  try {
+    const events = [];
+    await session.run("read the MCP resource", (event) => events.push(event), { mode: "plan" });
+
+    const firstRequest = provider.requests[0];
+    assert.ok(firstRequest, "the provider should receive the first turn");
+    const toolNames = (firstRequest.tools ?? []).map(
+      (tool) => tool.function?.name ?? tool.name ?? "",
+    );
+    assert.ok(toolNames.includes("capabilities:resource"));
+    assert.ok(toolNames.includes("capabilities:prompt"));
+    assert.ok(toolNames.includes("capabilities:hello"));
+
+    const firstSystem = firstRequest.messages.find((message) => message.role === "system");
+    assert.match(String(firstSystem?.content ?? ""), /Available MCP resources/);
+    assert.match(String(firstSystem?.content ?? ""), /capabilities:resource/);
+    assert.match(String(firstSystem?.content ?? ""), /Available MCP prompts/);
+    assert.match(String(firstSystem?.content ?? ""), /capabilities:prompt summary/);
+
+    const secondRequest = provider.requests[1];
+    assert.ok(secondRequest, "the resource result should trigger a second turn");
+    assert.ok(
+      secondRequest.messages.some((message) =>
+        String(message.content ?? "").includes("# Hello from resources"),
+      ),
+      "the MCP resource contents should be returned to the model",
+    );
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "tool-result" &&
+          String(event.data.output ?? "").includes("# Hello from resources"),
+      ),
+      "the Desktop stream should expose the resource tool result",
+    );
+  } finally {
+    await session.close();
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("deny-dangerous blocks Desktop MCP action tools before server execution", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-mcp-action-approval-"));
+  const provider = await startStubProvider((_parsed, count) =>
+    count === 1
+      ? [mcpToolCallWithInput("external:hello", { target: "production" })]
+      : [{ choices: [{ delta: { content: "handled" } }] }]
+  );
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+  const session = new ChatSession({
+    sessionId: "mcp-action-approval",
+    workingDirectory: dir,
+    approvalMode: "deny-dangerous",
+    mcpServers: [{ name: "external", command: process.execPath, args: [mcpFixture] }],
+  });
+
+  try {
+    const events = [];
+    await session.run("publish the release", (event) => events.push(event));
+
+    const secondRequest = provider.requests[1];
+    assert.ok(secondRequest, "the denial should be returned to the model");
+    const toolResults = secondRequest.messages.filter((message) => message.role === "tool");
+    assert.equal(toolResults.length, 1);
+    assert.match(String(toolResults[0]?.content), /denied by policy/);
+    assert.doesNotMatch(String(toolResults[0]?.content), /hello/);
+    assert.ok(
+      events.some(
+        (event) =>
+          event.type === "tool-result" &&
+          String(event.data.output ?? "").includes("denied by policy"),
+      ),
+      "the Desktop stream should report the policy denial",
+    );
+  } finally {
+    await session.close();
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("desktop refreshes MCP tools, resources, and prompts after list_changed notifications", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-mcp-refresh-"));
+  const provider = await startStubProvider((_parsed, count) =>
+    count === 1
+      ? [mcpToolCall("capabilities:notify")]
+      : [{ choices: [{ delta: { content: `turn-${count}` } }] }]
+  );
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MCP_SERVERS: JSON.stringify([
+      { name: "capabilities", command: process.execPath, args: [mcpCapabilityFixture] },
+    ]),
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+
+  const session = new ChatSession({ sessionId: "default", workingDirectory: dir });
+  try {
+    await session.run("refresh the MCP capabilities", () => undefined);
+
+    const initialRequest = provider.requests[0];
+    assert.ok(initialRequest, "the provider should receive the initial request");
+    const initialToolNames = (initialRequest.tools ?? []).map(
+      (tool) => tool.function?.name ?? tool.name ?? "",
+    );
+    assert.ok(initialToolNames.includes("capabilities:hello"));
+    assert.ok(initialToolNames.includes("capabilities:env"));
+    assert.ok(initialToolNames.includes("capabilities:notify"));
+
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await session.run("use the refreshed MCP capabilities", () => undefined);
+
+    const refreshedRequest = provider.requests[2];
+    assert.ok(refreshedRequest, "the provider should receive a request after the refresh");
+    const refreshedToolNames = (refreshedRequest.tools ?? []).map(
+      (tool) => tool.function?.name ?? tool.name ?? "",
+    );
+    assert.ok(refreshedToolNames.includes("capabilities:goodbye"));
+    assert.ok(refreshedToolNames.includes("capabilities:status"));
+    assert.ok(refreshedToolNames.includes("capabilities:revision"));
+    assert.ok(!refreshedToolNames.includes("capabilities:hello"));
+    assert.ok(!refreshedToolNames.includes("capabilities:env"));
+    assert.ok(!refreshedToolNames.includes("capabilities:notify"));
+    assert.equal(
+      new Set(refreshedToolNames).size,
+      refreshedToolNames.length,
+      "the refreshed tool list should not contain duplicates",
+    );
+
+    const refreshedSystem = refreshedRequest.messages.find((message) => message.role === "system");
+    const refreshedPrompt = String(refreshedSystem?.content ?? "");
+    assert.match(refreshedPrompt, /capabilities:resource goodbye/);
+    assert.match(refreshedPrompt, /capabilities:prompt rewrite/);
+    assert.doesNotMatch(refreshedPrompt, /capabilities:resource hello/);
+    assert.doesNotMatch(refreshedPrompt, /capabilities:prompt summary/);
+  } finally {
     await session.close();
     await provider.close();
     restoreEnv();
@@ -449,6 +649,39 @@ test("the desktop stream reports the token usage of each turn", async () => {
     assert.match(text, /"cost":0\.0000018/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
+    await provider.close();
+    restoreEnv();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("ChatSession exposes a bounded metadata-only run trace", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-trace-"));
+  const provider = await startStubProvider(() => [
+    { choices: [{ delta: { content: "trace-answer" } }] },
+    { choices: [], usage: { prompt_tokens: 4, completion_tokens: 2, total_tokens: 6 } },
+  ]);
+  const restoreEnv = applyEnv({
+    DEV_AGENT_MODEL_PROVIDER: "openai",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_BASE_URL: provider.baseUrl,
+    DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+  });
+  const session = new ChatSession({ workingDirectory: dir });
+  try {
+    const events = [];
+    await session.run("trace-prompt", (event) => events.push(event));
+
+    const trace = session.getTraceSnapshot();
+    assert.equal(trace.metadataOnly, true);
+    assert.equal(trace.runs.length, 1);
+    assert.equal(trace.runs[0]?.status, "completed");
+    assert.equal(trace.runs[0]?.usage?.totalTokens, 6);
+    assert.equal(trace.runs[0]?.spans.filter((span) => span.kind === "model").length, 1);
+    assert.ok(events.some((event) => event.type === "done"));
+    assert.doesNotMatch(JSON.stringify(trace), /trace-prompt|trace-answer|workingDirectory|secret/i);
+  } finally {
+    await session.close();
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });

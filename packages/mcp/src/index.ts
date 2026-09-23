@@ -3,3 +3,4 @@ export * from "./stdio-client.js";
 export * from "./session.js";
 export * from "./server.js";
 export * from "./framing.js";
+export * from "./capability-prompt.js";

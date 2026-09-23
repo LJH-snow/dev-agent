@@ -134,6 +134,12 @@ export class CodeSearchTool implements Tool {
   readonly name = "code-search" as const;
   readonly description =
     "Scan TypeScript/JavaScript/Python/Rust source files. The path defaults to the project working directory. Search and query-based definition lookup use the shared symbol index; TypeScript/JavaScript use position-based reference and definition lookup, while Python uses conservative lexical lookup by position or query.";
+  readonly metadata = {
+    risk: "read-only" as const,
+    confirmation: "never" as const,
+    resultFormat: "json" as const,
+    supportsProgress: false,
+  };
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {

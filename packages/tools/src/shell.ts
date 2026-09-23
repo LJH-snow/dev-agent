@@ -1,15 +1,22 @@
 import type { Executor } from "@dev-agent/executor";
 
+import { runExecutorCommand } from "./executor-run.js";
 import type { Tool, ToolExecutionContext } from "./index.js";
 
 interface ShellInput {
   readonly command: string;
-  readonly args?: readonly string[];
+  readonly args: readonly string[];
 }
 
 export class ShellTool implements Tool {
   readonly name = "shell" as const;
   readonly description = "Run a local command with optional arguments.";
+  readonly metadata = {
+    risk: "dangerous" as const,
+    confirmation: "on-risk" as const,
+    resultFormat: "text" as const,
+    supportsProgress: false,
+  };
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
@@ -23,10 +30,7 @@ export class ShellTool implements Tool {
 
   async execute(input: unknown, context?: ToolExecutionContext): Promise<unknown> {
     const params = parseShellInput(input);
-    return this.executor.run(params.command, params.args, {
-      cwd: context?.workingDirectory,
-      ...(context?.signal ? { signal: context.signal } : {}),
-    });
+    return runExecutorCommand(this.executor, params.command, params.args, context);
   }
 }
 

@@ -67,6 +67,7 @@ test("mcp list and status return a stable no-server result without starting anyt
     configured: 0,
     invalid: 0,
     skipped: 0,
+    disabled: 0,
     failed: 0,
     timedOut: 0,
     changed: 0,
@@ -253,7 +254,7 @@ test("mcp status reports capability changes as a stable structured result", asyn
 });
 
 test("executeMcpCommand dispatches all management actions and skips active probes by default", async () => {
-  const commands = ["list", "status", "validate", "test"] as const;
+  const commands = ["list", "status", "validate", "test", "health"] as const;
   for (const action of commands) {
     const result = await executeMcpCommand(action, { config });
     assert.equal(result.command, `mcp ${action}`);
@@ -262,4 +263,41 @@ test("executeMcpCommand dispatches all management actions and skips active probe
       assert.equal(result.reason, "probe_not_configured");
     }
   }
+});
+
+test("disabled MCP servers are visible in list and never probed by status or health", async () => {
+  let probeCalls = 0;
+  const disabledConfig: McpManagementConfig = {
+    mcpServers: [
+      { name: "offline", command: "node", enabled: false },
+      { name: "online", command: "node", enabled: true },
+    ],
+  };
+
+  const listed = listMcpServers({ config: disabledConfig });
+  assert.equal(listed.servers[0]?.state, "disabled");
+  assert.equal(listed.summary.disabled, 1);
+
+  const status = await statusMcpServers({
+    config: disabledConfig,
+    probe: async ({ server }) => {
+      probeCalls += 1;
+      assert.equal(server.name, "online");
+      return { counts: { tools: 1 } };
+    },
+  });
+  assert.equal(probeCalls, 1);
+  assert.equal(status.servers[0]?.reason, "disabled");
+  assert.equal(status.servers[0]?.state, "disabled");
+
+  const health = await executeMcpCommand("health", {
+    config: disabledConfig,
+    probe: async () => {
+      probeCalls += 1;
+      return { counts: { tools: 1 } };
+    },
+  });
+  assert.equal(health.command, "mcp health");
+  assert.equal(health.servers[0]?.state, "disabled");
+  assert.equal(probeCalls, 2);
 });

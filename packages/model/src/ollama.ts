@@ -9,6 +9,7 @@ import type {
   ChatStreamOptions,
   ChatUsage,
   ModelProvider,
+  ProviderTiming,
   ProviderConfig,
   ToolCall,
   ToolSchema,
@@ -35,6 +36,10 @@ interface OllamaResponse {
   /** Token counts Ollama reports on the final chunk of a response. */
   readonly prompt_eval_count?: number;
   readonly eval_count?: number;
+  readonly load_duration?: number;
+  readonly prompt_eval_duration?: number;
+  readonly eval_duration?: number;
+  readonly total_duration?: number;
 }
 
 const MAX_SUCCESS_JSON_BYTES = 16 * 1024 * 1024;
@@ -66,6 +71,7 @@ export class OllamaProvider implements ModelProvider {
             model: this.model,
             messages: messages.map(toOllamaMessage),
             stream: false,
+            ...(options.think === undefined ? {} : { think: options.think }),
             ...(options.tools ? { tools: options.tools.map(toOllamaTool) } : {}),
             options: {
               temperature: options.temperature,
@@ -81,12 +87,20 @@ export class OllamaProvider implements ModelProvider {
     const usage = parseOllamaUsage(data);
     const message = data.message;
     if (!message) {
-      return { content: "", usage };
+      const providerTiming = parseOllamaTiming(data);
+      return {
+        content: "",
+        ...(usage === undefined ? {} : { usage }),
+        ...(providerTiming === undefined ? {} : { providerTiming }),
+      };
     }
+    const providerTiming = parseOllamaTiming(data);
     return {
       content: message.content ?? "",
+      reasoning: message.thinking ?? message.reasoning_content ?? undefined,
       toolCalls: message.tool_calls?.map(parseOllamaToolCall),
-      usage,
+      ...(usage === undefined ? {} : { usage }),
+      ...(providerTiming === undefined ? {} : { providerTiming }),
     };
   }
 
@@ -104,7 +118,7 @@ export class OllamaProvider implements ModelProvider {
             model: this.model,
             messages: messages.map(toOllamaMessage),
             stream: true,
-            think: true,
+            ...(options.think === undefined ? {} : { think: options.think }),
             ...(options.tools ? { tools: options.tools.map(toOllamaTool) } : {}),
             options: {
               temperature: options.temperature,
@@ -125,9 +139,11 @@ export class OllamaProvider implements ModelProvider {
     const decoder = new TextDecoder();
     const budget = new StreamOutputBudget();
     let content = "";
+    let reasoning = "";
     const toolCalls: ToolCall[] = [];
     let buffer = "";
     let usage: ChatUsage | undefined;
+    let providerTiming: ProviderTiming | undefined;
 
     const handleLine = (line: string): void => {
       const trimmed = line.trim();
@@ -137,16 +153,18 @@ export class OllamaProvider implements ModelProvider {
         if (chunk.prompt_eval_count !== undefined || chunk.eval_count !== undefined) {
           usage = parseOllamaUsage(chunk);
         }
+        providerTiming = parseOllamaTiming(chunk) ?? providerTiming;
         const delta = chunk.message?.content ?? "";
         if (delta) {
           budget.addText(delta);
           content += delta;
           options.onToken?.(delta);
         }
-        const reasoning = chunk.message?.thinking ?? chunk.message?.reasoning_content ?? "";
-        if (reasoning) {
-          budget.addText(reasoning);
-          options.onReasoning?.(reasoning);
+        const reasoningDelta = chunk.message?.thinking ?? chunk.message?.reasoning_content ?? "";
+        if (reasoningDelta) {
+          budget.addText(reasoningDelta);
+          reasoning += reasoningDelta;
+          options.onReasoning?.(reasoningDelta);
         }
         for (const call of chunk.message?.tool_calls ?? []) {
           if (call.function?.name) {
@@ -188,7 +206,13 @@ export class OllamaProvider implements ModelProvider {
       reader.releaseLock();
     }
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
+    return {
+      content,
+      reasoning: reasoning || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      ...(usage === undefined ? {} : { usage }),
+      ...(providerTiming === undefined ? {} : { providerTiming }),
+    };
   }
 }
 
@@ -203,6 +227,34 @@ function parseOllamaUsage(chunk: OllamaResponse): ChatUsage | undefined {
     completionTokens,
     totalTokens: promptTokens + completionTokens,
   };
+}
+
+function parseOllamaTiming(chunk: OllamaResponse): ProviderTiming | undefined {
+  const toMs = (nanoseconds: number | undefined): number | undefined => {
+    if (
+      nanoseconds === undefined ||
+      !Number.isFinite(nanoseconds) ||
+      nanoseconds < 0
+    ) {
+      return undefined;
+    }
+    // Bound externally supplied timing metadata; 24 hours is far beyond a
+    // realistic single model request and prevents pathological trace values.
+    return Math.min(86_400_000, nanoseconds / 1_000_000);
+  };
+  const timing: ProviderTiming = {
+    ...(toMs(chunk.load_duration) === undefined ? {} : { loadMs: toMs(chunk.load_duration) }),
+    ...(toMs(chunk.prompt_eval_duration) === undefined
+      ? {}
+      : { promptEvalMs: toMs(chunk.prompt_eval_duration) }),
+    ...(toMs(chunk.eval_duration) === undefined
+      ? {}
+      : { generationMs: toMs(chunk.eval_duration) }),
+    ...(toMs(chunk.total_duration) === undefined
+      ? {}
+      : { serverTotalMs: toMs(chunk.total_duration) }),
+  };
+  return Object.keys(timing).length === 0 ? undefined : timing;
 }
 
 export function createOllamaProvider(config: OllamaProviderConfig): OllamaProvider {

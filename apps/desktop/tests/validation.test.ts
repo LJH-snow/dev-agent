@@ -19,6 +19,7 @@ const ENV_KEYS = [
   "DEV_AGENT_MODEL_PROVIDER",
   "OPENAI_API_KEY",
   "OPENAI_BASE_URL",
+  "DEV_AGENT_MCP_SERVERS",
   "DEV_AGENT_MEMORY_FILE",
   "DEV_AGENT_APPROVAL",
   "DEV_AGENT_RUST_BINARY",
@@ -27,7 +28,13 @@ const ENV_KEYS = [
 function applyEnv(values: Record<string, string>): () => void {
   const saved = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
   for (const key of ENV_KEYS) delete process.env[key];
-  for (const [key, value] of Object.entries(values)) process.env[key] = value;
+  const isolatedValues = {
+    DEV_AGENT_MCP_SERVERS: "[]",
+    ...values,
+  };
+  for (const [key, value] of Object.entries(isolatedValues)) {
+    process.env[key] = value;
+  }
   return () => {
     for (const key of ENV_KEYS) {
       const previous = saved.get(key);
@@ -36,6 +43,17 @@ function applyEnv(values: Record<string, string>): () => void {
     }
   };
 }
+
+test("stubbed provider validation tests isolate configured MCP servers", () => {
+  const saved = process.env.DEV_AGENT_MCP_SERVERS;
+  const restore = applyEnv({});
+  try {
+    assert.equal(process.env.DEV_AGENT_MCP_SERVERS, "[]");
+  } finally {
+    restore();
+  }
+  assert.equal(process.env.DEV_AGENT_MCP_SERVERS, saved);
+});
 
 async function startStubProvider(content: string): Promise<{
   baseUrl: string;

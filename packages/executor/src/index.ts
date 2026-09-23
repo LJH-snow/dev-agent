@@ -91,6 +91,8 @@ function isNodeError(error: unknown): error is NodeJS.ErrnoException {
 export interface Executor {
   /** Metadata only; it does not grant or remove execution permissions. */
   readonly mode?: ExecutorMode;
+  /** Releases any child process owned by the executor. */
+  readonly dispose?: () => Promise<void>;
   run(
     command: string,
     args?: readonly string[],
@@ -114,6 +116,44 @@ export interface SandboxExecutor extends Executor {
     args?: readonly string[],
     options?: ExecutorRunOptions & { readonly profile?: SandboxProfile }
   ): Promise<ExecutorResult>;
+}
+
+export type ToolSandboxIntent = "read-only" | "workspace-write";
+
+/**
+ * Creates the bounded profiles used by built-in command tools.
+ *
+ * Callers choose an intent, not arbitrary paths or policy fragments. This
+ * keeps application edges from widening the sandbox based on model output.
+ */
+export function createWorkspaceSandboxProfile(
+  workingDirectory: string,
+  intent: ToolSandboxIntent
+): SandboxProfile {
+  const normalizedDirectory = workingDirectory.trim();
+  if (normalizedDirectory.length === 0) {
+    throw new Error("sandbox working directory must be a non-empty path");
+  }
+
+  if (intent === "read-only") {
+    return {
+      name: "agent-read-only",
+      network: "disabled",
+      writablePaths: [],
+      readonlyPaths: [normalizedDirectory],
+    };
+  }
+
+  return {
+    name: "agent-workspace-write",
+    network: "enabled",
+    writablePaths: [normalizedDirectory],
+    readonlyPaths: [],
+  };
+}
+
+export function isSandboxExecutor(executor: Executor): executor is SandboxExecutor {
+  return typeof (executor as Partial<SandboxExecutor>).runSandboxed === "function";
 }
 
 import { LocalExecutor } from "./local-executor.js";

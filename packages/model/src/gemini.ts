@@ -6,6 +6,7 @@ import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatStreamOptions,
   ChatUsage,
   ModelProvider,
   ProviderConfig,
@@ -17,6 +18,7 @@ export interface GeminiProviderConfig extends ProviderConfig {}
 
 interface GeminiPart {
   readonly text?: string;
+  readonly thought?: boolean;
   readonly functionCall?: {
     readonly name?: string;
     readonly args?: unknown;
@@ -82,10 +84,17 @@ export class GeminiProvider implements ModelProvider {
         },
       ];
     }
-    if (options.temperature !== undefined || options.maxTokens !== undefined) {
+    if (
+      options.temperature !== undefined ||
+      options.maxTokens !== undefined ||
+      (options.thinkingLevel !== undefined && supportsGeminiThinkingLevel(this.model))
+    ) {
       body.generationConfig = {
         temperature: options.temperature,
         maxOutputTokens: options.maxTokens,
+        ...(options.thinkingLevel !== undefined && supportsGeminiThinkingLevel(this.model)
+          ? { thinkingConfig: { thinkingLevel: options.thinkingLevel.toUpperCase() } }
+          : {}),
       };
     }
 
@@ -122,9 +131,15 @@ export class GeminiProvider implements ModelProvider {
 
     return {
       content: parts
+        .filter((part) => part.thought !== true)
         .map((part) => part.text ?? "")
         .filter(Boolean)
         .join("\n"),
+      reasoning: parts
+        .filter((part) => part.thought === true)
+        .map((part) => part.text ?? "")
+        .filter(Boolean)
+        .join(""),
       toolCalls,
       usage,
     };
@@ -132,7 +147,7 @@ export class GeminiProvider implements ModelProvider {
 
   async streamChat(
     messages: readonly ChatMessage[],
-    options: ChatOptions & { onToken?: (token: string) => void } = {}
+    options: ChatStreamOptions = {}
   ): Promise<ChatCompletion> {
     const url =
       `${this.baseUrl}/v1beta/models/${encodeURIComponent(this.model)}:streamGenerateContent` +
@@ -156,10 +171,17 @@ export class GeminiProvider implements ModelProvider {
         },
       ];
     }
-    if (options.temperature !== undefined || options.maxTokens !== undefined) {
+    if (
+      options.temperature !== undefined ||
+      options.maxTokens !== undefined ||
+      (options.thinkingLevel !== undefined && supportsGeminiThinkingLevel(this.model))
+    ) {
       body.generationConfig = {
         temperature: options.temperature,
         maxOutputTokens: options.maxTokens,
+        ...(options.thinkingLevel !== undefined && supportsGeminiThinkingLevel(this.model)
+          ? { thinkingConfig: { thinkingLevel: options.thinkingLevel.toUpperCase() } }
+          : {}),
       };
     }
 
@@ -184,6 +206,7 @@ export class GeminiProvider implements ModelProvider {
     const decoder = new TextDecoder();
     const budget = new StreamOutputBudget();
     let content = "";
+    let reasoning = "";
     let buffer = "";
     let usage: ChatUsage | undefined;
     const toolCalls: ToolCall[] = [];
@@ -206,8 +229,13 @@ export class GeminiProvider implements ModelProvider {
         for (const part of parts) {
           if (part.text) {
             budget.addText(part.text);
-            content += part.text;
-            options.onToken?.(part.text);
+            if (part.thought === true) {
+              reasoning += part.text;
+              options.onReasoning?.(part.text);
+            } else {
+              content += part.text;
+              options.onToken?.(part.text);
+            }
           }
           if (part.functionCall) {
             if (part.functionCall.name) {
@@ -253,7 +281,12 @@ export class GeminiProvider implements ModelProvider {
       reader.releaseLock();
     }
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
+    return {
+      content,
+      reasoning: reasoning || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage,
+    };
   }
 }
 
@@ -334,4 +367,8 @@ function parseToolResult(content: string): unknown {
   } catch {
     return { output: content };
   }
+}
+
+export function supportsGeminiThinkingLevel(model: string): boolean {
+  return /^gemini-3(?:[.-]|$)/i.test(model.trim());
 }

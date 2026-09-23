@@ -60,7 +60,7 @@ async function startStubProvider(toolInput) {
 function runCli(args, env, input = undefined): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
-      env,
+      env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -89,7 +89,7 @@ function runCli(args, env, input = undefined): Promise<any> {
 function runCliWithOpenInput(args, env, input): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
-      env,
+      env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";

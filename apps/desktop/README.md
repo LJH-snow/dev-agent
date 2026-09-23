@@ -15,6 +15,12 @@ pnpm --filter @dev-agent/desktop run start
 
 Then open the printed URL (default `http://127.0.0.1:4317`) in a browser.
 
+The browser entrypoint keeps the requested port fixed. If `4317` already
+serves a healthy dev-agent workbench, a second start reuses that instance and
+prints the same URL. It never silently advances to `4318` or another port. If
+an unrelated process owns the port, startup stops with an explicit error; set
+`DEV_AGENT_DESKTOP_PORT` to a deliberate free port or stop that process.
+
 From the repository root on macOS, the same server can run inside the native
 Signal Loom window:
 
@@ -44,6 +50,16 @@ header mark and the native app icon, while the existing status, conversation,
 approval, validation, and evidence surfaces remain backed by the current
 server contracts. The SVG is served as a local static asset and does not add a
 runtime dependency.
+
+The browser workbench uses a Codex-inspired layout: a collapsible workspace
+rail, session discovery controls, a centered conversation canvas, a sticky
+blue-focus composer, and a collapsible Runtime Inspector panel. On wide
+windows both panels occupy their own columns; at narrower widths the Inspector
+becomes a drawer and the rail can collapse to a compact control strip. This
+changes presentation only; the existing queue, turn ownership, approvals,
+replay, and SSE contracts remain in place. Selecting a session restored from
+disk also materializes its metadata status on demand, so the Inspector stays
+usable after switching sessions.
 
 Configure the model provider the same way as the CLI, via environment variables:
 
@@ -102,8 +118,17 @@ are accepted, and validation command fields are deliberately not configurable.
   validation cards next to reviewed-change Undo actions, displays the
   metadata-only runtime status panel, and aggregates the live run, tool,
   approval, validation, reasoning, completion, cancellation, and error events into a
-  metadata-safe Run timeline. The timeline resets when the active session or
-  run changes and never persists raw tool inputs, outputs, secrets, or paths.
+  metadata-safe Run timeline. Prompts submitted during an active run stay in a
+  bounded per-session FIFO queue, and each turn owns its prompt, response,
+  reasoning, tool, approval, validation, and terminal state. Switching sessions
+  preserves background work and recovers bounded completed output; terminal
+  turns reject late stream frames. The timeline resets when the active session
+  or run changes and never persists raw tool inputs, outputs, secrets, or paths.
+  Waiting prompts submitted during an active run survive a page reload in the
+  same browser tab through bounded `sessionStorage`; active requests,
+  transcripts, reasoning, tool output, and cross-tab queue state are never
+  persisted. A compact, localized checkpoint panel can create a history anchor,
+  list existing anchors, and rewind only after an explicit confirmation.
 
 ## API
 
@@ -167,6 +192,19 @@ ID returns `400` before the approval lookup.
   History loading is stale-safe: a new history request aborts the previous
   history request, and a response for a stale request or stale session does not
   render.
+- `GET /api/sessions/<id>/run` — the latest bounded in-memory run snapshot for
+  the session. It returns a stable `runId`, monotonic `sequence`, lifecycle
+  status, metadata-only replay events, and unfinished assistant/reasoning/tool/
+  approval fragments. Pass `?after=<sequence>` to request only later events.
+  Retained replay is capped by event count and bytes; tool inputs, raw tool
+  output, review diffs, and raw provider errors are never included. Unknown
+  sessions return `404`, and invalid cursors return `400`.
+- `GET /api/sessions/<id>/trace` — returns the bounded, metadata-only run
+  trace. The Runtime Inspector `Trace` action renders run/span timing, status,
+  turn/token totals, and bounded dropped counters only. It does not show prompt
+  text, tool inputs, tool output, diffs, absolute paths, credentials, or raw
+  provider errors. Legacy sessions without a trace return `404`, and a response
+  above `256 KiB` returns `413`.
 - `DELETE /api/sessions/<id>` — delete a session's memory file and drop it from
   the in-memory registry; unknown ids return `404`.
 - If a chat, validation, or cleanup request is already running in the session,
@@ -190,6 +228,24 @@ ID returns `400` before the approval lookup.
   change-set evidence and evidence-retention summary sections.
   The fixed export response is capped at `1 MiB`; an oversized transcript
   returns `413` without echoing the transcript, path, or raw error.
+- `GET /api/sessions/<id>/checkpoints` — returns `{ sessionId, checkpoints }`
+  with bounded, metadata-only conversation anchors. Unknown sessions return
+  `404` and an active chat, validation, cleanup, rollback, or checkpoint request
+  returns `409`. The serialized response is capped at `512 KiB`; internal
+  failures return a stable `500` without exposing filesystem details.
+- `POST /api/sessions/<id>/checkpoint` — creates a metadata-only anchor for the
+  selected session and returns `{ sessionId, checkpoint }`. It returns `409`
+  while that session is already running, `404` for an unknown session, and
+  `501` when checkpoint persistence is unavailable.
+- `POST /api/sessions/<id>/checkpoint/rewind` — body
+  `{ "checkpointId": "..." }`; truncates conversation history at the selected
+  anchor and returns `{ sessionId, result }`. A normalized checkpoint ID may
+  contain at most `128` characters; a longer ID returns `400`. This operation
+  changes only conversation entries: it never rolls back workspace files,
+  change sets, validation evidence, or applied-guard evidence. Unknown sessions
+  return `404`, active sessions return `409`, missing or stale/cross-session
+  checkpoints map to `409`, and unavailable rewind support returns `501`.
+  Errors are reduced to a stable `conversation rewind failed` response.
 - `POST /api/chat` — body: `{ "message": "..." }`. Responds with `text/event-stream`
   frames: `token`, `reasoning`, `tool`, `tool-progress`, `tool-result`, `turn`,
   `usage`, `approval-request`, `approval`, `validation`, `done`, `error`. A
@@ -337,7 +393,10 @@ empty `changeSets` array.
 ## Sessions
 
 The header has a session picker plus a `+` button for a new one. Switching
-sessions reloads that transcript and sends later messages to it. With
+sessions reloads that transcript and restores any unfinished run for the
+selected session without copying messages from another session. A run continues
+in the background when the user switches away, and the picker shows its
+running, waiting, complete, failed, or aborted state. With
 `DEV_AGENT_MEMORY_FILE` set, every session shares that single file; leave it
 unset to get one file per session.
 
@@ -347,6 +406,27 @@ estimated cost when the `pricing` config matches the current model) from the
 
 The `Delete` button next to the picker removes the current session after a
 confirmation and switches back to the default one.
+
+The session rail also includes a client-side search field and status filter.
+Search matches session ids without regard to letter case, and the status
+filter can show idle, running, waiting, complete, failed, or aborted sessions.
+The active session remains selectable while a filter is applied.
+
+Each active turn also shows a localized runtime stage such as Thinking, Calling
+a tool, Writing response, or Waiting for approval. These are safe lifecycle
+signals derived from the existing stream and replay events; they do not expose
+hidden model chain-of-thought.
+
+The `Checkpoints` action opens a compact panel for the current session. It can
+create an anchor at the current conversation length and list anchors with their
+id, entry count, and creation time. Rewinding uses an explicit browser
+confirmation and reloads the transcript only after the server confirms the
+rewind. The operation is conversation-history-only.
+
+The Runtime Inspector also has a `Trace` action for the same local session.
+It shows bounded model/tool span timings and run status, but deliberately
+excludes model content, tool arguments, tool output, workspace paths, and raw
+errors.
 
 The `Rename` button prompts for a new session id and moves the stored file; an id
 that already exists is reported as a conflict instead of overwriting anything.

@@ -1,0 +1,107 @@
+# React Bits Components Adapted for the Ink CLI
+
+> **For agentic workers:** This document is the implementation checklist for adapting the React Bits MCP findings to the terminal UI. Keep the checklist current as work lands.
+
+**Goal:** Make the Ink CLI feel more alive and readable while preserving the current compact layout, streaming behavior, and line-oriented CLI modes.
+
+**Architecture:** React Bits is used as a visual reference through the configured shadcn MCP registry. The selected ideas are reimplemented as terminal-native Ink components instead of installing browser-only React/CSS/WebGL components into the CLI package.
+
+**Tech Stack:** TypeScript, React 19, Ink 6, Node.js 20+, the existing runtime-event stream, and the Node test runner.
+
+**Source:** [React Bits MCP](https://reactbits.dev/get-started/mcp)
+
+## Findings from the MCP registry
+
+### Best matches for this project
+
+| React Bits item | Original visual idea | Ink adaptation | Decision |
+| --- | --- | --- | --- |
+| `LatticeLoader-TS-CSS` | A phase-offset lattice wave beside a live task label and timer | A compact blue 3×3 terminal lattice with a breathing phase and elapsed time | Implement |
+| `ThoughtLine-TS-CSS` | A reasoning-trace header that breathes, shows steps, then settles into a duration summary | A public progress trace driven by runtime events: thinking, tools, approvals, validation, and elapsed time | Implement |
+| `TextType-TS-CSS` | Typewriter text with a cursor | Useful for an optional welcome/intro treatment, but not needed in the active run viewport | Defer |
+| `RotatingText-TS-CSS` | Rotating status phrases | A restrained terminal status rotator driven by the current runtime state and public progress steps | Implement |
+| `StarBorder-TS-CSS` | Animated star/sparkle border | A color-phase border pulse around approval cards, keeping keyboard `y / n` interaction unchanged | Implement |
+| `FuseButton-TS-CSS` | Animated action/confirmation button | The visual emphasis is adapted to the existing keyboard approval flow instead of adding a mouse button | Reference only |
+
+### Components intentionally not installed directly
+
+`Aurora-TS-CSS`, `FaultyTerminal-TS-CSS`, `StarBorder-TS-CSS`, and similar items are DOM/CSS/WebGL components. They are good references for motion and emphasis, but adding them directly would introduce a browser rendering model and dependencies that the Ink CLI does not use. Their visual language is therefore translated into ANSI/Ink primitives instead.
+
+## Display and safety contract
+
+- The live trace must be driven by the shared runtime/SSE event stream, not by guessed timers alone.
+- The trace may show public lifecycle information: current state, tool names, approval/validation states, progress details, and elapsed time.
+- Provider-emitted reasoning deltas remain separate from the public status trace. Do not synthesize or expose hidden internal chain-of-thought.
+- `--once`, `--json`, pipes, and MCP-server modes remain line-oriented and must not import or render Ink UI.
+- The compact layout must not reserve the full terminal height or create a large blank area below the composer.
+
+## Implementation checklist
+
+- [x] Record the MCP findings and the terminal adaptation decisions in this document.
+- [x] Add a terminal-native lattice loader with a phase-offset blue breathing animation.
+- [x] Add a terminal-native thought line with elapsed time and a settled duration summary.
+- [x] Feed public thought steps from runtime events (`run.status`, tool lifecycle, approvals, and validation).
+- [x] Keep provider reasoning deltas separate from the public status trace.
+- [x] Integrate the components into the active Ink transcript without duplicating the empty assistant row.
+- [x] Add regression tests for animation frames, event-to-step projection, live rendering, and final summary rendering.
+- [x] Run the focused CLI regression tests, build, typecheck, and whitespace checks.
+
+## Phase 2 implementation checklist
+
+- [x] Add a restrained `RotatingText`-style status rotator to the Ink status line.
+- [x] Replace stacked tool boxes with a compact tool progress timeline showing
+  lifecycle markers, details, and elapsed durations.
+- [x] Add a `StarBorder`-style approval pulse without changing the existing
+  approval decision path or `y / n` keyboard contract.
+- [x] Keep animation timers local to the visual components and stop them when
+  the run/card is no longer active.
+- [x] Add regression tests for status rotation, timeline ordering/durations,
+  approval animation frames, and Ink integration.
+
+## Acceptance criteria
+
+1. While a run is active, the CLI shows a blue lattice whose bright cell moves through phase-offset positions.
+2. The active line shows a public status and a monotonic elapsed timer that updates without a new model token.
+3. Tool, approval, and validation events appear as short public steps; arbitrary internal reasoning is not generated by this UI layer.
+4. When a run ends, the active trace collapses to one `Thought for …` summary instead of continuing to animate.
+5. Existing Ink scrollback, composer behavior, and non-Ink modes continue to pass their regression tests.
+
+### Phase 2 acceptance criteria
+
+1. The busy status line changes public wording over time while preserving the
+   current state and the `esc to interrupt` affordance.
+2. Tool cards render as one chronological timeline with running/completed/
+   failed/approval states and a readable duration or progress detail.
+3. Approval cards visibly pulse through border phases while waiting and stop
+   animating after resolution.
+4. The new visual components do not add DOM, WebGL, or browser-only
+   dependencies to the CLI package.
+
+## Verification
+
+Completed on September 21, 2026:
+
+- `pnpm --filter @agent_cli/cli build` passed.
+- `pnpm --filter @agent_cli/cli typecheck` passed.
+- The focused Ink/runtime regression set passed **25/25**, including lattice
+  frame cycling, timer updates without a new model event, runtime-event step
+  projection, scrollback, composer behavior, and the existing runtime adapter.
+- `git diff --check` passed.
+
+Phase 2 verification on September 21, 2026:
+
+- `RotatingStatus` cycles state-aware public progress copy and incorporates the
+  latest public runtime step when one is available.
+- `ToolTimeline` renders the newest six cards in chronological order with
+  lifecycle markers, detail text, and compact durations.
+- `ApprovalCard` pulses both its border color and sparkle glyph while waiting;
+  the effect is cleaned up when the card resolves or unmounts.
+- The focused Phase 2 Ink tests passed **25/25**, including live status
+  rotation, timeline rendering, approval copy, and approval pulse repainting.
+- The final combined Ink/runtime regression selection passed **39/39**.
+
+The full CLI suite was also attempted. It still reports unrelated failures in
+existing approval, index-refresh, interactive-session, and idle-exit scenarios
+in the larger worktree; those failures are not caused by the new
+`ThoughtLine`/`LatticeLoader` projection and are left outside this focused
+visual adaptation.

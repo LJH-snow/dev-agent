@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import test from "node:test";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 import { createDesktopStatus } from "../dist/status.js";
 import { createDesktopServer } from "../dist/server.js";
@@ -81,6 +84,41 @@ test("GET /api/status rejects an unknown session without exposing internals", as
     assert.deepEqual(await response.json(), { error: "unknown session" });
   } finally {
     await close(server);
+  }
+});
+
+test("GET /api/status restores a persisted session selected from the session list", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-status-session-"));
+  const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  await writeFile(join(directory, "persisted.json"), "{}");
+  let createdSessionId: string | undefined;
+  const server = createDesktopServer({
+    session: { async run() {} },
+    createSession(sessionId) {
+      createdSessionId = sessionId;
+      return {
+        id: sessionId,
+        getStatus: () => createDesktopStatus({ sessionId }),
+        async run() {},
+      };
+    },
+  });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/status?sessionId=persisted`);
+    assert.equal(response.status, 200);
+    const payload = (await response.json()) as any;
+    assert.equal(payload.session.id, "persisted");
+    assert.equal(createdSessionId, "persisted");
+  } finally {
+    await close(server);
+    if (previousDirectory === undefined) {
+      delete process.env.DEV_AGENT_SESSION_DIR;
+    } else {
+      process.env.DEV_AGENT_SESSION_DIR = previousDirectory;
+    }
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

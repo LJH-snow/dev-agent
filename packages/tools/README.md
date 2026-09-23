@@ -2,7 +2,7 @@
 
 Tool registry and built-in tools such as filesystem, shell, git, and search.
 
-Implemented in phase 1:
+Current package capabilities include:
 
 - `FilesystemTool` - read, write, list, stat, and mkdir
 - `ShellTool` - run local commands through the executor
@@ -168,6 +168,14 @@ project working directory.
 For source review, `filesystem read` accepts `lineNumbers: true` to prefix the
 returned content with exact source line numbers without changing the default
 raw-content response.
+
+Shell, Git, and Search share one executor adapter. Without a sandbox profile
+they call `Executor.run()` with the existing working directory and abort
+signal. With a profile they require `SandboxExecutor.runSandboxed()` and fail
+closed when the selected executor cannot enforce the profile. Search receives
+the read-only profile; Shell and Git receive the workspace-write profile when
+the application edge selects Rust sandbox execution. Filesystem and Code Search
+keep their existing direct path and index boundaries.
 
 `filesystem read` counts lines the way an editor does: a trailing newline
 terminates the last line instead of starting an empty one, so `"a\nb\n"` is two

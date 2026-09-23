@@ -35,13 +35,15 @@ test("GET / isolates late chat events while old sessions keep running", async ()
     assert.match(html, /activeChatSessionId = requestSessionId/);
     assert.match(
       html,
-      /if \(currentSessionId === requestSessionId && activeChatSessionId === null\) \{\s*void loadHistory\(requestSessionId\);/
+      /if \(currentSessionId === requestSessionId && activeChatSessionId === null\) \{\s*void loadSessionView\(requestSessionId\);/
     );
     assert.match(html, /function invalidateActiveChat\(abort = false\)/);
     assert.match(html, /if \(abort\) \{\s*activeChatController\?\.abort\(\);\s*\}/);
     assert.match(html, /function invalidateSessionHistory\(\)/);
     assert.match(html, /desktopHistoryRequestId \+= 1/);
     assert.match(html, /desktopHistoryController\?\.abort\(\)/);
+    assert.match(html, /function invalidateRunSnapshot\(\)/);
+    assert.match(html, /desktopRunRequestId \+= 1/);
     assert.match(html, /sessionSelect\.addEventListener\("change", async \(\) => \{\s*invalidateActiveChat\(\);\s*invalidateSessionHistory\(\);/);
     assert.match(html, /newSessionButton\.addEventListener\("click", async \(\) => \{\s*invalidateActiveChat\(\);\s*invalidateSessionHistory\(\);/);
   } finally {

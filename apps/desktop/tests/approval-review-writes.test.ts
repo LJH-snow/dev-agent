@@ -14,6 +14,7 @@ const ENV_KEYS = [
   "DEV_AGENT_MEMORY_FILE",
   "DEV_AGENT_APPROVAL",
   "DEV_AGENT_RUST_BINARY",
+  "DEV_AGENT_MCP_SERVERS",
 ];
 
 function applyEnv(values) {
@@ -64,7 +65,10 @@ async function startStubProvider() {
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
   return {
     baseUrl: `http://127.0.0.1:${(server.address() as any).port}/v1`,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: async () => {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
   };
 }
 
@@ -79,11 +83,13 @@ async function withSession(run) {
     OPENAI_BASE_URL: provider.baseUrl,
     DEV_AGENT_MEMORY_FILE: join(directory, "session.json"),
     DEV_AGENT_APPROVAL: "review-writes",
+    DEV_AGENT_MCP_SERVERS: "[]",
   });
+  const session = new ChatSession({ workingDirectory: directory, approvalMode: "review-writes" });
   try {
-    const session = new ChatSession({ workingDirectory: directory, approvalMode: "review-writes" });
     return await run({ directory, target, session });
   } finally {
+    await session.close();
     await provider.close();
     restoreEnv();
     await rm(directory, { recursive: true, force: true });

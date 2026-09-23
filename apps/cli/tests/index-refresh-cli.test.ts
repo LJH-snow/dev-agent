@@ -6,7 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-const cliPath = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist", "index.js");
+const cliPath = resolve(dirname(fileURLToPath(import.meta.url)), "..", "dist", "cli-entry.js");
 
 function runCli(
   args: readonly string[],

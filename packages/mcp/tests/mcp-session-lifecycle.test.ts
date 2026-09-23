@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { McpServerSession } from "../dist/session.js";
+
+const optionalMetadataServer = fileURLToPath(
+  new URL("../tests/optional-metadata-mcp-server.mjs", import.meta.url)
+);
 
 function createClient(overrides: Record<string, unknown> = {}) {
   return {
@@ -139,6 +144,26 @@ test("connect skips metadata lists that the server did not advertise", async () 
   assert.deepEqual(snapshot.tools, []);
   assert.deepEqual(snapshot.resources, []);
   assert.deepEqual(snapshot.prompts, []);
+});
+
+test("connect treats unsupported optional metadata lists as empty", async () => {
+  const session = new McpServerSession({
+    config: {
+      command: process.execPath,
+      args: [optionalMetadataServer],
+      name: "optional-metadata",
+    },
+  });
+
+  try {
+    const snapshot = await session.connect();
+
+    assert.equal(snapshot.tools.length, 1);
+    assert.equal(snapshot.resources.length, 0);
+    assert.equal(snapshot.prompts.length, 0);
+  } finally {
+    await session.close();
+  }
 });
 
 test("concurrent reconnect calls share one recovery sequence", async () => {

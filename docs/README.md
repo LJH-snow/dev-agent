@@ -7,18 +7,25 @@ Architecture, design decisions, and module documentation.
 - **User-facing status and roadmap:** the [root README](../README.md) is the concise
   entry point; its Roadmap uses one unique sequential number per completed item.
 - **Architecture and module boundaries:** [architecture.md](architecture.md) is the
-  reference for system responsibilities and runtime boundaries.
+  reference for system responsibilities and runtime boundaries. The dated
+  [Gemini CLI architecture comparison](gemini-cli-architecture-alignment.md)
+  records upstream design references, project fit, and known boundaries; it does
+  not replace the local architecture as the source of truth.
 
 The `v62/v63/v64` labels in phase documents are release-planning phase labels; they are not the
 numbered items 62/63/64 in the root README Roadmap.
 - **Chronological decisions and evidence:** [CHANGELOG.md](CHANGELOG.md) preserves
   dated implementation notes, validation evidence, and Preserve/NO-GO decisions.
-- **Current execution and delivery plan:** the v62 Linux hosted integration, v63 executor-mode
+- **Release plans and historical execution records:** the v62 Linux hosted integration, v63 executor-mode
   visibility, v64 release-candidate readiness audit, CLI Modern TUI v1, and CLI TUI v1.1 reliability work are
-  complete. Their day plans and
-  progress records remain the evidence source for each decision. The [next-phase plan](next-roadmap-plans-v62-plus.md)
-  records the remaining gated options: formal release preparation, v65 Desktop UX only after a
-  concrete trigger, and the Windows backend as NO-GO. The [CLI npm distribution guide](release-cli-npm.md)
+  complete. Their dated plans and progress records remain evidence for the
+  decisions made at that time. For current working-tree implementation status,
+  consult the repository-root `task_plan.md`, `progress.md`, and `findings.md`;
+  these are distinct from published-release and release-candidate status. The [next-phase plan](next-roadmap-plans-v62-plus.md)
+  records that the v0.1.8 formal release is complete, keeps the separate
+  execution-state Desktop UX candidate deferred until a concrete trigger, and
+  retains the Windows backend as NO-GO. That deferred candidate is distinct
+  from the completed Scheme A workbench polish in [day-plan-v65.md](day-plan-v65.md). The [CLI npm distribution guide](release-cli-npm.md)
   records the clean-install evidence, `--cwd` precedence, config/session isolation, npm preflight,
   and optional Rust sandbox boundary. The [release state](release-state.json) records the latest
   published npm version and the current workspace version. The [CLI runtime observability spec](cli-runtime-observability.md),
@@ -31,7 +38,7 @@ numbered items 62/63/64 in the root README Roadmap.
   record](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md), the [release provenance
   audit](superpowers/plans/2026-09-15-release-provenance-audit.md), the [cancellation boundary audit](superpowers/plans/2026-09-15-cancellation-boundary-audit.md), and the [current 10-goal overnight development plan](superpowers/plans/2026-09-15-overnight-development-goals.md) define the current merge-preparation boundary
   and maintainer decision gate. The [project-scoped CLI state plan](superpowers/plans/2026-09-16-project-state-isolation.md)
-  records the explicit opt-in follow-up for external-project config/session isolation. The [v0.1.5–v0.4.0 development plan](development-plan-v0.1.5-v0.4.0.md) is now the active execution checklist for project initialization, runtime distribution, CI/review mode, provider management, code search, MCP management, and Desktop status UX. Historical phase records remain linked for auditability:
+  records the completed opt-in implementation for external-project config/session isolation. The [v0.1.5–v0.4.0 development plan](development-plan-v0.1.5-v0.4.0.md) is a completed historical checklist for project initialization, runtime distribution, CI/review mode, provider management, code search, MCP management, and Desktop status UX; it is not the active execution plan. Historical phase records remain linked for auditability:
   [v60 plan](day-plan-v60.md), [v60 progress](day-plan-v60-progress.md), [v61 plan](day-plan-v61.md),
   [v61 progress](day-plan-v61-progress.md), [Windows feasibility notes](windows-sandbox-feasibility-v61.md),
   [v62 plan](day-plan-v62.md), [v62 progress](day-plan-v62-progress.md), [v63 plan](day-plan-v63.md),
@@ -45,6 +52,32 @@ numbered items 62/63/64 in the root README Roadmap.
   [Runtime Events and Ink CLI design](superpowers/specs/2026-09-20-runtime-events-and-ink-cli-design.md)
   and tracked in the
   [Runtime Events and Ink CLI plan](superpowers/plans/2026-09-20-runtime-events-ink-cli.md).
+  The Gemini CLI follow-up for on-demand Skills and modular Prompt composition is
+  tracked in the
+  [Skill activation and modular Prompt plan](superpowers/plans/2026-09-20-skill-activation-and-prompt-modules.md).
+  The shared Prompt composition follow-up is tracked in the
+  [shared Prompt composition plan](superpowers/plans/2026-09-20-shared-prompt-composition.md).
+  The ACP v1 IDE/session integration is tracked in the
+  [ACP bridge plan](superpowers/plans/2026-09-21-acp-agent-client-protocol.md).
+  The bounded lifecycle-hook run trace is documented in
+  [trace-observability.md](trace-observability.md) and tracked in the
+  [Hooks and run observability plan](superpowers/plans/2026-09-20-hooks-observability-integration.md).
+  The live Ink terminal scrollback boundary is tracked in the
+  [Live TTY scrollback hardening plan](superpowers/plans/2026-09-20-live-tty-scrollback-hardening.md).
+  The metadata-only Extension Registry is tracked in the
+  [Extension Registry plan](superpowers/plans/2026-09-20-extension-registry.md).
+  The Desktop MCP capability parity and shared Tool Registry work are tracked
+  in the [Desktop MCP capability plan](superpowers/plans/2026-09-21-desktop-mcp-capability-parity.md)
+  and [Unified Tool Registry plan](superpowers/plans/2026-09-21-unified-tool-registry.md).
+  The shared approval-mode boundary is tracked in the
+  [Shared Approval Policy plan](superpowers/plans/2026-09-21-shared-approval-policy.md).
+  The shared provider routing and streaming-safe fallback boundary is tracked
+  in the [Model Routing plan](superpowers/plans/2026-09-21-model-routing.md).
+  The next Desktop interaction slice for queued prompts, turn ownership, and
+  replay idempotency is tracked in the
+  [Desktop message queue and turn isolation plan](superpowers/plans/2026-09-22-desktop-message-queue-and-turn-isolation.md).
+  The local Scheduler and background-task lifecycle boundary is tracked in the
+  [Scheduler background tasks plan](superpowers/plans/2026-09-21-scheduler-background-tasks.md).
   The [2026-09-18 overnight plan](superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
   its [progress record](superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
   and the [v0.1.7 Desktop candidate checklist](release-candidate-checklist-v0.1.7-desktop.md)
@@ -61,11 +94,13 @@ runtime; a Rust runtime provides sandbox enforcement.
 ```
 dev-agent/
 ├── apps/
-│   ├── cli/              Primary CLI entry point (phase 1)
+│   ├── cli/              Primary CLI entry point
 │   └── desktop/          Local web server with streaming chat UI (SSE)
 ├── packages/
 │   ├── agent-core/       Agent loop, context, memory, agent state
-│   ├── runtime-events/   Shared versioned runtime event contracts (planned)
+│   ├── acp/              ACP v1 transport and session lifecycle bridge
+│   ├── a2a/              Bounded A2A v1 HTTP/JSON-RPC/SSE adapter
+│   ├── runtime-events/   Shared versioned runtime event contracts
 │   ├── model/            Unified LLM provider (OpenAI, Anthropic, Gemini, Ollama)
 │   ├── tools/            Tool registry + built-in tools (fs, shell, git, search, code-search)
 │   ├── mcp/              MCP client, reconnect backoff, notification debounce
@@ -78,15 +113,21 @@ dev-agent/
 └── tests/                Test suites
 ```
 
-The planned `evals/` directory contains PTY-level behavior evaluations for the
-rich CLI. It is intentionally separate from package unit tests because it
-checks the user-visible queue, cursor, approval, resize, and interruption
-contracts.
+The `evals/` directory contains PTY-level behavior evaluations for the rich
+CLI. It is intentionally separate from package unit tests because it checks
+the user-visible queue, cursor, approval, resize, EOF, interruption, and
+tool-loop contracts.
 
 ## Module Responsibilities
 
-- **agent-core**: The `AgentLoop` drives the chat→tool→chat cycle. `FileMemory`
-  persists conversation history as JSON. `AgentToolRegistry` manages tool registration.
+- **agent-core**: The `AgentLoop` drives the chat→tool→chat cycle and emits
+  versioned runtime events consumed by CLI and Desktop. `FileMemory` persists
+  conversation history as JSON, stores bounded checkpoint metadata, and can
+  safely rewind only the conversation history at a validated anchor.
+  `AgentToolRegistry` manages tool registration, while bounded Skills, Hooks,
+  and Extension registries extend the loop without coupling it to a specific
+  UI. Extension discovery is metadata-only and project-scoped extensions
+  shadow user-scoped extensions with the same id.
 - **model**: `ModelProvider` is the unified interface. Each provider (OpenAI, Anthropic,
   Gemini, Ollama) implements `chat(messages, options)`.
 - **tools**: `ToolRegistry` holds built-in tools. `CodeSearchTool` queries the code index.
@@ -109,10 +150,28 @@ contracts.
   canonical export size. It does not replace transcript Download or add audit-export authority;
   the shell also exposes explicit labels, focus-visible styling, live status, and preview loading
   semantics for keyboard and assistive-technology users.
-- **apps/cli rich workbench**: real TTY sessions use the Signal Loom renderer,
-  explicit run-state and live-card models, and a raw multiline input controller.
-  Pipe, `--once`, JSON, MCP server, and other non-rich paths retain their existing
-  line-oriented contracts.
+- **apps/cli rich workbench**: real TTY sessions use the Ink 6/React 19
+  renderer with the Signal Loom launch mark, explicit run-state and live-card
+  models, a blue multiline composer, a session footer, command completion, and
+  queue-aware prompt rendering. Ink is the only interactive TTY renderer.
+  Pipe, `--once`, JSON, MCP server, and other non-Ink paths retain
+  their existing line-oriented contracts.
+- **packages/acp**: adapts the official ACP v1 SDK to a runtime factory
+  contract. It owns NDJSON framing, ACP session lifecycle, prompt
+  serialization, cancellation, cleanup, streamed update delivery, and
+  permission forwarding without knowing provider configuration or rendering
+  terminal UI.
+- **apps/cli ACP edge**: `--acp` reuses the CLI's provider, AgentLoop,
+  memory, tool registry, executor, validation, approval, and MCP prompt
+  context. It keeps stdout protocol-only and sends diagnostics to stderr;
+  ACP sessions do not start the Ink TTY renderer.
+- **packages/a2a and apps/cli A2A edge**: `--a2a` exposes the same runtime
+  through a local-first A2A v1.0 HTTP boundary. The package owns bounded Agent
+  Card/task/SSE protocol handling, optional bearer authentication, bounded
+  context concurrency, and reasoning suppression by default; the CLI supplies
+  the provider, AgentLoop, tools, memory, approval, validation, MCP context,
+  and executor. A2A does not add OAuth, push notifications, gRPC, or
+  multi-agent delegation.
 
 ## Policy Language: Starlark
 

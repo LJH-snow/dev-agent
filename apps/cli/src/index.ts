@@ -3,19 +3,27 @@
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { performance } from "node:perf_hooks";
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { opendir, rename, rm, stat } from "node:fs/promises";
 import { existsSync, realpathSync } from "node:fs";
 import { dirname } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
+import React from "react";
+import { render as renderInk } from "ink";
+import {
+  createTaskStatusBridge,
+  scheduleInteractiveTask,
+  type InteractiveTaskStatusBridge,
+} from "./task-status-bridge.js";
 
 import {
   AgentLoop,
   AgentToolRegistry,
   compileApprovalConfig,
   normalizeApprovalKey,
+  createApprovalPolicy,
   createAgentContext,
   createBlockedValidationResult,
   createEvidenceAuditExport,
@@ -25,12 +33,24 @@ import {
   validateEvidenceAuditLimits,
   selectEvidenceForAudit,
   createValidationAttemptId,
-  denyDangerousPolicy,
-  reviewWritesPolicy,
   FileMemory,
+  FileMemoryCheckpointStore,
+  ExtensionRegistry,
+  SkillRegistry,
+  composePrompt,
+  DEFAULT_CLI_PROMPT_MODULES,
+  AgentHookRegistry,
+  AgentRunTrace,
+  AgentTaskScheduler,
+  type AgentTaskExecutionContext,
+  createCollaborativeExecution,
+  createCollaborationTaskGraph,
+  planCollaborativeTasks,
+  runCollaborativePlan as runCollaborativePlanWorkflow,
   runValidationAttempt,
   type AgentContext,
   type AgentMemory,
+  type CheckpointStore,
   type ApprovalPolicy,
   type ApprovalRequest,
   type ChangeSetReview,
@@ -44,8 +64,24 @@ import {
   type ValidationResult,
   type SessionMetadata,
   type AgentLoopBudget,
+  type AgentTraceSnapshot,
+  type CollaborationExecutionEvent,
+  type CollaborationExecutionHandle,
+  type CollaborationExecutionResult,
+  type CollaborationMergeResult,
+  type CollaborationReview,
+  type CollaborationTask,
+  type PlanReview,
+  type CollaborativePlanResult,
+  type SandboxExpansionDecision,
+  type SandboxExpansionRequest,
 } from "@dev-agent/agent-core";
-import { assertWorkingDirectory, createExecutor, getExecutorMode } from "@dev-agent/executor";
+import {
+  assertWorkingDirectory,
+  createExecutor,
+  getExecutorMode,
+  isSandboxExecutor,
+} from "@dev-agent/executor";
 import {
   createMcpServer,
   McpServerSession,
@@ -56,9 +92,8 @@ import {
   type McpSessionSnapshot,
 } from "@dev-agent/mcp";
 import { colors, colorize } from "./colors.js";
-import { shouldUseRichUi } from "./tui-mode.js";
+import { resolveTuiRenderer, shouldUseRichUi } from "./tui-mode.js";
 import { LiveAssistantRenderer } from "./tui-stream.js";
-import { RichInputController, RichPromptQueue } from "./tui-input.js";
 import {
   TuiSessionModel,
   type TuiRunState,
@@ -70,7 +105,6 @@ import {
   renderApprovalMessage,
   renderAssistantMessage,
   renderCommandHints,
-  renderInputFooter,
   renderRuntimeStatus,
   renderToolCard,
   renderToolCall,
@@ -82,7 +116,9 @@ import {
 import {
   loadConfig,
   parseApprovalMode,
+  resolveCollaborationToolAllowlist,
   resolveConfigPath,
+  resolveInkTheme,
   resolveApprovalMode,
   resolveMaxContextChars,
   resolveMaxTurns,
@@ -109,12 +145,106 @@ import {
 import { resolveExecutorSelection, type ExecutorPreference } from "./runtime-selection.js";
 import { executeWorkflowCommand } from "./workflow-command.js";
 import { createNonInteractiveController, EXIT_CODES } from "./non-interactive.js";
+import { runAcpServer } from "./acp-server.js";
+import { InkCliApp } from "./ink/app.js";
+import {
+  CollaborationScopeReviewCancelledError,
+  reviewCollaborationTaskToolScopes,
+} from "./collaboration-scope-review.js";
+import { InkRuntimeStore } from "./ink/runtime-store.js";
+import {
+  INK_THEME_NAMES,
+  parseInkThemeCommand,
+} from "./ink/theme.js";
+import type { InkThemeName } from "./ink/theme-types.js";
+import {
+  createInkRenderOutput,
+  normalizeInkTerminalSize,
+} from "./ink/terminal-size.js";
+import { InkUiController } from "./ink-ui.js";
+import {
+  buildApprovedPlanContext,
+  latestAssistantPlanText,
+} from "./plan-mode.js";
+import {
+  getSetupCredentialHint,
+  getSetupDefaultModel,
+  parseSetupProvider,
+  writeSetupConfig,
+} from "./setup-command.js";
+import { persistInkTheme } from "./theme-preferences.js";
 import { executeProviderCommand, type ProviderCommand } from "./provider-command.js";
 import { formatModelSelectionMetadata, resolveModelSelection, type ModelSelection, type ModelSelectionResult } from "./model-profiles.js";
 import { FallbackModelProvider } from "./fallback-provider.js";
+import { GitCollaborationWorkspaceProvider } from "./collaboration-worktree.js";
+import { resolveSpecialistRoles } from "./specialist-roles.js";
+import {
+  BackgroundJobManager,
+  BackgroundJobStore,
+  resolveBackgroundJobWorkingDirectory,
+} from "./background-jobs.js";
+import {
+  formatBackgroundJobCommandResult,
+  parseBackgroundJobCommand,
+} from "./background-job-command.js";
 import { executeMcpCommand, type McpManagementResult, type McpProbe } from "./mcp-command.js";
+import {
+  executeMcpConfigCommand,
+  type McpConfigAction,
+  type McpConfigCommandResult,
+} from "./mcp-config-command.js";
+import type { McpCommandAction } from "./mcp-command.js";
+import { listMcpTemplates } from "./mcp-templates.js";
+import { parseMcpInteractiveCommand } from "./mcp-interactive-command.js";
 import { indexDirectory, refreshIndexDirectory, type IndexProgress } from "./index-command.js";
+import {
+  executeSkillCommand,
+  formatSkillCommandResult,
+  renderActiveSkillPrompt,
+  type ActiveSkillState,
+} from "./skill-command.js";
+import {
+  executeCheckpointCommand,
+  isCheckpointCommand,
+  type CheckpointCommandResult,
+} from "./checkpoint-command.js";
+import {
+  resolvePromptContext,
+  type ResolvedPromptContext,
+} from "./context-attachments.js";
+import { ProjectContextManager } from "./project-context.js";
+import { diagnoseSlowStage, formatSlowStageDiagnosis, summarizeRunTimings } from "./run-timing-summary.js";
+import {
+  executeExtensionCommand,
+  formatExtensionCommandResult,
+} from "./extension-command.js";
+import {
+  executeTaskCommand,
+  formatTaskCommandResult,
+} from "./task-command.js";
+import {
+  formatSessionSearch,
+  formatSessionHistory,
+  parseSessionHistoryCommand,
+  parseSessionSearchCommand,
+} from "./session-history.js";
+import {
+  parseSessionExportCommand,
+  writeSessionExport,
+} from "./session-export.js";
+import {
+  listStoredSessions,
+  searchStoredSessions,
+  type StoredSession,
+} from "./session-registry.js";
+import {
+  formatStoredSessionRow,
+  parseSessionResumeCommand,
+} from "./session-resume.js";
 import { clearIndex, getIndexStatus } from "@dev-agent/code-intelligence";
+import { benchmarkModel, type SpeedBenchmarkResult } from "./speed-benchmark.js";
+import { resolvePromptToolAccess } from "./prompt-tool-policy.js";
+import { parseBenchmarkCommand, parseSpeedModeCommand } from "./speed-mode-command.js";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -123,10 +253,16 @@ import {
   estimateCost,
   type ChatUsage,
   type ModelProvider,
+  type ModelSpeedMode,
+  ModelSpeedModeController,
+  SpeedModeModelProvider,
+  describeSpeedModeSupport,
   type PriceTable,
 } from "@dev-agent/model";
 import {
   createDefaultTools,
+  createBuiltInToolSandboxProfile,
+  expandBuiltInToolSandboxProfile,
   createValidationRunner,
   deriveValidationPlan,
   FilesystemTool,
@@ -140,24 +276,6 @@ const DEFAULT_ONCE_TOOL_OUTPUT_CHARS = 6000;
 const DEFAULT_ONCE_MAX_REPEATED_TOOL_FAILURES = 2;
 const MAX_SESSION_LIST_ENTRIES = 256;
 export const MAX_APPROVAL_INPUT_BYTES = 4 * 1024;
-const defaultSystemPrompt = [
-  "You are dev-agent, a coding agent. Use tools when they help answer the user.",
-  "Ground findings in actual tool output; cite path:line and verify every cited location in current source.",
-  "README, AGENTS.md, plans, roadmaps, changelogs, and comments are background, not proof.",
-  "Treat the newest user request as authoritative; use older turns only when the user explicitly refers to them.",
-  "Stay within the requested paths and symbols; for broad audits inspect the workspace layout before choosing files, and never invent paths.",
-  "If a read-only tool fails or search returns no matches, retry with a different read-only approach; request lineNumbers for source reads or use search when line numbers are missing; state uncertainty and separate findings from recommendations.",
-  "For a broad audit, choose one concrete evidence path, gather enough evidence, then answer instead of repeating speculative searches.",
-  "For a scoped review, stop calling tools once one risk is verified and draft the requested final answer.",
-  "Position-based code-search references and definitions are semantic for TypeScript/JavaScript and lexical for Python; treat Python results with resolution=lexical or approximate=true as leads that must be verified with source reads. A zero-result position lookup from an unsupported language is not evidence of no references; use search instead.",
-  "For Python type or model audits, inspect the containing class and indentation before claiming recursion; a field in one class that refers to a separately defined config class with the same name is ordinary nesting, not self-reference. Never infer a runtime defect from name equality alone; verify with the complete class body, imports, and tests when available.",
-  "Do not turn normal shared-type usage, ReturnType aliases, repeated prop annotations, or a symbol being imported by many files into a defect by itself. A risk requires verified incorrect behavior, a violated contract, a failing test, a concrete security impact, or another specific consequence; otherwise report 未验证到可复现缺陷 instead of inventing a maintainability finding.",
-  "Never claim a Python name is undefined or unimported from code-search results alone. For missing-name or import findings, use literal search for exact import statements and read the file header; a definition result with a line number resolves the symbol at that position and is not a query result.",
-  "Do not repeat identical tool calls or invalid inputs; after a tool error, change the input or choose a different tool.",
-  "A definition-only result is not a defect; for unused-code claims, read the implementation and search the whole project for the exact symbol.",
-  "For audit requests, the final answer must contain the labels 问题、严重性、证据、风险、建议修复方向. If no concrete defect is verified, use 问题：未验证到可复现缺陷 and 严重性：不适用 as the first two fields; do not put a normal symbol, import, or usage pattern in the 问题 field, do not turn a symbol description into a finding, and say 无需修复 under 建议修复方向 unless a separate improvement is explicitly requested.",
-  "Before finalizing, check that the answer addresses the current task and includes every section the user requested; do not end with only a symbol lookup or generic summary.",
-].join(" ");
 const CLI_USAGE = [
   "Usage: dev-agent [options] [prompt]",
   "",
@@ -166,6 +284,12 @@ const CLI_USAGE = [
   "  plan [options]                   Create a metadata-only workflow plan",
   "  apply [options]                  Apply a reviewed workflow plan",
   "  config validate|show [options]   Validate or show effective config",
+  "  setup [options]                  Configure the default provider and model",
+  "  mcp list|status|validate|test|health",
+  "                                   Inspect configured MCP servers",
+  "  mcp add|remove|enable|disable [options]",
+  "                                   Manage named MCP server entries",
+  "  mcp templates                    List MCP server templates",
   "  runtime status|install|path|remove",
   "  index status|refresh|clear       Manage the persisted code index",
   "  init [options]                   Initialize project-scoped state",
@@ -173,7 +297,13 @@ const CLI_USAGE = [
   "Common options:",
   "  --cwd <path>                     Use a different working directory",
   "  --project-state                  Store config and sessions in the project",
+  "  --session <id>                  Continue the named session",
+  "  --resume <id>                   Resume an existing session",
   "  --json                           Emit machine-readable output",
+  "  --acp                           Serve the agent through ACP v1 over stdio",
+  "  --a2a                           Serve the agent through A2A v1 over HTTP",
+  "  --host <host>                   A2A bind host (default: 127.0.0.1)",
+  "  --port <port>                   A2A bind port (default: 4320)",
   "  --tools                          List available tools without a provider",
   "  --doctor                         Check the local runtime environment",
   "  --check-update                   Check npm for a newer CLI version (with --doctor)",
@@ -193,6 +323,8 @@ const PREVIEW_EXCLUSIVE_FLAGS = [
   "--doctor",
   "--check-update",
   "--mcp-server",
+  "--acp",
+  "--a2a",
   "--reset-memory",
   "--compact",
   "--session-delete",
@@ -238,17 +370,28 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
   "--doctor": "none",
   "--check-update": "none",
   "--mcp-server": "none",
+  "--acp": "none",
+  "--a2a": "none",
+  "--host": "one",
+  "--port": "one",
   "--reset-memory": "none",
   "--no-stream": "none",
   "--json": "none",
   "--once": "one",
   "--session": "one",
+  "--resume": "one",
   "--session-delete": "one",
   "--index": "one",
   "--index-file": "one",
   "--exclude": "one",
   "--cwd": "one",
   "--config": "one",
+  "--name": "one",
+  "--command": "one",
+  "--arg": "one",
+  "--env": "one",
+  "--timeout-ms": "one",
+  "--template": "one",
   "--project-state": "none",
   "--rust-executor": "one",
   "--executor": "one",
@@ -286,11 +429,15 @@ const CLI_FLAGS: Readonly<Record<string, "none" | "one" | "two" | "optional">> =
  */
 type ExplicitCliCommand =
   | { readonly kind: "init" }
+  | { readonly kind: "setup" }
   | { readonly kind: "config"; readonly action: "validate" | "show" }
   | { readonly kind: "runtime"; readonly action: "status" | "install" | "path" | "remove" }
   | { readonly kind: "workflow"; readonly action: "review" | "plan" | "apply" }
   | { readonly kind: "provider"; readonly resource: "providers" | "models"; readonly action: "list" | "status" | "test" | "current" }
-  | { readonly kind: "mcp"; readonly action: "list" | "status" | "validate" | "test" }
+  | {
+      readonly kind: "mcp";
+      readonly action: McpCommandAction | McpConfigAction | "templates";
+    }
   | { readonly kind: "index"; readonly action: "status" | "refresh" | "clear" };
 
 function parseExplicitCliCommandAt(
@@ -301,6 +448,9 @@ function parseExplicitCliCommandAt(
   const second = args[offset + 1];
   if (first === "init") {
     return { kind: "init" };
+  }
+  if (first === "setup") {
+    return { kind: "setup" };
   }
   if (first === "config" && (second === "validate" || second === "show")) {
     return { kind: "config", action: second };
@@ -331,7 +481,13 @@ function parseExplicitCliCommandAt(
     (second === "list" ||
       second === "status" ||
       second === "validate" ||
-      second === "test")
+      second === "test" ||
+      second === "health" ||
+      second === "add" ||
+      second === "remove" ||
+      second === "enable" ||
+      second === "disable" ||
+      second === "templates")
   ) {
     return { kind: "mcp", action: second };
   }
@@ -380,6 +536,9 @@ function explicitCommandPrefixLength(args: readonly string[]): number {
   if (command?.kind === "init") {
     return 1;
   }
+  if (command?.kind === "setup") {
+    return 1;
+  }
   if (command?.kind === "config" || command?.kind === "runtime") {
     return 2;
   }
@@ -418,6 +577,21 @@ export function validateCliArgs(args: readonly string[]): string | undefined {
     let found = 0;
     while (found < wanted) {
       const next = args[i + 1 + found];
+      // MCP commands pass through arbitrary child-process arguments. A
+      // repeated `--arg -y` or `--arg --root` is a value, not a CLI flag,
+      // unless it is one of our own recognized flags (which still indicates a
+      // missing value).
+      if (
+        found === 0 &&
+        wanted === 1 &&
+        arg === "--arg" &&
+        next !== undefined &&
+        next.startsWith("-") &&
+        CLI_FLAGS[next] === undefined
+      ) {
+        found += 1;
+        continue;
+      }
       if (next === undefined || next.startsWith("-")) {
         break;
       }
@@ -451,9 +625,51 @@ function validatePreviewCliCombination(
     : `--preview-evidence cannot be combined with ${conflictingFlag}`;
 }
 
+function validateA2aCliCombination(args: readonly string[]): string | undefined {
+  const a2a = args.includes("--a2a");
+  const hostOrPort = args.includes("--host") || args.includes("--port");
+  if (hostOrPort && !a2a) {
+    return "--host and --port require --a2a.";
+  }
+  if (!a2a) {
+    return undefined;
+  }
+  const conflictingFlag = ["--acp", "--json", "--once", "--mcp-server", "--tools"].find(
+    (flag) => args.includes(flag)
+  );
+  return conflictingFlag === undefined
+    ? undefined
+    : `--a2a cannot be combined with ${conflictingFlag}.`;
+}
+
 function flagValue(args: readonly string[], flag: string): string | undefined {
   const index = args.indexOf(flag);
   return index >= 0 ? args[index + 1] : undefined;
+}
+
+function flagValues(args: readonly string[], flag: string): readonly string[] {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === flag && args[index + 1] !== undefined) {
+      values.push(args[index + 1]!);
+      index += 1;
+    }
+  }
+  return values;
+}
+
+function parseA2aPort(value: string | undefined): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!/^\d+$/.test(value)) {
+    throw new Error("--port must be an integer between 1 and 65535.");
+  }
+  const port = Number(value);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error("--port must be an integer between 1 and 65535.");
+  }
+  return port;
 }
 
 function parseExecutorPreference(value: string | undefined): ExecutorPreference | undefined {
@@ -469,6 +685,8 @@ function validateExplicitCommandFlags(
   const allowed =
     command.kind === "init"
       ? new Set(["--cwd", "--project-state", "--gitignore", "--dry-run", "--json"])
+      : command.kind === "setup"
+        ? new Set(["--cwd", "--project-state", "--config", "--provider", "--model", "--json", "--non-interactive"])
       : command.kind === "config"
         ? new Set(["--cwd", "--project-state", "--config", "--json"])
         : command.kind === "runtime"
@@ -480,14 +698,36 @@ function validateExplicitCommandFlags(
               : command.kind === "provider"
                 ? new Set(["--cwd", "--project-state", "--config", "--provider", "--model", "--profile", "--alias", "--json", "--non-interactive"])
                 : command.kind === "mcp"
-                  ? new Set(["--cwd", "--project-state", "--config", "--json", "--non-interactive"])
+                  ? command.action === "add"
+                    ? new Set([
+                        "--cwd",
+                        "--project-state",
+                        "--config",
+                        "--json",
+                        "--name",
+                        "--command",
+                        "--arg",
+                        "--env",
+                        "--timeout-ms",
+                        "--template",
+                      ])
+                    : command.action === "remove" ||
+                        command.action === "enable" ||
+                        command.action === "disable"
+                      ? new Set(["--cwd", "--project-state", "--config", "--json", "--name"])
+                      : command.action === "templates"
+                        ? new Set(["--cwd", "--project-state", "--json"])
+                        : new Set(["--cwd", "--project-state", "--config", "--json", "--non-interactive"])
                   : new Set(["--cwd", "--index-file", "--exclude", "--json", "--confirm", "--dry-run"]);
   const prefixLength = explicitCommandPrefixLength(args);
-  for (const arg of args.slice(prefixLength)) {
+  for (let index = prefixLength; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
     if (arg.startsWith("-") && !allowed.has(arg)) {
       const commandName =
         command.kind === "init"
           ? "init"
+          : command.kind === "setup"
+            ? "setup"
           : command.kind === "config"
             ? `config ${command.action}`
             : command.kind === "runtime"
@@ -501,6 +741,17 @@ function validateExplicitCommandFlags(
                     : command.action;
       return `${arg} is not supported by ${commandName}.`;
     }
+    const arity = CLI_FLAGS[arg];
+    if (arity === "one") {
+      index += 1;
+    } else if (arity === "two") {
+      index += 2;
+    } else if (arity === "optional") {
+      const next = args[index + 1];
+      if (next !== undefined && !next.startsWith("-")) {
+        index += 1;
+      }
+    }
   }
   return undefined;
 }
@@ -509,7 +760,8 @@ async function runExplicitCliCommand(
   command: ExplicitCliCommand,
   args: readonly string[],
   jsonOutput: boolean,
-  jsonErrorOutput: boolean
+  jsonErrorOutput: boolean,
+  startupSignal?: AbortSignal
 ): Promise<void> {
   const commandError = validateExplicitCommandFlags(command, args);
   if (commandError) {
@@ -525,6 +777,69 @@ async function runExplicitCliCommand(
   } catch (error) {
     emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
     process.exitCode = 1;
+    return;
+  }
+
+  if (command.kind === "setup") {
+    const projectState = args.includes("--project-state");
+    const configPath = resolveConfigPath(
+      flagValue(args, "--config"),
+      process.env,
+      homedir(),
+      workingDirectory,
+      projectState,
+    );
+    try {
+      const existing = loadConfig(configPath, process.env, workingDirectory, projectState);
+      const configuredProvider =
+        typeof existing.defaultProvider === "string" && existing.defaultProvider.trim() !== ""
+          ? existing.defaultProvider.trim()
+          : "ollama";
+      const providerInput = flagValue(args, "--provider");
+      const shouldPrompt = !jsonOutput &&
+        !args.includes("--non-interactive") &&
+        process.stdin.isTTY === true;
+      const providerAnswer = shouldPrompt && providerInput === undefined
+        ? await readLineFromStdin(
+            `Provider [ollama/openai/anthropic/gemini] (${safeTerminalText(configuredProvider)}): `,
+          )
+        : "";
+      const provider = parseSetupProvider(
+        (providerInput ?? providerAnswer.trim() ?? configuredProvider) || configuredProvider,
+      );
+      const configuredModel =
+        provider === configuredProvider &&
+        typeof existing.defaultModel === "string" &&
+        existing.defaultModel.trim() !== ""
+          ? existing.defaultModel.trim()
+          : getSetupDefaultModel(provider);
+      const modelInput = flagValue(args, "--model");
+      const modelAnswer = shouldPrompt && modelInput === undefined
+        ? await readLineFromStdin(`Model (${safeTerminalText(configuredModel)}): `)
+        : "";
+      const model = (modelInput ?? modelAnswer.trim() ?? configuredModel).trim() || configuredModel;
+      const result = await writeSetupConfig(configPath, { provider, model });
+      const payload = {
+        command: "setup",
+        scope: projectState ? "project" : "user",
+        provider: result.provider,
+        model: result.model,
+        created: result.created,
+        credentialHint: getSetupCredentialHint(result.provider),
+      };
+      if (jsonOutput) {
+        console.log(JSON.stringify(payload, null, 2));
+      } else {
+        console.log(`Setup saved (${payload.scope} configuration).`);
+        console.log(`Provider: ${safeTerminalText(payload.provider)}`);
+        console.log(`Model: ${safeTerminalText(payload.model)}`);
+        console.log(safeTerminalText(payload.credentialHint));
+        console.log("Restart dev-agent to use the new selection.");
+      }
+    } catch (error) {
+      emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -586,6 +901,63 @@ async function runExplicitCliCommand(
       workingDirectory,
       projectState
     );
+    if (
+      command.action === "add" ||
+      command.action === "remove" ||
+      command.action === "enable" ||
+      command.action === "disable"
+    ) {
+      try {
+        const timeoutInput = flagValue(args, "--timeout-ms");
+        let timeoutMs: number | undefined;
+        if (timeoutInput !== undefined) {
+          if (!/^\d+$/.test(timeoutInput)) {
+            throw new Error("--timeout-ms must be a positive integer in milliseconds.");
+          }
+          timeoutMs = Number(timeoutInput);
+          if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
+            throw new Error("--timeout-ms must be a positive integer in milliseconds.");
+          }
+        }
+        const result = await executeMcpConfigCommand({
+          action: command.action,
+          configPath,
+          name: flagValue(args, "--name") ?? "",
+          ...(command.action === "add"
+              ? {
+                  command: flagValue(args, "--command"),
+                  template: flagValue(args, "--template"),
+                  args: flagValues(args, "--arg"),
+                environment: flagValues(args, "--env"),
+                ...(timeoutMs === undefined ? {} : { timeoutMs }),
+              }
+            : {}),
+        });
+        if (jsonOutput) {
+          console.log(JSON.stringify(result, null, 2));
+        } else {
+          printMcpConfigCommandResult(result);
+        }
+        if (result.status === "not_found") {
+          process.exitCode = EXIT_CODES.config_error;
+        }
+      } catch (error) {
+        emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
+        process.exitCode = EXIT_CODES.config_error;
+      }
+      return;
+    }
+    if (command.action === "templates") {
+      if (jsonOutput) {
+        console.log(JSON.stringify({
+          command: "mcp templates",
+          templates: listMcpTemplates(),
+        }, null, 2));
+      } else {
+        printMcpTemplates(listMcpTemplates());
+      }
+      return;
+    }
     const config = loadConfig(configPath, process.env, workingDirectory, projectState);
     const managementConfig = { mcpServers: readMcpManagementEntries(config) };
     const result = await executeMcpCommand(command.action, {
@@ -640,6 +1012,7 @@ async function runExplicitCliCommand(
         .filter((path): path is string => path !== undefined)
         .map((path) => resolve(workingDirectory, path));
       const controller = new AbortController();
+      const signal = startupSignal ?? controller.signal;
       let progressLine = false;
       const onSigint = () => controller.abort();
       const clearProgressLine = (): void => {
@@ -660,14 +1033,16 @@ async function runExplicitCliCommand(
         process.stderr.write(`\rIndexing ${progress.completed}/${progress.total} files...`);
         progressLine = true;
       };
-      process.once("SIGINT", onSigint);
+      if (startupSignal === undefined) {
+        process.once("SIGINT", onSigint);
+      }
       try {
         const result = await refreshIndexDirectory(
           workingDirectory,
           undefined,
           excludePaths,
           indexFile,
-          { signal: controller.signal, onProgress }
+          { signal, onProgress }
         );
         if (result.status === "cancelled") {
           clearProgressLine();
@@ -723,7 +1098,9 @@ async function runExplicitCliCommand(
         }
       } finally {
         clearProgressLine();
-        process.removeListener("SIGINT", onSigint);
+        if (startupSignal === undefined) {
+          process.removeListener("SIGINT", onSigint);
+        }
       }
     } catch (error) {
       emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
@@ -819,8 +1196,23 @@ async function runExplicitCliCommand(
   }
 }
 
-export async function main(argv: string[]): Promise<void> {
+export interface CliMainOptions {
+  readonly startupSignal?: AbortSignal;
+  /** Private detached-worker context; never populated from normal CLI arguments. */
+  readonly jobAttachedContext?: string;
+}
+
+export async function main(argv: string[], options: CliMainOptions = {}): Promise<void> {
   const rawArgs = argv.slice(2);
+  if (rawArgs.includes("--internal-job-worker")) {
+    if (rawArgs.length !== 2 || rawArgs[0] !== "--internal-job-worker") {
+      emitCliError("Invalid internal background-worker invocation.", false);
+      process.exitCode = EXIT_CODES.usage_error;
+      return;
+    }
+    await runInternalBackgroundJobWorker(rawArgs[1]!, options.startupSignal);
+    return;
+  }
   if (rawArgs.includes("--help") || rawArgs.includes("-h")) {
     console.log(CLI_USAGE);
     return;
@@ -847,9 +1239,21 @@ export async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  const a2aCombinationError = validateA2aCliCombination(args);
+  if (a2aCombinationError) {
+    emitCliError(a2aCombinationError, jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
   const explicitCommand = parseExplicitCliCommand(args);
   if (explicitCommand !== undefined) {
-    await runExplicitCliCommand(explicitCommand, args, jsonOutput, jsonErrorOutput);
+    await runExplicitCliCommand(
+      explicitCommand,
+      args,
+      jsonOutput,
+      jsonErrorOutput,
+      options.startupSignal
+    );
     return;
   }
   if (args.includes("--event-stream")) {
@@ -875,6 +1279,32 @@ export async function main(argv: string[]): Promise<void> {
   const sessionId = sessionIndex >= 0 ? args[sessionIndex + 1] : undefined;
   if (sessionIndex >= 0 && !sessionId) {
     emitCliError("--session requires a session id", jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+  const resumeIndex = args.indexOf("--resume");
+  const resumeId = resumeIndex >= 0 ? args[resumeIndex + 1] : undefined;
+  if (resumeIndex >= 0 && !resumeId) {
+    emitCliError("--resume requires a session id", jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+  if (sessionId !== undefined && resumeId !== undefined) {
+    emitCliError(
+      "--resume cannot be combined with --session; choose one session id",
+      jsonErrorOutput,
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (
+    resumeId !== undefined &&
+    normalizeSessionId(resumeId) !== resumeId.trim().toLowerCase()
+  ) {
+    emitCliError(
+      "--resume requires a safe session id containing only letters, numbers, '_' or '-'",
+      jsonErrorOutput,
+    );
     process.exitCode = 1;
     return;
   }
@@ -949,6 +1379,20 @@ export async function main(argv: string[]): Promise<void> {
     process.exitCode = 1;
     return;
   }
+  const a2aHost = flagValue(args, "--host");
+  if (a2aHost !== undefined && a2aHost.trim() === "") {
+    emitCliError("--host requires a host name or address", jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
+  let a2aPort: number | undefined;
+  try {
+    a2aPort = parseA2aPort(flagValue(args, "--port"));
+  } catch (error) {
+    emitCliError(error instanceof Error ? error.message : String(error), jsonErrorOutput);
+    process.exitCode = 1;
+    return;
+  }
   const configIndex = args.indexOf("--config");
   const configFlag = configIndex >= 0 ? args[configIndex + 1] : undefined;
   if (configIndex >= 0 && !configFlag?.trim()) {
@@ -957,9 +1401,18 @@ export async function main(argv: string[]): Promise<void> {
     return;
   }
   const projectState = args.includes("--project-state");
-  const normalizedSessionId = normalizeSessionId(sessionId ?? "default");
+  const selectedSessionId = resumeId ?? sessionId ?? "default";
+  const normalizedSessionId = normalizeSessionId(selectedSessionId);
   const workingDirectory = resolveWorkingDirectory(cwdFlag);
   assertWorkingDirectory(workingDirectory);
+  if (resumeId !== undefined) {
+    const resumePath = memoryFilePath(normalizedSessionId, workingDirectory, projectState);
+    if (!existsSync(resumePath)) {
+      emitCliError(`Session ${normalizedSessionId} was not found.`, jsonErrorOutput);
+      process.exitCode = 1;
+      return;
+    }
+  }
   if (excludePaths.length > 0 && indexPath === undefined) {
     emitCliError("--exclude requires --index", jsonErrorOutput);
     process.exitCode = 1;
@@ -1321,7 +1774,8 @@ export async function main(argv: string[]): Promise<void> {
     args.includes("--mcp-server") ||
     args.includes("--cleanup-evidence") ||
     args.includes("--export-evidence") ||
-    args.includes("--preview-evidence");
+    args.includes("--preview-evidence") ||
+    args.includes("--a2a");
   if (nonInteractive && oncePrompt === undefined && !providerFreeCommand) {
     const decision = createNonInteractiveController({ interactive: false }).guard({ kind: "input" });
     const payload = {
@@ -1338,9 +1792,25 @@ export async function main(argv: string[]): Promise<void> {
   }
 
   const mcpSessions: McpServerSession[] = [];
+  let executor: ReturnType<typeof createExecutor> | undefined;
+  let collaborationWorkspaces: GitCollaborationWorkspaceProvider | undefined;
   try {
     const config = loadConfig(configPath, process.env, workingDirectory, projectState);
+    const resolvedConfigPath = resolveConfigPath(
+      configPath,
+      process.env,
+      homedir(),
+      workingDirectory,
+      projectState,
+    );
     const approvalMode = approvalFlagMode ?? resolveApprovalMode(config);
+    const collaborationScope = resolveCollaborationToolAllowlist(config);
+    if (!collaborationScope.valid) {
+      emitCliError(collaborationScope.message, jsonErrorOutput);
+      process.exitCode = EXIT_CODES.execution_error;
+      return;
+    }
+    const collaborationToolAllowlist = collaborationScope.toolAllowlist;
     if (nonInteractive && oncePrompt !== undefined && (approvalMode === "ask" || approvalMode === "review-writes")) {
       const decision = createNonInteractiveController({ interactive: false }).guard({ kind: "approval" });
       const payload = {
@@ -1357,7 +1827,12 @@ export async function main(argv: string[]): Promise<void> {
     }
     const questionBox: QuestionBox = {};
     const tuiSession = new TuiSessionModel();
-    const executor = createExecutor({ rustBinaryPath });
+    executor = createExecutor({ rustBinaryPath });
+    const activeCollaborationWorkspaces = new GitCollaborationWorkspaceProvider({
+      rootDirectory: workingDirectory,
+      executor,
+    });
+    collaborationWorkspaces = activeCollaborationWorkspaces;
     const tools = new AgentToolRegistry();
     for (const tool of createDefaultTools(executor)) {
       tools.register(tool);
@@ -1372,18 +1847,20 @@ export async function main(argv: string[]): Promise<void> {
     );
 
     let mcpSupplement = "";
-    mcpSupplement = await registerMcpTools(
-      tools,
-      mcpSessions,
-      {
-        sessionId: normalizedSessionId,
-        workingDirectory,
-      },
-      config,
-      (updated) => {
-        mcpSupplement = updated;
-      }
-    );
+    if (args.includes("--tools") || !providerFreeCommand || args.includes("--a2a")) {
+      mcpSupplement = await registerMcpTools(
+        tools,
+        mcpSessions,
+        {
+          sessionId: normalizedSessionId,
+          workingDirectory,
+        },
+        config,
+        (updated) => {
+          mcpSupplement = updated;
+        }
+      );
+    }
 
     if (args.includes("--tools")) {
       if (jsonOutput) {
@@ -1393,6 +1870,7 @@ export async function main(argv: string[]): Promise<void> {
               name: tool.name,
               description: tool.description,
               parameters: tool.parameters,
+              metadata: tools.metadata(tool.name),
             })),
             null,
             2
@@ -1402,7 +1880,9 @@ export async function main(argv: string[]): Promise<void> {
       }
       for (const tool of tools.list()) {
         console.log(
-          `${safeTerminalText(tool.name)}: ${safeTerminalText(tool.description)}`
+          `${safeTerminalText(tool.name)}: ${safeTerminalText(tool.description)} ` +
+            `[${safeTerminalText(tools.metadata(tool.name)?.risk ?? "read-only")}, ` +
+            `${safeTerminalText(tools.metadata(tool.name)?.confirmation ?? "never")}]`
         );
       }
       return;
@@ -1506,18 +1986,98 @@ export async function main(argv: string[]): Promise<void> {
       return;
     }
     let activeModelSelection = modelSelection;
-    const provider = createProvider(config, modelSelection, (next) => {
-      activeModelSelection = next;
+    const speedMode = new ModelSpeedModeController();
+    const provider = createProvider(
+      config,
+      modelSelection,
+      (next) => {
+        activeModelSelection = next;
+      },
+      speedMode,
+    );
+    const projectContext = new ProjectContextManager({ workingDirectory });
+    await projectContext.refresh();
+    const createConfiguredSpecialistRoles = () => resolveSpecialistRoles({
+      configured: config.collaboration?.roles,
+      tools,
+      toolCeiling: collaborationToolAllowlist,
+      createModel: ({ provider: roleProvider, model: roleModel }) => {
+        const selectedProvider = (roleProvider ?? activeModelSelection.selection.provider) as ModelSelection["provider"];
+        const selectedModel = roleModel ?? (roleProvider === undefined
+          ? activeModelSelection.selection.model
+          : undefined);
+        return new SpeedModeModelProvider(
+          createConcreteModelProvider(config, {
+            provider: selectedProvider,
+            ...(selectedModel === undefined ? {} : { model: selectedModel }),
+          }),
+          speedMode,
+        );
+      },
     });
+    if (args.includes("--a2a")) {
+      const { runA2aServer } = await import("./a2a-server.js");
+      await runA2aServer({
+        name: "dev-agent",
+        version,
+        provider,
+        tools,
+        executor,
+        validation,
+        approvalMode,
+        approvalConfig: compileApprovalConfig(config.approval),
+        mcpSupplement,
+        maxTurns: resolveMaxTurns(config, 8),
+        budget: resolveAgentLoopBudget(config, args),
+        contextBudget: buildContextBudget(config, false),
+        createMemory: (sessionId, sessionWorkingDirectory) =>
+          createMemory(sessionId, sessionWorkingDirectory, projectState),
+        restoreChangeSets: restorePersistedChangeSets,
+        workingDirectory,
+        projectContext,
+        host: a2aHost,
+        port: a2aPort,
+      });
+      return;
+    }
+    if (args.includes("--acp")) {
+      await runAcpServer({
+        name: "dev-agent",
+        version,
+        provider,
+        tools,
+        executor,
+        validation,
+        approvalMode,
+        approvalConfig: compileApprovalConfig(config.approval),
+        mcpSupplement,
+        maxTurns: resolveMaxTurns(config, 8),
+        budget: resolveAgentLoopBudget(config, args),
+        contextBudget: buildContextBudget(config, false),
+        createMemory: (sessionId, sessionWorkingDirectory) =>
+          createMemory(sessionId, sessionWorkingDirectory, projectState),
+        restoreChangeSets: restorePersistedChangeSets,
+        projectContext,
+      });
+      return;
+    }
     const streamingEnabled =
       !noStream && !jsonOutput && typeof provider.streamChat === "function";
-    const richUi = shouldUseRichUi({
+    const tuiRenderer = resolveTuiRenderer({
       stdinIsTTY: process.stdin.isTTY,
       stdoutIsTTY: process.stdout.isTTY,
       once: oncePrompt !== undefined,
       json: jsonOutput,
       mcpServer: args.includes("--mcp-server"),
+      env: process.env,
     });
+    const richUi = tuiRenderer !== "none";
+    const inkUi = tuiRenderer === "ink";
+    const inkStore = inkUi ? new InkRuntimeStore() : undefined;
+    const inkController = inkUi ? new InkUiController() : undefined;
+    if (inkController) {
+      inkController.setTheme(resolveInkTheme(config, process.env));
+    }
     if (!jsonOutput && !richUi) {
       console.log(
         `[runtime] provider=${safeTerminalText(provider.id)} model=${safeTerminalText(provider.model)} streaming=${
@@ -1530,6 +2090,18 @@ export async function main(argv: string[]): Promise<void> {
     if (resetMemory) {
       await memory.clear();
     }
+    const checkpointStore = new FileMemoryCheckpointStore(memory);
+    const createCliContext = (session: string): AgentContext =>
+      createAgentContext("cli", createMemory(session, workingDirectory, projectState), {
+        sessionId: session,
+        workingDirectory,
+        metadata: {
+          cliVersion: version,
+          provider: provider.id,
+          model: provider.model,
+          modelSelection: formatModelSelectionMetadata(modelSelection),
+        },
+      });
     const context = createAgentContext("cli", memory, {
       sessionId: normalizedSessionId,
       workingDirectory,
@@ -1543,27 +2115,84 @@ export async function main(argv: string[]): Promise<void> {
     if (filesystem instanceof FilesystemTool) {
       await restorePersistedChangeSets(filesystem, context);
     }
-    const rerunValidation =
+    const openSession = async (session: string): Promise<AgentContext> => {
+      const next = createCliContext(session);
+      if (filesystem instanceof FilesystemTool) {
+        await restorePersistedChangeSets(filesystem, next);
+      }
+      return next;
+    };
+    const createRerunValidation = (
+      activeContext: AgentContext,
+    ): ValidationRerunner | undefined =>
       filesystem instanceof FilesystemTool
         ? (changeSetId: string, signal?: AbortSignal) =>
-            runExplicitValidation(filesystem, validation, context, changeSetId, signal)
+            runExplicitValidation(filesystem, validation, activeContext, changeSetId, signal)
         : undefined;
+    const rerunValidation = createRerunValidation(context);
     // Token streaming would interleave with the JSON document.
     const streaming = new StreamingRun({
-      enabled: streamingEnabled,
-      richUi,
+      enabled: streamingEnabled && !inkUi,
+      richUi: false,
       width: resolveTerminalWidth(),
       session: tuiSession,
     });
     const reviews: ReviewRecord[] = [];
     const validations: ValidationResult[] = [];
+    const activeSkillState: ActiveSkillState = {};
+    const hooks = new AgentHookRegistry();
+    const trace = new AgentRunTrace(hooks);
+    const tasks = new AgentTaskScheduler({ concurrency: 1 });
+    const taskStatusBridge = createTaskStatusBridge();
+    const backgroundJobs = new BackgroundJobManager({
+      jobsDirectory: join(homedir(), ".dev-agent", "jobs"),
+      workingDirectory,
+      configPath: resolvedConfigPath,
+      provider: activeModelSelection.selection.provider,
+      ...(activeModelSelection.selection.model === undefined
+        ? {}
+        : { model: activeModelSelection.selection.model }),
+      projectState,
+      entrypoint: resolve(process.argv[1] ?? fileURLToPath(import.meta.url)),
+      approvalMode,
+    });
+    let latestPlanReview: PlanReview | undefined;
+    const toolSandboxProfile = isSandboxExecutor(executor)
+      ? (_toolName: string, toolContext: AgentContext) =>
+          createBuiltInToolSandboxProfile(_toolName, toolContext.workingDirectory)
+      : undefined;
+    const onSandboxExpansion = (request: SandboxExpansionRequest) =>
+      requestCliSandboxExpansion(request, questionBox);
     const loop = new AgentLoop({
       model: provider,
       tools,
+      hooks,
+      streamModelResponses: streamingEnabled,
+      toolSandboxProfile,
+      onSandboxExpansion,
+      eventSink: (event) => {
+        trace.recordRuntimeEvent(event);
+        if (inkStore) {
+          inkStore.apply(event);
+        }
+      },
+      onApprovalStatus: (status) => {
+        if (status === "waiting") {
+          taskStatusBridge.waiting();
+        } else {
+          taskStatusBridge.running();
+        }
+      },
+      onPlanReview: (review) => {
+        latestPlanReview = review;
+      },
       systemPromptProvider: () =>
-        [defaultSystemPrompt, mcpSupplement]
-          .filter((part) => part.length > 0)
-          .join("\n\n"),
+        composePrompt([
+          ...DEFAULT_CLI_PROMPT_MODULES,
+          ...projectContext.promptModules(),
+          { id: "active-skill", content: renderActiveSkillPrompt(activeSkillState) },
+          { id: "mcp", content: mcpSupplement },
+        ]),
       maxTurns: resolveMaxTurns(config, 8),
       maxRepeatedToolFailures:
         oncePrompt === undefined ? undefined : DEFAULT_ONCE_MAX_REPEATED_TOOL_FAILURES,
@@ -1591,7 +2220,7 @@ export async function main(argv: string[]): Promise<void> {
           : outcome.reason ?? "tool call decision recorded";
         streaming.approvalResolved(request.toolName, outcome.decision, detail);
         // Nothing may interleave with the JSON document on stdout.
-        if (!jsonOutput && richUi) {
+        if (!jsonOutput && richUi && !inkUi) {
           streaming.withComposerHidden(() => {
             process.stdout.write(
               `${renderApprovalMessage(request.toolName, outcome.decision, detail, {
@@ -1599,7 +2228,7 @@ export async function main(argv: string[]): Promise<void> {
               })}\n`
             );
           });
-        } else if (!jsonOutput && outcome.decision === "deny") {
+        } else if (!jsonOutput && !inkUi && outcome.decision === "deny") {
           const line = `[denied] ${safeTerminalText(request.toolName)} ${safeTerminalText(
             outcome.reason ?? ""
           )}`.trimEnd();
@@ -1609,7 +2238,7 @@ export async function main(argv: string[]): Promise<void> {
       onValidation: (result) => {
         validations.push(result);
         streaming.validationResult(result.status, result.summary);
-        if (!jsonOutput) {
+        if (!jsonOutput && !inkUi) {
           if (richUi) {
             streaming.withComposerHidden(() => {
               printValidationResult(result, true, resolveTerminalWidth());
@@ -1621,7 +2250,7 @@ export async function main(argv: string[]): Promise<void> {
       },
       validation,
       onTurn: (turn) => {
-        if (!jsonOutput) {
+        if (!jsonOutput && !inkUi) {
           if (richUi) {
             streaming.commitLive();
             streaming.withComposerHidden(() => {
@@ -1637,7 +2266,7 @@ export async function main(argv: string[]): Promise<void> {
       },
       onToolProgress: (progress) => {
         streaming.toolProgress(progress.name, `${progress.progress}${progress.total === undefined ? "" : `/${progress.total}`}`);
-        if (!jsonOutput) {
+        if (!jsonOutput && !inkUi) {
           if (richUi) {
             return;
           }
@@ -1652,19 +2281,47 @@ export async function main(argv: string[]): Promise<void> {
     });
 
     if (oncePrompt) {
-      const result = await runPrompt(loop, context, streaming, oncePrompt, jsonOutput, {
-        model: () => provider.model,
-        pricing: config.pricing,
-        selection: () => activeModelSelection,
-      }, reviews, validations);
+      const prepared = await prepareInteractivePrompt(oncePrompt, workingDirectory);
+      const attachedContext = [prepared.context, options.jobAttachedContext]
+        .filter((value): value is string => value !== undefined && value.trim() !== "")
+        .join("\n\n") || undefined;
+      const result = await runPrompt(
+        loop,
+        context,
+        streaming,
+        prepared.prompt,
+        jsonOutput,
+        {
+          model: () => provider.model,
+          pricing: config.pricing,
+          selection: () => activeModelSelection,
+          trace,
+          speedMode: () => speedMode.mode,
+          projectContext,
+        },
+        reviews,
+        validations,
+        options.startupSignal,
+        attachedContext === undefined ? {} : { attachedContext },
+      );
       if (result.state.status === "error") {
         process.exitCode = 1;
       }
       return;
     }
 
+    const skillRegistry = await SkillRegistry.load({ workingDirectory });
+    const extensionRegistry = await ExtensionRegistry.load({ workingDirectory });
     await interactive(loop, context, streaming, questionBox, {
       rich: richUi,
+      ink:
+        inkStore === undefined || inkController === undefined
+          ? undefined
+          : {
+              store: inkStore,
+              controller: inkController,
+              persistTheme: (theme) => persistInkTheme(resolvedConfigPath, theme),
+            },
       provider: provider.id,
       model: provider.model,
       streaming: streamingEnabled,
@@ -1672,16 +2329,176 @@ export async function main(argv: string[]): Promise<void> {
       executor: getExecutorMode(executor),
       session: tuiSession,
       sessionId: normalizedSessionId,
+      sessionDirectory: sessionDir(workingDirectory, projectState),
       workingDirectory,
       width: resolveTerminalWidth(),
+      skills: skillRegistry,
+      extensions: extensionRegistry,
+      activeSkill: activeSkillState,
+      trace,
+      speedMode,
+      projectContext,
+      benchmark: (prompt) => benchmarkModel(provider, prompt),
+      tasks,
+      taskStatusBridge,
+      backgroundJobs,
+      checkpointStore,
+      createCheckpointStore: (activeContext) =>
+        new FileMemoryCheckpointStore(activeContext.memory),
+      openSession,
+      createRerunValidation,
+      runCollaborativePlan: (prompt, activeContext, options) => {
+        const roles = createConfiguredSpecialistRoles();
+        return runCollaborativePlanWorkflow(prompt, {
+          model: provider,
+          tools,
+          roles,
+          workingDirectory: activeContext.workingDirectory,
+          sessionId: activeContext.sessionId,
+          signal: options?.signal,
+          attachedContext: joinPromptContext(
+            projectContext.promptModules().map((module) => module.content),
+            options?.attachedContext,
+          ),
+          maxTurns: 4,
+        });
+      },
+      startCollaborativeExecution: async (prompt, activeContext, options) => {
+        const roleBindings = createConfiguredSpecialistRoles();
+        const activeTools = tools.list();
+        const activeToolNames = activeTools.map((tool) => tool.name);
+        const unavailableCeilingNames = collaborationToolAllowlist?.filter(
+          (name) => !activeToolNames.includes(name),
+        ) ?? [];
+        if (unavailableCeilingNames.length > 0) {
+          throw new Error(
+            `collaboration.toolAllowlist contains unavailable tools: ${unavailableCeilingNames.map(safeTerminalText).join(", ")}`,
+          );
+        }
+        const plannedTasks = options?.tasks === undefined
+          ? await planCollaborativeTasks(prompt, {
+              model: provider,
+              signal: options?.signal,
+            })
+          : options.tasks;
+        const tasks = createCollaborationTaskGraph(plannedTasks).tasks;
+        if (questionBox.ask === undefined || questionBox.askText === undefined) {
+          throw new Error("per-task tool-scope review requires interactive input");
+        }
+        const review = await reviewCollaborationTaskToolScopes({
+          tasks,
+          availableToolNames: collaborationToolAllowlist ?? activeToolNames,
+          ask: (reviewPrompt, signal, mode) => mode === "confirmation"
+            ? questionBox.ask!(reviewPrompt, signal)
+            : questionBox.askText!(reviewPrompt, signal),
+          signal: options?.signal,
+        });
+        if (review.status !== "confirmed") {
+          throw new CollaborationScopeReviewCancelledError();
+        }
+        return createCollaborativeExecution({
+          model: provider,
+          tools,
+          roleBindings,
+          prompt,
+          tasks: review.tasks,
+          workspaceProvider: activeCollaborationWorkspaces,
+          workingDirectory: activeContext.workingDirectory,
+          sessionId: activeContext.sessionId,
+          toolSandboxProfile,
+          onSandboxExpansion,
+          reviewedToolScopes: review.reviewedToolScopes,
+          ...(collaborationToolAllowlist === undefined
+            ? {}
+            : { toolScopeCeiling: collaborationToolAllowlist }),
+          signal: options?.signal,
+          attachedContext: joinPromptContext(
+            projectContext.promptModules().map((module) => module.content),
+            options?.attachedContext,
+          ),
+          maxTurns: 4,
+          onEvent: options?.onEvent,
+        });
+      },
+      mergeCollaborativeReview: (review, options) =>
+        activeCollaborationWorkspaces.merge(review, {
+          signal: options?.signal ?? new AbortController().signal,
+        }),
+      disposeCollaborativeWorkspaces: () => activeCollaborationWorkspaces.disposeAll(),
+      consumePlanReview: () => {
+        const review = latestPlanReview;
+        latestPlanReview = undefined;
+        return review;
+      },
     }, jsonOutput, {
       model: () => provider.model,
       pricing: config.pricing,
       selection: () => activeModelSelection,
+      trace,
+      speedMode: () => speedMode.mode,
+      projectContext,
     }, reviews, validations, rerunValidation);
   } finally {
     await Promise.all(mcpSessions.map((session) => session.close()));
+    await collaborationWorkspaces?.disposeAll().catch(() => undefined);
+    await executor?.dispose?.();
   }
+}
+
+async function runInternalBackgroundJobWorker(
+  id: string,
+  startupSignal?: AbortSignal,
+): Promise<void> {
+  const store = new BackgroundJobStore(join(homedir(), ".dev-agent", "jobs"));
+  const record = await store.internalRecord(id);
+  const entrypoint = resolve(process.argv[1] ?? fileURLToPath(import.meta.url));
+  const manager = new BackgroundJobManager({
+    jobsDirectory: store.rootDirectory,
+    workingDirectory: record.projectRoot,
+    configPath: record.configPath,
+    provider: record.provider,
+    ...(record.model === undefined ? {} : { model: record.model }),
+    projectState: record.projectState,
+    entrypoint,
+    approvalMode: "deny-dangerous",
+  });
+  await manager.runWorker(id, {
+    ...(startupSignal === undefined ? {} : { signal: startupSignal }),
+    run: async (input) => {
+      if (!input.record.worktreePath) {
+        throw new Error("background job has no validated worktree");
+      }
+      const args = [
+        process.execPath,
+        entrypoint,
+        "--once",
+        input.request.prompt,
+        "--cwd",
+        resolveBackgroundJobWorkingDirectory(input.record),
+        "--session",
+        input.record.sessionId,
+        "--config",
+        input.record.configPath,
+        "--provider",
+        input.record.provider,
+        "--approval",
+        "deny-dangerous",
+        "--non-interactive",
+        "--no-stream",
+        "--json",
+        ...(input.record.model === undefined ? [] : ["--model", input.record.model]),
+        ...(input.record.projectState ? ["--project-state"] : []),
+      ];
+      process.exitCode = 0;
+      await main(args, {
+        startupSignal: input.signal,
+        ...(input.request.attachedContext === undefined
+          ? {}
+          : { jobAttachedContext: input.request.attachedContext }),
+      });
+      return process.exitCode ?? 0;
+    },
+  });
 }
 
 function createMemory(
@@ -1756,45 +2573,26 @@ async function runMcpServer(options: {
   readonly approvalMode: ApprovalMode;
   readonly approvalConfig: CompiledApprovalConfig;
 }): Promise<void> {
-  const tools = createDefaultTools(createExecutor({ rustBinaryPath: options.rustBinaryPath }));
+  const executor = createExecutor({ rustBinaryPath: options.rustBinaryPath });
+  const tools = createDefaultTools(executor);
   const filesystem = tools.find(
     (tool): tool is FilesystemTool => tool instanceof FilesystemTool
   );
   const memory = createMemory(options.sessionId, options.workingDirectory, options.projectState);
-  const policy = (() => {
-    if (options.approvalMode === "allow") {
-      return undefined;
-    }
-
-    const policyOptions = {
-      patterns: [...options.approvalConfig.patterns],
-      allowlist: [...options.approvalConfig.allowlist],
-    };
-
-    if (options.approvalMode === "review-writes") {
-      // MCP has no interactive channel. The review-writes policy therefore
-      // prepares the same change set as the local agent, but denies the
-      // mutation because no reviewer can approve it over stdio.
-      return reviewWritesPolicy({
-        prepare: filesystem
-          ? (request) =>
-              filesystem.prepareChangeSet(request.input, {
-                sessionId: request.sessionId,
-                workingDirectory: request.workingDirectory,
-              })
-          : async () => {
-              throw new Error("filesystem tool is unavailable for write review");
-            },
-        patterns: policyOptions.patterns,
-        allowlist: policyOptions.allowlist,
-      });
-    }
-
-    // MCP has no interactive channel, so `ask` behaves like
-    // `deny-dangerous`: a flagged call is refused with a reason the host model
-    // can act on.
-    return denyDangerousPolicy(policyOptions);
-  })();
+  // MCP has no interactive channel, so the shared policy factory makes `ask`
+  // fail closed while retaining the same review preparation boundary.
+  const policy = createApprovalPolicy({
+    mode: options.approvalMode,
+    patterns: options.approvalConfig.patterns,
+    allowlist: options.approvalConfig.allowlist,
+    prepare: filesystem
+      ? (request) =>
+          filesystem.prepareChangeSet(request.input, {
+            sessionId: request.sessionId,
+            workingDirectory: request.workingDirectory,
+          })
+      : undefined,
+  });
   const server = createMcpServer({
     tools: tools.map((tool) => ({
       name: tool.name,
@@ -1811,7 +2609,15 @@ async function runMcpServer(options: {
             workingDirectory,
           });
         }
-        return tool.execute(input, { sessionId, workingDirectory, signal: context?.signal });
+        const sandbox = isSandboxExecutor(executor)
+          ? createBuiltInToolSandboxProfile(tool.name, workingDirectory)
+          : undefined;
+        return tool.execute(input, {
+          sessionId,
+          workingDirectory,
+          signal: context?.signal,
+          ...(sandbox === undefined ? {} : { sandbox }),
+        });
       },
     })),
     resources: [
@@ -1880,7 +2686,11 @@ async function runMcpServer(options: {
     sessionId: options.sessionId,
     workingDirectory: options.workingDirectory,
   });
-  await server.start();
+  try {
+    await server.start();
+  } finally {
+    await executor.dispose?.();
+  }
 }
 
 export function createWorkspaceResource(workingDirectory: string): McpServerResource {
@@ -1936,8 +2746,10 @@ function buildContextBudget(
 
 /** Filled in by the interactive loop so approval prompts share its reader. */
 interface QuestionBox {
-  ask?: (prompt: string) => Promise<string>;
+  ask?: (prompt: string, signal?: AbortSignal) => Promise<string>;
+  askText?: (prompt: string, signal?: AbortSignal) => Promise<string>;
   onApprovalRequest?: (tool: string, detail: string, diff?: string) => void;
+  onApprovalResolved?: (tool: string, decision: "allow" | "deny", detail: string) => void;
 }
 
 interface ReviewRecord {
@@ -1954,80 +2766,116 @@ function buildApprovalPolicy(
   config: CliConfig = {},
   filesystem?: FilesystemTool
 ): ApprovalPolicy | undefined {
-  if (mode === "allow") {
-    // No policy means no per-call overhead, exactly as before.
-    return undefined;
-  }
-
   const { patterns, allowlist } = compileApprovalConfig(config.approval);
-  const policyOptions = { patterns: [...patterns], allowlist: [...allowlist] };
-
-  if (mode === "deny-dangerous") {
-    return denyDangerousPolicy(policyOptions);
-  }
+  const prepare = filesystem
+    ? (request: ApprovalRequest) =>
+        filesystem.prepareChangeSet(request.input, {
+          sessionId: request.sessionId,
+          workingDirectory: request.workingDirectory,
+        })
+    : undefined;
 
   if (mode === "review-writes") {
     const sessionAllowed = new Set<string>();
     const requestApproval = (request: ApprovalRequest, reason?: string) =>
       requestReviewedCall(request, reason, questionBox, sessionAllowed);
-    if (!filesystem) {
-      return reviewWritesPolicy({
-        prepare: async () => {
-          throw new Error("filesystem tool is unavailable for write review");
-        },
-        patterns: policyOptions.patterns,
-        allowlist: policyOptions.allowlist,
-        requestApproval,
-      });
-    }
-    return reviewWritesPolicy({
-      prepare: (request) =>
-        filesystem.prepareChangeSet(request.input, {
-          sessionId: request.sessionId,
-          workingDirectory: request.workingDirectory,
-        }),
-      patterns: policyOptions.patterns,
-      allowlist: policyOptions.allowlist,
+    return createApprovalPolicy({
+      mode,
+      patterns,
+      allowlist,
+      prepare,
       requestApproval,
     });
   }
 
-  const dangerous = denyDangerousPolicy(policyOptions);
+  if (mode !== "ask") {
+    return createApprovalPolicy({ mode, patterns, allowlist });
+  }
+
   const sessionAllowed = new Set<string>();
-  return {
-    async decide(request) {
-      const key = normalizeApprovalKey(request);
-      if (key && sessionAllowed.has(key)) {
-        return { decision: "allow" };
-      }
+  const requestApproval = async (request: ApprovalRequest, reason?: string) => {
+    const key = normalizeApprovalKey(request);
+    if (key && sessionAllowed.has(key)) {
+      return { decision: "allow" as const };
+    }
 
-      const outcome = await dangerous.decide(request);
-      const decision = typeof outcome === "string" ? outcome : outcome.decision;
-      if (decision === "allow") {
-        return { decision: "allow" };
-      }
+    const question = `${safeTerminalText(reason ?? "dangerous call")}\nRun ${safeTerminalText(
+      request.toolName
+    )} anyway? [y/N/a] `;
+    questionBox.onApprovalRequest?.(request.toolName, reason ?? "dangerous call");
+    const answer = questionBox.ask
+      ? await questionBox.ask(question)
+      : await readLineFromStdin(question);
+    const normalized = answer.trim().toLowerCase();
 
-      const reason = typeof outcome === "string" ? undefined : outcome.reason;
-      const question = `${safeTerminalText(reason ?? "dangerous call")}\nRun ${safeTerminalText(
-        request.toolName
-      )} anyway? [y/N/a] `;
-      questionBox.onApprovalRequest?.(request.toolName, reason ?? "dangerous call");
-      const answer = questionBox.ask
-        ? await questionBox.ask(question)
-        : await readLineFromStdin(question);
-      const normalized = answer.trim().toLowerCase();
+    if (normalized.startsWith("a") && key) {
+      // Remembered for this process only; never written to disk.
+      sessionAllowed.add(key);
+      return { decision: "allow" as const };
+    }
 
-      if (normalized.startsWith("a") && key) {
-        // Remembered for this process only; never written to disk.
-        sessionAllowed.add(key);
-        return { decision: "allow" };
-      }
-
-      return normalized.startsWith("y")
-        ? { decision: "allow" }
-        : { decision: "deny", reason: `${reason ?? "dangerous call"} (declined)` };
-    },
+    return normalized.startsWith("y")
+      ? { decision: "allow" as const }
+      : { decision: "deny" as const, reason: `${reason ?? "dangerous call"} (declined)` };
   };
+  return createApprovalPolicy({
+    mode,
+    patterns,
+    allowlist,
+    requestApproval,
+  });
+}
+
+async function requestCliSandboxExpansion(
+  request: SandboxExpansionRequest,
+  questionBox: QuestionBox,
+): Promise<SandboxExpansionDecision> {
+  const expanded = expandBuiltInToolSandboxProfile(request.profile, request.error.capability);
+  if (expanded === undefined) {
+    return {
+      decision: "deny",
+      reason: `sandbox expansion for ${request.error.capability} is unavailable`,
+    };
+  }
+  if (questionBox.ask === undefined) {
+    return {
+      decision: "deny",
+      reason: "sandbox expansion requires interactive approval",
+    };
+  }
+
+  const detail =
+    `Sandbox denied ${request.error.capability} access for ${request.toolName}. ` +
+    "The retry would enable network access while keeping the existing workspace boundary.";
+  questionBox.onApprovalRequest?.(request.toolName, detail);
+  try {
+    const answer = await questionBox.ask(
+      `${detail}\nRetry with the expanded sandbox? [y/N] `
+    );
+    if (answer.trim().toLowerCase().startsWith("y")) {
+      questionBox.onApprovalResolved?.(
+        request.toolName,
+        "allow",
+        "sandbox expansion approved",
+      );
+      return { decision: "allow", profile: expanded };
+    }
+    questionBox.onApprovalResolved?.(
+      request.toolName,
+      "deny",
+      "sandbox expansion declined",
+    );
+    return { decision: "deny", reason: "sandbox expansion declined" };
+  } catch (error) {
+    const reason = `sandbox expansion approval failed: ${
+      error instanceof Error ? error.message : String(error)
+    }`;
+    questionBox.onApprovalResolved?.(request.toolName, "deny", reason);
+    return {
+      decision: "deny",
+      reason,
+    };
+  }
 }
 
 async function requestReviewedCall(
@@ -2384,6 +3232,7 @@ function normalizeInteractiveCommand(value: string): string {
 
 interface InteractiveUiOptions {
   readonly rich: boolean;
+  readonly ink?: InkInteractiveUi;
   readonly provider: string;
   readonly model: string;
   readonly streaming: boolean;
@@ -2391,8 +3240,468 @@ interface InteractiveUiOptions {
   readonly executor?: string;
   readonly session?: TuiSessionModel;
   readonly sessionId: string;
+  readonly sessionDirectory: string;
   readonly workingDirectory: string;
   readonly width: number;
+  readonly skills: SkillRegistry;
+  readonly extensions: ExtensionRegistry;
+  readonly activeSkill: ActiveSkillState;
+  readonly trace: AgentRunTrace;
+  readonly speedMode: ModelSpeedModeController;
+  readonly projectContext: ProjectContextManager;
+  readonly benchmark: (prompt: string) => Promise<SpeedBenchmarkResult>;
+  readonly tasks: AgentTaskScheduler;
+  readonly taskStatusBridge: InteractiveTaskStatusBridge;
+  readonly backgroundJobs?: BackgroundJobManager;
+  readonly checkpointStore?: CheckpointStore;
+  readonly createCheckpointStore?: (context: AgentContext) => CheckpointStore;
+  readonly openSession?: (sessionId: string) => Promise<AgentContext>;
+  readonly createRerunValidation?: (
+    context: AgentContext,
+  ) => ValidationRerunner | undefined;
+  readonly consumePlanReview?: () => PlanReview | undefined;
+  readonly runCollaborativePlan?: (
+    prompt: string,
+    context: AgentContext,
+    options?: {
+      readonly signal?: AbortSignal;
+      readonly attachedContext?: string;
+    },
+  ) => Promise<CollaborativePlanResult>;
+  readonly startCollaborativeExecution?: (
+    prompt: string,
+    context: AgentContext,
+    options?: {
+      readonly signal?: AbortSignal;
+      readonly attachedContext?: string;
+      readonly tasks?: readonly CollaborationTask[];
+      readonly onEvent?: (event: CollaborationExecutionEvent) => void;
+    },
+  ) => Promise<CollaborationExecutionHandle>;
+  readonly mergeCollaborativeReview?: (
+    review: CollaborationReview,
+    options?: { readonly signal?: AbortSignal },
+  ) => Promise<CollaborationMergeResult>;
+  readonly disposeCollaborativeWorkspaces?: () => Promise<void>;
+}
+
+interface InkInteractiveUi {
+  readonly store: InkRuntimeStore;
+  readonly controller: InkUiController;
+  readonly persistTheme?: (theme: InkThemeName) => Promise<void>;
+}
+
+interface PendingPlan {
+  readonly prompt: string;
+  readonly attachedContext?: string;
+  readonly planText?: string;
+  readonly review?: PlanReview;
+}
+
+interface PromptRunOptions {
+  readonly mode?: "normal" | "plan";
+  readonly attachedContext?: string;
+  readonly toolAccess?: "all" | "none";
+}
+
+interface PromptRunTimingContext {
+  readonly submittedAtMs: number;
+  readonly queuedAtMs: number;
+}
+
+function skillCommandMessage(
+  command: string,
+  ui: InteractiveUiOptions,
+): string | undefined {
+  const result = executeSkillCommand(command, ui.skills, ui.activeSkill);
+  return result.handled ? safeTerminalText(formatSkillCommandResult(result)) : undefined;
+}
+
+function extensionCommandMessage(
+  command: string,
+  ui: InteractiveUiOptions,
+): string | undefined {
+  const result = executeExtensionCommand(command, ui.extensions);
+  return result.handled
+    ? safeTerminalText(formatExtensionCommandResult(result))
+    : undefined;
+}
+
+function planRequestFromCommand(command: string): string | undefined {
+  if (command === ":plan") return "";
+  if (command.startsWith(":plan ")) {
+    return command.slice(":plan ".length).trim();
+  }
+  return undefined;
+}
+
+function teamRequestFromCommand(command: string): string | undefined {
+  if (command === ":team") return "";
+  if (command.startsWith(":team ")) {
+    return command.slice(":team ".length).trim();
+  }
+  return undefined;
+}
+
+type TeamCommand =
+  | { readonly kind: "execute"; readonly request: string }
+  | { readonly kind: "plan"; readonly request: string }
+  | { readonly kind: "apply" }
+  | { readonly kind: "cancel"; readonly taskId?: string }
+  | { readonly kind: "retry"; readonly taskId: string };
+
+export function parseTeamCommand(command: string): TeamCommand | undefined {
+  const request = teamRequestFromCommand(command);
+  if (request === undefined) return undefined;
+  if (request === "") return { kind: "execute", request: "" };
+  const [subcommand, ...rest] = request.split(/\s+/);
+  switch (subcommand?.toLowerCase()) {
+    case "plan":
+      return { kind: "plan", request: rest.join(" ").trim() };
+    case "apply":
+      return { kind: "apply" };
+    case "cancel":
+      return rest.length === 0
+        ? { kind: "cancel" }
+        : { kind: "cancel", taskId: rest[0] };
+    case "retry":
+      return rest[0] === undefined
+        ? { kind: "retry", taskId: "" }
+        : { kind: "retry", taskId: rest[0] };
+    default:
+      return { kind: "execute", request };
+  }
+}
+
+function isApplyCommand(command: string): boolean {
+  return command === ":apply";
+}
+
+function formatContextNotice(result: ResolvedPromptContext): string | undefined {
+  const lines: string[] = [];
+  if (result.attachments.length > 0) {
+    lines.push(
+      `Attached context: ${result.attachments.map((item) => `@${item.reference}`).join(", ")}`,
+    );
+  }
+  if (result.unresolved.length > 0) {
+    lines.push(
+      `Context not found: ${result.unresolved.map((reference) => `@${reference}`).join(", ")}`,
+    );
+  }
+  return lines.length === 0 ? undefined : lines.join("\n");
+}
+
+async function prepareInteractivePrompt(
+  prompt: string,
+  workingDirectory: string,
+): Promise<ResolvedPromptContext> {
+  return resolvePromptContext(prompt, { workingDirectory });
+}
+
+async function capturePendingPlan(
+  context: AgentContext,
+  prompt: string,
+  attachedContext: string | undefined,
+  review: PlanReview | undefined,
+): Promise<PendingPlan> {
+  const entries = await context.memory.entries();
+  const planText = latestAssistantPlanText(entries);
+  return {
+    prompt,
+    ...(attachedContext === undefined ? {} : { attachedContext }),
+    ...(planText === undefined ? {} : { planText }),
+    ...(review === undefined ? {} : { review }),
+  };
+}
+
+function joinPromptContext(
+  policyModules: readonly string[],
+  attachedReference: string | undefined,
+): string | undefined {
+  const blocks = [...policyModules, attachedReference]
+    .filter((value): value is string => value !== undefined && value.trim().length > 0);
+  return blocks.length === 0 ? undefined : blocks.join("\n\n");
+}
+
+function approvedPlanContext(plan: PendingPlan): string | undefined {
+  const approved = plan.planText === undefined
+    ? undefined
+    : buildApprovedPlanContext(plan.planText);
+  const blocks = [plan.attachedContext, approved].filter(
+    (value): value is string => value !== undefined && value.trim().length > 0,
+  );
+  return blocks.length === 0 ? undefined : blocks.join("\n\n");
+}
+
+function formatPlanReviewForTerminal(review: PlanReview): string {
+  const lines = [
+    `PLAN READY · ${review.files.length} file(s) +${review.additions}/-${review.deletions}`,
+    `Change set: ${safeTerminalText(review.changeSetId)}`,
+  ];
+  for (const file of review.files) {
+    lines.push(
+      `${safeTerminalText(file.path)} (+${file.additions}/-${file.deletions})`,
+      file.diff.trim().length > 0
+        ? safeTerminalText(file.diff)
+        : "(no textual changes; existence/hash checks still apply)",
+    );
+  }
+  lines.push(":apply to execute · Esc to keep");
+  return lines.join("\n").slice(0, 16_000);
+}
+
+function formatCollaborativePlanResult(result: CollaborativePlanResult): string {
+  const roleLines = result.roles.map((role) => {
+    const status = role.status === "done" ? "done" : `error: ${role.error ?? "failed"}`;
+    return `- ${safeTerminalText(role.id)} · ${status} · ${role.durationMs}ms`;
+  });
+  return [
+    "TEAM PLAN · specialist review",
+    ...roleLines,
+    "",
+    safeTerminalText(result.synthesis),
+  ].join("\n");
+}
+
+function formatCollaborativeExecutionResult(
+  result: CollaborationExecutionResult,
+): string {
+  const taskLines = result.tasks.map((task) => {
+    const error = task.error === undefined ? "" : ` · ${safeTerminalText(task.error)}`;
+    return `- ${safeTerminalText(task.id)} · ${task.status} · attempt ${task.attempts} · ${task.durationMs}ms${error}`;
+  });
+  const review = result.review;
+  return [
+    `TEAM EXECUTION · ${result.status.toUpperCase()}`,
+    ...taskLines,
+    "",
+    `Review: ${review.status} · ${review.changedFiles.length} file(s) +${review.additions}/-${review.deletions}`,
+    review.conflicts.length === 0
+      ? "Conflicts: none"
+      : `Conflicts: ${review.conflicts.map((conflict) => safeTerminalText(conflict)).join(", ")}`,
+    review.mergeable ? ":team apply to merge the reviewed result." : ":team retry <taskId> or resolve the conflicts.",
+  ].join("\n");
+}
+
+async function backgroundJobCommandMessage(
+  rawCommand: string,
+  ui: InteractiveUiOptions,
+): Promise<string | undefined> {
+  const command = parseBackgroundJobCommand(rawCommand);
+  if (!command.handled) return undefined;
+  const manager = ui.backgroundJobs;
+  if (!manager) return "Background jobs are unavailable in this session.";
+  try {
+    switch (command.action) {
+      case "list":
+        return formatBackgroundJobCommandResult(command, await manager.list());
+      case "inspect":
+        return formatBackgroundJobCommandResult(command, [], await manager.inspect(command.id));
+      case "start":
+        return formatBackgroundJobCommandResult(command, [], await manager.start(command.prompt));
+      case "cancel":
+        return formatBackgroundJobCommandResult(command, [], await manager.cancel(command.id));
+      case "resume":
+        return formatBackgroundJobCommandResult(command, [], await manager.resume(command.id));
+      case "usage":
+        return formatBackgroundJobCommandResult(command);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return safeTerminalText(`Background job command failed: ${message}`);
+  }
+}
+
+function taskCommandMessage(
+  command: string,
+  ui: InteractiveUiOptions,
+): string | undefined {
+  const result = executeTaskCommand(command, ui.tasks);
+  return result.handled
+    ? safeTerminalText(formatTaskCommandResult(result))
+    : undefined;
+}
+
+async function checkpointCommandResult(
+  command: string,
+  ui: InteractiveUiOptions,
+  context?: AgentContext,
+): Promise<CheckpointCommandResult | undefined> {
+  if (!isCheckpointCommand(command)) {
+    return undefined;
+  }
+  const checkpointStore = context !== undefined && ui.createCheckpointStore !== undefined
+    ? ui.createCheckpointStore(context)
+    : ui.checkpointStore;
+  if (!checkpointStore) {
+    return {
+      handled: true,
+      message: "Checkpoint commands are unavailable for this session.",
+    };
+  }
+  try {
+    return await executeCheckpointCommand(command, checkpointStore);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      message: safeTerminalText(`Checkpoint command failed: ${message}`),
+    };
+  }
+}
+
+async function sessionHistoryCommandMessage(
+  command: string,
+  memory: AgentMemory,
+): Promise<string | undefined> {
+  const parsed = parseSessionHistoryCommand(command);
+  if (!parsed.handled) {
+    return undefined;
+  }
+  if (parsed.error) {
+    return parsed.error;
+  }
+  try {
+    const entries = await memory.entries();
+    return formatSessionHistory(entries, { limit: parsed.limit });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return safeTerminalText(`History unavailable: ${message}`);
+  }
+}
+
+async function sessionSearchCommandMessage(
+  command: string,
+  memory: AgentMemory,
+): Promise<string | undefined> {
+  const parsed = parseSessionSearchCommand(command);
+  if (!parsed.handled) {
+    return undefined;
+  }
+  if (parsed.error || parsed.query === undefined) {
+    return parsed.error ?? "Usage: :search <query>";
+  }
+  try {
+    const entries = await memory.entries();
+    return formatSessionSearch(entries, parsed.query);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return safeTerminalText(`History search unavailable: ${message}`);
+  }
+}
+
+async function sessionExportCommandMessage(
+  command: string,
+  memory: AgentMemory,
+  workingDirectory: string,
+  sessionId: string,
+): Promise<string | undefined> {
+  const parsed = parseSessionExportCommand(command);
+  if (!parsed.handled) {
+    return undefined;
+  }
+  if (parsed.error || parsed.format === undefined) {
+    return parsed.error ?? "Usage: :export [markdown|json]";
+  }
+  try {
+    const entries = await memory.entries();
+    const outputPath = await writeSessionExport(entries, {
+      workingDirectory,
+      sessionId,
+      format: parsed.format,
+    });
+    const displayPath = relative(workingDirectory, outputPath)
+      .replaceAll("\\", "/");
+    return `Exported session to ${displayPath || ".dev-agent/exports"}`;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return safeTerminalText(`Session export failed: ${message}`);
+  }
+}
+
+type SessionPickerLookup =
+  | { readonly handled: false }
+  | {
+      readonly handled: true;
+      readonly query?: string;
+      readonly sessions: readonly StoredSession[];
+      readonly error?: string;
+    };
+
+async function sessionPickerLookup(
+  command: string,
+  ui: InteractiveUiOptions,
+): Promise<SessionPickerLookup> {
+  const parsed = parseSessionResumeCommand(command);
+  if (!parsed.handled) {
+    return { handled: false };
+  }
+  if (parsed.error) {
+    return {
+      handled: true,
+      sessions: [],
+      error: parsed.error,
+    };
+  }
+  try {
+    const sessions = await listStoredSessions(ui.sessionDirectory);
+    return {
+      handled: true,
+      ...(parsed.query === undefined ? {} : { query: parsed.query }),
+      sessions: searchStoredSessions(sessions, parsed.query ?? ""),
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      handled: true,
+      sessions: [],
+      error: safeTerminalText(`Sessions unavailable: ${message}`),
+    };
+  }
+}
+
+function formatSessionPickerList(
+  sessions: readonly StoredSession[],
+  query?: string,
+): string {
+  if (sessions.length === 0) {
+    return query === undefined
+      ? "No sessions found."
+      : `No sessions matched "${safeTerminalText(query)}".`;
+  }
+  const title = query === undefined
+    ? `Sessions (${sessions.length}):`
+    : `Sessions matching "${safeTerminalText(query)}" (${sessions.length}):`;
+  return [
+    title,
+    ...sessions.map(
+      (session, index) => `${index + 1}. ${formatStoredSessionRow(session)}`,
+    ),
+    "Use :resume <session-id> to continue a session.",
+  ].join("\n");
+}
+
+function sessionResumeCandidate(
+  query: string | undefined,
+  sessions: readonly StoredSession[],
+): StoredSession | undefined {
+  if (query === undefined) {
+    return undefined;
+  }
+  const exact = sessions.find((session) => session.id === normalizeSessionId(query));
+  return exact ?? (sessions.length === 1 ? sessions[0] : undefined);
+}
+
+function historyViewFromMessage(message: string): {
+  readonly title: string;
+  readonly rows: readonly string[];
+} {
+  const lines = message.split("\n");
+  return {
+    title: lines[0] ?? message,
+    rows: lines.slice(1),
+  };
 }
 
 async function interactive(
@@ -2407,74 +3716,95 @@ async function interactive(
   validations: ValidationResult[] = [],
   rerunValidation?: ValidationRerunner
 ): Promise<void> {
-  const rl = ui.rich
-    ? undefined
-    : createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-  const richInput = ui.rich
-    ? new RichInputController({
-        input: process.stdin,
-        output: process.stdout,
-        width: resolveTerminalWidth,
-        commands: DEFAULT_COMMAND_HINTS,
-        footer: (width) =>
-          renderInputFooter({
-            workingDirectory: ui.workingDirectory,
-            sessionId: ui.sessionId,
-            executor: ui.executor,
-            width,
-          }),
-      })
-    : undefined;
-  streaming.attachComposer(richInput);
-  const richPromptQueue = richInput ? new RichPromptQueue(richInput) : undefined;
-  // Approval prompts reuse this interface instead of opening a second reader
-  // on the same stdin.
-  questionBox.ask = async (prompt) => {
-    if (ui.rich) {
-      richInput?.suspend();
-      const approvalReader = createInterface({
-        input: process.stdin,
-        output: process.stdout,
-      });
-      try {
-        return await approvalReader.question(prompt);
-      } finally {
-        approvalReader.close();
-        richInput?.resume();
-      }
-    }
-    return rl?.question(prompt) ?? "";
-  };
+  if (ui.ink !== undefined) {
+    await interactiveInk(
+      loop,
+      context,
+      streaming,
+      questionBox,
+      ui,
+      jsonOutput,
+      cost,
+      reviews,
+      validations,
+      rerunValidation,
+    );
+    return;
+  }
+
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  let currentSessionId = ui.sessionId;
+  // TTY input is handled exclusively by Ink. This branch remains only for
+  // non-TTY/pipe input, where readline preserves the machine-friendly
+  // line-oriented contract.
   questionBox.onApprovalRequest = (tool, detail, diff) => {
     streaming.approvalRequested(tool, detail, diff);
+  };
+  questionBox.onApprovalResolved = (tool, decision, detail) => {
+    streaming.approvalResolved(tool, decision, detail);
   };
 
   let interrupted = false;
   let abort: AbortController | undefined;
-  // Closing the readline interface does not settle a pending `question()` --
-  // the event loop simply drains and the process exits with code 0. Race the
-  // question against this instead, so the loop always unwinds.
+  let activeTaskId: string | undefined;
+  let activeCollaboration: CollaborationExecutionHandle | undefined;
+  let latestCollaboration: CollaborationExecutionResult | undefined;
+  let latestCollaborationContext: string | undefined;
+  // Closing the readline interface does not settle a pending `question()`.
+  // Race both the interface close and the interrupt signal so EOF always
+  // unwinds the loop instead of leaving a promise waiting on stdin.
   let wakeOnInterrupt: (() => void) | undefined;
   const interrupt = new Promise<void>((resolve) => {
     wakeOnInterrupt = resolve;
   });
+  let inputEnded = false;
+  const inputClosed = rl
+    ? new Promise<void>((resolve) => {
+        rl.once("close", () => {
+          inputEnded = true;
+          resolve();
+        });
+      })
+    : Promise.resolve();
+  const askReadline = async (prompt: string, signal?: AbortSignal): Promise<string> => {
+    if (inputEnded || signal?.aborted) return "";
+    const controller = new AbortController();
+    const abortQuestion = (): void => controller.abort();
+    signal?.addEventListener("abort", abortQuestion, { once: true });
+    rl.once("close", abortQuestion);
+    try {
+      return await rl.question(prompt, { signal: controller.signal });
+    } catch (error) {
+      if (controller.signal.aborted) return "";
+      throw error;
+    } finally {
+      signal?.removeEventListener("abort", abortQuestion);
+      rl.off("close", abortQuestion);
+    }
+  };
+  questionBox.ask = askReadline;
+  questionBox.askText = askReadline;
   const onSigint = () => {
     interrupted = true;
     ui.session?.dispatch({ type: "turn-interrupted", reason: "SIGINT" });
-    if (ui.rich) {
-      streaming.cleanup();
-      richInput?.close();
-    }
     process.stdout.write("\n(interrupted)\n");
     // Cancel whatever is in flight. Without this Ctrl-C only printed a line
     // and the running request kept going.
+    if (activeTaskId !== undefined) {
+      ui.tasks.cancel(activeTaskId, "SIGINT");
+    }
+    activeCollaboration?.cancel("SIGINT");
     abort?.abort();
-    rl?.close();
+    rl.close();
     // 130 is the conventional exit code for "terminated by SIGINT".
-    process.exitCode = 130;
+    if (!ui.rich) {
+      process.exitCode = 130;
+    } else {
+      process.exitCode = 0;
+    }
     wakeOnInterrupt?.();
   };
   process.on("SIGINT", onSigint);
@@ -2485,7 +3815,7 @@ async function interactive(
       // in callers, so the banner can be observed before a later listener
       // setup.
       console.log(
-        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':validate <changeSetId>' to rerun trusted checks or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
+        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
       );
       return;
     }
@@ -2498,7 +3828,7 @@ async function interactive(
         mcpCount: ui.mcpCount,
         executor: ui.executor,
         runState: ui.session?.snapshot().state ?? "ready",
-        sessionId: ui.sessionId,
+        sessionId: currentSessionId,
         workingDirectory: ui.workingDirectory,
         width: ui.width,
       })
@@ -2509,29 +3839,136 @@ async function interactive(
   };
 
   printHeader();
-  richPromptQueue?.start();
 
   // Each prompt continues from the previous run's context, so `turns` and
   // `usage` accumulate across the session instead of restarting every time.
   let current = context;
+  let pendingPlan: PendingPlan | undefined;
+  const scheduleTask = <T>(
+    options: {
+      run: (task: AgentTaskExecutionContext) => Promise<T> | T;
+    },
+  ): Promise<T> =>
+    scheduleInteractiveTask(ui.tasks, ui.taskStatusBridge, options.run);
+  const runTeamExecution = async (
+    prompt: string,
+    attachedContext?: string,
+    tasks?: readonly CollaborationTask[],
+  ): Promise<CollaborationExecutionResult | undefined> => {
+    if (!ui.startCollaborativeExecution) {
+      console.log("Collaborative execution is unavailable in this session.");
+      return undefined;
+    }
+    latestCollaborationContext = attachedContext;
+    latestCollaboration = undefined;
+    const scheduled = scheduleTask({
+      run: async ({ signal }) => {
+        const handle = await ui.startCollaborativeExecution!(
+          prompt,
+          current,
+          {
+            signal,
+            attachedContext,
+            tasks,
+          },
+        );
+        activeCollaboration = handle;
+        try {
+          return await handle.promise;
+        } finally {
+          if (activeCollaboration === handle) {
+            activeCollaboration = undefined;
+          }
+        }
+      },
+    });
+    activeTaskId = ui.tasks.list().at(-1)?.id;
+    try {
+      const result = await scheduled;
+      latestCollaboration = result;
+      const printResult = (): void => {
+        console.log(formatCollaborativeExecutionResult(result));
+      };
+      if (ui.rich) {
+        streaming.withComposerHidden(printResult);
+      } else {
+        printResult();
+      }
+      return result;
+    } catch (error) {
+      if (!interrupted) {
+        const printError = (): void => {
+          if (error instanceof CollaborationScopeReviewCancelledError) {
+            console.log("Team execution cancelled during tool-scope review; no task workspaces were created.");
+            return;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(safeTerminalText(`Team execution failed: ${message}`));
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printError);
+        } else {
+          printError();
+        }
+      }
+      return undefined;
+    } finally {
+      activeTaskId = undefined;
+    }
+  };
+  const applyTeamReview = async (): Promise<void> => {
+    const result = latestCollaboration;
+    if (result === undefined || !result.review.mergeable) {
+      console.log("No mergeable team review is waiting.");
+      return;
+    }
+    if (!ui.mergeCollaborativeReview) {
+      console.log("Team merge is unavailable in this session.");
+      return;
+    }
+    const answer = await questionBox.ask?.(
+      `Merge the reviewed team changes for "${safeTerminalText(result.prompt)}"? [y/N] `,
+    ) ?? "";
+    if (!answer.trim().toLowerCase().startsWith("y")) {
+      console.log("Team review kept. No files were changed.");
+      return;
+    }
+    const scheduled = scheduleTask({
+      run: ({ signal }) => ui.mergeCollaborativeReview!(result.review, { signal }),
+    });
+    activeTaskId = ui.tasks.list().at(-1)?.id;
+    try {
+      const merge = await scheduled;
+      if (merge.status === "merged") {
+        latestCollaboration = undefined;
+      }
+      console.log(`Team merge ${merge.status}: ${safeTerminalText(merge.summary)}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(safeTerminalText(`Team merge failed: ${message}`));
+    } finally {
+      activeTaskId = undefined;
+    }
+  };
+
   try {
     for (;;) {
       const inputResult = await Promise.race([
-        ui.rich
-          ? richPromptQueue?.next() ?? Promise.resolve(null)
-          : rl?.question("> ").catch(() => "") ?? Promise.resolve(""),
+        rl.question("> ").catch(() => ""),
         interrupt.then(() => null),
+        inputClosed.then(() => null),
       ]);
       if (interrupted) {
         break;
       }
       if (inputResult === null) {
-        process.exitCode = 130;
-        process.stdout.write("\n(interrupted)\n");
+        process.exitCode = inputEnded || ui.rich ? 0 : 130;
+        if (!inputEnded) {
+          process.stdout.write("\n(interrupted)\n");
+        }
         break;
       }
-      const queuedItem = typeof inputResult === "string" ? undefined : inputResult;
-      const line = typeof inputResult === "string" ? inputResult : inputResult.value;
+      const line = inputResult;
       const prompt = line.trim();
       const command = normalizeInteractiveCommand(prompt);
       if (command === ":quit" || command === "exit" || command === "quit") {
@@ -2540,8 +3977,475 @@ async function interactive(
       if (!prompt) {
         continue;
       }
-      if (ui.rich && queuedItem?.queued) {
-        richInput?.renderQueuedPrompt(line);
+      const skillMessage = skillCommandMessage(command, ui);
+      if (skillMessage !== undefined) {
+        const printSkillMessage = (): void => {
+          console.log(skillMessage);
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printSkillMessage);
+        } else {
+          printSkillMessage();
+        }
+        continue;
+      }
+
+      const extensionMessage = extensionCommandMessage(command, ui);
+      if (extensionMessage !== undefined) {
+        const printExtensionMessage = (): void => {
+          console.log(extensionMessage);
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printExtensionMessage);
+        } else {
+          printExtensionMessage();
+        }
+        continue;
+      }
+
+      const backgroundJobMessage = await backgroundJobCommandMessage(command, ui);
+      if (backgroundJobMessage !== undefined) {
+        const printBackgroundJobMessage = (): void => console.log(backgroundJobMessage);
+        if (ui.rich) streaming.withComposerHidden(printBackgroundJobMessage);
+        else printBackgroundJobMessage();
+        continue;
+      }
+
+      const taskMessage = taskCommandMessage(command, ui);
+      if (taskMessage !== undefined) {
+        const printTaskMessage = (): void => {
+          console.log(taskMessage);
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printTaskMessage);
+        } else {
+          printTaskMessage();
+        }
+        continue;
+      }
+
+      const sessionLookup = await sessionPickerLookup(command, ui);
+      if (sessionLookup.handled) {
+        let sessionMessage = sessionLookup.error;
+        if (
+          sessionMessage === undefined &&
+          (command === ":sessions" || sessionLookup.query === undefined)
+        ) {
+          sessionMessage = formatSessionPickerList(
+            sessionLookup.sessions,
+            sessionLookup.query,
+          );
+        } else if (sessionMessage === undefined) {
+          const candidate = sessionResumeCandidate(
+            sessionLookup.query,
+            sessionLookup.sessions,
+          );
+          if (candidate === undefined) {
+            sessionMessage = formatSessionPickerList(
+              sessionLookup.sessions,
+              sessionLookup.query,
+            );
+          } else if (!candidate.readable) {
+            sessionMessage = `Session ${safeTerminalText(candidate.id)} is unavailable.`;
+          } else if (!ui.openSession) {
+            sessionMessage = "Session switching is unavailable in this interface.";
+          } else {
+            try {
+              const next = await ui.openSession(candidate.id);
+              current = next;
+              currentSessionId = next.sessionId;
+              pendingPlan = undefined;
+              sessionMessage = `Resumed session ${safeTerminalText(next.sessionId)}.`;
+            } catch (error) {
+              const message = error instanceof Error ? error.message : String(error);
+              sessionMessage = safeTerminalText(`Session resume failed: ${message}`);
+            }
+          }
+        }
+        const printSessions = (): void => {
+          if (sessionMessage) {
+            console.log(sessionMessage);
+          }
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printSessions);
+        } else {
+          printSessions();
+        }
+        continue;
+      }
+
+      const checkpointResult = await checkpointCommandResult(command, ui, current);
+      if (checkpointResult?.handled) {
+        const printCheckpointMessage = (): void => {
+          if (checkpointResult.message) {
+            console.log(safeTerminalText(checkpointResult.message));
+          }
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printCheckpointMessage);
+        } else {
+          printCheckpointMessage();
+        }
+        continue;
+      }
+
+      const historyMessage = await sessionHistoryCommandMessage(command, current.memory);
+      if (historyMessage !== undefined) {
+        const printHistory = (): void => {
+          console.log(historyMessage);
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printHistory);
+        } else {
+          printHistory();
+        }
+        continue;
+      }
+
+      const searchMessage = await sessionSearchCommandMessage(command, current.memory);
+      if (searchMessage !== undefined) {
+        const printSearch = (): void => {
+          console.log(searchMessage);
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printSearch);
+        } else {
+          printSearch();
+        }
+        continue;
+      }
+
+      const exportMessage = await sessionExportCommandMessage(
+        command,
+        current.memory,
+        ui.workingDirectory,
+        currentSessionId,
+      );
+      if (exportMessage !== undefined) {
+        const printExport = (): void => {
+          console.log(exportMessage);
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printExport);
+        } else {
+          printExport();
+        }
+        continue;
+      }
+
+      if (command === ":retry") {
+        const printRetryNotice = (): void => {
+          console.log("Retry is available in the Ink interface.");
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printRetryNotice);
+        } else {
+          printRetryNotice();
+        }
+        continue;
+      }
+
+      const themeCommand = parseInkThemeCommand(command);
+      if (themeCommand.handled) {
+        const printTheme = (): void => {
+          if (themeCommand.error) {
+            console.log(themeCommand.error);
+            return;
+          }
+          if (themeCommand.name === undefined) {
+            console.log(`Ink themes: ${INK_THEME_NAMES.join(", ")}.`);
+            return;
+          }
+          console.log(
+            `Theme "${themeCommand.name}" is available in the Ink interface.`,
+          );
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printTheme);
+        } else {
+          printTheme();
+        }
+        continue;
+      }
+
+      const teamCommand = parseTeamCommand(command);
+      if (teamCommand !== undefined) {
+        if (teamCommand.kind === "execute") {
+          if (!teamCommand.request) {
+            console.log("Usage: :team <request> · :team plan <request>");
+            continue;
+          }
+          const prepared = await prepareInteractivePrompt(
+            teamCommand.request,
+            ui.workingDirectory,
+          );
+          const contextNotice = formatContextNotice(prepared);
+          if (contextNotice) {
+            console.log(safeTerminalText(contextNotice));
+          }
+          await runTeamExecution(prepared.prompt, prepared.context);
+          continue;
+        }
+        if (teamCommand.kind === "plan") {
+          if (!teamCommand.request) {
+            console.log("Usage: :team plan <request>");
+            continue;
+          }
+          if (!ui.runCollaborativePlan) {
+            console.log("Collaborative planning is unavailable in this session.");
+            continue;
+          }
+          const prepared = await prepareInteractivePrompt(
+            teamCommand.request,
+            ui.workingDirectory,
+          );
+          const contextNotice = formatContextNotice(prepared);
+          if (contextNotice) {
+            console.log(safeTerminalText(contextNotice));
+          }
+          const scheduled = scheduleTask({
+            run: ({ signal }) =>
+              ui.runCollaborativePlan!(
+                prepared.prompt,
+                current,
+                { signal, attachedContext: prepared.context },
+              ),
+          });
+          activeTaskId = ui.tasks.list().at(-1)?.id;
+          try {
+            const result = await scheduled;
+            console.log(formatCollaborativePlanResult(result));
+          } catch (error) {
+            if (!interrupted) {
+              const message = error instanceof Error ? error.message : String(error);
+              console.error(safeTerminalText(`Team plan failed: ${message}`));
+            }
+          } finally {
+            activeTaskId = undefined;
+          }
+          continue;
+        }
+        if (teamCommand.kind === "cancel") {
+          if (activeCollaboration === undefined) {
+            console.log("No team execution is currently running.");
+          } else if (teamCommand.taskId === undefined) {
+            activeCollaboration.cancel("user cancelled the team execution");
+            console.log("Team execution cancellation requested.");
+          } else if (
+            activeCollaboration.cancelTask(
+              teamCommand.taskId,
+              "user cancelled the team task",
+            )
+          ) {
+            console.log(`Cancellation requested for team task ${teamCommand.taskId}.`);
+          } else {
+            console.log(`Team task not found or already finished: ${teamCommand.taskId}`);
+          }
+          continue;
+        }
+        if (teamCommand.kind === "retry") {
+          if (!teamCommand.taskId) {
+            console.log("Usage: :team retry <taskId>");
+            continue;
+          }
+          if (latestCollaboration === undefined) {
+            console.log("No team result is available to retry.");
+            continue;
+          }
+          const task = latestCollaboration.plan.find(
+            (candidate) => candidate.id === teamCommand.taskId,
+          );
+          if (task === undefined) {
+            console.log(`Unknown team task: ${teamCommand.taskId}`);
+            continue;
+          }
+          await runTeamExecution(
+            latestCollaboration.prompt,
+            latestCollaborationContext,
+            [{ ...task, dependsOn: undefined }],
+          );
+          continue;
+        }
+        await applyTeamReview();
+        continue;
+      }
+
+      const planRequest = planRequestFromCommand(command);
+      if (planRequest !== undefined) {
+        if (!planRequest) {
+          const printPlanUsage = (): void => {
+            console.log("Usage: :plan <request>");
+          };
+          if (ui.rich) {
+            streaming.withComposerHidden(printPlanUsage);
+          } else {
+            printPlanUsage();
+          }
+          continue;
+        }
+
+        ui.consumePlanReview?.();
+        const prepared = await prepareInteractivePrompt(planRequest, ui.workingDirectory);
+        const contextNotice = formatContextNotice(prepared);
+        if (contextNotice) {
+          const printContext = (): void => console.log(safeTerminalText(contextNotice));
+          if (ui.rich) {
+            streaming.withComposerHidden(printContext);
+          } else {
+            printContext();
+          }
+        }
+
+        const timingContext = { submittedAtMs: performance.now(), queuedAtMs: performance.now() };
+        const scheduled = scheduleTask({
+          run: ({ signal }) =>
+            runPrompt(
+              loop,
+              current,
+              streaming,
+              prepared.prompt,
+              jsonOutput,
+              cost,
+              reviews,
+              validations,
+              signal,
+              {
+                mode: "plan",
+                ...(prepared.context === undefined ? {} : { attachedContext: prepared.context }),
+              },
+              timingContext,
+            ),
+        });
+        activeTaskId = ui.tasks.list().at(-1)?.id;
+        try {
+          current = await scheduled;
+          if (current.state.status !== "error") {
+            pendingPlan = await capturePendingPlan(
+              current,
+              prepared.prompt,
+              prepared.context,
+              ui.consumePlanReview?.(),
+            );
+            if (pendingPlan.review !== undefined && ui.ink === undefined) {
+              const printReview = (): void => {
+                console.log(formatPlanReviewForTerminal(pendingPlan!.review!));
+              };
+              if (ui.rich) {
+                streaming.withComposerHidden(printReview);
+              } else {
+                printReview();
+              }
+            }
+          }
+        } catch (error) {
+          if (!interrupted) {
+            const message = error instanceof Error ? error.message : String(error);
+            const printError = (): void => {
+              console.error(safeTerminalText(`Plan failed: ${message}`));
+            };
+            if (ui.rich) {
+              streaming.withComposerHidden(printError);
+            } else {
+              printError();
+            }
+          }
+        } finally {
+          activeTaskId = undefined;
+        }
+        continue;
+      }
+
+      if (isApplyCommand(command)) {
+        if (!pendingPlan) {
+          const printMissingPlan = (): void => {
+            console.log("No plan is waiting. Use :plan <request> first.");
+          };
+          if (ui.rich) {
+            streaming.withComposerHidden(printMissingPlan);
+          } else {
+            printMissingPlan();
+          }
+          continue;
+        }
+        const planToApply = pendingPlan;
+
+        const answer = questionBox.ask
+          ? await questionBox.ask(
+              `Apply the latest plan for "${safeTerminalText(planToApply.prompt)}"? [y/N] `
+            )
+          : "";
+        if (!answer.trim().toLowerCase().startsWith("y")) {
+          const printKept = (): void => console.log("Plan kept. No files were changed.");
+          if (ui.rich) {
+            streaming.withComposerHidden(printKept);
+          } else {
+            printKept();
+          }
+          continue;
+        }
+
+        const prepared = await prepareInteractivePrompt(
+          planToApply.prompt,
+          ui.workingDirectory,
+        );
+        const contextNotice = formatContextNotice(prepared);
+        if (contextNotice) {
+          const printContext = (): void => console.log(safeTerminalText(contextNotice));
+          if (ui.rich) {
+            streaming.withComposerHidden(printContext);
+          } else {
+            printContext();
+          }
+        }
+
+        const timingContext = { submittedAtMs: performance.now(), queuedAtMs: performance.now() };
+        const scheduled = scheduleTask({
+          run: ({ signal }) =>
+            planToApply.review === undefined
+              ? runPrompt(
+                  loop,
+                  current,
+                  streaming,
+                  prepared.prompt,
+                  jsonOutput,
+                  cost,
+                  reviews,
+                  validations,
+                  signal,
+                  approvedPlanContext(planToApply) === undefined
+                    ? prepared.context === undefined
+                      ? {}
+                      : { attachedContext: prepared.context }
+                    : { attachedContext: approvedPlanContext(planToApply) },
+                  timingContext,
+                )
+              : loop.applyPlannedChangeSet(current, {
+                  prompt: prepared.prompt,
+                  review: planToApply.review,
+                  signal,
+                }),
+        });
+        activeTaskId = ui.tasks.list().at(-1)?.id;
+        try {
+          current = await scheduled;
+          pendingPlan = undefined;
+        } catch (error) {
+          if (!interrupted) {
+            const message = error instanceof Error ? error.message : String(error);
+            const printError = (): void => {
+              console.error(safeTerminalText(`Apply failed: ${message}`));
+            };
+            if (ui.rich) {
+              streaming.withComposerHidden(printError);
+            } else {
+              printError();
+            }
+          }
+        } finally {
+          activeTaskId = undefined;
+        }
+        continue;
       }
 
       if (command === ":help") {
@@ -2551,13 +4455,14 @@ async function interactive(
           });
         } else {
           console.log(
-            "Commands: :help, :clear, :model, :validate <changeSetId>, :cleanup ..., exit, quit"
+            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :cleanup ..., exit, quit"
           );
         }
         continue;
       }
 
       if (command === ":clear") {
+        pendingPlan = undefined;
         if (ui.rich) {
           streaming.withComposerHidden(() => {
             process.stdout.write("\u001b[2J\u001b[H");
@@ -2592,6 +4497,90 @@ async function interactive(
         continue;
       }
 
+      const modeCommand = parseSpeedModeCommand(command);
+      if (modeCommand) {
+        if (modeCommand.kind === "invalid") {
+          const message = "Usage: :mode fast|balanced|deep";
+          if (ui.rich) streaming.withComposerHidden(() => console.log(message));
+          else console.log(message);
+        } else {
+          if (modeCommand.kind === "set") ui.speedMode.setMode(modeCommand.mode);
+          const message = `Speed mode: ${ui.speedMode.mode} · ${describeSpeedModeSupport(
+            { id: ui.provider as ModelProvider["id"], model: ui.model },
+            ui.speedMode.mode,
+          )}`;
+          if (ui.rich) streaming.withComposerHidden(() => console.log(message));
+          else console.log(message);
+        }
+        continue;
+      }
+
+      const benchmarkPrompt = parseBenchmarkCommand(command);
+      if (benchmarkPrompt !== undefined) {
+        const report = async (): Promise<void> => {
+          const result = await ui.benchmark(benchmarkPrompt);
+          console.log(
+            `[bench] scope=provider-only model=${safeTerminalText(ui.model)} mode=${ui.speedMode.mode} first-token=${formatTimingMs(result.firstTokenMs)} total=${formatTimingMs(result.totalMs)}`,
+          );
+        };
+        try {
+          if (ui.rich) await streaming.withComposerHidden(() => report());
+          else await report();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "benchmark failed";
+          const printError = (): void => console.error(safeTerminalText(`[bench] failed: ${message}`));
+          if (ui.rich) streaming.withComposerHidden(printError);
+          else printError();
+        }
+        continue;
+      }
+
+      if (command === ":project" || command.startsWith(":project ")) {
+        if (command !== ":project" && command !== ":project refresh") {
+          console.log("Usage: :project [refresh]");
+          continue;
+        }
+        if (command.endsWith(" refresh")) await ui.projectContext.refresh();
+        const message = ui.projectContext.formatProjectStatus();
+        if (ui.rich) streaming.withComposerHidden(() => console.log(safeTerminalText(message)));
+        else console.log(safeTerminalText(message));
+        continue;
+      }
+      if (command === ":instructions" || command.startsWith(":instructions ")) {
+        if (command !== ":instructions" && command !== ":instructions refresh") {
+          console.log("Usage: :instructions [refresh]");
+          continue;
+        }
+        if (command.endsWith(" refresh")) await ui.projectContext.refresh();
+        const statuses = await ui.projectContext.instructionStatuses();
+        const lines = ["Project instruction files (user → root → child scope):"];
+        if (statuses.length === 0) lines.push("  none found");
+        for (const item of statuses) {
+          lines.push(
+            `  [${item.freshness}] ${item.displayPath} · scope=${item.scope}:${item.appliesTo}`,
+          );
+        }
+        if (statuses.some((item) => item.freshness !== "fresh")) {
+          lines.push("Run :instructions refresh to reload changed instructions.");
+        }
+        const message = safeTerminalText(lines.join("\n"));
+        if (ui.rich) streaming.withComposerHidden(() => console.log(message));
+        else console.log(message);
+        continue;
+      }
+
+      if (command === ":trace") {
+        const printTrace = (): void => {
+          console.log(renderTraceSummary(ui.trace.snapshot()));
+        };
+        if (ui.rich) {
+          streaming.withComposerHidden(printTrace);
+        } else {
+          printTrace();
+        }
+        continue;
+      }
+
       if (command === ":cards" || command === ":collapse" || command === ":expand") {
         if (!ui.rich) {
           console.log("Card folding is available only in an interactive terminal.");
@@ -2615,7 +4604,7 @@ async function interactive(
           console.error(safeTerminalText(parsedCleanup.error));
           continue;
         }
-        if (!context.memory.pruneEvidence) {
+        if (!current.memory.pruneEvidence) {
           if (ui.rich) {
             streaming.withComposerHidden(() => {
               console.error("Evidence cleanup is unavailable for this memory.");
@@ -2626,11 +4615,11 @@ async function interactive(
           continue;
         }
         try {
-          const result = await context.memory.pruneEvidence(parsedCleanup.options);
-          const evidenceSummary = await context.memory.evidenceSummary?.();
+          const result = await current.memory.pruneEvidence(parsedCleanup.options);
+          const evidenceSummary = await current.memory.evidenceSummary?.();
           const printCleanup = (): void => {
             printEvidenceCleanupResult(
-              context.sessionId,
+              current.sessionId,
               result,
               evidenceSummary,
               jsonOutput
@@ -2663,7 +4652,9 @@ async function interactive(
           console.error("Usage: :validate <changeSetId>");
           continue;
         }
-        if (!rerunValidation) {
+        const activeRerunValidation =
+          ui.createRerunValidation?.(current) ?? rerunValidation;
+        if (!activeRerunValidation) {
           const printError = (): void => {
             console.error("Validation rerun is unavailable because the filesystem tool is unavailable.");
           };
@@ -2677,11 +4668,11 @@ async function interactive(
         const controller = new AbortController();
         abort = controller;
         try {
-          const validation = await rerunValidation(changeSetId, controller.signal);
+          const validation = await activeRerunValidation(changeSetId, controller.signal);
           validations.push(validation);
           if (jsonOutput) {
-            const changeSets = (await context.memory.changeSets?.()) ?? [];
-            const evidenceSummary = await context.memory.evidenceSummary?.();
+            const changeSets = (await current.memory.changeSets?.()) ?? [];
+            const evidenceSummary = await current.memory.evidenceSummary?.();
             const printJson = (): void => {
               console.log(
                 JSON.stringify(
@@ -2731,27 +4722,46 @@ async function interactive(
         continue;
       }
 
-      const controller = new AbortController();
-      abort = controller;
+      pendingPlan = undefined;
+      ui.consumePlanReview?.();
+      const prepared = await prepareInteractivePrompt(prompt, ui.workingDirectory);
+      const contextNotice = formatContextNotice(prepared);
+      if (contextNotice) {
+        const printContext = (): void => console.log(safeTerminalText(contextNotice));
+        if (ui.rich) {
+          streaming.withComposerHidden(printContext);
+        } else {
+          printContext();
+        }
+      }
+
+      const timingContext = { submittedAtMs: performance.now(), queuedAtMs: performance.now() };
+      const scheduled = scheduleTask({
+        run: ({ signal }) =>
+          runPrompt(
+            loop,
+            current,
+            streaming,
+            prepared.prompt,
+            jsonOutput,
+            cost,
+            reviews,
+            validations,
+            signal,
+            prepared.context === undefined ? {} : { attachedContext: prepared.context },
+            timingContext,
+          ),
+      });
+      activeTaskId = ui.tasks.list().at(-1)?.id;
       try {
-        current = await runPrompt(
-          loop,
-          current,
-          streaming,
-          prompt,
-          jsonOutput,
-          cost,
-          reviews,
-          validations,
-          controller.signal
-        );
+        current = await scheduled;
       } catch (error) {
         // An interrupt is not a failure; the session keeps its prior state.
         if (!interrupted) {
           throw error;
         }
       } finally {
-        abort = undefined;
+        activeTaskId = undefined;
       }
       if (interrupted) {
         break;
@@ -2759,8 +4769,907 @@ async function interactive(
     }
   } finally {
     process.removeListener("SIGINT", onSigint);
-    await richPromptQueue?.close();
-    rl?.close();
+    rl.close();
+    questionBox.ask = undefined;
+    questionBox.askText = undefined;
+  }
+}
+
+async function interactiveInk(
+  loop: AgentLoop,
+  context: AgentContext,
+  _streaming: StreamingRun,
+  questionBox: QuestionBox,
+  ui: InteractiveUiOptions,
+  jsonOutput = false,
+  cost?: UsageCostOptions,
+  reviews: readonly ReviewRecord[] = [],
+  validations: ValidationResult[] = [],
+  rerunValidation?: ValidationRerunner
+): Promise<void> {
+  const ink = ui.ink;
+  if (!ink) {
+    return;
+  }
+
+  let current = context;
+  let pendingPlan: PendingPlan | undefined;
+  let latestCollaboration: CollaborationExecutionResult | undefined;
+  let latestCollaborationContext: string | undefined;
+  let activeCollaboration: CollaborationExecutionHandle | undefined;
+  let activeAbort: AbortController | undefined;
+  let activeTaskId: string | undefined;
+  let closed = false;
+  let pickerSessions: readonly StoredSession[] | undefined;
+  let instance: ReturnType<typeof renderInk> | undefined;
+  let lastRetry:
+    | {
+        readonly prompt: string;
+        readonly runOptions: PromptRunOptions;
+        readonly label: string;
+      }
+    | undefined;
+  const normalizeTerminalSize = (): void => {
+    normalizeInkTerminalSize(process.stdout);
+  };
+
+  ink.store.setSpeedMode(ui.speedMode.mode);
+
+  const syncQueue = (): void => {
+    ink.store.setQueuedPrompts(ink.controller.snapshot().queuedPrompts);
+  };
+
+  const updateInkSummary = (result: AgentContext): void => {
+    const modelName = cost === undefined
+      ? undefined
+      : typeof cost.model === "function"
+        ? cost.model()
+        : cost.model;
+    const runCost = result.usage && modelName !== undefined
+      ? estimateCost(result.usage, modelName, cost?.pricing)
+      : undefined;
+    ink.store.setSummary({
+      status: result.state.status,
+      turns: result.state.turns,
+      usage: result.usage,
+      ...summarizeRunTimings(ui.trace.latest()),
+      ...(runCost === undefined ? {} : { cost: runCost }),
+    });
+  };
+
+  const scheduleTask = <T>(
+    options: {
+      run: (task: AgentTaskExecutionContext) => Promise<T> | T;
+    },
+  ): Promise<T> =>
+    scheduleInteractiveTask(ui.tasks, ui.taskStatusBridge, options.run);
+
+  const runInkPrompt = async (
+    prompt: string,
+    runOptions: PromptRunOptions = {},
+    label = "Run",
+    runTask?: (signal: AbortSignal | undefined) => Promise<AgentContext>,
+  ): Promise<AgentContext | undefined> => {
+    ink.store.clearHistoryView();
+    ink.store.setRetry(undefined);
+    lastRetry = runTask === undefined
+      ? { prompt, runOptions: { ...runOptions }, label }
+      : undefined;
+    const submittedAtMs = performance.now();
+    const queuedAtMs = performance.now();
+    const scheduled = scheduleTask({
+      run: async ({ signal }) => {
+        ui.trace.prepareNextRun({
+          submittedAtMs,
+          queueMs: Math.max(0, performance.now() - queuedAtMs),
+          speedMode: ui.speedMode.mode,
+        });
+        if (runTask) return runTask(signal);
+        await ui.projectContext.refresh();
+        return loop.run(current, prompt, {
+            signal,
+            ...(runOptions.mode === undefined ? {} : { mode: runOptions.mode }),
+            toolAccess: runOptions.toolAccess ?? (
+              runOptions.mode === "plan" ? "all" : resolvePromptToolAccess(prompt)
+            ),
+            ...(runOptions.attachedContext === undefined
+              ? {}
+              : { attachedContext: runOptions.attachedContext }),
+          });
+      },
+    });
+    activeTaskId = ui.tasks.list().at(-1)?.id;
+    ink.controller.setBusy(true);
+    try {
+      current = await scheduled;
+      updateInkSummary(current);
+      if (current.state.status === "error") {
+        const message = current.state.lastError ?? `${label} failed`;
+        ink.store.setRetry({ prompt, error: message });
+        ink.store.addNotice(`${label} failed: ${message}`);
+      } else {
+        lastRetry = undefined;
+      }
+      return current;
+    } catch (error) {
+      const cancelled = activeTaskId !== undefined &&
+        ui.tasks.get(activeTaskId)?.status === "cancelled";
+      if (cancelled) {
+        lastRetry = undefined;
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        ink.store.setRetry({ prompt, error: message });
+        ink.store.addNotice(
+          `${label} failed: ${message}`,
+        );
+      }
+      return undefined;
+    } finally {
+      activeTaskId = undefined;
+      ink.controller.setBusy(false);
+      syncQueue();
+    }
+  };
+
+  const retryLast = async (): Promise<void> => {
+    const retry = lastRetry;
+    if (retry === undefined) {
+      ink.store.addNotice("Nothing to retry.");
+      return;
+    }
+    await runInkPrompt(retry.prompt, retry.runOptions, retry.label);
+  };
+
+  const runTeamExecution = async (
+    prompt: string,
+    attachedContext?: string,
+    tasks?: readonly CollaborationTask[],
+  ): Promise<CollaborationExecutionResult | undefined> => {
+    if (!ui.startCollaborativeExecution) {
+      ink.store.addNotice("Collaborative execution is unavailable in this session.");
+      return undefined;
+    }
+    latestCollaborationContext = attachedContext;
+    latestCollaboration = undefined;
+    ink.store.clearCollaboration();
+    ink.store.setRetry(undefined);
+    const scheduled = scheduleTask({
+      run: async ({ signal }) => {
+        const handle = await ui.startCollaborativeExecution!(
+          prompt,
+          current,
+          {
+            signal,
+            attachedContext,
+            tasks,
+            onEvent: (event) => ink.store.applyCollaborationEvent(event),
+          },
+        );
+        activeCollaboration = handle;
+        try {
+          return await handle.promise;
+        } finally {
+          if (activeCollaboration === handle) {
+            activeCollaboration = undefined;
+          }
+        }
+      },
+    });
+    activeTaskId = ui.tasks.list().at(-1)?.id;
+    ink.controller.setBusy(true);
+    try {
+      const result = await scheduled;
+      latestCollaboration = result;
+      ink.store.setCollaborationResult(result);
+      if (result.status === "review" && result.review.mergeable) {
+        ink.store.addNotice("Team review ready. Use :team apply after checking the diff.");
+      } else if (result.status === "cancelled") {
+        ink.store.addNotice("Team execution cancelled.");
+      } else {
+        ink.store.addNotice("Team execution is blocked. Retry the failed task or inspect the conflicts.");
+      }
+      return result;
+    } catch (error) {
+      const cancelled = activeTaskId !== undefined &&
+        ui.tasks.get(activeTaskId)?.status === "cancelled";
+      if (error instanceof CollaborationScopeReviewCancelledError) {
+        ink.store.addNotice("Team execution cancelled during tool-scope review; no task workspaces were created.");
+      } else if (!cancelled) {
+        const message = error instanceof Error ? error.message : String(error);
+        ink.store.addNotice(`Team execution failed: ${safeTerminalText(message)}`);
+      }
+      return undefined;
+    } finally {
+      activeTaskId = undefined;
+      ink.controller.setBusy(false);
+      syncQueue();
+    }
+  };
+
+  const applyTeamReview = async (): Promise<void> => {
+    const result = latestCollaboration;
+    if (result === undefined || result.review.mergeable === false) {
+      ink.store.addNotice("No mergeable team review is waiting.");
+      return;
+    }
+    if (!ui.mergeCollaborativeReview) {
+      ink.store.addNotice("Team merge is unavailable in this session.");
+      return;
+    }
+    const answer = questionBox.ask
+      ? await questionBox.ask(
+          `Merge the reviewed team changes for "${safeTerminalText(result.prompt)}"? [y/N] `,
+        )
+      : "";
+    if (!answer.trim().toLowerCase().startsWith("y")) {
+      ink.store.addNotice("Team review kept. No files were changed.");
+      return;
+    }
+    const scheduled = scheduleTask({
+      run: ({ signal }) =>
+        ui.mergeCollaborativeReview!(result.review, { signal }),
+    });
+    activeTaskId = ui.tasks.list().at(-1)?.id;
+    ink.controller.setBusy(true);
+    try {
+      const merge = await scheduled;
+      if (merge.status === "merged") {
+        ink.store.setCollaborationStatus("merged");
+        latestCollaboration = undefined;
+        ink.store.addNotice(`Team changes merged: ${safeTerminalText(merge.summary)}`);
+      } else {
+        ink.store.addNotice(
+          `Team merge ${merge.status}: ${safeTerminalText(merge.summary)}`,
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      ink.store.addNotice(`Team merge failed: ${safeTerminalText(message)}`);
+    } finally {
+      activeTaskId = undefined;
+      ink.controller.setBusy(false);
+      syncQueue();
+    }
+  };
+
+  const close = (exitCode?: number): void => {
+    if (closed) return;
+    closed = true;
+    if (exitCode !== undefined) {
+      // Ink owns the terminal session and treats Ctrl-C/Escape as a normal
+      // user cancellation. Do not make the package runner report ELIFECYCLE.
+      process.exitCode = exitCode;
+    }
+    if (activeTaskId !== undefined) {
+      ui.tasks.cancel(activeTaskId, "session closed");
+    }
+    activeCollaboration?.cancel("session closed");
+    activeAbort?.abort();
+    ink.controller.close();
+    instance?.unmount();
+  };
+
+  const cancel = (): void => {
+    if (activeAbort || activeTaskId !== undefined || activeCollaboration !== undefined) {
+      activeCollaboration?.cancel("user interrupted");
+      activeAbort?.abort();
+      if (activeTaskId !== undefined) {
+        ui.tasks.cancel(activeTaskId, "user interrupted");
+      }
+      process.exitCode = 0;
+      ink.store.addNotice("Run interrupted. The composer is ready for the next request.");
+      return;
+    }
+    close(0);
+  };
+
+  ink.controller.setSessionId(current.sessionId);
+
+  const dismissSessionPicker = (): void => {
+    pickerSessions = undefined;
+    ink.store.setSessionPicker(undefined);
+  };
+
+  const resumeSessionAt = (index: number): void => {
+    const candidate = pickerSessions?.[index];
+    dismissSessionPicker();
+    if (candidate === undefined) {
+      ink.store.addNotice("That session is no longer available.");
+      return;
+    }
+    if (!candidate.readable) {
+      ink.store.addNotice(`Session ${safeTerminalText(candidate.id)} is unavailable.`);
+      return;
+    }
+    if (!ui.openSession) {
+      ink.store.addNotice("Session switching is unavailable in this interface.");
+      return;
+    }
+    void ui.openSession(candidate.id)
+      .then((next) => {
+        current = next;
+        pendingPlan = undefined;
+        lastRetry = undefined;
+        ink.store.reset();
+        ink.controller.setSessionId(next.sessionId);
+        ink.store.addNotice(`Resumed session ${safeTerminalText(next.sessionId)}.`);
+        updateInkSummary(next);
+      })
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        ink.store.addNotice(safeTerminalText(`Session resume failed: ${message}`));
+      });
+  };
+
+    questionBox.ask = (prompt, signal) => ink.controller.askApproval(prompt, signal);
+  questionBox.askText = (prompt, signal) => ink.controller.askText(prompt, signal);
+  questionBox.onApprovalRequest = (tool, detail) => {
+    ink.store.addNotice(`Approval requested for ${tool}: ${detail}`);
+  };
+  questionBox.onApprovalResolved = (tool, decision, detail) => {
+    ink.store.addNotice(`Sandbox expansion ${decision} for ${tool}: ${detail}`);
+  };
+
+  const onSigint = (): void => {
+    cancel();
+  };
+  process.on("SIGINT", onSigint);
+  normalizeTerminalSize();
+  process.stdout.on("resize", normalizeTerminalSize);
+  const inkOutput = createInkRenderOutput(process.stdout);
+  let resolveInitialRender!: () => void;
+  const initialRender = new Promise<void>((resolve) => {
+    resolveInitialRender = resolve;
+  });
+
+  instance = renderInk(
+    React.createElement(InkCliApp, {
+      store: ink.store,
+      controller: ink.controller,
+      provider: ui.provider,
+      model: ui.model,
+      sessionId: ui.sessionId,
+      workingDirectory: ui.workingDirectory,
+      executor: ui.executor ?? "local",
+      terminalRowsOffset: 1,
+      mcpCount: ui.mcpCount,
+      commands: DEFAULT_COMMAND_HINTS,
+      onSubmit: (value: string) => {
+        ink.controller.submit(value);
+        syncQueue();
+      },
+      onCancel: cancel,
+      onExit: close,
+      onRetry: () => {
+        void retryLast();
+      },
+      onDismissRetry: () => {
+        lastRetry = undefined;
+        ink.store.setRetry(undefined);
+      },
+      onSessionResume: resumeSessionAt,
+      onDismissSessionPicker: dismissSessionPicker,
+      onApprovalAnswer: (value: string) => {
+        ink.controller.submit(value);
+        syncQueue();
+      },
+    }),
+    {
+      stdin: process.stdin,
+      stdout: inkOutput,
+      stderr: process.stderr,
+      exitOnCtrlC: false,
+      patchConsole: true,
+      // The welcome panel is the only static block now; the transcript,
+      // composer, and footer share one controlled dynamic viewport. Use Ink's
+      // standard log-update renderer: the incremental diff misplaces cursor
+      // rows whenever a frame grows or shrinks, which leaves stale duplicated
+      // status and transcript lines on real PTYs.
+      maxFps: 15,
+      onRender: () => {
+        // Do not let input that arrived while providers/MCP were starting
+        // launch a run before the composer has painted its first frame. Ink
+        // still receives and buffers those keystrokes through the controller;
+        // the interactive loop begins consuming them only after this point.
+        resolveInitialRender();
+      },
+    },
+  );
+
+  const handleCommand = async (command: string, queued = false): Promise<boolean> => {
+    const themeCommand = parseInkThemeCommand(command);
+    if (themeCommand.handled) {
+      if (themeCommand.error) {
+        ink.store.addNotice(themeCommand.error);
+      } else if (themeCommand.name === undefined) {
+        ink.store.addNotice(
+          `Theme: ${ink.controller.snapshot().theme}. Available: ${INK_THEME_NAMES.join(", ")}`,
+        );
+      } else {
+        const previousTheme = ink.controller.snapshot().theme;
+        ink.controller.setTheme(themeCommand.name);
+        try {
+          await ink.persistTheme?.(themeCommand.name);
+          ink.store.addNotice(`Theme switched to ${themeCommand.name}.`);
+        } catch {
+          ink.controller.setTheme(previousTheme);
+          ink.store.addNotice("Theme changed for this session, but could not be saved.");
+        }
+      }
+      return true;
+    }
+    const sessionLookup = await sessionPickerLookup(command, ui);
+    if (sessionLookup.handled) {
+      if (sessionLookup.error) {
+        ink.store.addNotice(sessionLookup.error);
+        return true;
+      }
+      const controllerSnapshot = ink.controller.snapshot();
+      if (
+        queued ||
+        activeTaskId !== undefined ||
+        controllerSnapshot.busy ||
+        controllerSnapshot.queuedPrompts.length > 0
+      ) {
+        ink.store.addNotice("Switching sessions is available only while idle.");
+        return true;
+      }
+      if (sessionLookup.sessions.length === 0) {
+        ink.store.addNotice(
+          formatSessionPickerList(sessionLookup.sessions, sessionLookup.query),
+        );
+        return true;
+      }
+      pickerSessions = sessionLookup.sessions;
+      ink.store.setSessionPicker({
+        title: sessionLookup.query === undefined
+          ? "SESSIONS"
+          : `SESSIONS · ${safeTerminalText(sessionLookup.query)}`,
+        rows: sessionLookup.sessions.map(formatStoredSessionRow),
+        selectedIndex: 0,
+      });
+      return true;
+    }
+    if (command === ":retry") {
+      await retryLast();
+      return true;
+    }
+    const skillMessage = skillCommandMessage(command, ui);
+    if (skillMessage !== undefined) {
+      ink.store.addNotice(skillMessage);
+      return true;
+    }
+    const extensionMessage = extensionCommandMessage(command, ui);
+    if (extensionMessage !== undefined) {
+      ink.store.addNotice(extensionMessage);
+      return true;
+    }
+    const backgroundJobMessage = await backgroundJobCommandMessage(command, ui);
+    if (backgroundJobMessage !== undefined) {
+      ink.store.addNotice(backgroundJobMessage);
+      return true;
+    }
+    const taskMessage = taskCommandMessage(command, ui);
+    if (taskMessage !== undefined) {
+      ink.store.addNotice(taskMessage);
+      return true;
+    }
+    const checkpointResult = await checkpointCommandResult(command, ui, current);
+    if (checkpointResult?.handled) {
+      if (checkpointResult.rewound) {
+        ink.store.reset();
+      }
+      if (checkpointResult.message) {
+        ink.store.addNotice(checkpointResult.message);
+      }
+      return true;
+    }
+    const historyMessage = await sessionHistoryCommandMessage(command, current.memory);
+    if (historyMessage !== undefined) {
+      ink.store.setHistoryView(historyViewFromMessage(historyMessage));
+      return true;
+    }
+    const searchMessage = await sessionSearchCommandMessage(command, current.memory);
+    if (searchMessage !== undefined) {
+      ink.store.setHistoryView(historyViewFromMessage(searchMessage));
+      return true;
+    }
+    const exportMessage = await sessionExportCommandMessage(
+      command,
+      current.memory,
+      ui.workingDirectory,
+      current.sessionId,
+    );
+    if (exportMessage !== undefined) {
+      ink.store.addNotice(exportMessage);
+      return true;
+    }
+    const teamCommand = parseTeamCommand(command);
+    if (teamCommand !== undefined) {
+      if (teamCommand.kind === "execute") {
+        if (!teamCommand.request) {
+          ink.store.addNotice("Usage: :team <request> · :team plan <request>");
+          return true;
+        }
+        const prepared = await prepareInteractivePrompt(
+          teamCommand.request,
+          ui.workingDirectory,
+        );
+        const contextNotice = formatContextNotice(prepared);
+        if (contextNotice) {
+          ink.store.addNotice(contextNotice);
+        }
+        await runTeamExecution(prepared.prompt, prepared.context);
+        return true;
+      }
+      if (teamCommand.kind === "plan") {
+        if (!teamCommand.request) {
+          ink.store.addNotice("Usage: :team plan <request>");
+          return true;
+        }
+        if (!ui.runCollaborativePlan) {
+          ink.store.addNotice("Collaborative planning is unavailable in this session.");
+          return true;
+        }
+        const prepared = await prepareInteractivePrompt(
+          teamCommand.request,
+          ui.workingDirectory,
+        );
+        const contextNotice = formatContextNotice(prepared);
+        if (contextNotice) {
+          ink.store.addNotice(contextNotice);
+        }
+        await runInkPrompt(
+          prepared.prompt,
+          prepared.context === undefined
+            ? {}
+            : { attachedContext: prepared.context },
+          "Team plan",
+          async (signal) => {
+            const result = await ui.runCollaborativePlan!(
+              prepared.prompt,
+              current,
+              { signal, attachedContext: prepared.context },
+            );
+            ink.store.addNotice(formatCollaborativePlanResult(result));
+            return current;
+          },
+        );
+        return true;
+      }
+      if (teamCommand.kind === "cancel") {
+        if (activeCollaboration === undefined) {
+          ink.store.addNotice("No team execution is currently running.");
+        } else if (teamCommand.taskId === undefined) {
+          activeCollaboration.cancel("user cancelled the team execution");
+          ink.store.addNotice("Team execution cancellation requested.");
+        } else if (
+          activeCollaboration.cancelTask(
+            teamCommand.taskId,
+            "user cancelled the team task",
+          )
+        ) {
+          ink.store.addNotice(`Cancellation requested for team task ${teamCommand.taskId}.`);
+        } else {
+          ink.store.addNotice(`Team task not found or already finished: ${teamCommand.taskId}`);
+        }
+        return true;
+      }
+      if (teamCommand.kind === "retry") {
+        if (!teamCommand.taskId) {
+          ink.store.addNotice("Usage: :team retry <taskId>");
+          return true;
+        }
+        if (latestCollaboration === undefined) {
+          ink.store.addNotice("No team result is available to retry.");
+          return true;
+        }
+        const task = latestCollaboration.plan.find(
+          (candidate) => candidate.id === teamCommand.taskId,
+        );
+        if (task === undefined) {
+          ink.store.addNotice(`Unknown team task: ${teamCommand.taskId}`);
+          return true;
+        }
+        await runTeamExecution(
+          latestCollaboration.prompt,
+          latestCollaborationContext,
+          [{ ...task, dependsOn: undefined }],
+        );
+        return true;
+      }
+      await applyTeamReview();
+      return true;
+    }
+    const planRequest = planRequestFromCommand(command);
+    if (planRequest !== undefined) {
+      if (!planRequest) {
+        ink.store.addNotice("Usage: :plan <request>");
+        return true;
+      }
+      ui.consumePlanReview?.();
+      const prepared = await prepareInteractivePrompt(planRequest, ui.workingDirectory);
+      const contextNotice = formatContextNotice(prepared);
+      if (contextNotice) {
+        ink.store.addNotice(contextNotice);
+      }
+      const result = await runInkPrompt(
+        prepared.prompt,
+        {
+          mode: "plan",
+          ...(prepared.context === undefined ? {} : { attachedContext: prepared.context }),
+        },
+        "Plan",
+      );
+      if (result && result.state.status !== "error") {
+        pendingPlan = await capturePendingPlan(
+          result,
+          prepared.prompt,
+          prepared.context,
+          ui.consumePlanReview?.(),
+        );
+        if (pendingPlan.review !== undefined) {
+          ink.store.setPlan({
+            prompt: pendingPlan.prompt,
+            review: pendingPlan.review,
+            status: "ready",
+          });
+          ink.store.addNotice("Plan ready. Review the files above, then use :apply.");
+        } else {
+          ink.store.addNotice(
+            "Plan ready. Review the proposed steps in the transcript, then use :apply.",
+          );
+        }
+      }
+      return true;
+    }
+    if (isApplyCommand(command)) {
+      if (!pendingPlan) {
+        ink.store.addNotice("No plan is waiting. Use :plan <request> first.");
+        return true;
+      }
+      const planToApply = pendingPlan;
+      const answer = questionBox.ask
+        ? await questionBox.ask(
+            `Apply the latest plan for "${safeTerminalText(planToApply.prompt)}"? [y/N] `,
+          )
+        : "";
+      if (!answer.trim().toLowerCase().startsWith("y")) {
+        ink.store.addNotice("Plan kept. No files were changed.");
+        return true;
+      }
+
+      const prepared = await prepareInteractivePrompt(
+        planToApply.prompt,
+        ui.workingDirectory,
+      );
+      const contextNotice = formatContextNotice(prepared);
+      if (contextNotice) {
+        ink.store.addNotice(contextNotice);
+      }
+      ink.store.setPlanStatus("applying");
+      const approvedContext = approvedPlanContext(planToApply);
+      const result = await runInkPrompt(
+        prepared.prompt,
+        planToApply.review === undefined
+          ? approvedContext === undefined
+            ? prepared.context === undefined
+              ? {}
+              : { attachedContext: prepared.context }
+            : { attachedContext: approvedContext }
+          : {},
+        "Apply",
+        planToApply.review === undefined
+          ? undefined
+          : (signal) =>
+              loop.applyPlannedChangeSet(current, {
+                prompt: prepared.prompt,
+                review: planToApply.review!,
+                signal,
+              }),
+      );
+      if (result && result.state.status !== "error") {
+        pendingPlan = undefined;
+        ink.store.setPlan(undefined);
+      } else {
+        ink.store.setPlanStatus("ready");
+      }
+      return true;
+    }
+    if (command === ":help") {
+      ink.store.addNotice(
+        DEFAULT_COMMAND_HINTS
+          .map((hint) => `${hint.command}  ${hint.description ?? ""}`.trimEnd())
+          .join("\n"),
+      );
+      return true;
+    }
+    if (command === ":clear") {
+      pendingPlan = undefined;
+      ink.store.reset();
+      return true;
+    }
+    if (command === ":model") {
+      ink.store.addNotice(
+        `Provider: ${ui.provider}\nModel: ${ui.model}\nTransport: ${
+          ui.streaming ? "streaming" : "single response"
+        }`,
+      );
+      return true;
+    }
+    const modeCommand = parseSpeedModeCommand(command);
+    if (modeCommand) {
+      if (modeCommand.kind === "invalid") {
+        ink.store.addNotice("Usage: :mode fast|balanced|deep");
+      } else {
+        if (modeCommand.kind === "set") ui.speedMode.setMode(modeCommand.mode);
+        ink.store.setSpeedMode(ui.speedMode.mode);
+        ink.store.addNotice(`Speed mode: ${ui.speedMode.mode} · ${describeSpeedModeSupport(
+          { id: ui.provider as ModelProvider["id"], model: ui.model },
+          ui.speedMode.mode,
+        )}`);
+      }
+      return true;
+    }
+    const benchmarkPrompt = parseBenchmarkCommand(command);
+    if (benchmarkPrompt !== undefined) {
+      ink.controller.setBusy(true);
+      void ui.benchmark(benchmarkPrompt)
+        .then((result) => {
+          ink.store.addNotice(
+            `[bench] scope=provider-only model=${safeTerminalText(ui.model)} mode=${ui.speedMode.mode} first-token=${formatTimingMs(result.firstTokenMs)} total=${formatTimingMs(result.totalMs)}`,
+          );
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : "benchmark failed";
+          ink.store.addNotice(`[bench] failed: ${safeTerminalText(message)}`);
+        })
+        .finally(() => ink.controller.setBusy(false));
+      return true;
+    }
+    if (command === ":project" || command.startsWith(":project ")) {
+      if (command !== ":project" && command !== ":project refresh") {
+        ink.store.addNotice("Usage: :project [refresh]");
+        return true;
+      }
+      if (command.endsWith(" refresh")) await ui.projectContext.refresh();
+      ink.store.addNotice(safeTerminalText(ui.projectContext.formatProjectStatus()));
+      return true;
+    }
+    if (command === ":instructions" || command.startsWith(":instructions ")) {
+      if (command !== ":instructions" && command !== ":instructions refresh") {
+        ink.store.addNotice("Usage: :instructions [refresh]");
+        return true;
+      }
+      if (command.endsWith(" refresh")) await ui.projectContext.refresh();
+      const statuses = await ui.projectContext.instructionStatuses();
+      const lines = ["Project instruction files (user → root → child scope):"];
+      if (statuses.length === 0) lines.push("  none found");
+      for (const item of statuses) {
+        lines.push(
+          `  [${item.freshness}] ${item.displayPath} · scope=${item.scope}:${item.appliesTo}`,
+        );
+      }
+      if (statuses.some((item) => item.freshness !== "fresh")) {
+        lines.push("Run :instructions refresh to reload changed instructions.");
+      }
+      ink.store.addNotice(safeTerminalText(lines.join("\n")));
+      return true;
+    }
+    if (command === ":trace") {
+      ink.store.addNotice(renderTraceSummary(ui.trace.snapshot()));
+      return true;
+    }
+    if (command === ":cards") {
+      ink.store.addNotice("Tool cards remain visible in the transcript.");
+      return true;
+    }
+    if (command === ":collapse" || command === ":expand") {
+      ink.store.addNotice(
+        command === ":collapse"
+          ? "The latest tool card is collapsed."
+          : "The latest tool card is expanded.",
+      );
+      return true;
+    }
+    if (command === ":cleanup" || command.startsWith(":cleanup ")) {
+      const cleanupArgs = command.slice(":cleanup".length).trim();
+      const parsedCleanup = parseCliEvidenceCleanupOptions(
+        ["--cleanup-evidence", ...(cleanupArgs ? cleanupArgs.split(/\s+/) : [])],
+        true,
+      );
+      if ("error" in parsedCleanup) {
+        ink.store.addNotice(parsedCleanup.error);
+        return true;
+      }
+      if (!current.memory.pruneEvidence) {
+        ink.store.addNotice("Evidence cleanup is unavailable for this memory.");
+        return true;
+      }
+      try {
+        const result = await current.memory.pruneEvidence(parsedCleanup.options);
+        ink.store.addNotice(
+          `Evidence cleanup: removed ${result.validationsRemoved} validations and ${result.changeSetsRemoved} change sets.`,
+        );
+      } catch (error) {
+        ink.store.addNotice(
+          `Evidence cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+      return true;
+    }
+    if (command === ":validate" || command.startsWith(":validate ")) {
+      const changeSetId = command.slice(":validate".length).trim();
+      if (!changeSetId) {
+        ink.store.addNotice("Usage: :validate <changeSetId>");
+        return true;
+      }
+      const activeRerunValidation =
+        ui.createRerunValidation?.(current) ?? rerunValidation;
+      if (!activeRerunValidation) {
+        ink.store.addNotice("Validation rerun is unavailable because the filesystem tool is unavailable.");
+        return true;
+      }
+      const controller = new AbortController();
+      activeAbort = controller;
+      try {
+        const validation = await activeRerunValidation(changeSetId, controller.signal);
+        validations.push(validation);
+        ink.store.addNotice(`Validation ${validation.status}: ${validation.summary}`);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          ink.store.addNotice(
+            `Validation rerun failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      } finally {
+        activeAbort = undefined;
+      }
+      return true;
+    }
+    return false;
+  };
+
+  try {
+    await initialRender;
+    while (!closed) {
+      const item = await ink.controller.nextPrompt();
+      syncQueue();
+      if (item === null || closed) {
+        break;
+      }
+      const prompt = item.value.trim();
+      if (!prompt) {
+        continue;
+      }
+      const command = normalizeInteractiveCommand(prompt);
+      if (command === ":quit" || command === "exit" || command === "quit") {
+        close(0);
+        break;
+      }
+      if (await handleCommand(command, item.queued)) {
+        continue;
+      }
+
+      pendingPlan = undefined;
+      ink.store.setPlan(undefined);
+      const prepared = await prepareInteractivePrompt(prompt, ui.workingDirectory);
+      const contextNotice = formatContextNotice(prepared);
+      if (contextNotice) {
+        ink.store.addNotice(contextNotice);
+      }
+      await runInkPrompt(
+        prepared.prompt,
+        prepared.context === undefined ? {} : { attachedContext: prepared.context },
+      );
+    }
+  } finally {
+    process.removeListener("SIGINT", onSigint);
+    process.stdout.off("resize", normalizeTerminalSize);
+    questionBox.ask = undefined;
+    questionBox.askText = undefined;
+    questionBox.onApprovalRequest = undefined;
+    close();
   }
 }
 
@@ -2768,6 +5677,9 @@ interface UsageCostOptions {
   readonly model: string | (() => string);
   readonly pricing?: PriceTable;
   readonly selection?: () => ModelSelectionResult;
+  readonly trace?: AgentRunTrace;
+  readonly speedMode?: () => ModelSpeedMode;
+  readonly projectContext?: ProjectContextManager;
 }
 
 function createCliValidationAdapter(
@@ -3075,10 +5987,30 @@ async function runPrompt(
   costOptions?: UsageCostOptions,
   reviews: readonly ReviewRecord[] = [],
   validations: readonly ValidationResult[] = [],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  runOptions: PromptRunOptions = {},
+  timingContext?: PromptRunTimingContext,
 ): Promise<AgentContext> {
+  const startedAtMs = performance.now();
+  costOptions?.trace?.prepareNextRun({
+    submittedAtMs: timingContext?.submittedAtMs ?? startedAtMs,
+    queueMs: timingContext === undefined
+      ? 0
+      : Math.max(0, startedAtMs - timingContext.queuedAtMs),
+    speedMode: costOptions.speedMode?.(),
+  });
+  await costOptions?.projectContext?.refresh();
   streaming.begin();
-  const rawResult = await loop.run(context, prompt, signal ? { signal } : undefined).catch((error) => {
+  const rawResult = await loop.run(context, prompt, {
+    ...(signal === undefined ? {} : { signal }),
+    ...(runOptions.mode === undefined ? {} : { mode: runOptions.mode }),
+    toolAccess: runOptions.toolAccess ?? (
+      runOptions.mode === "plan" ? "all" : resolvePromptToolAccess(prompt)
+    ),
+    ...(runOptions.attachedContext === undefined
+      ? {}
+      : { attachedContext: runOptions.attachedContext }),
+  }).catch((error) => {
     // Keep a rich live block from leaking into the next prompt when a request
     // is aborted or fails before the normal result rendering path.
     streaming.finish(
@@ -3168,9 +6100,12 @@ async function runPrompt(
         `[usage] prompt=${result.usage.promptTokens} completion=${result.usage.completionTokens} total=${result.usage.totalTokens}${suffix}`
       );
     }
+    const traceTiming = summarizeRunTimings(costOptions?.trace?.latest());
     console.log(
-      `[timing] first-token=${formatTimingMs(timing.firstTokenMs)} total=${formatTimingMs(
-        timing.totalMs
+      `[timing] queue=${formatTimingMs(traceTiming.queueMs)} first-token=${formatTimingMs(
+        traceTiming.firstTokenMs ?? timing.firstTokenMs
+      )} model=${formatTimingMs(traceTiming.modelMs)} tool=${formatTimingMs(traceTiming.toolMs)} total=${formatTimingMs(
+        traceTiming.totalMs ?? timing.totalMs
       )}`
     );
     return result;
@@ -3235,6 +6170,37 @@ function printMcpCommandResult(result: McpManagementResult): void {
   }
 }
 
+function printMcpConfigCommandResult(result: McpConfigCommandResult): void {
+  if (result.status === "not_found") {
+    console.log(`mcp config: server '${safeTerminalText(result.name)}' was not found.`);
+    return;
+  }
+  const action = result.status === "added" ? "Added" :
+    result.status === "removed" ? "Removed" :
+    result.status === "enabled" ? "Enabled" : "Disabled";
+  console.log(
+    `${action} MCP server '${safeTerminalText(result.name)}' ` +
+      `(${result.serverCount} configured, ${result.argumentCount} args, ` +
+      `${result.environmentVariableCount} environment variables).`,
+  );
+}
+
+function printMcpTemplates(templates: ReturnType<typeof listMcpTemplates>): void {
+  console.log("MCP templates:");
+  for (const template of templates) {
+    console.log(`- ${safeTerminalText(template.name)}: ${safeTerminalText(template.description)}`);
+    console.log(`  command: ${safeTerminalText(template.command)}`);
+    console.log(`  args: ${template.args.map((arg) => safeTerminalText(arg)).join(" ")}`);
+    console.log(
+      `  required environment: ${
+        template.requiredEnvironment.length === 0
+          ? "none"
+          : template.requiredEnvironment.map((name) => safeTerminalText(name)).join(", ")
+      }`,
+    );
+  }
+}
+
 function mcpCommandExitCode(result: McpManagementResult): number {
   if (result.ok) return EXIT_CODES.success;
   if (result.reason === "invalid_config") return EXIT_CODES.config_error;
@@ -3292,6 +6258,45 @@ function providerCommandExitCode(result: { readonly ok: boolean; readonly comman
     return EXIT_CODES.runtime_unavailable;
   }
   return EXIT_CODES.success;
+}
+
+function renderTraceSummary(snapshot: AgentTraceSnapshot): string {
+  const latest = snapshot.runs.at(-1);
+  if (!latest) {
+    return "[trace] no completed runs";
+  }
+  const modelSpans = latest.spans.filter((span) => span.kind === "model").length;
+  const toolSpans = latest.spans.filter((span) => span.kind === "tool").length;
+  const usage = latest.usage ?? {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+  };
+  const duration = latest.durationMs === undefined ? "n/a" : formatTimingMs(latest.durationMs);
+  const timings = summarizeRunTimings(latest);
+  const diagnosis = diagnoseSlowStage(latest);
+  const lines = [
+    `[trace] run=${safeTerminalText(latest.runId)} status=${safeTerminalText(latest.status)} duration=${duration} turns=${latest.turns ?? 0} mode=${latest.speedMode ?? "unknown"}`,
+    `spans=model:${modelSpans} tool:${toolSpans} tokens=prompt:${usage.promptTokens} completion:${usage.completionTokens} total:${usage.totalTokens}`,
+    `[trace] timing queue=${formatTimingMs(timings.queueMs)} first-token=${formatTimingMs(timings.firstTokenMs)} model=${formatTimingMs(timings.modelMs)} tool=${formatTimingMs(timings.toolMs)} other=${formatTimingMs(timings.unaccountedMs)} total=${formatTimingMs(timings.totalMs)}`,
+  ];
+  if (timings.providerLoadMs !== undefined) {
+    lines.push(
+      `[trace] provider load=${formatTimingMs(timings.providerLoadMs)} prompt-eval=${formatTimingMs(timings.providerPromptEvalMs)} generation=${formatTimingMs(timings.providerGenerationMs)} server-total=${formatTimingMs(timings.providerServerMs)} app-overhead=${formatTimingMs(timings.providerOverheadMs)}`,
+    );
+  }
+  if (diagnosis) {
+    const span = diagnosis.longestSpan === undefined
+      ? ""
+      : `; longest ${diagnosis.longestSpan.kind}${diagnosis.longestSpan.name ? `:${safeTerminalText(diagnosis.longestSpan.name)}` : ""}${diagnosis.longestSpan.turn === undefined ? "" : ` turn=${diagnosis.longestSpan.turn}`}=${formatTimingMs(diagnosis.longestSpan.durationMs)}`;
+    lines.push(`[trace] ${formatSlowStageDiagnosis(diagnosis)}${span}`);
+  }
+  if (latest.droppedSpans !== undefined || snapshot.droppedRuns > 0) {
+    lines.push(
+      `retained=runs:${snapshot.runs.length} spans:${latest.spans.length} droppedRuns:${snapshot.droppedRuns} droppedSpans:${latest.droppedSpans ?? 0}`,
+    );
+  }
+  return lines.join("\n");
 }
 
 function safeTerminalText(value: unknown): string {
@@ -3784,6 +6789,14 @@ function registerServerTools(
       name: `${prefix}:${tool.name}`,
       description: tool.description,
       parameters: tool.parameters,
+      metadata: {
+        // MCP server actions are arbitrary remote behavior. Never downgrade
+        // their risk based on annotations supplied by the server itself.
+        risk: "dangerous",
+        confirmation: "always",
+        resultFormat: "text",
+        supportsProgress: true,
+      },
       async execute(input: unknown, context) {
         return tool.execute(input, {
           signal: context?.signal,
@@ -3808,6 +6821,12 @@ function registerServerTools(
       type: "object",
       properties: { uri: { type: "string" } },
       required: ["uri"],
+    },
+    metadata: {
+      risk: "read-only",
+      confirmation: "never",
+      resultFormat: "json",
+      supportsProgress: false,
     },
     async execute(input: unknown) {
       const uri = readString(input, "uri");
@@ -3836,6 +6855,12 @@ function registerServerTools(
         arguments: { type: "object" },
       },
       required: ["name"],
+    },
+    metadata: {
+      risk: "read-only",
+      confirmation: "never",
+      resultFormat: "json",
+      supportsProgress: false,
     },
     async execute(input: unknown) {
       const name = readString(input, "name");
@@ -3983,10 +7008,14 @@ function resolveAgentLoopBudget(config: CliConfig, args: readonly string[]): Age
 function createProvider(
   config: CliConfig = {},
   selection: ModelSelectionResult,
-  onSelectionChange?: (selection: ModelSelectionResult) => void
+  onSelectionChange?: (selection: ModelSelectionResult) => void,
+  speedMode = new ModelSpeedModeController(),
 ): ModelProvider {
   const createConcreteProvider = (providerSelection: ModelSelection): ModelProvider =>
-    createConcreteModelProvider(config, providerSelection);
+    new SpeedModeModelProvider(
+      createConcreteModelProvider(config, providerSelection),
+      speedMode,
+    );
 
   if (!selection.metadata.fallback.enabled) {
     return createConcreteProvider(selection.selection);
@@ -4118,12 +7147,24 @@ function isMainModule(): boolean {
   }
 }
 
-if (isMainModule()) {
-  main(process.argv).catch((error: unknown) => {
+export async function runCli(
+  argv: string[],
+  options: CliMainOptions = {}
+): Promise<void> {
+  try {
+    await main(argv, options);
+  } catch (error: unknown) {
     emitCliError(
       error instanceof Error ? error.message : String(error),
-      shouldEmitJsonErrorDocument(process.argv.slice(2))
+      shouldEmitJsonErrorDocument(argv.slice(2))
     );
     process.exitCode = 1;
-  });
+  }
+}
+
+if (
+  process.env.DEV_AGENT_NO_AUTO_MAIN !== "1" &&
+  isMainModule()
+) {
+  void runCli(process.argv);
 }

@@ -144,6 +144,12 @@ export class FilesystemTool implements Tool {
   readonly name = "filesystem" as const;
   readonly description =
     "Read (optionally a line range); set lineNumbers=true to prefix content with exact source line numbers. Also preview and review writes, atomically apply or rollback a change set, write, edit by replacing a unique snippet, patch several snippets atomically, list, stat, or create directories on the local filesystem.";
+  readonly metadata = {
+    risk: "mutating" as const,
+    confirmation: "on-risk" as const,
+    resultFormat: "json" as const,
+    supportsProgress: false,
+  };
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {

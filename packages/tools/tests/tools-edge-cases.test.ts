@@ -33,6 +33,25 @@ function recordingExecutor(result = { stdout: "", stderr: "", exitCode: 0 }) {
   };
 }
 
+function recordingSandboxExecutor(result = { stdout: "", stderr: "", exitCode: 0 }) {
+  const executor = recordingExecutor(result);
+  const sandboxedCalls = [];
+  return {
+    ...executor,
+    sandboxedCalls,
+    async runSandboxed(command, args, options) {
+      sandboxedCalls.push({ command, args, options });
+      return result;
+    },
+  };
+}
+
+const sandboxProfile = {
+  name: "test-workspace",
+  network: "disabled",
+  writablePaths: ["/tmp/workspace"],
+};
+
 // ---------------------------------------------------------------------------
 // FilesystemTool
 // ---------------------------------------------------------------------------
@@ -184,6 +203,38 @@ test("shell tool forwards the abort signal to the executor", async () => {
   assert.equal(executor.calls[0].options.signal, controller.signal);
 });
 
+test("shell tool sends a sandbox profile to sandbox-capable executors", async () => {
+  const executor = recordingSandboxExecutor();
+  const tool: any = new ShellTool(executor);
+
+  await tool.execute(
+    { command: "echo", args: ["hi"] },
+    { sessionId: "s", workingDirectory: "/tmp/workspace", sandbox: sandboxProfile }
+  );
+
+  assert.equal(executor.calls.length, 0);
+  assert.deepEqual(executor.sandboxedCalls, [
+    {
+      command: "echo",
+      args: ["hi"],
+      options: { cwd: "/tmp/workspace", profile: sandboxProfile },
+    },
+  ]);
+});
+
+test("shell tool fails closed when a sandbox profile has no enforcing executor", async () => {
+  const tool: any = new ShellTool(recordingExecutor());
+
+  await assert.rejects(
+    () =>
+      tool.execute(
+        { command: "echo", args: ["hi"] },
+        { sessionId: "s", workingDirectory: "/tmp/workspace", sandbox: sandboxProfile }
+      ),
+    /sandbox execution requested but the selected executor does not support sandbox profiles/
+  );
+});
+
 test("shell tool treats missing args as an empty list", async () => {
   const executor = recordingExecutor();
   const tool: any = new ShellTool(executor);
@@ -228,6 +279,25 @@ test("git tool forwards args to git in the working directory", async () => {
   ]);
 });
 
+test("git tool sends a sandbox profile to sandbox-capable executors", async () => {
+  const executor = recordingSandboxExecutor();
+  const tool: any = new GitTool(executor);
+
+  await tool.execute(
+    { args: ["status", "--short"] },
+    { sessionId: "s", workingDirectory: "/tmp/workspace", sandbox: sandboxProfile }
+  );
+
+  assert.equal(executor.calls.length, 0);
+  assert.deepEqual(executor.sandboxedCalls, [
+    {
+      command: "git",
+      args: ["status", "--short"],
+      options: { cwd: "/tmp/workspace", profile: sandboxProfile },
+    },
+  ]);
+});
+
 test("git tool requires at least one argument", async () => {
   const tool: any = new GitTool(recordingExecutor());
   await assert.rejects(() => tool.execute({ args: [] }), /git tool requires args/);
@@ -253,6 +323,25 @@ test("search tool defaults the path to the working directory", async () => {
       command: "rg",
       args: ["--line-number", "--color", "never", "--", "needle", "."],
       options: { cwd: "/repo" },
+    },
+  ]);
+});
+
+test("search tool sends a sandbox profile to sandbox-capable executors", async () => {
+  const executor = recordingSandboxExecutor();
+  const tool: any = new SearchTool(executor);
+
+  await tool.execute(
+    { query: "needle" },
+    { sessionId: "s", workingDirectory: "/tmp/workspace", sandbox: sandboxProfile }
+  );
+
+  assert.equal(executor.calls.length, 0);
+  assert.deepEqual(executor.sandboxedCalls, [
+    {
+      command: "rg",
+      args: ["--line-number", "--color", "never", "--", "needle", "."],
+      options: { cwd: "/tmp/workspace", profile: sandboxProfile },
     },
   ]);
 });

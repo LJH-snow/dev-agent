@@ -2,7 +2,7 @@
 
 Unified model provider interface for OpenAI, Anthropic, Gemini, and Ollama.
 
-Phase 1 provides:
+Current package capabilities include:
 
 - Shared `ChatMessage`, `ToolCall`, `ToolSchema`, and `ChatCompletion` types
 - `ModelProvider` contract with optional tool-calling
@@ -62,3 +62,23 @@ immediately. Retry behaviour is configurable per provider via
 
 Streaming calls only retry the initial request. Once a token reached the
 caller, the stream is never restarted, so output is never duplicated.
+
+## Model routing
+
+`ModelRouter` composes one primary provider with an explicit, lazily resolved
+fallback sequence. It applies the same bounded routing contract to both
+`chat()` and `streamChat()`:
+
+- a failed non-streaming call can move to the next fallback;
+- a stream can move to the next fallback only before answer or reasoning output
+  reaches the caller;
+- once visible stream output has been delivered, the original error is
+  re-thrown so a partial answer is never replayed or silently continued by a
+  different model;
+- aborts fail closed and never trigger a fallback;
+- fallback callbacks receive provider/model metadata and the classified failure
+  reason, but never prompt or model-output content.
+
+The CLI keeps profile, alias, and provider construction at its application
+edge, then supplies the resolved providers to `ModelRouter`. This keeps model
+selection policy separate from the shared provider execution contract.

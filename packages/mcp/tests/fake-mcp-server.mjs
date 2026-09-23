@@ -6,6 +6,7 @@ if (startCountFile) {
   appendFileSync(startCountFile, "started\n", "utf8");
 }
 const rl = createInterface({ input: process.stdin });
+let capabilityVersion = 1;
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);
@@ -63,14 +64,23 @@ rl.on("line", (line) => {
       jsonrpc: "2.0",
       id: request.id,
       result: {
-        resources: [
-          {
-            uri: "file:///tmp/hello.md",
-            name: "hello",
-            description: "Sample markdown resource",
-            mimeType: "text/markdown",
-          },
-        ],
+        resources: capabilityVersion === 1
+          ? [
+              {
+                uri: "file:///tmp/hello.md",
+                name: "hello",
+                description: "Sample markdown resource",
+                mimeType: "text/markdown",
+              },
+            ]
+          : [
+              {
+                uri: "file:///tmp/goodbye.md",
+                name: "goodbye",
+                description: "Second version markdown resource",
+                mimeType: "text/markdown",
+              },
+            ],
       },
     });
     return;
@@ -121,13 +131,21 @@ rl.on("line", (line) => {
       jsonrpc: "2.0",
       id: request.id,
       result: {
-        prompts: [
-          {
-            name: "summary",
-            description: "Summarize a topic",
-            arguments: [{ name: "topic", required: true }],
-          },
-        ],
+        prompts: capabilityVersion === 1
+          ? [
+              {
+                name: "summary",
+                description: "Summarize a topic",
+                arguments: [{ name: "topic", required: true }],
+              },
+            ]
+          : [
+              {
+                name: "rewrite",
+                description: "Rewrite a sentence",
+                arguments: [{ name: "text", required: true }],
+              },
+            ],
       },
     });
     return;
@@ -138,13 +156,15 @@ rl.on("line", (line) => {
       jsonrpc: "2.0",
       id: request.id,
       result: {
-        description: "Summary prompt",
+        description: capabilityVersion === 1 ? "Summary prompt" : "Rewrite prompt",
         messages: [
           {
             role: "user",
             content: {
               type: "text",
-              text: `Summarize: ${request.params?.arguments?.topic ?? ""}`,
+              text: capabilityVersion === 1
+                ? `Summarize: ${request.params?.arguments?.topic ?? ""}`
+                : `Rewrite: ${request.params?.arguments?.text ?? ""}`,
             },
           },
         ],
@@ -159,21 +179,44 @@ rl.on("line", (line) => {
       id: request.id,
       result: {
         tools: [
-          {
-            name: "hello",
-            description: "Say hello",
-            inputSchema: { type: "object" },
-          },
-          {
-            name: "env",
-            description: "Report select environment variables",
-            inputSchema: { type: "object" },
-          },
-          {
-            name: "notify",
-            description: "Trigger a tools/list_changed notification",
-            inputSchema: { type: "object" },
-          },
+          ...(capabilityVersion === 1
+            ? [
+                {
+                  name: "hello",
+                  description: "Say hello",
+                  inputSchema: { type: "object" },
+                  // Deliberately untrusted: application-owned MCP wrappers must
+                  // not treat a server hint as an authorization decision.
+                  annotations: { readOnlyHint: true },
+                },
+                {
+                  name: "env",
+                  description: "Report select environment variables",
+                  inputSchema: { type: "object" },
+                },
+                {
+                  name: "notify",
+                  description: "Switch to the second capability version",
+                  inputSchema: { type: "object" },
+                },
+              ]
+            : [
+                {
+                  name: "goodbye",
+                  description: "Say goodbye",
+                  inputSchema: { type: "object" },
+                },
+                {
+                  name: "status",
+                  description: "Report the second capability version",
+                  inputSchema: { type: "object" },
+                },
+                {
+                  name: "revision",
+                  description: "Describe the active capability revision",
+                  inputSchema: { type: "object" },
+                },
+              ]),
           ...(process.env.MCP_INCLUDE_FAILURE_TOOLS === "1"
             ? [
                 {
@@ -231,6 +274,7 @@ rl.on("line", (line) => {
         },
       });
     } else if (request.params?.name === "notify") {
+      capabilityVersion = 2;
       send({
         jsonrpc: "2.0",
         id: request.id,
@@ -240,6 +284,16 @@ rl.on("line", (line) => {
         jsonrpc: "2.0",
         method: "notifications/tools/list_changed",
       });
+      if (process.env.DEV_AGENT_SESSION_ID) {
+        send({
+          jsonrpc: "2.0",
+          method: "notifications/resources/list_changed",
+        });
+        send({
+          jsonrpc: "2.0",
+          method: "notifications/prompts/list_changed",
+        });
+      }
     } else if (request.params?.name === "failing") {
       const mode = request.params.arguments?.mode;
       const content = mode === "multi"

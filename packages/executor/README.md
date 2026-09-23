@@ -2,7 +2,7 @@
 
 Unified executor abstraction for dev-agent.
 
-Implemented in phase 1:
+Current package capabilities include:
 
 - `Executor`, `ExecutorResult`, and `ExecutorRunOptions` types for a stable
   command execution contract.
@@ -12,6 +12,8 @@ Implemented in phase 1:
   (default 1 MiB) and reports `bytesTruncated` when a command produced more.
 - `SandboxProfile` and `SandboxExecutor` types as the contract for the Rust-backed
   sandbox runtime; the macOS backend is active via `sandbox-exec`.
+- `createWorkspaceSandboxProfile()` for the two fixed built-in tool intents:
+  read-only search and workspace-write command execution.
 
 Typical usage:
 
@@ -64,8 +66,8 @@ forever: `requestTimeoutMs` (default 60000, `0` to disable) is the client-side
 backstop. When the caller also passes `timeoutMs`, the backstop is
 `timeoutMs + 5s`, so the runtime's own timeout normally answers first. On
 backstop the pending entry is dropped — freeing its concurrency slot — and the
-runtime process is replaced, because a request stuck at the head of the
-strictly serial stdio queue would otherwise block everything behind it.
+runtime process is replaced, so a stalled or unresponsive runtime cannot retain the client process
+and its pending-request state indefinitely.
 Both executors terminate gracefully: the command gets SIGTERM first (sent to
 its process group on Unix, so wrappers and grandchildren are included) and
 SIGKILL only if it is still alive after two seconds. Timeouts follow the same
@@ -131,6 +133,21 @@ const local = createExecutor();
 // Use Rust executor with a specific binary path
 const rust = createExecutor({ rustBinaryPath: "./runtime/rust/target/debug/dev-agent-executor" });
 ```
+
+### Built-in tool profiles and lifecycle
+
+Application edges use `createWorkspaceSandboxProfile(workingDirectory, intent)`
+instead of accepting arbitrary policy data from model output. The `read-only`
+profile disables network access and grants no writable paths; the
+`workspace-write` profile enables network access and grants exactly the current
+working directory. `isSandboxExecutor()` is the capability check used before a
+profile is attached.
+
+The local executor remains the default and keeps its existing behavior. A Rust
+executor receives `RunSandboxedRequest` only when a selected application edge
+provides a profile. `Executor.dispose()` is optional so Rust-backed sessions can
+close their child process deterministically without requiring LocalExecutor
+callers to manage one.
 
 The Rust crate (`dev-agent-runtime`) provides:
 

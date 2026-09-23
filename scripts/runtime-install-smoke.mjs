@@ -101,7 +101,10 @@ async function main() {
       )
     );
     assert.equal(typeof installedManifest.dependencies?.typescript, "string");
-    assert.deepEqual(Object.keys(installedManifest.dependencies ?? {}), ["typescript"]);
+    assert.deepEqual(
+      Object.keys(installedManifest.dependencies ?? {}),
+      ["ink", "react", "signal-exit", "typescript"]
+    );
 
     const runtimeArgs = [
       "--runtime-version",
