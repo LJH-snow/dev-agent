@@ -243,6 +243,10 @@ schema、CLI 输出或 Desktop session 语义。
 
 ## v65：Desktop 产品化与执行状态 UX
 
+> 范围说明（2026-09-23）：本节的 v65 指仍 deferred 的 executor capability / execution-state
+> UX 候选；它与已完成的 [day-plan-v65.md](day-plan-v65.md) Scheme A Desktop/CLI 工作台体验打磨
+> 是不同范围。完成后者不代表本节候选已实现或其触发条件已满足。
+
 ### 目标
 
 在基础 sandbox evidence 稳定后，改善 Desktop 对执行能力、审批状态、验证结果和会话状态的

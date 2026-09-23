@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Dirent } from "node:fs";
 import {
   chmod,
   lstat,
@@ -6,7 +7,6 @@ import {
   open,
   opendir,
   readFile,
-  readdir,
   rename,
   rmdir,
   stat,
@@ -28,12 +28,22 @@ import type { Tool, ToolExecutionContext } from "./index.js";
 import { canonicalWorkingDirectory, resolveWorkspacePath } from "./workspace-path.js";
 
 const MAX_READ_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
+const MAX_WRITE_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
 
 async function assertReadFileSize(path: string, maxBytes: number): Promise<void> {
   const fileStat = await lstat(path);
   if (fileStat.size > maxBytes) {
     throw new Error(
       `filesystem file exceeds the ${maxBytes / (1024 * 1024)} MiB read limit`
+    );
+  }
+}
+
+function assertWriteFileSize(content: string, maxBytes: number): void {
+  const size = Buffer.byteLength(content, "utf8");
+  if (size > maxBytes) {
+    throw new Error(
+      `filesystem file exceeds the ${maxBytes / (1024 * 1024)} MiB write limit`
     );
   }
 }
@@ -134,6 +144,12 @@ export class FilesystemTool implements Tool {
   readonly name = "filesystem" as const;
   readonly description =
     "Read (optionally a line range); set lineNumbers=true to prefix content with exact source line numbers. Also preview and review writes, atomically apply or rollback a change set, write, edit by replacing a unique snippet, patch several snippets atomically, list, stat, or create directories on the local filesystem.";
+  readonly metadata = {
+    risk: "mutating" as const,
+    confirmation: "on-risk" as const,
+    resultFormat: "json" as const,
+    supportsProgress: false,
+  };
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
@@ -219,7 +235,9 @@ export class FilesystemTool implements Tool {
         );
       case "write": {
         const target = await targetPath(resolveRequiredPath(params));
-        await writeFile(target, params.content ?? "", "utf8");
+        const content = params.content ?? "";
+        assertWriteFileSize(content, MAX_WRITE_FILE_BYTES);
+        await writeFile(target, content, "utf8");
         return { ok: true, path: target };
       }
       case "edit":
@@ -762,6 +780,7 @@ async function prepareMutation(
       afterText = calculatePatch(beforeBytes!.toString("utf8"), change.hunks!, target);
       break;
   }
+  assertWriteFileSize(afterText, MAX_WRITE_FILE_BYTES);
   const afterBytes = Buffer.from(afterText, "utf8");
   const review = createChangeSetFileReview({
     path: target,
@@ -944,17 +963,48 @@ async function preflightRollback(record: StoredChangeSet): Promise<void> {
         `filesystem change set ${record.review.changeSetId} postimage conflict at ${directory}`
       );
     }
-    const entries = await readdir(directory);
-    const unexpectedEntries = entries.filter((entry) => {
-      const entryPath = resolve(directory, entry);
-      return !createdDirectorySet.has(entryPath) && !rollbackFileSet.has(entryPath);
-    });
-    if (unexpectedEntries.length > 0) {
-      throw new Error(
-        `filesystem change set ${record.review.changeSetId} cannot rollback non-empty directory ${directory}`
+    const directoryHandle = await opendir(directory);
+    try {
+      const unexpectedPath = await findUnexpectedRollbackEntry(
+        directory,
+        directoryHandle,
+        createdDirectorySet,
+        rollbackFileSet
       );
+      if (unexpectedPath !== undefined) {
+        throw new Error(
+          `filesystem change set ${record.review.changeSetId} cannot rollback non-empty directory ${directory}`
+        );
+      }
+    } finally {
+      try {
+        await directoryHandle.close();
+      } catch (error) {
+        if (
+          !(error instanceof Error) ||
+          !("code" in error) ||
+          error.code !== "ERR_DIR_CLOSED"
+        ) {
+          throw error;
+        }
+      }
     }
   }
+}
+
+export async function findUnexpectedRollbackEntry(
+  directory: string,
+  entries: AsyncIterable<Dirent>,
+  createdDirectorySet: ReadonlySet<string>,
+  rollbackFileSet: ReadonlySet<string>
+): Promise<string | undefined> {
+  for await (const entry of entries) {
+    const entryPath = resolve(directory, entry.name);
+    if (!createdDirectorySet.has(entryPath) && !rollbackFileSet.has(entryPath)) {
+      return entryPath;
+    }
+  }
+  return undefined;
 }
 
 function assertAppliedChangeSetRecord(record: AppliedChangeSetRecord): void {
@@ -1344,6 +1394,7 @@ async function editFile(
   await assertReadFileSize(path, MAX_READ_FILE_BYTES);
   const source = await readFile(path, "utf8");
   const updated = calculateEdit(source, oldText, newText, path);
+  assertWriteFileSize(updated, MAX_WRITE_FILE_BYTES);
   await writeFile(path, updated, "utf8");
   return { ok: true, path, replacements: 1 };
 }
@@ -1385,6 +1436,7 @@ async function patchFile(
   await assertReadFileSize(path, MAX_READ_FILE_BYTES);
   const source = await readFile(path, "utf8");
   const working = calculatePatch(source, hunks, path);
+  assertWriteFileSize(working, MAX_WRITE_FILE_BYTES);
   await writeFile(path, working, "utf8");
   return { ok: true, path, hunks: hunks.length };
 }

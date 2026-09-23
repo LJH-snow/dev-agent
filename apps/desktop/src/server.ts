@@ -1,4 +1,5 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+import { isIP } from "node:net";
 import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { opendir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
@@ -22,9 +23,11 @@ import {
   type EvidenceSummary,
   type MemoryEntry,
   type SessionMetadata,
+  type AgentTraceSnapshot,
   type ValidationRecord,
   type ValidationResult,
   type ValidationStatus,
+  type ChangeSetReview,
 } from "@dev-agent/agent-core";
 import type { ChatUsage } from "@dev-agent/model";
 import type { ExecutorMode } from "@dev-agent/executor";
@@ -37,6 +40,11 @@ import {
   type StreamEvent,
 } from "./chat-session.js";
 import {
+  DesktopRunRegistry,
+  type DesktopRunState,
+  type DesktopRunSummary,
+} from "./run-state.js";
+import {
   createDesktopStatus,
   withDesktopManagedRuntime,
   withDesktopStatusSession,
@@ -44,6 +52,11 @@ import {
 } from "./status.js";
 import { resolveDesktopManagedRuntimeStatus } from "./managed-runtime.js";
 import type { DesktopManagedRuntimeStatus } from "./managed-runtime.js";
+import {
+  DesktopTaskWorkspaceManager,
+  TaskWorkspaceError,
+} from "./task-workspaces.js";
+import { DesktopTaskTerminalManager, TaskTerminalError } from "./task-terminal.js";
 
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
@@ -60,6 +73,18 @@ export interface DesktopChatSession {
     options?: {
       readonly signal?: AbortSignal;
       readonly requestApproval?: ApprovalRequester;
+      readonly runId?: string;
+      readonly mode?: "normal" | "plan";
+    }
+  ): Promise<void>;
+  /** Applies the exact reviewed change set produced by a plan-mode run. */
+  applyPlannedChangeSet?(
+    review: ChangeSetReview,
+    prompt: string,
+    emit: (event: StreamEvent) => void,
+    options?: {
+      readonly signal?: AbortSignal;
+      readonly runId?: string;
     }
   ): Promise<void>;
   /** Applies a guarded rollback for a change set prepared by this session. */
@@ -68,11 +93,19 @@ export interface DesktopChatSession {
   pruneEvidence?(options?: EvidencePruneOptions): Promise<EvidencePruneResult>;
   /** Returns non-executable evidence counts and the effective retention limits. */
   evidenceSummary?(): Promise<EvidenceSummary>;
+  /** Returns the bounded, metadata-only lifecycle trace for this session. */
+  getTraceSnapshot?(): AgentTraceSnapshot;
   /** Reruns trusted validation for an applied change set without changing files. */
   rerunValidation?(
     changeSetId: string,
     options?: { readonly signal?: AbortSignal }
   ): Promise<ValidationResult>;
+  /** Creates a bounded metadata-only conversation checkpoint. */
+  createCheckpoint?(): Promise<unknown>;
+  /** Lists bounded metadata-only conversation checkpoints. */
+  listCheckpoints?(): Promise<readonly unknown[]>;
+  /** Rewinds validated conversation history only. */
+  rewindToCheckpoint?(checkpointId: string): Promise<unknown>;
   close?(): Promise<void>;
 }
 
@@ -80,8 +113,14 @@ export interface DesktopServerOptions {
   readonly host?: string;
   readonly port?: number;
   readonly session?: DesktopChatSession;
-  /** Builds a session that is not in memory yet. */
-  readonly createSession?: (sessionId: string) => DesktopChatSession;
+  /** Repository/workspace root used for task-scoped Git worktrees. */
+  readonly workspaceRoot?: string;
+  /** Optional managed worktree directory, primarily for isolated tests. */
+  readonly worktreeDirectory?: string;
+  /** Optional metadata file for managed worktrees, primarily for isolated tests. */
+  readonly workspaceStateFile?: string;
+  /** Builds a session that is not in memory yet, optionally rooted in a task worktree. */
+  readonly createSession?: (sessionId: string, workingDirectory?: string) => DesktopChatSession;
   /** Injects the managed runtime status for tests and custom hosts. */
   readonly managedRuntime?: () => Promise<DesktopManagedRuntimeStatus | undefined>;
 }
@@ -95,6 +134,7 @@ export interface DesktopSessionSummary {
   readonly evidenceSummary?: EvidenceSummary;
   /** Present when the running session could price `usage`. */
   readonly cost?: number;
+  readonly run?: DesktopRunSummary;
 }
 
 export interface DesktopHistoryMessage {
@@ -123,6 +163,13 @@ type EvidenceFilterOptions = {
   readonly includeAuditLimits?: boolean;
   readonly rejectAuditLimits?: boolean;
 };
+type PendingPlanStatus = "ready" | "applying";
+type PendingPlan = {
+  readonly sessionId: string;
+  readonly prompt: string;
+  readonly review: ChangeSetReview;
+  status: PendingPlanStatus;
+};
 
 const validationStatuses: readonly ValidationStatus[] = [
   "passed",
@@ -135,13 +182,56 @@ const activeSessionRequestMessage =
   "a chat, validation, cleanup, or rollback request is already running in this session";
 const maxSessionIdLength = 96;
 const maxChangeSetIdLength = 96;
+const maxCheckpointIdLength = 128;
 const maxApprovalIdLength = 96;
 const maxSessionListEntries = 256;
 const maxHistoryResponseBytes = 1024 * 1024;
+const maxTraceResponseBytes = 256 * 1024;
+const maxRunResponseBytes = 512 * 1024;
+const maxCheckpointResponseBytes = 512 * 1024;
 const maxExportResponseBytes = 1024 * 1024;
+const maxPlanReviewBytes = 256 * 1024;
+const maxPlanReviewFiles = 256;
+const maxWorkspaceResponseBytes = 512 * 1024;
 
 const maxJsonBodyBytes = 1024 * 1024;
 const maxStaticFileBytes = 1024 * 1024;
+
+function isLoopbackAddress(address: string | undefined): boolean {
+  if (!address) return false;
+  const normalized = address.toLowerCase().split("%", 1)[0] ?? "";
+  const mappedIpv4 = normalized.match(/^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/)?.[1];
+  const candidate = mappedIpv4 ?? normalized;
+  if (isIP(candidate) === 4) return Number(candidate.split(".")[0]) === 127;
+  return isIP(candidate) === 6 && candidate === "::1";
+}
+
+function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const url = new URL(origin);
+    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return false;
+    if (url.pathname !== "/" || url.search || url.hash) return false;
+    const hostname = url.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    if (hostname === "localhost") return true;
+    if (isIP(hostname) === 4) return Number(hostname.split(".")[0]) === 127;
+    return isIP(hostname) === 6 && hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function isLoopbackTerminalRequest(req: IncomingMessage): boolean {
+  if (!isLoopbackAddress(req.socket.remoteAddress)) return false;
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  if (typeof origin !== "string" || !isLoopbackOrigin(origin)) return false;
+  try {
+    const originHost = new URL(origin).host.toLowerCase();
+    return typeof req.headers.host === "string" && originHost === req.headers.host.toLowerCase();
+  } catch {
+    return false;
+  }
+}
 
 const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public");
 
@@ -157,14 +247,23 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const defaultSession: DesktopChatSession = options.session ?? new ChatSession();
   const defaultSessionId = defaultSession.id ?? "desktop-default";
   const createSession =
-    options.createSession ?? ((sessionId: string) => new ChatSession({ sessionId }));
+    options.createSession ?? ((sessionId: string, workingDirectory?: string) =>
+      new ChatSession({ sessionId, ...(workingDirectory ? { workingDirectory } : {}) }));
   const sessions = new Map<string, DesktopChatSession>([[defaultSessionId, defaultSession]]);
   const maxSessionRegistryEntries = 256;
   const inFlight = new Set<string>();
+  const runs = new DesktopRunRegistry();
   // One controller per running session, so a cancel request can abort it the
   // same way a dropped connection does.
   const runControllers = new Map<string, AbortController>();
   const approvals = new Map<string, (decision: ApprovalDecision) => void>();
+  const pendingPlans = new Map<string, PendingPlan>();
+  const taskWorkspaces = new DesktopTaskWorkspaceManager({
+    ...(options.workspaceRoot === undefined ? {} : { workspaceRoot: options.workspaceRoot }),
+    ...(options.worktreeDirectory === undefined ? {} : { worktreeDirectory: options.worktreeDirectory }),
+    ...(options.workspaceStateFile === undefined ? {} : { stateFile: options.workspaceStateFile }),
+  });
+  const terminalManager = new DesktopTaskTerminalManager();
   const sessionAllowlist = new Map<string, Set<string>>();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
@@ -188,13 +287,19 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     if (sessions.size >= maxSessionRegistryEntries) {
       return undefined;
     }
-    const created = createSession(id);
+    const created = createSession(id, taskWorkspaces.workingDirectoryForSession(id));
     sessions.set(id, created);
     return { id, session: created };
   };
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${host}:${port}`);
+
+    if ((url.pathname === "/api/terminal" || url.pathname.startsWith("/api/terminal/")) && !isLoopbackTerminalRequest(req)) {
+      res.writeHead(403, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(JSON.stringify({ error: "terminal endpoints are available only to trusted loopback requests" }));
+      return;
+    }
 
     try {
       if (req.method === "GET" && url.pathname === "/") {
@@ -222,7 +327,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "sessionId is too long" }));
           return;
         }
-        const session = sessions.get(sessionId);
+        let session = sessions.get(sessionId);
+        const taskWorkingDirectory = taskWorkspaces.workingDirectoryForSession(sessionId);
+        if (!session && (existsSync(memoryPathFor(sessionId)) || taskWorkingDirectory !== undefined)) {
+          // The session picker also lists persisted sessions that have not been
+          // materialized in this process yet. Task workspaces are also
+          // persisted session roots even before their first chat is saved.
+          session = sessionFor(sessionId)?.session;
+        }
         if (!session) {
           res.writeHead(404, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "unknown session" }));
@@ -253,12 +365,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       if (req.method === "GET" && url.pathname === "/api/sessions") {
         const summaries = await listSessions([...sessions.keys()]);
         const withCost = summaries.map((summary) => {
+          const run = runs.summary(summary.sessionId);
+          const withRun = { ...summary, run };
           if (!summary.usage) {
-            return summary;
+            return withRun;
           }
           const session = sessions.get(summary.sessionId) ?? defaultSession;
           const cost = session.estimateCost?.(summary.usage);
-          return cost === undefined ? summary : { ...summary, cost };
+          return cost === undefined ? withRun : { ...withRun, cost };
         });
         res.writeHead(200, { "content-type": "application/json" });
         res.end(
@@ -267,6 +381,322 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
             sessions: withCost,
           })
         );
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/terminal") {
+        const sessionId = normalizeSessionIdForRequest(url.searchParams.get("sessionId") ?? undefined);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        const session = sessionFor(sessionId);
+        if (!session) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "session limit reached", code: "terminal-session-limit" }));
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ sessionId, terminals: terminalManager.list(sessionId) }));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/terminal") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsed.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: parsed.error }));
+          return;
+        }
+        const sessionId = normalizeSessionIdForRequest(typeof parsed.value.sessionId === "string" ? parsed.value.sessionId : undefined);
+        const command = typeof parsed.value.command === "string" ? parsed.value.command : "";
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        if (!sessionFor(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "session limit reached", code: "terminal-session-limit" }));
+          return;
+        }
+        try {
+          const workingDirectory = await taskWorkspaces.terminalWorkingDirectory(sessionId);
+          const terminal = terminalManager.start(sessionId, workingDirectory, command);
+          res.writeHead(201, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify(terminal));
+        } catch (error) {
+          sendTerminalError(res, error);
+        }
+        return;
+      }
+
+      if (url.pathname.startsWith("/api/terminal/")) {
+        const segments = url.pathname.slice("/api/terminal/".length).split("/");
+        if (segments.length < 2 || segments.length > 3) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "not found" }));
+          return;
+        }
+        let sessionId: string;
+        let terminalId: string;
+        try {
+          sessionId = normalizeSessionId(decodeURIComponent(segments[0] ?? ""));
+          terminalId = decodeURIComponent(segments[1] ?? "");
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid terminal path" }));
+          return;
+        }
+        if (sessionId.length > maxSessionIdLength || !/^[0-9a-f-]{36}$/i.test(terminalId)) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid terminal path" }));
+          return;
+        }
+        const action = segments[2];
+        if (action !== undefined && action !== "input") {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "not found" }));
+          return;
+        }
+        try {
+          if (req.method === "GET" && action === undefined) {
+            const cursor = url.searchParams.get("after");
+            const after = cursor === null || cursor === "" ? 0 : Number(cursor);
+            const terminal = terminalManager.get(sessionId, terminalId, after);
+            res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+            res.end(JSON.stringify(terminal));
+            return;
+          }
+          if (req.method === "POST" && action === "input") {
+            const body = await readJsonBody(req, res);
+            if (body === undefined) return;
+            const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+            if (!parsed.ok || typeof parsed.value.text !== "string") {
+              res.writeHead(400, { "content-type": "application/json" });
+              res.end(JSON.stringify({ error: parsed.ok ? "terminal input must be a string" : parsed.error }));
+              return;
+            }
+            const terminal = terminalManager.writeInput(sessionId, terminalId, parsed.value.text);
+            res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+            res.end(JSON.stringify(terminal));
+            return;
+          }
+          if (req.method === "DELETE" && action === undefined) {
+            const terminal = terminalManager.stop(sessionId, terminalId);
+            res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+            res.end(JSON.stringify(terminal));
+            return;
+          }
+          res.writeHead(405, { "content-type": "application/json", "allow": "GET, POST, DELETE" });
+          res.end(JSON.stringify({ error: "method not allowed" }));
+        } catch (error) {
+          sendTerminalError(res, error);
+        }
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/workspaces") {
+        const listing = await taskWorkspaces.list(inFlight);
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(listing));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/workspaces") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsed.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: parsed.error }));
+          return;
+        }
+        if (sessions.size >= maxSessionRegistryEntries) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "session limit reached", code: "workspace-limit" }));
+          return;
+        }
+        try {
+          const workspace = await taskWorkspaces.create();
+          const created = sessionFor(workspace.sessionId);
+          if (!created) {
+            await taskWorkspaces.cleanup(workspace.sessionId, false).catch(() => undefined);
+            res.writeHead(409, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "session limit reached", code: "workspace-limit" }));
+            return;
+          }
+          res.writeHead(201, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify(workspace));
+        } catch (error) {
+          sendTaskWorkspaceError(res, error);
+        }
+        return;
+      }
+
+      if (
+        req.method === "GET" && url.pathname.startsWith("/api/workspaces/") && url.pathname.endsWith("/diff")
+      ) {
+        const rawId = url.pathname.slice("/api/workspaces/".length, -"/diff".length);
+        let decodedId: string;
+        try { decodedId = decodeURIComponent(rawId); } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        const sessionId = normalizeSessionIdForRequest(decodedId);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        try {
+          const diff = await taskWorkspaces.diff(sessionId, url.searchParams.has("path") ? url.searchParams.get("path") ?? "" : undefined);
+          const serialized = JSON.stringify(diff);
+          if (Buffer.byteLength(serialized, "utf8") > maxWorkspaceResponseBytes) {
+            res.writeHead(413, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "workspace diff is too large" }));
+            return;
+          }
+          res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(serialized);
+        } catch (error) {
+          sendTaskWorkspaceError(res, error);
+        }
+        return;
+      }
+
+      if (
+        req.method === "POST" && url.pathname.startsWith("/api/workspaces/") && url.pathname.endsWith("/merge")
+      ) {
+        const rawId = url.pathname.slice("/api/workspaces/".length, -"/merge".length);
+        let decodedId: string;
+        try { decodedId = decodeURIComponent(rawId); } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        const sessionId = normalizeSessionIdForRequest(decodedId);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        try {
+          const result = await taskWorkspaces.merge(sessionId, inFlight.has(sessionId) || terminalManager.hasRunning(sessionId));
+          res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify(result));
+        } catch (error) {
+          sendTaskWorkspaceError(res, error);
+        }
+        return;
+      }
+
+      if (req.method === "DELETE" && url.pathname.startsWith("/api/workspaces/")) {
+        const rawId = url.pathname.slice("/api/workspaces/".length);
+        if (rawId.includes("/")) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "not found" }));
+          return;
+        }
+        let decodedId: string;
+        try { decodedId = decodeURIComponent(rawId); } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        const sessionId = normalizeSessionIdForRequest(decodedId);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        try {
+          const result = await taskWorkspaces.cleanup(sessionId, inFlight.has(sessionId) || terminalManager.hasRunning(sessionId));
+          res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify(result));
+        } catch (error) {
+          sendTaskWorkspaceError(res, error);
+        }
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/run")
+      ) {
+        const rawId = url.pathname.slice("/api/sessions/".length, -"/run".length);
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        if (!sessions.has(sessionId) && !runs.get(sessionId) && !existsSync(memoryPathFor(sessionId))) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        const after = parseRunCursor(url.searchParams.get("after"));
+        if ("error" in after) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: after.error }));
+          return;
+        }
+        const snapshot = runs.snapshot(sessionId, after.value);
+        const serialized = JSON.stringify(snapshot);
+        if (Buffer.byteLength(serialized, "utf8") > maxRunResponseBytes) {
+          res.writeHead(413, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "run response exceeds the 512 KiB limit" }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        });
+        res.end(serialized);
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/trace")
+      ) {
+        const rawId = url.pathname.slice("/api/sessions/".length, -"/trace".length);
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        if (!session.getTraceSnapshot) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "trace unavailable" }));
+          return;
+        }
+        const trace = session.getTraceSnapshot();
+        const serialized = JSON.stringify(trace);
+        if (Buffer.byteLength(serialized, "utf8") > maxTraceResponseBytes) {
+          res.writeHead(413, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "trace response exceeds the 256 KiB limit" }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        });
+        res.end(serialized);
         return;
       }
 
@@ -297,6 +727,174 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
         res.writeHead(200, { "content-type": "application/json" });
         res.end(serializedHistory);
+        return;
+      }
+
+      if (
+        req.method === "GET" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/checkpoints")
+      ) {
+        const rawId = url.pathname.slice(
+          "/api/sessions/".length,
+          -"/checkpoints".length
+        );
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        const existingSession = sessions.get(sessionId);
+        const memoryFile = memoryPathFor(sessionId);
+        if (!existingSession && !existsSync(memoryFile)) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        if (inFlight.has(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
+          return;
+        }
+        try {
+          const checkpoints = existingSession?.listCheckpoints
+            ? await existingSession.listCheckpoints()
+            : await new FileMemory({ filePath: memoryFile }).checkpoints?.() ?? [];
+          const payload = { sessionId, checkpoints };
+          const serialized = JSON.stringify(payload);
+          if (Buffer.byteLength(serialized, "utf8") > maxCheckpointResponseBytes) {
+            res.writeHead(413, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "checkpoint response is too large" }));
+            return;
+          }
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          res.end(serialized);
+        } catch {
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "checkpoint list failed" }));
+        }
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/checkpoint")
+      ) {
+        const rawId = url.pathname.slice(
+          "/api/sessions/".length,
+          -"/checkpoint".length
+        );
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        if (inFlight.has(sessionId)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
+          return;
+        }
+        if (!sessions.has(sessionId) && !existsSync(memoryPathFor(sessionId))) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        const resolved = sessionFor(sessionId);
+        if (!resolved || !resolved.session.createCheckpoint) {
+          res.writeHead(501, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "checkpoint creation is unavailable" }));
+          return;
+        }
+        inFlight.add(sessionId);
+        try {
+          const checkpoint = await resolved.session.createCheckpoint();
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ sessionId, checkpoint }));
+        } catch {
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "checkpoint creation failed" }));
+        } finally {
+          inFlight.delete(sessionId);
+        }
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/checkpoint/rewind")
+      ) {
+        const rawId = url.pathname.slice(
+          "/api/sessions/".length,
+          -"/checkpoint/rewind".length
+        );
+        const sessionId = normalizeSessionIdForRequest(decodeURIComponent(rawId));
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        if (inFlight.has(sessionId)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
+          return;
+        }
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
+        const parsedResult = parseJsonObjectBody<{ checkpointId?: unknown }>(body);
+        if (!parsedResult.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: parsedResult.error }));
+          return;
+        }
+        const parsed = parsedResult.value;
+        const checkpointId =
+          typeof parsed.checkpointId === "string" ? parsed.checkpointId.trim() : "";
+        if (!checkpointId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "checkpointId is required" }));
+          return;
+        }
+        if (checkpointId.length > maxCheckpointIdLength) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "checkpointId is too long" }));
+          return;
+        }
+        if (!sessions.has(sessionId) && !existsSync(memoryPathFor(sessionId))) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        const resolved = sessionFor(sessionId);
+        if (!resolved || !resolved.session.rewindToCheckpoint) {
+          res.writeHead(501, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "conversation rewind is unavailable" }));
+          return;
+        }
+        inFlight.add(sessionId);
+        try {
+          const result = await resolved.session.rewindToCheckpoint(checkpointId);
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ sessionId, result }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          res.writeHead(checkpointRewindErrorStatus(message), {
+            "content-type": "application/json",
+          });
+          res.end(JSON.stringify({ error: "conversation rewind failed" }));
+        } finally {
+          inFlight.delete(sessionId);
+        }
         return;
       }
 
@@ -359,6 +957,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           req.resume();
           res.writeHead(409, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: activeSessionRequestMessage }));
+          return;
+        }
+        if (taskWorkspaces.isTaskSession(from)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "task session IDs are tied to their Git branch and worktree" }));
           return;
         }
 
@@ -644,6 +1248,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const parsedResult = parseJsonObjectBody<{
           message?: unknown;
           sessionId?: unknown;
+          mode?: unknown;
         }>(body);
         if (!parsedResult.ok) {
           res.writeHead(400, { "content-type": "application/json" });
@@ -658,6 +1263,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "message is required" }));
           return;
         }
+        if (
+          parsed.mode !== undefined
+          && parsed.mode !== "normal"
+          && parsed.mode !== "plan"
+        ) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "mode must be normal or plan" }));
+          return;
+        }
+        const mode: "normal" | "plan" = parsed.mode === "plan" ? "plan" : "normal";
 
         const sessionId = normalizeSessionIdForRequest(
           typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
@@ -668,6 +1283,11 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
+        if (taskWorkspaces.isCleanedSession(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "This task worktree was cleaned up; create a new isolated task to continue.", code: "workspace-cleaned" }));
+          return;
+        }
         if (inFlight.has(sessionId)) {
           // Check before creating an unknown session so a rename target cannot
           // be registered while its memory file is still being moved.
@@ -698,14 +1318,179 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         inFlight.add(id);
         const controller = new AbortController();
         runControllers.set(id, controller);
+        const runId = randomUUID();
+        const run = runs.start(id, runId);
         try {
-          await streamChat(res, session, message, approvals, sessionAllowlist, id, controller);
+          await streamChat(
+            res,
+            session,
+            message,
+            mode,
+            approvals,
+            sessionAllowlist,
+            pendingPlans,
+            id,
+            controller,
+            run,
+          );
         } finally {
           inFlight.delete(id);
           if (runControllers.get(id) === controller) {
             runControllers.delete(id);
           }
         }
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/plans/apply") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
+        const parsedResult = parseJsonObjectBody<{
+          sessionId?: unknown;
+          changeSetId?: unknown;
+        }>(body);
+        if (!parsedResult.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: parsedResult.error }));
+          return;
+        }
+        const parsed = parsedResult.value;
+        const changeSetId =
+          typeof parsed.changeSetId === "string" ? parsed.changeSetId.trim() : "";
+        if (!changeSetId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "changeSetId is required" }));
+          return;
+        }
+        if (changeSetId.length > maxChangeSetIdLength) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "changeSetId is too long" }));
+          return;
+        }
+
+        const sessionId = normalizeSessionIdForRequest(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
+        );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        if (inFlight.has(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
+          return;
+        }
+
+        const key = pendingPlanKey(sessionId, changeSetId);
+        const pending = pendingPlans.get(key);
+        if (!pending) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "pending plan not found" }));
+          return;
+        }
+        if (pending.status === "applying") {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "plan application is already running" }));
+          return;
+        }
+
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        if (!session.applyPlannedChangeSet) {
+          res.writeHead(501, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "plan application is unavailable" }));
+          return;
+        }
+
+        pending.status = "applying";
+        inFlight.add(sessionId);
+        const controller = new AbortController();
+        runControllers.set(sessionId, controller);
+        const run = runs.start(sessionId, randomUUID());
+        try {
+          await streamPlanApply(
+            res,
+            session,
+            pending,
+            controller,
+            run,
+          );
+        } finally {
+          inFlight.delete(sessionId);
+          if (runControllers.get(sessionId) === controller) {
+            runControllers.delete(sessionId);
+          }
+          if (run.summary().status === "done") {
+            pendingPlans.delete(key);
+          } else if (pendingPlans.get(key) === pending) {
+            pending.status = "ready";
+          }
+        }
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/plans/reject") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) {
+          return;
+        }
+        const parsedResult = parseJsonObjectBody<{
+          sessionId?: unknown;
+          changeSetId?: unknown;
+        }>(body);
+        if (!parsedResult.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: parsedResult.error }));
+          return;
+        }
+        const parsed = parsedResult.value;
+        const changeSetId =
+          typeof parsed.changeSetId === "string" ? parsed.changeSetId.trim() : "";
+        if (!changeSetId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "changeSetId is required" }));
+          return;
+        }
+        if (changeSetId.length > maxChangeSetIdLength) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "changeSetId is too long" }));
+          return;
+        }
+        const sessionId = normalizeSessionIdForRequest(
+          typeof parsed.sessionId === "string" ? parsed.sessionId : undefined
+        );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        if (inFlight.has(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: activeSessionRequestMessage }));
+          return;
+        }
+        const key = pendingPlanKey(sessionId, changeSetId);
+        const pending = pendingPlans.get(key);
+        if (!pending) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "pending plan not found" }));
+          return;
+        }
+        if (pending.status === "applying") {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "plan application is already running" }));
+          return;
+        }
+        pendingPlans.delete(key);
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true, changeSetId, rejected: true }));
         return;
       }
 
@@ -1024,10 +1809,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   });
 
   server.on("error", (error) => {
+    if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") return;
     console.error("[desktop] server error: request failed");
   });
 
   server.once("close", () => {
+    terminalManager.closeAll();
     void Promise.all(
       [...sessions.values()].map((session) => session.close?.())
     ).catch(() => undefined);
@@ -1077,10 +1864,13 @@ async function streamChat(
   res: ServerResponse,
   session: DesktopChatSession,
   message: string,
+  mode: "normal" | "plan",
   approvals: Map<string, (decision: ApprovalDecision) => void>,
   sessionAllowlist: Map<string, Set<string>>,
+  pendingPlans: Map<string, PendingPlan>,
   sessionId: string,
-  controller: AbortController
+  controller: AbortController,
+  run: DesktopRunState,
 ): Promise<void> {
   const onClose = (): void => {
     // `close` also fires after a normal end; only a real disconnect aborts.
@@ -1106,10 +1896,20 @@ async function streamChat(
   let streamBytes = 0;
   let capped = false;
   const emit = (event: StreamEvent) => {
+    const prepared = prepareStreamEvent(event, {
+      mode,
+      message,
+      pendingPlans,
+      sessionId,
+    });
+    if (!prepared) {
+      return;
+    }
+    run.append(prepared);
     if (capped || res.writableEnded || res.destroyed) {
       return;
     }
-    const frame = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+    const frame = `event: ${prepared.type}\ndata: ${JSON.stringify(prepared.data)}\n\n`;
     streamBytes += Buffer.byteLength(frame, "utf8");
     if (streamBytes > maxStreamBytes) {
       capped = true;
@@ -1129,6 +1929,8 @@ async function streamChat(
   try {
     await session.run(message, emit, {
       signal: controller.signal,
+      runId: run.runId,
+      mode,
       requestApproval: (prompt) => {
         const allowed = sessionAllowlist.get(sessionId);
         if (prompt.key && allowed?.has(prompt.key)) {
@@ -1152,11 +1954,17 @@ async function streamChat(
         });
       },
     });
+    if (run.active) {
+      run.finish(controller.signal.aborted ? "aborted" : "done");
+    }
   } catch (error) {
     emit({
       type: "error",
       data: { message: error instanceof Error ? error.message : String(error) },
     });
+    if (run.active) {
+      run.finish(controller.signal.aborted ? "aborted" : "failed");
+    }
   } finally {
     res.off("close", onClose);
   }
@@ -1164,6 +1972,104 @@ async function streamChat(
   if (!res.writableEnded) {
     res.end();
   }
+}
+
+async function streamPlanApply(
+  res: ServerResponse,
+  session: DesktopChatSession,
+  pending: PendingPlan,
+  controller: AbortController,
+  run: DesktopRunState,
+): Promise<void> {
+  const onClose = (): void => {
+    if (!res.writableEnded) {
+      controller.abort();
+    }
+  };
+  res.on("close", onClose);
+  res.writeHead(200, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  res.write(`retry: 3000\n\n`);
+
+  const maxStreamBytes = sseMaxBytes();
+  let streamBytes = 0;
+  let capped = false;
+  const emit = (event: StreamEvent) => {
+    if (capped || res.writableEnded || res.destroyed) {
+      return;
+    }
+    run.append(event);
+    const frame = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+    streamBytes += Buffer.byteLength(frame, "utf8");
+    if (streamBytes > maxStreamBytes) {
+      capped = true;
+      res.write(`event: error\ndata: ${JSON.stringify({
+        message: `stream exceeded ${maxStreamBytes} bytes and was closed`,
+      })}\n\n`);
+      res.end();
+      controller.abort();
+      return;
+    }
+    res.write(frame);
+  };
+
+  try {
+    await session.applyPlannedChangeSet?.(
+      pending.review,
+      pending.prompt,
+      emit,
+      { signal: controller.signal, runId: run.runId },
+    );
+    if (run.active) {
+      run.finish(controller.signal.aborted ? "aborted" : "done");
+    }
+  } catch (error) {
+    emit({
+      type: "error",
+      data: { message: error instanceof Error ? error.message : String(error) },
+    });
+    if (run.active) {
+      run.finish(controller.signal.aborted ? "aborted" : "failed");
+    }
+  } finally {
+    res.off("close", onClose);
+  }
+
+  if (!res.writableEnded) {
+    res.end();
+  }
+}
+
+function prepareStreamEvent(
+  event: StreamEvent,
+  options: {
+    readonly mode: "normal" | "plan";
+    readonly message: string;
+    readonly pendingPlans: Map<string, PendingPlan>;
+    readonly sessionId: string;
+  },
+): StreamEvent | undefined {
+  if (event.type !== "plan-review") {
+    return event;
+  }
+  if (options.mode !== "plan") {
+    return undefined;
+  }
+  const review = normalizePlanReview(event.data.review);
+  if (!review) {
+    return undefined;
+  }
+  options.pendingPlans.set(pendingPlanKey(options.sessionId, review.changeSetId), {
+    sessionId: options.sessionId,
+    prompt: options.message,
+    review,
+    status: "ready",
+  });
+  return { type: "plan-review", data: { review } };
 }
 
 function approvalTimeoutMs(): number {
@@ -1175,6 +2081,85 @@ function approvalTimeoutMs(): number {
 function sseMaxBytes(): number {
   const parsed = Number.parseInt(process.env.DEV_AGENT_SSE_MAX_BYTES ?? "", 10);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : 32 * 1024 * 1024;
+}
+
+function pendingPlanKey(sessionId: string, changeSetId: string): string {
+  return `${sessionId}\u0000${changeSetId}`;
+}
+
+function normalizePlanReview(value: unknown): ChangeSetReview | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const candidate = value as Record<string, unknown>;
+  const changeSetId =
+    typeof candidate.changeSetId === "string" ? candidate.changeSetId.trim() : "";
+  const createdAt = typeof candidate.createdAt === "string" ? candidate.createdAt : "";
+  const additions = candidate.additions;
+  const deletions = candidate.deletions;
+  const rawFiles = candidate.files;
+  if (
+    !changeSetId
+    || changeSetId.length > maxChangeSetIdLength
+    || !createdAt
+    || createdAt.length > 96
+    || !Number.isSafeInteger(additions)
+    || !Number.isSafeInteger(deletions)
+    || (additions as number) < 0
+    || (deletions as number) < 0
+    || !Array.isArray(rawFiles)
+    || rawFiles.length > maxPlanReviewFiles
+  ) {
+    return undefined;
+  }
+
+  const files: ChangeSetReview["files"][number][] = [];
+  for (const rawFile of rawFiles) {
+    if (!rawFile || typeof rawFile !== "object") return undefined;
+    const file = rawFile as Record<string, unknown>;
+    const path = typeof file.path === "string" ? file.path : "";
+    const kind = file.kind === "directory" ? "directory" : file.kind === "file" ? "file" : undefined;
+    const afterHash = typeof file.afterHash === "string" ? file.afterHash : "";
+    const diff = typeof file.diff === "string" ? file.diff : "";
+    const fileAdditions = file.additions;
+    const fileDeletions = file.deletions;
+    if (
+      !path
+      || path.length > 4096
+      || !kind
+      || !afterHash
+      || afterHash.length > 256
+      || diff.length > maxPlanReviewBytes
+      || !Number.isSafeInteger(fileAdditions)
+      || !Number.isSafeInteger(fileDeletions)
+      || (fileAdditions as number) < 0
+      || (fileDeletions as number) < 0
+      || typeof file.beforeExists !== "boolean"
+      || typeof file.afterExists !== "boolean"
+    ) {
+      return undefined;
+    }
+    files.push({
+      path,
+      kind,
+      ...(typeof file.beforeHash === "string" ? { beforeHash: file.beforeHash.slice(0, 256) } : {}),
+      afterHash,
+      diff,
+      additions: fileAdditions as number,
+      deletions: fileDeletions as number,
+      beforeExists: file.beforeExists,
+      afterExists: file.afterExists,
+    });
+  }
+
+  const review: ChangeSetReview = {
+    changeSetId,
+    files,
+    additions: additions as number,
+    deletions: deletions as number,
+    createdAt,
+  };
+  return Buffer.byteLength(JSON.stringify(review), "utf8") <= maxPlanReviewBytes
+    ? review
+    : undefined;
 }
 
 function validationErrorStatus(message: string): 404 | 409 | 500 {
@@ -1192,6 +2177,19 @@ function rollbackErrorStatus(message: string): 404 | 409 | 500 {
     return 404;
   }
   if (/conflict|cannot be rolled back|already rolled back/i.test(message)) {
+    return 409;
+  }
+  return 500;
+}
+
+function checkpointRewindErrorStatus(message: string): 404 | 409 | 500 {
+  if (/unknown checkpoint/i.test(message)) {
+    return 404;
+  }
+  if (
+    /belongs to another session|anchor does not match|ahead of current memory/i
+      .test(message)
+  ) {
     return 409;
   }
   return 500;
@@ -1241,6 +2239,26 @@ function waitForApproval(
       signal?.addEventListener("abort", onAbort, { once: true });
     }
   });
+}
+
+function sendTaskWorkspaceError(res: ServerResponse, error: unknown): void {
+  const statusCode = error instanceof TaskWorkspaceError ? error.statusCode : 500;
+  const message = error instanceof TaskWorkspaceError ? error.message : "Task workspace request failed.";
+  const code = error instanceof TaskWorkspaceError ? error.code : "workspace-request-failed";
+  res.writeHead(statusCode, { "content-type": "application/json", "cache-control": "no-store" });
+  res.end(JSON.stringify({ error: message, code }));
+}
+
+function sendTerminalError(res: ServerResponse, error: unknown): void {
+  if (error instanceof TaskWorkspaceError) {
+    sendTaskWorkspaceError(res, error);
+    return;
+  }
+  const statusCode = error instanceof TaskTerminalError ? error.statusCode : 500;
+  const message = error instanceof TaskTerminalError ? error.message : "Terminal request failed.";
+  const code = error instanceof TaskTerminalError ? error.code : "terminal-request-failed";
+  res.writeHead(statusCode, { "content-type": "application/json", "cache-control": "no-store" });
+  res.end(JSON.stringify({ error: message, code }));
 }
 
 function readJsonBody(
@@ -1626,6 +2644,20 @@ function parseEvidenceAuditLimits(
 function nonEmptyQueryValue(value: string | null): string | undefined {
   const normalized = value?.trim();
   return normalized ? normalized : undefined;
+}
+
+function parseRunCursor(
+  value: string | null,
+): { readonly value: number } | { readonly error: string } {
+  if (value === null || value.trim() === "") {
+    return { value: 0 };
+  }
+  const normalized = value.trim();
+  const cursor = Number(normalized);
+  if (!/^\d+$/.test(normalized) || !Number.isSafeInteger(cursor) || cursor < 0) {
+    return { error: "after must be a non-negative integer" };
+  }
+  return { value: cursor };
 }
 
 function filterEvidence(

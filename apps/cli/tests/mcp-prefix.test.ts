@@ -52,10 +52,11 @@ function server(): Record<string, unknown> {
 
 async function runTools(
   servers: readonly Record<string, unknown>[],
-  dir: string
+  dir: string,
+  args: readonly string[] = ["--tools"],
 ): Promise<any> {
   return await new Promise((resolve) => {
-    const child = spawn("node", [cliPath, "--tools"], {
+    const child = spawn("node", [cliPath, ...args], {
       env: {
         ...process.env,
         DEV_AGENT_MODEL_PROVIDER: "ollama",
@@ -97,6 +98,42 @@ test("two unnamed servers get distinct prefixes instead of erasing each other", 
     assert.ok(mcp.includes("mcp-1"), `expected mcp-1 in ${mcp.join(", ")}`);
     assert.ok(mcp.includes("mcp-2"), `expected mcp-2 in ${mcp.join(", ")}`);
     assert.ok(!mcp.includes("mcp"), "an ambiguous shared prefix must not be used");
+  });
+});
+
+test("MCP action tools are dangerous while resource and prompt wrappers stay read-only", async () => {
+  await withTempDir(async (dir) => {
+    const result = await runTools(
+      [{ ...server(), name: "policy" }],
+      dir,
+      ["--tools", "--json"],
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    const tools = JSON.parse(result.stdout) as Array<{
+      name: string;
+      metadata?: { risk?: string; confirmation?: string };
+    }>;
+    const metadata = new Map(tools.map((tool) => [tool.name, tool.metadata]));
+
+    assert.deepEqual(metadata.get("policy:hello"), {
+      risk: "dangerous",
+      confirmation: "always",
+      resultFormat: "text",
+      supportsProgress: true,
+    });
+    assert.deepEqual(metadata.get("policy:resource"), {
+      risk: "read-only",
+      confirmation: "never",
+      resultFormat: "json",
+      supportsProgress: false,
+    });
+    assert.deepEqual(metadata.get("policy:prompt"), {
+      risk: "read-only",
+      confirmation: "never",
+      resultFormat: "json",
+      supportsProgress: false,
+    });
   });
 });
 

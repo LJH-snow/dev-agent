@@ -81,6 +81,12 @@ const FIXED_STEPS = Object.freeze({
       "node",
       ["--test", "tests/documentation-contract.test.mjs"]
     ),
+    step(
+      "native-desktop-contract",
+      "native Desktop bundle contract tests",
+      "node",
+      ["--test", "tests/native-desktop-bundle.test.mjs"]
+    ),
   ]),
   rust: Object.freeze([
     step("rust-fmt", "Rust format check", "cargo", ["fmt", "--check"], rustRoot),

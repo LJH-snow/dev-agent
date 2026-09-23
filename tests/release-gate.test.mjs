@@ -51,6 +51,7 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
     "release-workflow-contract",
     "ci-workflow-contract",
     "documentation-contract",
+    "native-desktop-contract",
     "rust-fmt",
     "rust-clippy",
     "rust-test",
@@ -76,12 +77,19 @@ test("the default gate uses the fixed TypeScript, Rust, and integration order", 
       ["node", "--test", "tests/release-workflow.test.mjs"],
       ["node", "--test", "tests/ci-workflow.test.mjs"],
       ["node", "--test", "tests/documentation-contract.test.mjs"],
+      ["node", "--test", "tests/native-desktop-bundle.test.mjs"],
       ["cargo", "fmt", "--check"],
       ["cargo", "clippy", "--all-targets", "--", "-D", "warnings"],
       ["cargo", "test"],
       ["pnpm", "--filter", "@dev-agent/executor", "test:integration"],
     ]
   );
+});
+
+test("root workspace tests serialize package suites to avoid cross-package contention", () => {
+  const repositoryRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
+  const rootPackage = JSON.parse(readFileSync(resolve(repositoryRoot, "package.json"), "utf8"));
+  assert.equal(rootPackage.scripts.test, "pnpm -r --workspace-concurrency=1 run test");
 });
 
 test("phase flags select only the requested fixed gate", () => {

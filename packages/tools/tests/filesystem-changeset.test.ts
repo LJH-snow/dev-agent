@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
+import type { Dirent } from "node:fs";
 import { lstat, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { FilesystemTool } from "../dist/index.js";
+import { FilesystemTool, findUnexpectedRollbackEntry } from "../dist/index.js";
 
 async function exists(path: string): Promise<boolean> {
   return lstat(path).then(
@@ -114,6 +115,43 @@ test("rollback removes only the empty directories created for mkdir", async () =
 
     assert.equal(await exists(target), false);
     assert.equal(await exists(join(directory, "created")), false);
+  });
+});
+
+test("rollback directory inspection stops after the first unexpected entry", async () => {
+  const directory = "/workspace/created";
+  const createdDirectorySet = new Set([join(directory, "nested")]);
+  const rollbackFileSet = new Set([join(directory, "created.txt")]);
+  const entries = (async function* () {
+    yield { name: "nested" } as Dirent;
+    yield { name: "unexpected.txt" } as Dirent;
+    throw new Error("entries after the first unexpected entry were consumed");
+  })();
+
+  const unexpectedPath = await findUnexpectedRollbackEntry(
+    directory,
+    entries,
+    createdDirectorySet,
+    rollbackFileSet
+  );
+
+  assert.equal(unexpectedPath, join(directory, "unexpected.txt"));
+});
+
+test("rollback refuses a created directory with an unexpected file and leaves it untouched", async () => {
+  await withWorkspace(async (directory, context) => {
+    const target = join(directory, "created");
+    const unexpectedPath = join(target, "unexpected.txt");
+    const tool: any = new FilesystemTool();
+    const prepared = await tool.prepareChangeSet({ action: "mkdir", path: "created" }, context);
+    await applyPrepared(tool, prepared, context);
+    await writeFile(unexpectedPath, "leave me\n", "utf8");
+
+    await assert.rejects(
+      () => tool.rollbackChangeSet(prepared.review.changeSetId),
+      /cannot rollback non-empty directory/
+    );
+    assert.equal(await readFile(unexpectedPath, "utf8"), "leave me\n");
   });
 });
 

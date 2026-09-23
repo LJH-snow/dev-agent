@@ -1,10 +1,17 @@
 import type { Executor } from "@dev-agent/executor";
 
+import { runExecutorCommand } from "./executor-run.js";
 import type { Tool, ToolExecutionContext } from "./index.js";
 
 export class GitTool implements Tool {
   readonly name = "git" as const;
   readonly description = "Run git commands in the local repository.";
+  readonly metadata = {
+    risk: "mutating" as const,
+    confirmation: "on-risk" as const,
+    resultFormat: "text" as const,
+    supportsProgress: false,
+  };
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
@@ -21,10 +28,7 @@ export class GitTool implements Tool {
     if (args.length === 0) {
       throw new Error("git tool requires args");
     }
-    return this.executor.run("git", args, {
-      cwd: context?.workingDirectory,
-      ...(context?.signal ? { signal: context.signal } : {}),
-    });
+    return runExecutorCommand(this.executor, "git", args, context);
   }
 }
 

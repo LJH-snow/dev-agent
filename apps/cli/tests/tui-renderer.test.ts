@@ -212,6 +212,8 @@ test("default command hints use the CLI's colon commands", () => {
   assert.match(output, /:help/);
   assert.match(output, /:clear/);
   assert.match(output, /:model/);
+  assert.match(output, /:skills/);
+  assert.match(output, /:skill <name>/);
   assert.match(output, /:collapse/);
   assert.match(output, /:expand/);
   assert.match(output, /:validate/);
@@ -219,4 +221,23 @@ test("default command hints use the CLI's colon commands", () => {
   assert.match(output, /:quit/);
   assert.match(output, /exit \/ quit/);
   assert.doesNotMatch(output, /\/help/);
+});
+
+test("welcome frames leave a terminal safety column", () => {
+  const output = renderWelcome({
+    provider: "OpenAI",
+    model: "gpt-5",
+    streaming: false,
+    sessionId: "session-123",
+    workingDirectory: "/Users/example/project",
+    width: 80,
+  });
+
+  assert.ok(
+    output
+      .split("\n")
+      .every((line) => visibleLength(line) < 80),
+    "rich welcome lines must not occupy the terminal's final auto-wrap column"
+  );
+  assert.doesNotMatch(output, /SIGNAL LOOM \/\/ local coding workbench.*…/);
 });

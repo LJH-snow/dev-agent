@@ -258,7 +258,8 @@ export function createMcpServer(options: McpServerOptions): McpServer {
       return errorResponse(
         null,
         MCP_FRAME_TOO_LARGE_CODE,
-        new McpFrameTooLargeError(incomingBytes, maxFrameBytes).message
+        new McpFrameTooLargeError(incomingBytes, maxFrameBytes).message,
+        maxFrameBytes
       );
     }
 
@@ -266,7 +267,7 @@ export function createMcpServer(options: McpServerOptions): McpServer {
     try {
       request = JSON.parse(trimmed) as JsonRpcMessage;
     } catch {
-      return errorResponse(null, -32700, "parse error");
+      return errorResponse(null, -32700, "parse error", maxFrameBytes);
     }
 
     const id = request.id;
@@ -283,7 +284,7 @@ export function createMcpServer(options: McpServerOptions): McpServer {
         return response;
       } catch (error) {
         if (error instanceof McpFrameTooLargeError) {
-          return errorResponse(id, MCP_FRAME_TOO_LARGE_CODE, error.message);
+          return errorResponse(id, MCP_FRAME_TOO_LARGE_CODE, error.message, maxFrameBytes);
         }
         throw error;
       }
@@ -292,12 +293,17 @@ export function createMcpServer(options: McpServerOptions): McpServer {
         return undefined;
       }
       if (error instanceof McpServerError) {
-        return errorResponse(id, error.code, error.message);
+        return errorResponse(id, error.code, error.message, maxFrameBytes);
       }
       if (error instanceof McpFrameTooLargeError) {
-        return errorResponse(id, MCP_FRAME_TOO_LARGE_CODE, error.message);
+        return errorResponse(id, MCP_FRAME_TOO_LARGE_CODE, error.message, maxFrameBytes);
       }
-      return errorResponse(id, -32603, error instanceof Error ? error.message : String(error));
+      return errorResponse(
+        id,
+        -32603,
+        error instanceof Error ? error.message : String(error),
+        maxFrameBytes
+      );
     }
   }
 
@@ -388,8 +394,41 @@ export function createMcpServer(options: McpServerOptions): McpServer {
   return { handleMessage, start };
 }
 
-function errorResponse(id: number | string | null, code: number, message: string): string {
-  return JSON.stringify({ jsonrpc: JSON_RPC_VERSION, id, error: { code, message } });
+function errorResponse(
+  id: number | string | null,
+  code: number,
+  message: string,
+  maxFrameBytes?: number
+): string {
+  const build = (responseId: number | string | null, responseMessage: string): string =>
+    JSON.stringify({
+      jsonrpc: JSON_RPC_VERSION,
+      id: responseId,
+      error: { code, message: responseMessage },
+    });
+
+  const response = build(id, message);
+  if (maxFrameBytes === undefined || Buffer.byteLength(response, "utf8") <= maxFrameBytes) {
+    return response;
+  }
+
+  // Preserve the error code while replacing attacker-controlled detail with a
+  // short message that can still fit inside the configured protocol frame.
+  for (const fallbackMessage of ["MCP error response exceeded frame size", "MCP error", ""]) {
+    const bounded = build(id, fallbackMessage);
+    if (Buffer.byteLength(bounded, "utf8") <= maxFrameBytes) {
+      return bounded;
+    }
+    const nullId = build(null, fallbackMessage);
+    if (Buffer.byteLength(nullId, "utf8") <= maxFrameBytes) {
+      return nullId;
+    }
+  }
+
+  // A positive frame budget can be smaller than the minimum JSON-RPC error
+  // envelope. Keep the established response shape for that impossible case;
+  // the surrounding stream writer will surface the protocol-size failure.
+  return response;
 }
 
 function stringifyResult(result: unknown): string {

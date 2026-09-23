@@ -26,8 +26,38 @@ function streamFromStrings(chunks) {
   return streamFromBytes(chunks.map((chunk) => encoder.encode(chunk)));
 }
 
+function cancellableStreamFromStrings(chunks) {
+  let cancelled = false;
+  let index = 0;
+  let closeTimer;
+  const stream = new ReadableStream({
+    pull(controller) {
+      if (index < chunks.length) {
+        controller.enqueue(encoder.encode(chunks[index++]));
+        return;
+      }
+      if (!closeTimer) {
+        closeTimer = setTimeout(() => controller.close(), 50);
+      }
+    },
+    cancel() {
+      cancelled = true;
+      if (closeTimer) clearTimeout(closeTimer);
+    },
+  });
+  return {
+    response: new Response(stream, { status: 200 }),
+    wasCancelled: () => cancelled,
+  };
+}
+
 function openAIEvent(content) {
   return `data: ${JSON.stringify({ choices: [{ delta: { content } }] })}\n\n`;
+}
+
+function cumulativeLimitChunks(buildLine) {
+  const chunk = "x".repeat(1_000_000);
+  return Array.from({ length: 17 }, () => buildLine(chunk));
 }
 
 // ---------------------------------------------------------------------------
@@ -53,6 +83,34 @@ test("OpenAI streamChat streams tokens, invokes onToken, and returns content", a
 
   assert.equal(completion.content, "Hello");
   assert.deepEqual(tokens, ["Hel", "lo"]);
+});
+
+test("OpenAI streamChat forwards provider reasoning deltas separately from answer tokens", async () => {
+  const reasoning = [];
+  const tokens = [];
+  const event = (delta) =>
+    `data: ${JSON.stringify({ choices: [{ delta }] })}\n\n`;
+  const provider = createOpenAIProvider({
+    model: "gpt-4.1",
+    fetch: async () =>
+      streamFromStrings([
+        event({ reasoning_content: "plan " }),
+        event({ reasoning: "now" }),
+        event({ content: "answer" }),
+        "data: [DONE]\n\n",
+      ]),
+  });
+
+  const options = {
+    onReasoning: (token) => reasoning.push(token),
+    onToken: (token) => tokens.push(token),
+  };
+  const completion = await provider.streamChat([{ role: "user", content: "hi" }], options);
+
+  assert.deepEqual(reasoning, ["plan ", "now"]);
+  assert.deepEqual(tokens, ["answer"]);
+  assert.equal(completion.content, "answer");
+  assert.equal(completion.reasoning, "plan now");
 });
 
 test("OpenAI streamChat reassembles an event split across chunk boundaries", async () => {
@@ -228,6 +286,44 @@ test("Anthropic streamChat streams text deltas and returns content", async () =>
   assert.deepEqual(tokens, ["Hey", "!"]);
 });
 
+test("Anthropic streamChat forwards thinking deltas separately from answer tokens", async () => {
+  const reasoning = [];
+  const tokens = [];
+  const event = (payload) => `data: ${JSON.stringify(payload)}\n\n`;
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4",
+    fetch: async () =>
+      streamFromStrings([
+        event({
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "thinking" },
+        }),
+        event({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "thinking_delta", thinking: "先分析" },
+        }),
+        event({
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "答案" },
+        }),
+      ]),
+  });
+
+  const options = {
+    onReasoning: (token) => reasoning.push(token),
+    onToken: (token) => tokens.push(token),
+  };
+  const completion = await provider.streamChat([{ role: "user", content: "hi" }], options);
+
+  assert.deepEqual(reasoning, ["先分析"]);
+  assert.deepEqual(tokens, ["答案"]);
+  assert.equal(completion.content, "答案");
+  assert.equal(completion.reasoning, "先分析");
+});
+
 test("Anthropic streamChat reassembles an event split across chunk boundaries", async () => {
   const provider = createAnthropicProvider({
     model: "claude-sonnet-4",
@@ -329,6 +425,30 @@ test("Gemini streamChat streams candidate text parts", async () => {
   assert.deepEqual(tokens, ["Gem", "ini"]);
 });
 
+test("Gemini streamChat forwards thought parts separately from answer tokens", async () => {
+  const reasoning = [];
+  const tokens = [];
+  const provider = createGeminiProvider({
+    model: "gemini-2.5-pro",
+    fetch: async () =>
+      streamFromStrings([
+        'data: {"candidates":[{"content":{"parts":[{"text":"先分析","thought":true}]}}]}\n\n',
+        'data: {"candidates":[{"content":{"parts":[{"text":"答案"}]}}]}\n\n',
+      ]),
+  });
+
+  const options = {
+    onReasoning: (token) => reasoning.push(token),
+    onToken: (token) => tokens.push(token),
+  };
+  const completion = await provider.streamChat([{ role: "user", content: "hi" }], options);
+
+  assert.deepEqual(reasoning, ["先分析"]);
+  assert.deepEqual(tokens, ["答案"]);
+  assert.equal(completion.content, "答案");
+  assert.equal(completion.reasoning, "先分析");
+});
+
 test("Gemini streamChat flushes a trailing event with no final newline", async () => {
   const provider = createGeminiProvider({
     model: "gemini-2.5-pro",
@@ -379,6 +499,51 @@ test("Gemini streamChat collects functionCall parts", async () => {
   assert.deepEqual(completion.toolCalls?.[0]?.input, { action: "read", path: "a.txt" });
 });
 
+test("Gemini streamChat budgets arguments when args is null and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks(
+      (text) =>
+        `data: ${JSON.stringify({
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    functionCall: {
+                      name: "filesystem",
+                      args: null,
+                      arguments: { payload: text },
+                    },
+                  },
+                ],
+              },
+            },
+          ],
+        })}\n\n`
+    )
+  );
+  const provider = createGeminiProvider({
+    model: "gemini-2.5-pro",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
+});
+
 // ---------------------------------------------------------------------------
 // Ollama
 // ---------------------------------------------------------------------------
@@ -392,6 +557,7 @@ test("Ollama streamChat streams NDJSON content", async () => {
       assert.equal(String(url), "http://localhost:11434/api/chat");
       const body = JSON.parse(String(init.body));
       assert.equal(body.stream, true);
+      assert.equal("think" in body, false);
       return streamFromStrings([
         '{"message":{"content":"Ol"}}\n',
         '{"message":{"content":"la"}}\n',
@@ -406,6 +572,35 @@ test("Ollama streamChat streams NDJSON content", async () => {
 
   assert.equal(completion.content, "Olla");
   assert.deepEqual(tokens, ["Ol", "la"]);
+});
+
+test("Ollama streamChat allows reasoning to be opted in", async () => {
+  const reasoning = [];
+  const tokens = [];
+  let requestBody;
+  const provider = createOllamaProvider({
+    model: "qwen3:4b-instruct",
+    fetch: async (_url, init) => {
+      requestBody = JSON.parse(String(init.body));
+      return streamFromStrings([
+        '{"message":{"thinking":"先分析问题"}}\n',
+        '{"message":{"thinking":"，再给出答案","content":"答案"}}\n',
+      ]);
+    },
+  });
+
+  const completion = await provider.streamChat([{ role: "user", content: "hi" }], {
+    think: true,
+    onReasoning: (token) => reasoning.push(token),
+    onToken: (token) => tokens.push(token),
+  });
+
+  assert.equal(requestBody.think, true);
+
+  assert.deepEqual(reasoning, ["先分析问题", "，再给出答案"]);
+  assert.deepEqual(tokens, ["答案"]);
+  assert.equal(completion.content, "答案");
+  assert.equal(completion.reasoning, "先分析问题，再给出答案");
 });
 
 test("Ollama streamChat handles several JSON objects in a single chunk", async () => {
@@ -471,6 +666,125 @@ test("Ollama streamChat throws on a non-OK response", async () => {
     () => provider.streamChat([{ role: "user", content: "hi" }]),
     /Ollama stream request failed \(404\): missing model/
   );
+});
+
+// ---------------------------------------------------------------------------
+// Cumulative output budget
+// ---------------------------------------------------------------------------
+
+test("OpenAI streamChat rejects cumulative output over the limit and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks(openAIEvent)
+  );
+  const provider = createOpenAIProvider({
+    model: "gpt-4.1",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Anthropic streamChat rejects cumulative output over the limit and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks(
+      (text) =>
+        `data: ${JSON.stringify({
+          type: "content_block_delta",
+          delta: { type: "text_delta", text },
+        })}\n\n`
+    )
+  );
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Gemini streamChat rejects cumulative output over the limit and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks(
+      (text) =>
+        `data: ${JSON.stringify({
+          candidates: [{ content: { parts: [{ text }] } }],
+        })}\n\n`
+    )
+  );
+  const provider = createGeminiProvider({
+    model: "gemini-2.5-pro",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
+});
+
+test("Ollama streamChat rejects cumulative output over the limit and cancels the reader", async () => {
+  const { response, wasCancelled } = cancellableStreamFromStrings(
+    cumulativeLimitChunks((content) => `{"message":{"content":${JSON.stringify(content)}}}\n`)
+  );
+  const provider = createOllamaProvider({
+    model: "qwen3:4b-instruct",
+    fetch: async () => response,
+  });
+
+  await assert.rejects(
+    provider.streamChat([{ role: "user", content: "hi" }]),
+    (error) => {
+      const limitError = error as {
+        code: string;
+        limitBytes: number;
+        observedBytes: number;
+      };
+      assert.equal(limitError.code, "stream_output_limit");
+      assert.equal(limitError.limitBytes, 16 * 1024 * 1024);
+      assert.ok(limitError.observedBytes > limitError.limitBytes);
+      return true;
+    }
+  );
+  assert.equal(wasCancelled(), true);
 });
 
 // ---------------------------------------------------------------------------

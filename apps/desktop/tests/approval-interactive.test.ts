@@ -16,6 +16,7 @@ const ENV_KEYS = [
   "DEV_AGENT_APPROVAL",
   "DEV_AGENT_APPROVAL_TIMEOUT_MS",
   "DEV_AGENT_RUST_BINARY",
+  "DEV_AGENT_MCP_SERVERS",
 ];
 
 function applyEnv(values) {
@@ -82,8 +83,16 @@ async function startStubProvider(chunksFor) {
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     requests,
-    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+    close: async () => {
+      server.closeAllConnections?.();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
   };
+}
+
+async function closeServer(server: any): Promise<void> {
+  server.closeAllConnections?.();
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 }
 
 function parseBlock(block) {
@@ -160,6 +169,7 @@ async function runAsk({
     OPENAI_BASE_URL: provider.baseUrl,
     DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
     DEV_AGENT_APPROVAL: "ask",
+    DEV_AGENT_MCP_SERVERS: "[]",
     ...(timeoutMs ? { DEV_AGENT_APPROVAL_TIMEOUT_MS: String(timeoutMs) } : {}),
   });
 
@@ -189,7 +199,7 @@ async function runAsk({
 
     return { events, target, provider, requests, mode: await modeOf(target) };
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await closeServer(server);
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });
@@ -297,7 +307,7 @@ test("a client disconnect clears a pending approval", async () => {
     assert.equal(res.status, 404, "the disconnected approval must be dropped");
     assert.notEqual(await modeOf(target), 0o777, "the call must not run after a disconnect");
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await closeServer(server);
     await provider.close();
     restoreEnv();
     await rm(dir, { recursive: true, force: true });

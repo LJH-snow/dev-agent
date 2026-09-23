@@ -71,6 +71,7 @@ test("index refresh/status/clear form a provider-free lifecycle", async () => {
   const refresh = JSON.parse(refreshed.stdout);
   assert.equal(refresh.command, "index refresh");
   assert.equal(refresh.files, 1);
+  assert.equal(refresh.written, true);
   assert.equal(refresh.cacheHits, 0);
   assert.equal(typeof refresh.updatedAt, "string");
   assert.equal(refresh.path, undefined);

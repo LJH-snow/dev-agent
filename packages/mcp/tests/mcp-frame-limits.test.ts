@@ -53,7 +53,7 @@ test("MCP server rejects an unterminated frame once it exceeds maxFrameBytes", a
   } as any);
 
   const started = server.start();
-  input.emitData('{"jsonrpc":"2.0","id":1,"method":"tools/list","params":');
+  input.emitData('{"jsonrpc":"2.0","id":1,"method":"tools/list","params:' + "x".repeat(11));
   input.end();
 
   await assert.rejects(started, /MCP frame exceeds maximum of 64 bytes/);

@@ -2,7 +2,7 @@
   "name": "@dev-agent/executor",
   "version": "0.1.0",
   "private": true,
-  "description": "Unified executor abstraction; phase 1 provides a minimal LocalExecutor.",
+  "description": "Unified local and sandboxed command execution for dev-agent.",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

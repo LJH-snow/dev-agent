@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
-import { getExecutorMode, LocalExecutor } from "../dist/index.js";
+import {
+  createWorkspaceSandboxProfile,
+  getExecutorMode,
+  LocalExecutor,
+} from "../dist/index.js";
 
 const node = process.execPath;
 const executor = new LocalExecutor();
@@ -13,6 +17,28 @@ test("executor mode metadata identifies local and unknown implementations", () =
   assert.equal(executor.mode, "local");
   assert.equal(getExecutorMode(executor), "local");
   assert.equal(getExecutorMode({}), "unknown");
+});
+
+test("workspace sandbox profiles separate read-only and workspace-write intents", () => {
+  assert.deepEqual(createWorkspaceSandboxProfile("/repo", "read-only"), {
+    name: "agent-read-only",
+    network: "disabled",
+    writablePaths: [],
+    readonlyPaths: ["/repo"],
+  });
+  assert.deepEqual(createWorkspaceSandboxProfile("/repo", "workspace-write"), {
+    name: "agent-workspace-write",
+    network: "enabled",
+    writablePaths: ["/repo"],
+    readonlyPaths: [],
+  });
+});
+
+test("workspace sandbox profiles reject an empty working directory", () => {
+  assert.throws(
+    () => createWorkspaceSandboxProfile("  ", "read-only"),
+    /sandbox working directory must be a non-empty path/
+  );
 });
 
 test("LocalExecutor returns stdout, stderr, and exit code", async () => {

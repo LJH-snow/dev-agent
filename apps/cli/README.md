@@ -1,6 +1,6 @@
 # @agent_cli/cli
 
-Primary entry point for phase 1. The package has two supported invocation modes:
+Primary CLI entry point. The package has two supported invocation modes:
 
 - workspace development through `pnpm cli` from this repository;
 - an installed `dev-agent` binary from any project directory after `@agent_cli/cli` is published or installed from a local tarball.
@@ -17,9 +17,242 @@ pnpm cli --session docs --reset-memory --once "start over"
 pnpm cli --cleanup-evidence --remove-rolled-back --json
 pnpm cli --session docs --export-evidence --audit-max-bytes 1048576
 pnpm cli --session docs --preview-evidence --status failed
+pnpm cli setup --provider ollama --model qwen3:4b-instruct
+pnpm cli mcp add --project-state --name files --command npx \
+  --arg -y --arg @modelcontextprotocol/server-filesystem --arg /tmp
+pnpm cli mcp list --project-state --json
 pnpm cli --tools
 DEV_AGENT_MODEL_PROVIDER=ollama pnpm cli
 ```
+
+## Interactive skills
+
+The interactive CLI discovers bounded Markdown skills from:
+
+- `<working-directory>/.dev-agent/skills/<name>/SKILL.md` for project skills;
+- `~/.dev-agent/skills/<name>/SKILL.md` for user skills.
+
+Project skills take precedence when both scopes define the same name. Skills are
+listed without loading their instructions into the base Prompt. In a rich TTY,
+use either colon or slash aliases:
+
+```text
+:skills
+:skill review
+:skill off
+```
+
+Only the explicitly activated skill is added to later model requests. Skill
+instructions are bounded during discovery and remain session-local; activating
+one does not modify files or publish package state.
+
+## Extension discovery
+
+The CLI discovers bounded metadata manifests from:
+
+- `<working-directory>/.dev-agent/extensions/<id>/extension.json` for project extensions;
+- `~/.dev-agent/extensions/<id>/extension.json` for user extensions.
+
+Project extensions shadow user extensions with the same id. Use these
+interactive commands in Ink mode:
+
+```text
+:extensions
+:extension <id>
+```
+
+The `/extensions` and `/extension` aliases are also accepted. Discovery only
+reads and validates the manifest, then reports the extension name, version,
+scope, description, and counts for tools, commands, skills, MCP servers,
+configuration keys, and resources. It does not execute manifest-declared
+commands, load JavaScript, start MCP servers, or change tool policy.
+
+## Conversation checkpoints
+
+Interactive Ink sessions support bounded conversation-history checkpoints:
+
+```text
+:checkpoint
+:checkpoints
+:rewind <checkpointId>
+```
+
+The `/checkpoint`, `/checkpoints`, and `/rewind` aliases are also accepted.
+Rewind truncates persisted conversation entries at the selected anchor and
+removes later checkpoints. It never restores before-images, rolls back files,
+or changes applied change-set evidence; the CLI prints `workspace unchanged`
+after a successful rewind.
+
+## Local task scheduler
+
+Each interactive session owns a local, in-process Scheduler with concurrency
+`1`. A normal prompt becomes one task only when the existing prompt queue
+hands it to the runner, so prompts submitted during an active request remain
+queued by Ink and cannot receive another task or another answer's output.
+The Scheduler records only bounded lifecycle metadata:
+
+```text
+queued -> running -> waiting-for-confirmation -> running -> completed
+                                      └───────> failed/cancelled
+queued ────────────────────────────────────────> cancelled
+```
+
+An active task enters `waiting-for-confirmation` while a tool approval or
+sandbox expansion decision is pending, then returns to `running` when that
+decision resolves.
+
+Inspect it from the Ink interactive mode:
+
+```text
+:tasks
+:task <id>
+```
+
+The `/tasks` and `/task <id>` aliases are also accepted. Task history retains
+at most 64 terminal snapshots, supports Ctrl-C/Escape cancellation, and never
+persists prompt text, model output, tool arguments, paths, environment values,
+or credentials. This is a session-local scheduling boundary, not a detached
+background service or a cross-session job queue. Use detached background jobs below when work
+must continue after the current CLI process exits.
+
+## Detached background jobs
+
+In an interactive session, start and manage an isolated Git worktree task with:
+
+```text
+:job start <request>
+:jobs
+:job <id>
+:job cancel <id>
+:job resume <id>
+```
+
+Jobs require a Git repository and an unattended approval policy: select
+`--approval deny-dangerous` or `--approval allow` before starting one. A job
+runs in its own worktree and continues after the originating CLI exits. Its
+request is stored locally in a user-private directory (`0700` directory,
+`0600` files); public job listings contain lifecycle metadata, not the request
+or model output. Requests and session history may contain sensitive content,
+so they remain on disk until the job state is removed.
+
+Resume is an explicit continuation, not restoration of an interrupted tool
+call. The CLI validates the recorded worktree and session first, refuses a
+transcript with unresolved tool calls, and asks the agent to inspect existing
+work before continuing. Job changes remain in the isolated worktree; they are
+not automatically merged into the source checkout. Review the path shown by
+`:job <id>` before using or cleaning up the result.
+
+## Local run trace
+
+Interactive sessions accept `:trace` and `/trace` after a run. The command
+prints a bounded, metadata-only summary of the latest model/tool run, including
+queue wait, time to the first answer token, aggregate model-call and tool time,
+total elapsed time, token counts, and the largest measured latency stage. The
+first-token measurement is from prompt submission to the first answer delta; it
+includes queue wait, which is also reported separately. Per-span details name
+only the model-call turn or sanitized tool name, never its input or output.
+
+The trace never prints prompt text, assistant output, tool arguments/results,
+paths, environment values, or credentials. It is available in interactive
+sessions and is not added to JSON or protocol output. See
+[`docs/trace-observability.md`](../../docs/trace-observability.md) for the
+Desktop endpoint and retention contract.
+
+### Speed modes and latency benchmark
+
+Use `:mode` to inspect the active mode, or select one for subsequent model calls:
+
+```text
+:mode fast
+:mode balanced
+:mode deep
+```
+
+`fast` requests the lowest reasoning/thinking level supported by the selected
+model; `deep` requests a higher level. `balanced` leaves the provider at its
+default. Unsupported models are left unchanged and the command says when a
+model-specific control is unavailable. The Ink status line shows the active
+mode.
+
+Use `:bench hi` (or `:bench` for the same default prompt) to make one isolated
+provider request and measure first-answer-token and total provider latency. A
+benchmark is not a normal agent turn: it does not use tools, print or save the
+model response, or add the prompt to conversation history. The check caps
+completion at 32 tokens and may still incur provider usage charges. It reports
+only model/mode and elapsed-time metadata. For Ollama, `:trace` also reports
+the server's model-load, prompt-evaluation, and generation durations when
+available, so a slow model stage can be narrowed to cold loading, a large
+prompt, or token generation. The output labels this
+`scope=provider-only`: it excludes the agent system prompt, conversation
+history, and tool schemas, so use `:trace` after a real turn to diagnose
+end-to-end latency. Standalone greetings (`hi`, `hello`, `你好`, and similar)
+are sent without workspace tool schemas; every other request retains the full
+tool set. If a provider returns an unadvertised tool call in that narrow mode,
+the CLI fails closed and does not execute it.
+
+Human-readable runs also show a timing line after each turn:
+
+```text
+[timing] queue=3ms first-token=418ms model=690ms tool=12ms total=962ms
+```
+
+In `--no-stream` mode, the first-token value is `n/a` by design because there
+is no answer delta before the completed response. `:trace` remains available to
+identify whether queue wait, model calls, tools, or other runtime work accounts
+for a slow run.
+
+## Session history
+
+Interactive Ink sessions also support the read-only `:history [count]` command:
+
+```text
+:history
+:history 20
+```
+
+The `/history [count]` alias is accepted. History shows the newest 10 entries
+by default, accepts at most 50 entries, and bounds each displayed entry. It
+sanitizes terminal control sequences and redacts credential-shaped values
+before rendering; it does not change the model context, workspace, or
+persisted session.
+
+Use `:search <query>` (or `/search <query>`) for a case-insensitive search
+across persisted conversation and tool entries. Ink renders history and search
+results in a bounded panel.
+
+## Session browser and resume
+
+Use `:sessions` (or `/sessions`) to browse the newest saved sessions. Add a
+query to filter by session id or the bounded last-message preview:
+
+```text
+:sessions
+:sessions deployment
+:resume deployment
+```
+
+In Ink mode, `:resume <query>` opens a picker. Use Up/Down to move, Enter to
+continue the selected session, and Escape to close the picker. Switching is
+available only while idle; a running request, pending approval, or queued
+prompt keeps the current session active. The picker reads only the current
+session directory, shows at most 256 newest files, truncates previews, and
+marks malformed or oversized files unavailable.
+
+For a new process, `--resume <session-id>` starts from an existing session:
+
+```bash
+dev-agent --resume other-project
+dev-agent --resume other-project --once "continue the previous task"
+```
+
+`--resume` cannot be combined with `--session`; choose one explicit session id.
+Existing `--session`, `--session-list`, delete, rename, and memory-file formats
+remain compatible.
+
+In Ink mode, `:theme` lists the built-in `signal`, `mono`, and `ember` palettes,
+and `:theme <name>` switches the presentation without changing the session.
+Assistant answers use bounded streaming Markdown, while approval cards show a
+sanitized, truncated unified diff when a reviewed file change is available.
 
 ## Installed CLI and external projects
 
@@ -33,6 +266,7 @@ dev-agent --version
 dev-agent --tools
 dev-agent --cwd /path/to/other-project --index . --json
 dev-agent --session other-project --once "list files in the current directory"
+dev-agent --acp --cwd /path/to/other-project
 dev-agent init --cwd /path/to/other-project --gitignore
 dev-agent config validate --cwd /path/to/other-project --project-state --json
 dev-agent config show --cwd /path/to/other-project --project-state --json
@@ -113,13 +347,17 @@ Options:
   `<final-cwd>/.dev-agent/sessions` unless an explicit config/session path is set;
   this does not migrate or rename existing user-level sessions
 - `--session <id>` - use a separate persisted memory session
+- `--resume <id>` - continue an existing persisted session; it is rejected when
+  combined with `--session`
 - `--reset-memory` - clear the selected memory before running
 - `--tools` - list registered tools and exit
 - `--metadata` - print metadata for the selected session and exit, including the
   accumulated token usage and a metadata-only `evidenceSummary` when the session
   has any
-- `--session-list` - list saved sessions, newest first; `--json` includes each
-  session's accumulated `usage` (`null` when it never reported tokens) and its
+- `--session-list` - list saved sessions, newest first. The JSON form is an
+  object with `sessions`, `truncated`, and `total`; it keeps the newest 256
+  `.json` sessions, counts all matching entries, and includes each session's
+  accumulated `usage` (`null` when it never reported tokens) and its
   metadata-only `evidenceSummary`
 - `--cleanup-evidence` - explicitly prune metadata-only evidence for the selected
   session and exit. Optional `--max-validations <n>`, `--max-change-sets <n>`, and
@@ -171,6 +409,25 @@ Options:
   instead of running, `ask` behaves the same because MCP has no prompt channel,
   and `review-writes` prepares the same change set but refuses filesystem
   mutations because stdio has no interactive reviewer.
+- `--acp` - serve the single-agent runtime through ACP v1 over newline-delimited
+  JSON-RPC on stdio. It requires the selected model provider, keeps stdout
+  protocol-only, sends diagnostics to stderr, and supports `initialize`,
+  `session/new`, text-only `session/prompt`, `session/cancel`, streamed
+  `session/update`, and client-side permission requests. Keep the transport
+  open until the response for each request arrives.
+- `--a2a` - serve the single-agent runtime through A2A v1.0 over HTTP. The
+  default loopback endpoint is `http://127.0.0.1:4320/`; `--host` and `--port`
+  override the bind address. Discovery is available at
+  `/.well-known/agent-card.json`. The JSON-RPC methods are `SendMessage`,
+  `SendStreamingMessage`, `GetTask`, `CancelTask`, and `ListTasks`; streaming
+  uses SSE.
+  A2A mode keeps stdout empty, writes only a short startup diagnostic to stderr,
+  reuses the selected provider, tools, memory, approval, validation, MCP
+  context, and executor, and does not start Ink rendering. Requests
+  must include `A2A-Version: 1.0`; loopback is unauthenticated, while a
+  non-loopback `--host` requires `DEV_AGENT_A2A_TOKEN` and
+  `Authorization: Bearer <token>`. Provider reasoning is not forwarded to
+  A2A clients.
 - `--approval <mode>` - tool approval policy: `allow` (default, everything runs),
   `deny-dangerous` (block the built-in dangerous command patterns and writes
   outside the working directory), `ask` (same detection, but confirm with
@@ -178,7 +435,10 @@ Options:
   key for the rest of the session (`npm test` also covers
   `npm test -- --watch`), or `review-writes` (show the real filesystem diff and
   apply it only after an explicit `y`; dangerous shell/git calls keep their
-  existing approval rules; EOF or a read failure denies it)
+  existing approval rules; EOF or a read failure denies it). Approval input
+  before the first newline is capped at `4 KiB` of UTF-8 bytes; an oversized
+  answer denies the tool without echoing the answer and closes a non-TTY input
+  stream.
 - `--json` - machine-readable output for `--once`, `--tools`, `--metadata`,
   `--session-list`, `--compact`, and `--cleanup-evidence`; implies `--no-stream`
   so nothing else is written to stdout. Prompt results include structured
@@ -195,7 +455,9 @@ Options:
   as a warning instead of being silently ignored. Exits 1 when any check fails.
   Combine with `--json` for `{ checks, summary }`. The runtime metadata reports
   the selected source and, without paths, a successful runtime identity or a
-  stable managed-cache diagnosis (target/state/reason).
+  stable managed-cache diagnosis (target/state/reason). Doctor caps external
+  command-version output at `64 KiB`, Rust probe frames at `8 MiB`, and Rust
+  probe stderr at `16 KiB`.
 - `--doctor --check-update` - add a bounded, read-only npm registry check for
   `@agent_cli/cli`. It reports whether the installed CLI is current or a newer
   version is available; network or registry failures become a warning, and it
@@ -220,10 +482,23 @@ Options:
 - `models list|current` - show configured model candidates and the effective
   provider/model selection without starting a provider. `--profile <name>` and
   `--alias <name>` select project profiles; explicit `--provider`/`--model` flags win.
-- `mcp list|validate|status|test` - inspect MCP metadata and configuration. `list`
-  and `validate` never start a server; `status` and `test` perform a bounded
-  capability probe and return only names, counts, latency, and stable failure
-  reasons. No install script is run automatically.
+- `setup` - write the selected provider and model to the user config, or to the
+  project config with `--project-state`. It preserves unrelated settings and
+  never stores provider credentials; use the corresponding environment variable
+  for API keys.
+- `mcp list|validate|status|test|health` - inspect MCP metadata and
+  configuration. `list` and `validate` never start a server; `status`, `test`,
+  and `health` perform a bounded capability probe and return only names, counts,
+  latency, and stable failure reasons. No install script is run automatically.
+- `mcp add --name <name> --command <command> [--arg <value>] [--env KEY=VALUE]`
+  - add a named stdio server to the selected config. `--arg`, `--env`, and
+  `--timeout-ms` are supported; the config is written atomically with
+  restrictive permissions and environment values never appear in output.
+- `mcp remove --name <name>` - remove one named server without starting it.
+  Removing an unknown name returns a stable nonzero config result.
+- `mcp enable|disable --name <name>` - toggle one named server without changing
+  its launch settings. Disabled entries stay visible in `list` but are not probed.
+- `mcp templates` - list bounded, safe MCP launcher templates.
 - `index status|refresh|clear` - inspect a metadata-only index status, refresh the
   project index (optionally with `--index-file` and repeated `--exclude`), or clear
   one index file. `clear` requires `--confirm`; `--dry-run` never deletes.
@@ -254,14 +529,99 @@ streaming, command completion, and live tool cards. The launch state is always
 run state. During a request, the status rail moves through `THINKING`,
 `STREAMING`, tool-running, approval, and validation states, and rapid tokens are
 coalesced into bounded live redraws.
+The only rich renderer is Ink 6 with React 19. Interactive TTY input, cursor
+movement, queueing, and redraws all go through the Ink composer; there is no
+second raw-ANSI editor path.
+Prompts submitted while a run is active stay in a passive waiting queue; only
+the active composer accepts editing input, and each streamed answer remains
+attached to the prompt that produced it.
+When the transcript is longer than the active terminal viewport, use the mouse
+wheel or `PageUp`/`PageDown` to browse turns, `Home` for the oldest content,
+and `End` to return to live output. While browsing, new streamed content stays
+below the current view and is marked as new output; submitting a prompt returns
+to the bottom automatically.
 
 Rich interactive commands accept either `/` or `:` prefixes:
 `/help`/`:help`, `/clear`/`:clear`, `/model`/`:model`,
+`/history [count]`/`:history [count]`,
+`/search <query>`/`:search <query>`, `/theme [name]`/`:theme [name]`,
+`/export [markdown|json]`/`:export [markdown|json]`, and `:retry` in Ink mode,
+`/sessions [query]`/`:sessions [query]`, `/resume <query>`/`:resume <query>`,
 `/cards`/`:cards`, `/collapse`/`:collapse`, `/expand`/`:expand`, and
 `/quit`/`:quit`;
-`exit` and `quit` remain accepted aliases. Tab completes a command, Shift+Enter
-inserts a newline, Escape dismisses the palette, Ctrl-L redraws the rich
-surface, and Ctrl-C cancels the request in flight or exits an idle session.
+`exit` and `quit` remain accepted aliases. Tab completes a command or selects a
+workspace path after `@`, Shift+Enter
+inserts a newline, Escape dismisses the palette or exits an idle session when the
+palette is closed, Ctrl-L redraws the rich surface, and Ctrl-C cancels the
+request in flight or exits an idle session. Terminals that render Ctrl-C as
+visible `^C` are handled as cancellation input as well.
+Prompts can attach bounded workspace context without changing the visible
+request: `@src/index.ts` includes one file, `@src` includes a bounded directory
+snapshot, and `@git diff` includes the current Git diff. References are resolved
+only inside the selected working directory; missing or unsafe references are
+reported instead of being sent to the model. Context is passed as a separate
+reference-data block, with file, file-count, and total-size limits.
+Path completion only scans bounded, workspace-relative entries and skips
+`.git`, `.dev-agent`, `node_modules`, caches, and unsafe symlinks. It never
+reads a file merely to show a completion.
+Use `:plan <request>` (or `/plan <request>`) to run a read-only planning pass.
+Plan mode permits action-aware built-in inspection and explicitly classified
+read-only tools; unclassified tools fail closed before execution. MCP actions
+always require confirmation, while the local resource and prompt read wrappers
+are classified separately from server-provided action tools.
+Use `:apply` (or `/apply`) to review a confirmation prompt and run the same
+request normally; declining keeps the plan and changes nothing. `:clear`
+discards any pending plan.
+Use `:team <request>` (or `/team <request>`) to execute a bounded specialist
+task graph in isolated Git worktrees. Independent tasks run in parallel,
+dependent tasks wait for their prerequisites, and the Ink task board shows
+queued, running, retrying, completed, failed, blocked, and cancelled states.
+The current working tree is not changed during execution.
+Use `:team plan <request>` for the original read-only specialist planning flow.
+After a successful execution review, inspect the task diff summary and use
+`:team apply` to confirm and merge it into the current working tree.
+Use `:team retry <taskId>` to rerun one failed task and `:team cancel [taskId]`
+to cancel one task or the whole team run. Merge conflicts fail closed and never
+fall back to a forceful apply.
+
+Before each `:team` execution, the CLI shows every normalized task and asks you
+to select its exact tool names. Enter `all`, `none`, or a comma-separated list;
+blank input or Escape cancels the run. A final summary asks you to confirm the
+complete plan and all scopes before any task workspace is created. Retrying a
+task starts a fresh authorization review. Planner-provided capability fields
+are ignored.
+
+An optional `collaboration.toolAllowlist` config value narrows the tools you
+may choose for every `:team` task. It must list exact, currently registered
+tool names (built-in or configured MCP tools), with at most 256 unique entries.
+Omit it to make all registered tools available as candidates; every task still
+requires explicit authorization. An empty list leaves `none` as the only
+choice. This ceiling does not bypass approval or sandbox policy. The review is
+limited to 8 tasks and a 128 KiB aggregate prompt budget. Invalid selections
+are retried at most four times, then fail closed. The deprecated
+`collaboration.reviewTaskToolScopes` setting is accepted for compatibility but
+ignored; setting it to `false` does not disable per-task authorization.
+- `collaboration.roles` - optional list of 1–12 named specialists for `:team
+  plan`, replacing the built-in architect/reviewer/tester roles. Each role has a
+  stable lowercase `id`, bounded `instructions`, optional `provider`/`model`,
+  an optional exact-name `toolAllowlist`, and optional `budget` limits
+  (`maxTurns`, `maxTokens`, `maxDurationMs`, `maxOutputChars`). A role's tools
+  are always intersected with `collaboration.toolAllowlist` and the active tool
+  registry; role config cannot bypass plan-mode restrictions, approval, or the
+  executor sandbox. Planner-generated task role labels do not select grants.
+  Invalid role config is rejected before the agent starts.
+`:export` writes the persisted session to
+`.dev-agent/exports/<session>-<timestamp>.md`; use `:export json` for a
+machine-readable export. Export content is bounded, sanitized, and redacted.
+When an Ink run fails, the workbench shows a retry card: press `r`, use
+`:retry`, or press Escape to dismiss it. Retrying reuses the last prepared
+prompt without putting a duplicate prompt into the composer.
+MCP tools that report progress update one live card in place with a progress
+bar and percentage when a total is available.
+`:theme signal|mono|ember` changes the Ink palette and persists it. By default
+the preference is stored in `~/.dev-agent/config.json`; with `--project-state`
+it is stored in `<final-cwd>/.dev-agent/config.json`. `DEV_AGENT_THEME` takes
+precedence over the saved value.
 `:cards` prints the latest live card, while `:collapse` and `:expand` append a
 compact folded or expanded view of the latest card without changing the
 underlying session state.
@@ -277,6 +637,16 @@ retention summary; it never executes a command or touches workspace files.
 desktop uses) and exits with status `130`; it also exits immediately when the CLI
 is idle at the prompt.
 
+When a request is still running, a prompt submitted with Enter is retained in
+the session's waiting queue. It is displayed as a passive message block rather
+than another active editor, and the next model request starts only after the
+current response has completed. The active blue editor and its
+working-directory footer remain at the bottom, while each streamed answer stays
+attached to its own submitted prompt.
+As soon as a prompt is submitted, its user message is committed to terminal
+scrollback; the live repaint region is reserved for the current answer and
+status, so the prompt is not duplicated or left in a tall blank viewport.
+
 For a deterministic plain-text transcript with no terminal control sequences, use
 a pipe, `--once`, or `--json`. Human-readable model/tool text is sanitized before it
 reaches the terminal and obvious credential-shaped values are shown as `[redacted]`;
@@ -289,7 +659,19 @@ Non-streaming provider success JSON is read with a streamed bounded JSON reader 
 an over-limit response is rejected and its reader is cancelled before provider schemas are parsed.
 Provider streaming lines are buffered with a fixed `1 MiB` limit; an over-limit line
 cancels its stream and rejects before the unbounded buffer can grow.
-`NO_COLOR=1` disables color ANSI in rich TTY mode, but cursor movement and clear-line
+Across one streamed provider response, text, reasoning, and accumulated tool-call
+fragments share a `16 MiB` UTF-8 budget. The provider reader is cancelled before
+the next fragment can exceed that budget, and the caller receives a stable
+`stream_output_limit` error.
+When a provider emits an explicit reasoning channel, rich Ink mode renders it as a
+separate `Thinking` transcript entry while the status rail animates the blue
+breathing thinking marker. This displays provider-emitted deltas only; it does not infer or
+reconstruct hidden reasoning. Ollama requests enable `think: true`, while
+OpenAI-compatible, Anthropic, and Gemini streams use their native reasoning
+fields when the selected model returns them.
+Filesystem writes, edits, patches, and reviewed postimages are capped at
+`16 MiB` of UTF-8 content before a file is changed or a diff is retained.
+`NO_COLOR=1` disables color ANSI in Ink TTY mode, but cursor movement and clear-line
 sequences required for live redraw remain.
 ### Managed Rust runtime
 
@@ -323,6 +705,14 @@ A normal run remains local unless `--executor rust-sandbox` or the legacy
 runtime selection is fail-closed: an absent, corrupt, unsupported, or protocol/version
 mismatched runtime stops before the model provider or tools start.
 
+When Rust sandbox execution is selected, built-in Shell and Git calls use a
+workspace-write profile limited to the current working directory, while Search
+uses a read-only profile with network disabled and no writable paths. The same
+profiles apply to direct built-in tool calls exposed by `--mcp-server`.
+Filesystem mutations continue to use the existing path, approval, and change-set
+guards. Local execution remains the default, and Rust runtime child processes
+are closed when the CLI session ends.
+
 Human-readable agent runs print the resolved runtime before the first prompt or
 `--once` request:
 
@@ -334,7 +724,7 @@ After each request, the CLI prints the time to the first visible token and the
 total agent-run duration:
 
 ```text
-[timing] first-token=418ms total=962ms
+[timing] queue=3ms first-token=418ms model=690ms tool=12ms total=962ms
 ```
 
 `--no-stream` reports `first-token=n/a` because it intentionally waits for the
@@ -350,7 +740,7 @@ MCP server mode speaks newline-delimited JSON-RPC on stdio; every frame on
 stdout is a protocol message, so logs (if any) go to stderr:
 
 ```bash
-node apps/cli/dist/index.js --mcp-server
+node apps/cli/dist/cli-entry.js --mcp-server
 ```
 
 Hosts may cancel an active `tools/call` by sending the MCP
@@ -358,6 +748,33 @@ Hosts may cancel an active `tools/call` by sending the MCP
 that cooperative cancellation signal to built-in tools, including the shell
 executor, so a stopped host request does not remain blocked on a running
 command.
+
+ACP mode uses the same stdio boundary for agent sessions rather than exposing
+tools directly:
+
+```bash
+dev-agent --acp --cwd /path/to/other-project
+```
+
+The ACP host owns `session/new` and prompt sequencing. Each ACP session gets
+its own `AgentLoop` context and memory handle, while provider streaming,
+tool progress, usage, approval requests, cancellation, and terminal stop
+reasons are emitted as ACP updates. ACP mode does not render the Signal Loom
+TTY surface, and it does not add A2A or a second configuration format.
+
+A2A mode is an HTTP task boundary rather than an IDE session boundary:
+
+```bash
+dev-agent --a2a --cwd /path/to/project
+```
+
+Another local agent can discover the card, send a text task, subscribe to
+streaming task updates, query a bounded task record, or cancel an active task.
+The first implementation is intentionally local-first: it provides bearer
+authentication for explicit non-loopback binds but does not provide OAuth,
+push notifications, signed cards, gRPC, or multi-agent delegation. Include
+`A2A-Version: 1.0` on JSON-RPC requests. Task metadata excludes provider
+errors, workspace paths, raw tool inputs, credentials, and provider reasoning.
 
 ### Reviewed filesystem writes
 
@@ -384,6 +801,9 @@ Persisted memory files use the same fixed `16 MiB` read limit; oversized session
 files are rejected before their bytes enter memory. Memory file writes enforce
 the same `16 MiB` write limit; an oversized write is rejected before the file
 changes, so a session cannot outgrow its read limit.
+Rollback checks created directories with early-exit `opendir()` iteration. It
+stops at the first unexpected entry, preserves the existing postimage conflict
+message, and leaves the unexpected file untouched when rollback is denied.
 
 ### Change-set validation
 
@@ -556,10 +976,15 @@ and Rust. It records signatures and refresh metadata in the index, so subsequent
 searches can reuse unchanged files. Default generated/vendor/cache directories,
 root `.gitignore`, root `.ignore`, and explicit `--exclude` rules are applied in
 that order. The scanner skips source files above the fixed `16 MiB` scan limit
-before reading them; smaller files remain indexed. `index clear` is
-confirmation-gated.
+before reading them; smaller files remain indexed. Each scan also stops with a
+stable metadata-only error if it would include more than `100,000` eligible files
+or `256 MiB` of eligible source bytes, and it never installs a partial index.
+`index clear` is confirmation-gated.
 A persisted code index above the fixed `16 MiB` read limit is skipped in favor
-of a full scan instead of loading its bytes into memory.
+of a full scan instead of loading its bytes into memory. If a code-search
+write-back would exceed `16 MiB`, the write is skipped and the previous valid
+index remains untouched. CLI index reports expose `written: false` and human
+output states that the previous index was preserved.
 
 ## Configuration file
 
@@ -583,6 +1008,27 @@ saved preference never overrides an explicit invocation.
   "budget": { "maxTurns": 12, "maxTokens": 20000, "maxDurationMs": 120000, "maxOutputChars": 100000 },
   "maxContextChars": 120000,
   "validation": { "policy": "default" },
+  "collaboration": {
+    "toolAllowlist": ["filesystem", "search"],
+    "roles": [
+      {
+        "id": "code-reviewer",
+        "instructions": "Review correctness, compatibility, and security; return concise evidence-based findings.",
+        "provider": "openai",
+        "model": "gpt-4o-mini",
+        "toolAllowlist": ["filesystem", "search"],
+        "budget": { "maxTurns": 3, "maxTokens": 6000, "maxDurationMs": 90000 }
+      },
+      {
+        "id": "test-engineer",
+        "instructions": "Suggest focused regression tests and edge cases.",
+        "provider": "ollama",
+        "model": "qwen3:4b-instruct",
+        "toolAllowlist": ["filesystem", "search"],
+        "budget": { "maxTurns": 3, "maxTokens": 4000 }
+      }
+    ]
+  },
   "pricing": {
     "gpt-4o-mini": { "inputPerMillion": 0.15, "outputPerMillion": 0.6 }
   },
@@ -626,6 +1072,13 @@ saved preference never overrides an explicit invocation.
   desktop app. `allow` entries are command substrings that always pass (for
   example `"npm test"`); `deny` entries are regular expressions added to the
   built-in dangerous table. Malformed patterns are ignored.
+- `collaboration.toolAllowlist` - optional exact-name ceiling for tools offered
+  during each CLI `:team` task review. It can contain up to 256 unique names
+  from the active tool collection. Agent Core validates every confirmed task
+  scope and the ceiling before creating any workspace. Omitting it does not
+  grant tools automatically; users still authorize each task. `[]` leaves only
+  the explicit `none` selection. This does not change approval or sandbox
+  policy.
 - `pricing` - model-name prefix to USD per one million tokens
   (`inputPerMillion` / `outputPerMillion`), used to estimate the cost shown in
   `[usage]` and `--json`. An optional `cachedInputPerMillion` prices cache-hit
@@ -640,15 +1093,25 @@ saved preference never overrides an explicit invocation.
 Config files are checked with `stat` before reading; a file above the fixed `1
 MiB` limit is ignored without loading its bytes. Malformed JSON or an unreadable
 config file is ignored; an invalid validation policy or validation command field
-is rejected rather than silently disabled.
+is rejected rather than silently disabled. A malformed `collaboration` object, tool ceiling, or specialist role list is
+rejected before an interactive agent run, so invalid safety config is never
+silently treated as omitted.
 
 When MCP servers are configured, dev-agent injects `DEV_AGENT_SESSION_ID` and
 `DEV_AGENT_WORKING_DIRECTORY` into each server process so MCP tools can share
-the same runtime context. The selected project directory is also the MCP
-child's process `cwd` and roots boundary. If a server emits a tools, resources,
-or prompts list-change notification, dev-agent refreshes that server's tools
-and rebuilds the system-prompt metadata; the refreshed prompt/resource list is
-read immediately before the next model turn, without duplicate stale entries.
+the same runtime context. The selected project directory is also the MCP child's
+process `cwd` and the root advertised to the server. Neither the process `cwd`
+nor the advertised MCP root confines server-side filesystem or remote-resource
+access by itself. Configured MCP servers run as child processes outside the Rust
+tool sandbox. During `:team` execution, the CLI registers these MCP sessions
+once at the project root and shares their tool wrappers with workers. Per-task
+tool-scope review limits which MCP tool names a worker can invoke, but does not
+create a separate server process, rebind it to the worker worktree, or sandbox
+its side effects. Configure MCP server arguments and permissions accordingly.
+If a server emits a tools, resources, or prompts list-change notification,
+dev-agent refreshes that server's tools and rebuilds the system-prompt metadata;
+the refreshed prompt/resource list is read immediately before the next model
+turn, without duplicate stale entries.
 
 Example:
 
@@ -669,3 +1132,33 @@ built-in tools and configured MCP servers. A path that traverses outside the
 project or follows a symlink outside it is rejected by filesystem, search, and
 code-search tools. The shell tool still intentionally delegates to the
 selected executor; use `--rust-executor` when a restricted runtime is required.
+
+## Project context and hierarchical instructions
+
+Before an agent run, the CLI detects the active project root from the nearest
+Git root (or the surrounding supported language/package manifests when Git is
+not present). It adds a small project fingerprint to the system prompt: the
+root, declared package name, recognized languages/frameworks, package manager,
+and root script names. Manifest command bodies and README text are not loaded as
+instructions. Use `:project` to inspect the active context and `:project refresh`
+to re-detect it after changing the workspace or its manifests.
+
+The CLI also loads explicitly named `AGENTS.md` files from these scopes:
+
+- `~/.dev-agent/AGENTS.md` (or `$DEV_AGENT_HOME/AGENTS.md`) as user defaults;
+- the detected project root's `AGENTS.md` for the whole project;
+- descendant `AGENTS.md` files for their corresponding directory subtrees.
+
+Instructions are sent as a separate, scoped system-prompt section, ordered from
+user defaults through the project root to more specific directories. A child
+file can specialize conflicting parent project guidance only inside its own
+subtree; it does not override system, developer, or the user's current request.
+Discovery does not follow symlinks and skips generated/dependency directories;
+file count, depth, and text size are bounded. Ordinary README/source files,
+`@` attachments, and tool output remain reference data, not instructions.
+
+Use `:instructions` to list loaded instruction paths, scope, and freshness.
+If a file changed since the last load, its status is `stale`; a newly discovered
+file is `new`, and a deleted loaded file is `missing`. The next user run refreshes
+the instruction snapshot automatically. `:instructions refresh` explicitly
+reloads project metadata and all discovered instructions immediately.

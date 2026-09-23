@@ -10,6 +10,7 @@ import {
   parseApprovalMode,
   resolveApprovalMode,
   resolveConfigPath,
+  resolveCollaborationToolAllowlist,
   resolveMaxContextChars,
   resolveMaxTurns,
   resolveModel,
@@ -42,6 +43,34 @@ test("parseConfig returns empty object for non-object JSON", () => {
   assert.deepEqual(parseConfig("42"), {});
   assert.deepEqual(parseConfig('"string"'), {});
   assert.deepEqual(parseConfig("null"), {});
+});
+
+test("collaboration allowlist resolution preserves omission and fails closed on malformed config", () => {
+  assert.deepEqual(resolveCollaborationToolAllowlist({}), { valid: true });
+  assert.deepEqual(
+    resolveCollaborationToolAllowlist({ collaboration: {} }),
+    { valid: true },
+  );
+  assert.deepEqual(
+    resolveCollaborationToolAllowlist({
+      collaboration: { toolAllowlist: ["filesystem"] },
+    }),
+    { valid: true, toolAllowlist: ["filesystem"] },
+  );
+
+  const malformedObject = resolveCollaborationToolAllowlist({ collaboration: "invalid" });
+  assert.equal(malformedObject.valid, false);
+  if (!malformedObject.valid) {
+    assert.match(malformedObject.message, /collaboration must be an object/);
+  }
+
+  const malformedList = resolveCollaborationToolAllowlist({
+    collaboration: { toolAllowlist: "filesystem" },
+  });
+  assert.equal(malformedList.valid, false);
+  if (!malformedList.valid) {
+    assert.match(malformedList.message, /toolAllowlist must be an array/);
+  }
 });
 
 test("loadConfig returns empty object when no config file exists", () => {

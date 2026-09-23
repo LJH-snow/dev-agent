@@ -4,7 +4,7 @@
 
 An AI coding agent for developers, built with TypeScript and Node.js.
 
-Phase 1 is a pnpm workspace monorepo made of small TypeScript packages. Low-level
+The project is a pnpm workspace monorepo made of small TypeScript packages. Low-level
 capabilities such as sandboxing, process isolation, and filesystem security live
 in the Rust runtime under `runtime/rust`; both the macOS (`sandbox-exec`) and
 Linux (`bwrap`) backends are active.
@@ -14,15 +14,17 @@ Linux (`bwrap`) backends are active.
 ```text
 dev-agent/
 |-- apps/
-|   |-- cli/              Primary phase-1 entry point
+|   |-- cli/              Primary CLI entry point
 |   `-- desktop/          Local web server with a streaming chat UI
 |-- packages/
 |   |-- agent-core/       Agent loop, context, memory, agent state
+|   |-- acp/              ACP v1 transport and session lifecycle bridge
+|   |-- a2a/              Bounded A2A v1 HTTP/JSON-RPC/SSE adapter
 |   |-- model/            Unified LLM provider interface (OpenAI, Anthropic, Gemini, Ollama)
 |   |-- tools/            Tool registry and built-in tools
 |   |-- mcp/              MCP client and MCP tool integration
 |   |-- code-intelligence/ TypeScript/AST symbol scanner, code index, and ranked search
-|   `-- executor/         Executor abstraction; phase 1 provides LocalExecutor
+|   `-- executor/         Local and Rust-backed sandbox executor abstraction
 |-- runtime/
 |   `-- rust/             Active Rust runtime for sandbox and isolation
 |-- configs/              Shared TypeScript configuration
@@ -56,6 +58,54 @@ pnpm package:smoke
 pnpm cli --version
 ```
 
+## Native macOS Desktop shell
+
+On macOS, the repository can also be opened as a native `Signal Loom Desktop`
+window. The local launcher builds the existing Desktop server, compiles the
+SwiftUI/AppKit shell, stages `dist/Signal Loom Desktop.app`, and starts the
+application:
+
+```bash
+./script/build_and_run.sh
+```
+
+Run the bounded build and health check when validating a checkout:
+
+```bash
+./script/build_and_run.sh --verify
+```
+
+Create a local, checkout-bound archive of the same app bundle without
+launching it:
+
+```bash
+./script/build_and_run.sh --package
+(cd dist && shasum -a 256 -c "Signal Loom Desktop-local.zip.sha256")
+```
+
+The archive includes the Signal Loom app icon generated from the checked-in
+`apps/desktop/public/signal-loom.svg` asset. It is intended for moving this
+checkout on the same machine or keeping a local artifact, not for distribution:
+the bundle records the current project root and Node executable path, does not
+bundle Node, and is not Developer ID signed or notarized.
+
+The first version is a local development application and is not Developer ID
+signed or notarized. Node.js is resolved from the current environment and
+recorded in the app bundle; Node is not bundled. The launcher starts the app
+executable directly so a checkout inside macOS `Desktop` or `Documents`
+folders keeps the terminal's folder authorization. To explicitly exercise
+LaunchServices with `/usr/bin/open -n`, set
+`DEV_AGENT_DESKTOP_LAUNCH_SERVICES=1`; macOS may then require granting the app
+access to the checkout under System Settings > Privacy & Security > Files and
+Folders.
+
+The browser workflow remains available for web development:
+
+```bash
+pnpm --filter @dev-agent/desktop run build
+pnpm --filter @dev-agent/desktop run start
+```
+
 ## Using the CLI from another project
 
 The workspace command `pnpm cli` is for repository development only. For use
@@ -69,6 +119,9 @@ dev-agent --help
 dev-agent --version
 dev-agent --cwd /path/to/other-project --index . --json
 dev-agent --session other-project --once "list files in the current directory"
+dev-agent --resume other-project --once "continue the previous task"
+dev-agent --acp --cwd /path/to/other-project
+dev-agent --a2a --cwd /path/to/other-project --host 127.0.0.1 --port 4320
 dev-agent runtime status --runtime-version 0.2.0 --json
 dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6
 dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
@@ -98,22 +151,75 @@ command aliases:
 /help       :help
 /model      :model
 /clear      :clear
+/history    :history
+/sessions [query]    :sessions [query]
+/resume <query>      :resume <query>
+/search <query>    :search <query>
+/theme [name]      :theme [name]
+/export [markdown|json]    :export [markdown|json]
+:retry             Retry the latest failed Ink run
 /cards      :cards
 /collapse   :collapse
 /expand     :expand
 /quit       :quit
 ```
 
-Use Tab to complete a command, Shift+Enter for a newline, Ctrl-L to redraw the
-surface, `:collapse`/`:expand` to inspect the latest tool card, and Ctrl-C to
-cancel the active request or exit an idle session. The
-rich path is limited to interactive TTYs; pipes, `--once`, `--json`,
-`--mcp-server` retain their stable non-rich contracts. `NO_COLOR=1` keeps the
+Use Tab to complete a command, or complete a workspace-relative path after
+typing `@`. Shift+Enter inserts a newline, Esc to close the command palette or
+exit an idle session, Ctrl-L to redraw the surface,
+`:collapse`/`:expand` to inspect the latest tool card, and Ctrl-C to cancel the
+active request or exit an idle session. The
+Ink interactive mode is limited to interactive TTYs; pipes, `--once`, `--json`,
+`--mcp-server`, `--acp`, and `--a2a` retain their stable non-rich contracts. `NO_COLOR=1` keeps the
 rich layout but removes color while preserving the cursor controls required for
-live redraw. The
-full interaction and compatibility boundary is recorded in the
+live redraw. The canonical visual profile is ANSI color at 120 columns by 36
+rows; the renderer is bounded for 80, 100, 120, and 160 columns.
+When a request is in flight, pressing Enter submits the next prompt into a
+waiting queue instead of starting a concurrent request. Queued prompts render
+as passive transcript blocks, while the active blue editor remains at the
+bottom; each assistant response stays attached to the prompt that produced it.
+The working-directory footer belongs only to the active editor, so queued
+messages do not repeat it.
+When the transcript is longer than the active viewport, use the mouse wheel or
+PageUp/PageDown to browse turns, Home for the oldest content, and End to return
+to live output. New streamed content does not pull a manually scrolled view
+away from its position, and submitting a prompt returns to the bottom
+automatically.
+
+Use `:sessions` or `/sessions` to browse the newest saved sessions. In the Ink
+interactive mode,
+`:resume <query>` opens a bounded picker: Up/Down selects a row, Enter resumes
+it, and Escape closes the picker. Switching is idle-only; queued prompts,
+approval requests, and active runs keep the current session unchanged. The
+browser reads only the configured session directory, limits results to the
+newest 256 safe `.json` files, and marks malformed or oversized files
+unavailable.
+
+For non-interactive startup, `--resume <session-id>` continues an existing
+session. It cannot be combined with `--session`; the older session options and
+memory JSON format remain compatible.
+
+For IDE or host-agent integration, `dev-agent --acp --cwd /path/to/project`
+serves the existing single-agent runtime through ACP v1 over newline-delimited
+JSON-RPC on stdio. ACP stdout is protocol-only and diagnostics stay on stderr;
+the mode reuses the selected provider, tools, memory, approval, validation,
+MCP prompt context, and cancellation boundaries without starting the Ink TTY
+renderer. It is an agent-session protocol, separate from the existing
+`--mcp-server` tool host mode.
+The full interaction and compatibility boundary is recorded in the
 [Signal Loom TTY plan](docs/superpowers/plans/2026-09-19-signal-loom-cli-tui.md)
 and [workbench design](docs/superpowers/specs/2026-09-19-desktop-cli-workbench-design.md).
+
+For local agent-to-agent or host integration, `dev-agent --a2a` serves the same
+runtime through an A2A v1.0 HTTP boundary. Discovery is available at
+`/.well-known/agent-card.json`; `SendMessage`, `SendStreamingMessage`, `GetTask`,
+`CancelTask`, and `ListTasks` are available as JSON-RPC methods on `/`, with streaming
+responses delivered as SSE. The CLI binds to `127.0.0.1:4320` by default and
+accepts explicit `--host` and `--port` overrides. A2A mode does not start the
+Ink TTY renderer, push notifications, or multi-agent orchestration. Loopback
+does not require authentication; non-loopback binds require
+`DEV_AGENT_A2A_TOKEN`, and A2A JSON-RPC requests must include
+`A2A-Version: 1.0`.
 
 Managed Rust runtime installation is explicit and fail-closed. The npm package does
 not download binaries in `postinstall`; `runtime install` verifies the fixed release
@@ -180,7 +286,11 @@ which the build step emits.
 
 Tests are written in TypeScript under each `tests/` directory and compiled to a
 sibling `tests-dist/` (git-ignored) before `node --test` runs them, so the
-repository stays TypeScript-first while using only the Node test runner.
+repository stays TypeScript-first while using only the Node test runner. The
+root `pnpm test` runs workspace package suites one package at a time; each
+package retains its own configured Node test concurrency. This avoids
+cross-package child-process contention in integration-style tests without
+skipping suites or changing their assertions.
 
 To catch Linux-only compile errors while developing on macOS:
 
@@ -264,9 +374,17 @@ The active post-release implementation sequence is tracked in
 [docs/development-plan-v0.1.5-v0.4.0.md](docs/development-plan-v0.1.5-v0.4.0.md). As of September 19, 2026,
 all six workspace phases in that plan are implemented and verified: project initialization, managed
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
-indexes, and MCP/Desktop status management. [`v0.1.8`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8)
-is the current GitHub release and `@agent_cli/cli@0.1.8` is the published npm
-registry `latest`. No new workspace candidate has been opened yet.
+indexes, and MCP/Desktop status management. In that September 19 release snapshot,
+[`v0.1.8`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8) was the
+published GitHub release. As of September 23, 2026, `v0.1.8` remains the current GitHub release.
+The September 19 snapshot records `@agent_cli/cli@0.1.8` as npm `latest`; no
+newer workspace candidate had been opened at that snapshot.
+
+The published-release snapshot above is dated September 19, 2026. The local
+working tree has continued to evolve since then; its implementation and
+verification history is recorded in the repository-root `task_plan.md`,
+`progress.md`, and `findings.md`. Those local changes do not by themselves
+constitute a published release or release candidate.
 
 The [2026-09-18 overnight plan](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
 its [progress record](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
@@ -343,8 +461,9 @@ the [CLI runtime observability spec](docs/cli-runtime-observability.md), [CLI TU
 - Multi-language code intelligence (TypeScript AST, Python/Rust regex scanners)
 - Executor quotas (`maxOutputBytes`, `maxConcurrentExecutions`)
 - CLI configuration file support (`~/.dev-agent/config.json`) and ANSI color output
-- CLI live streaming output, `--session-list`, `--no-stream`, and hardened session
-  management
+- CLI live streaming output, bounded long-session viewport navigation, historical
+  session browsing (`:sessions`/`:resume`), `--resume`, `--session-list`,
+  `--no-stream`, and hardened session management
 - Desktop shell in `apps/desktop`: local web server with a streaming chat UI
   (Server-Sent Events), health check, and single-page dark/light interface
 - Network policy enforcement via Starlark: the policy script receives

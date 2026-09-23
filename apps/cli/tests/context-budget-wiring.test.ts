@@ -149,7 +149,7 @@ test("CLI trims the history it sends when DEV_AGENT_MAX_CONTEXT_CHARS is set", a
   }
 });
 
-test("CLI system prompt requires source-grounded findings", async () => {
+test("CLI system prompt favors natural replies and verified, focused coding work", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-system-prompt-"));
   const provider = await startCapturingProvider();
   try {
@@ -164,31 +164,16 @@ test("CLI system prompt requires source-grounded findings", async () => {
     assert.equal(result.code, 0, result.stderr);
     const system = provider.requests[0]?.messages.find((message) => message.role === "system");
     assert.ok(system, "the provider should receive a system message");
-    assert.match(system.content, /ground findings in actual tool output/i);
-    assert.match(system.content, /README|AGENTS|roadmap/i);
-    assert.match(system.content, /path:line|verify.*location/i);
-    assert.match(system.content, /uncertain|cannot verify/i);
-    assert.match(system.content, /read-only tool fails|retry/i);
-    assert.match(system.content, /search when line numbers are missing/i);
-    assert.match(system.content, /lineNumbers for source reads/i);
-    assert.match(system.content, /requested paths and symbols/i);
-    assert.match(system.content, /newest user request as authoritative/i);
-    assert.match(system.content, /never invent paths/i);
-    assert.match(system.content, /search returns no matches/i);
-    assert.match(system.content, /one concrete evidence path/i);
-    assert.match(system.content, /risk is verified/i);
-    assert.match(system.content, /unsupported.*not evidence/i);
-    assert.match(system.content, /lexical for Python/i);
-    assert.match(system.content, /containing class and indentation/i);
-    assert.match(system.content, /normal shared-type usage/i);
-    assert.match(system.content, /undefined or unimported/i);
-    assert.match(system.content, /do not repeat identical tool calls/i);
-    assert.match(system.content, /definition-only.*not a defect/i);
-    assert.match(system.content, /问题：未验证到可复现缺陷/);
-    assert.match(system.content, /严重性：不适用/);
-    assert.match(system.content, /问题.*严重性.*证据.*风险.*建议修复方向/s);
-    assert.match(system.content, /do not turn a symbol description into a finding/i);
-    assert.match(system.content, /addresses the current task/i);
+    assert.match(system.content, /respond in the user's language/i);
+    assert.match(system.content, /keep greetings and simple answers brief/i);
+    assert.match(system.content, /do not call tools.*unless useful/i);
+    assert.match(system.content, /newest user request sets the scope/i);
+    assert.match(system.content, /preserve unrelated work/i);
+    assert.match(system.content, /ground codebase claims in current source/i);
+    assert.match(system.content, /report checks accurately/i);
+    assert.match(system.content, /code reviews and audits.*actionable.*verified issues/i);
+    assert.match(system.content, /severity, location, evidence, impact/i);
+    assert.doesNotMatch(system.content, /lexical for Python|lineNumbers|ReturnType aliases/i);
   } finally {
     await provider.close();
     await rm(dir, { recursive: true, force: true });

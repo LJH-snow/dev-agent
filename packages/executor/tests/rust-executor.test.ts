@@ -58,6 +58,29 @@ test("RustExecutor encodes a sandboxed request the mock binary can decode", asyn
   }
 });
 
+test("RustExecutor exposes policy denials as typed sandbox errors", async () => {
+  process.env.MOCK_EXECUTOR_BEHAVIOR = "error:POLICY_DENIED";
+  const executor = new RustExecutor({ binaryPath: mockBinary });
+  try {
+    await assert.rejects(
+      executor.runSandboxed("curl", ["https://example.com"], {
+        profile: {
+          name: "restricted",
+          network: "disabled",
+        },
+      }),
+      (error: unknown) =>
+        error instanceof Error &&
+        error.name === "SandboxDeniedError" &&
+        (error as Error & { code?: string }).code === "SANDBOX_DENIED" &&
+        (error as Error & { originalCode?: string }).originalCode === "POLICY_DENIED"
+    );
+  } finally {
+    await executor.dispose();
+    delete process.env.MOCK_EXECUTOR_BEHAVIOR;
+  }
+});
+
 test("RustExecutor forwards maxOutputBytes to the runtime", async () => {
   process.env.MOCK_EXECUTOR_BEHAVIOR = "reflect";
   const executor = new RustExecutor({ binaryPath: mockBinary });

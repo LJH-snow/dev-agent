@@ -1,0 +1,169 @@
+import assert from "node:assert/strict";
+import { once } from "node:events";
+import { request as httpRequest } from "node:http";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import test from "node:test";
+
+import { createDesktopServer } from "../dist/server.js";
+import { DesktopTaskTerminalManager, TaskTerminalError } from "../dist/task-terminal.js";
+
+const publicModuleUrl = pathToFileURL(fileURLToPath(new URL("../public/task-terminal-ui.js", import.meta.url))).href;
+const { normalizeLoopbackPreviewUrl } = await import(publicModuleUrl);
+
+async function waitFor(
+  check: () => boolean,
+  timeoutMs = 4000,
+): Promise<void> {
+  const startedAt = Date.now();
+  while (!check()) {
+    if (Date.now() - startedAt > timeoutMs) throw new Error("condition timed out");
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+test("terminal processes are bound to a session and accept bounded stdin", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-"));
+  const manager = new DesktopTaskTerminalManager();
+  try {
+    const command = `node -e "process.stdin.once('data', data => { process.stdout.write('received:' + data, () => process.exit(0)) })"`;
+    const started = manager.start("task-one", directory, command);
+    assert.equal(started.state, "running");
+    assert.throws(
+      () => manager.get("task-two", started.id),
+      (error: unknown) => error instanceof TaskTerminalError && error.statusCode === 404,
+    );
+
+    manager.writeInput("task-one", started.id, "hello-terminal\n");
+    await waitFor(() => manager.get("task-one", started.id).state !== "running");
+    const completed = manager.get("task-one", started.id);
+    assert.equal(completed.state, "exited");
+    assert.ok(completed.events.some((event) => event.stream === "stdout" && event.text.includes("received:hello-terminal")));
+    assert.ok(completed.events.some((event) => event.stream === "input" && event.text.includes("hello-terminal")));
+    assert.equal(manager.list("task-one").length, 1);
+    assert.equal(manager.list("task-two").length, 0);
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("terminal output and process counts are bounded, and process groups can be stopped", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-bounds-"));
+  const manager = new DesktopTaskTerminalManager();
+  try {
+    const outputRun = manager.start(
+      "task-output",
+      directory,
+      `node -e "process.stdout.write('x'.repeat(300000))"`,
+    );
+    await waitFor(() => manager.get("task-output", outputRun.id).state !== "running");
+    const output = manager.get("task-output", outputRun.id);
+    assert.equal(output.outputTruncated, true);
+    assert.ok(output.events.reduce((bytes, event) => bytes + Buffer.byteLength(event.text, "utf8"), 0) <= 256 * 1024);
+
+    const processes = Array.from({ length: 4 }, () => manager.start(
+      "task-limit",
+      directory,
+      `node -e "setInterval(() => {}, 1000)"`,
+    ));
+    assert.throws(
+      () => manager.start("task-limit", directory, "echo fifth"),
+      (error: unknown) => error instanceof TaskTerminalError && error.code === "terminal-session-limit",
+    );
+    for (const process of processes) manager.stop("task-limit", process.id);
+    await waitFor(() => processes.every((process) => manager.get("task-limit", process.id).state === "stopped"));
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("browser preview accepts explicit-port loopback HTTP(S) URLs only", () => {
+  assert.equal(normalizeLoopbackPreviewUrl("http://localhost:5173/"), "http://localhost:5173/");
+  assert.equal(normalizeLoopbackPreviewUrl("https://127.0.0.1:8443/app"), "https://127.0.0.1:8443/app");
+  assert.equal(normalizeLoopbackPreviewUrl("http://example.com:5173"), undefined);
+  assert.equal(normalizeLoopbackPreviewUrl("https://localhost"), undefined);
+  assert.equal(normalizeLoopbackPreviewUrl("javascript:alert(1)"), undefined);
+  assert.equal(normalizeLoopbackPreviewUrl("http://user:pass@localhost:5173"), undefined);
+});
+
+test("terminal API accepts only loopback clients and loopback browser origins", async () => {
+  const server = createDesktopServer({
+    host: "127.0.0.1",
+    session: { id: "terminal-security", run: async () => undefined },
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  try {
+    const localWithoutOrigin = await fetch(`${baseUrl}/api/terminal`);
+    assert.equal(localWithoutOrigin.status, 200);
+
+    const sameLoopbackOrigin = await fetch(`${baseUrl}/api/terminal`, {
+      headers: { origin: baseUrl },
+    });
+    assert.equal(sameLoopbackOrigin.status, 200);
+
+    const differentLoopbackOrigin = await fetch(`${baseUrl}/api/terminal`, {
+      headers: { origin: "http://127.0.0.1:5173" },
+    });
+    assert.equal(differentLoopbackOrigin.status, 403);
+
+    const untrustedOrigin = await fetch(`${baseUrl}/api/terminal`, {
+      method: "POST",
+      headers: { origin: "https://attacker.example", "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "terminal-security", command: "touch SHOULD_NOT_RUN" }),
+    });
+    assert.equal(untrustedOrigin.status, 403);
+    assert.match(await untrustedOrigin.text(), /trusted loopback requests/);
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-socket-"));
+  const socketPath = join(directory, "desktop.sock");
+  const socketServer = createDesktopServer({
+    host: "127.0.0.1",
+    session: { id: "terminal-security", run: async () => undefined },
+  });
+  socketServer.listen(socketPath);
+  await once(socketServer, "listening");
+  try {
+    const remoteLikeUnixRequest = await new Promise<{ statusCode?: number; body: string }>((resolve, reject) => {
+      const request = httpRequest({ socketPath, path: "/api/terminal", method: "GET" }, (response) => {
+        let body = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk: string) => { body += chunk; });
+        response.on("end", () => resolve({ statusCode: response.statusCode, body }));
+      });
+      request.on("error", reject);
+      request.end();
+    });
+    assert.equal(remoteLikeUnixRequest.statusCode, 403);
+  } finally {
+    socketServer.close();
+    await once(socketServer, "close");
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("terminal and preview panels are wired to session state and safe text rendering", async () => {
+  const html = await (await import("node:fs/promises")).readFile(new URL("../public/index.html", import.meta.url), "utf8");
+  const styles = await (await import("node:fs/promises")).readFile(new URL("../public/styles.css", import.meta.url), "utf8");
+  const controller = await (await import("node:fs/promises")).readFile(new URL("../public/task-terminal-ui.js", import.meta.url), "utf8");
+  assert.match(html, /id="task-terminal-panel"/);
+  assert.match(html, /id="task-preview-frame"[^>]*sandbox="allow-scripts allow-forms"/);
+  assert.match(html, /createTaskTerminalUI\(/);
+  assert.match(controller, /output\.textContent = outputText/);
+  assert.match(controller, /normalizeLoopbackPreviewUrl/);
+  assert.doesNotMatch(controller, /\.innerHTML\s*=/);
+  assert.match(styles, /\.task-terminal-output/);
+  assert.match(styles, /\.task-preview-frame/);
+});

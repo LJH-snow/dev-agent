@@ -47,13 +47,13 @@ prerequisites pass.
 
 ## Policy Language: Starlark
 
-When the Rust runtime implements sandbox and filesystem policies, it will use
-**Starlark** as the policy configuration language. This follows the same
-approach as the open-source Codex agent, which uses Starlark to express sandbox
-rules (writable paths, network access, filesystem permissions) in a
-deterministic, sandboxable, and auditable form.
+The Rust runtime already evaluates **Starlark** policy scripts as part of
+sandboxed command execution on the supported macOS and Linux backends. The
+policy receives an explicit execution context and returns an allow/deny decision;
+invalid scripts and invalid result types fail closed. This keeps policy review
+deterministic and auditable.
 
-In practice this means:
+The implemented contract is:
 
 - Sandbox profiles (`SandboxProfile`) and filesystem/network policy rules are
   authored as Starlark scripts, not raw JSON or ad-hoc DSLs.

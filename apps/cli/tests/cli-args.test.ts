@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
@@ -14,6 +14,7 @@ function runCli(args: readonly string[], sessionDir: string): Promise<any> {
     const child = spawn("node", [cliPath, ...args], {
       env: {
         ...process.env,
+        DEV_AGENT_MCP_SERVERS: "[]",
         DEV_AGENT_MODEL_PROVIDER: "ollama",
         DEV_AGENT_SESSION_DIR: sessionDir,
       },
@@ -48,6 +49,50 @@ test("an unknown flag is rejected instead of silently ignored", async () => {
     assert.equal(result.code, 1);
     assert.match(result.stderr, /Unknown option '--nope'/);
     assert.equal(result.stdout, "", "must not start an interactive session");
+  });
+});
+
+test("--resume rejects ambiguity with --session", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--resume", "work", "--session", "other", "--tools"], dir);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /cannot be combined/);
+  });
+});
+
+test("--resume accepts an existing session without changing --tools behavior", async () => {
+  await withSessionDir(async (dir) => {
+    await writeFile(
+      join(dir, "work.json"),
+      JSON.stringify({ version: 1, entries: [] }),
+      "utf8",
+    );
+    const result = await runCli(["--resume", "work", "--tools"], dir);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /code-search/);
+    assert.equal(result.stderr, "");
+  });
+});
+
+test("--resume reports a missing session without creating a file", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--resume", "missing"], dir);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /Session missing was not found/);
+    assert.deepEqual(await readdir(dir), []);
+  });
+});
+
+test("--resume rejects path-like session ids instead of normalizing them", async () => {
+  await withSessionDir(async (dir) => {
+    const result = await runCli(["--resume", "../secret"], dir);
+
+    assert.equal(result.code, 1);
+    assert.match(result.stderr, /requires a safe session id/);
+    assert.deepEqual(await readdir(dir), []);
   });
 });
 
@@ -214,6 +259,31 @@ test("blank --cwd and --config values are rejected", async () => {
     const configResult = await runCli(["--config", "", "--tools"], dir);
     assert.equal(configResult.code, 1);
     assert.match(configResult.stderr, /--config requires a file path/);
+  });
+});
+
+test("--host and --port require A2A mode", async () => {
+  await withSessionDir(async (dir) => {
+    const hostResult = await runCli(["--host", "127.0.0.1", "--tools"], dir);
+    assert.equal(hostResult.code, 1);
+    assert.match(hostResult.stderr, /--host and --port require --a2a/);
+
+    const portResult = await runCli(["--port", "4321", "--tools"], dir);
+    assert.equal(portResult.code, 1);
+    assert.match(portResult.stderr, /--host and --port require --a2a/);
+  });
+});
+
+test("A2A mode rejects incompatible output and server modes", async () => {
+  await withSessionDir(async (dir) => {
+    const jsonResult = await runCli(["--a2a", "--json"], dir);
+    assert.equal(jsonResult.code, 1);
+    assert.equal(jsonResult.stderr, "");
+    assert.match(jsonResult.stdout, /"error":"--a2a cannot be combined with --json\."/);
+
+    const acpResult = await runCli(["--a2a", "--acp"], dir);
+    assert.equal(acpResult.code, 1);
+    assert.match(acpResult.stderr, /--a2a cannot be combined with --acp/);
   });
 });
 

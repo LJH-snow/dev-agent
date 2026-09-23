@@ -2,7 +2,7 @@
 
 Code parsing, indexing, symbol extraction, and code search for dev-agent.
 
-Phase 1 now includes:
+Current indexing and search capabilities include:
 
 - `scanTypeScriptSymbols(source, filePath)` using the TypeScript AST. It captures
   functions, classes, interfaces, type aliases, enums, methods, properties,

@@ -28,6 +28,7 @@ test("accepts a complete config that matches the existing config shapes", () => 
       allow: ["npm test"],
       deny: ["\\bdeploy\\b"],
     },
+    collaboration: { toolAllowlist: ["filesystem", "search"] },
     pricing: {
       "gpt-4o-mini": {
         inputPerMillion: 0.15,
@@ -53,6 +54,14 @@ test("accepts a complete config that matches the existing config shapes", () => 
 
 test("accepts the empty config object", () => {
   assert.deepEqual(validateConfigValue({}), { valid: true, diagnostics: [] });
+});
+
+test("accepts supported Ink themes and rejects invalid ones", () => {
+  assert.equal(validateConfigValue({ theme: "signal" }).valid, true);
+  assert.equal(validateConfigValue({ theme: "ember" }).valid, true);
+  const result = validateConfigValue({ theme: "neon" });
+  assert.equal(result.valid, false);
+  assert.equal(diagnosticAt(result, "theme").code, "invalid_theme");
 });
 
 test("reports invalid JSON without echoing the raw input", () => {
@@ -83,6 +92,7 @@ test("reports unknown top-level and nested fields", () => {
     unexpected: true,
     validation: { policy: "fast", executable: "sh" },
     approval: { allow: [], extra: "ignored" },
+    collaboration: { extra: "ignored" },
     pricing: {
       model: {
         inputPerMillion: 1,
@@ -98,11 +108,58 @@ test("reports unknown top-level and nested fields", () => {
     "unexpected",
     "validation.executable",
     "approval.extra",
+    "collaboration.extra",
     "pricing.model.extraPrice",
     "mcpServers[0].extra",
   ]) {
     assert.equal(diagnosticAt(result, path).code, "unknown_field");
   }
+});
+
+test("validates a caller-owned collaborative tool ceiling", () => {
+  assert.equal(
+    validateConfigValue({ collaboration: { toolAllowlist: [] } }).valid,
+    true,
+  );
+  assert.equal(
+    validateConfigValue({ collaboration: { toolAllowlist: ["filesystem", "mcp__docs.search"] } }).valid,
+    true,
+  );
+
+  const wrongObject = validateConfigValue({ collaboration: [] });
+  assert.equal(diagnosticAt(wrongObject, "collaboration").code, "invalid_type");
+
+  const wrongList = validateConfigValue({ collaboration: { toolAllowlist: "filesystem" } });
+  assert.equal(diagnosticAt(wrongList, "collaboration.toolAllowlist").code, "invalid_type");
+
+  const invalidName = validateConfigValue({ collaboration: { toolAllowlist: [" filesystem"] } });
+  assert.equal(diagnosticAt(invalidName, "collaboration.toolAllowlist[0]").code, "invalid_string");
+
+  const duplicate = validateConfigValue({ collaboration: { toolAllowlist: ["filesystem", "filesystem"] } });
+  assert.equal(diagnosticAt(duplicate, "collaboration.toolAllowlist[1]").code, "duplicate_tool");
+
+  const oversized = validateConfigValue({
+    collaboration: { toolAllowlist: Array.from({ length: 257 }, (_, index) => `tool-${index}`) },
+  });
+  assert.equal(diagnosticAt(oversized, "collaboration.toolAllowlist").code, "too_many_entries");
+});
+
+test("legacy per-task collaboration review flag is accepted but cannot disable review", () => {
+  assert.equal(
+    validateConfigValue({ collaboration: { reviewTaskToolScopes: false } }).valid,
+    true,
+  );
+  assert.equal(
+    validateConfigValue({ collaboration: { reviewTaskToolScopes: true } }).valid,
+    true,
+  );
+  const invalid = validateConfigValue({
+    collaboration: { reviewTaskToolScopes: "yes" },
+  });
+  assert.equal(
+    diagnosticAt(invalid, "collaboration.reviewTaskToolScopes").code,
+    "invalid_type",
+  );
 });
 
 test("reports wrong field types and non-positive integer limits", () => {
@@ -241,6 +298,18 @@ test("validates MCP server command, args, env, timeout, and object shape", () =>
   assert.doesNotMatch(JSON.stringify(result), new RegExp(absolutePath));
 });
 
+test("validates the optional MCP enabled flag", () => {
+  const invalid = validateConfigValue({
+    mcpServers: [{ command: "node", enabled: "yes" }],
+  });
+  assert.equal(diagnosticAt(invalid, "mcpServers[0].enabled").code, "invalid_type");
+
+  const valid = validateConfigValue({
+    mcpServers: [{ command: "node", enabled: false }],
+  });
+  assert.equal(valid.valid, true);
+});
+
 test("rejects non-JSON values in known fields without serializing them", () => {
   const secret = "function-secret-value";
   const result = validateConfigValue({
@@ -282,4 +351,49 @@ test("validates provider profiles, aliases, fallback, and execution budgets", ()
   assert.equal(diagnosticAt(invalid, "aliases.broken.profile").code, "invalid_string");
   assert.equal(diagnosticAt(invalid, "budget.maxTurns").code, "invalid_non_negative_integer");
   assert.equal(diagnosticAt(invalid, "budget.extra").code, "unknown_field");
+});
+
+test("validates bounded named collaboration roles and per-role budgets", () => {
+  const valid = validateConfigValue({
+    collaboration: {
+      toolAllowlist: ["filesystem", "search"],
+      roles: [{
+        id: "code-reviewer",
+        instructions: "Review correctness, compatibility, and security risks.",
+        provider: "openai",
+        model: "gpt-4.1-mini",
+        toolAllowlist: ["filesystem"],
+        budget: { maxTurns: 3, maxTokens: 4000, maxDurationMs: 60_000, maxOutputChars: 12_000 },
+      }],
+    },
+  });
+  assert.equal(valid.valid, true);
+
+  const duplicate = validateConfigValue({
+    collaboration: {
+      roles: [
+        { id: "tester", instructions: "Write tests." },
+        { id: "tester", instructions: "Review tests." },
+      ],
+    },
+  });
+  assert.equal(diagnosticAt(duplicate, "collaboration.roles[1].id").code, "duplicate_role_id");
+
+  const unsafe = validateConfigValue({
+    collaboration: {
+      roles: [{
+        id: "Code Reviewer",
+        instructions: "x".repeat(12_001),
+        provider: "unknown",
+        toolAllowlist: ["search", "search"],
+        budget: { maxTurns: 0, maxTokens: -1, shell: true },
+      }],
+    },
+  });
+  assert.equal(diagnosticAt(unsafe, "collaboration.roles[0].id").code, "invalid_role_id");
+  assert.equal(diagnosticAt(unsafe, "collaboration.roles[0].provider").code, "invalid_provider");
+  assert.equal(diagnosticAt(unsafe, "collaboration.roles[0].toolAllowlist[1]").code, "duplicate_tool");
+  assert.equal(diagnosticAt(unsafe, "collaboration.roles[0].budget.maxTurns").code, "invalid_positive_integer");
+  assert.equal(diagnosticAt(unsafe, "collaboration.roles[0].budget.maxTokens").code, "invalid_non_negative_integer");
+  assert.equal(diagnosticAt(unsafe, "collaboration.roles[0].budget.shell").code, "unknown_field");
 });

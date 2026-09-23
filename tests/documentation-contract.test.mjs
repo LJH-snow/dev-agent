@@ -9,12 +9,27 @@ const nextRoadmap = readFileSync(
   new URL("../docs/next-roadmap-plans-v62-plus.md", import.meta.url),
   "utf8"
 );
+const v65WorkBenchPlan = readFileSync(
+  new URL("../docs/day-plan-v65.md", import.meta.url),
+  "utf8"
+);
+const developmentPlan = readFileSync(
+  new URL("../docs/development-plan-v0.1.5-v0.4.0.md", import.meta.url),
+  "utf8"
+);
 const v63Plan = readFileSync(new URL("../docs/day-plan-v63.md", import.meta.url), "utf8");
 const releaseChecklist = readFileSync(
   new URL("../docs/release-candidate-checklist-v0.1.0.md", import.meta.url),
   "utf8"
 );
 const cliReadme = readFileSync(new URL("../apps/cli/README.md", import.meta.url), "utf8");
+const architecture = readFileSync(new URL("../docs/architecture.md", import.meta.url), "utf8");
+const geminiAlignment = readFileSync(
+  new URL("../docs/gemini-cli-architecture-alignment.md", import.meta.url),
+  "utf8"
+);
+const rootTaskPlan = readFileSync(new URL("../task_plan.md", import.meta.url), "utf8");
+const rootFindings = readFileSync(new URL("../findings.md", import.meta.url), "utf8");
 const desktopCandidate = readFileSync(
   new URL("../docs/release-candidate-checklist-v0.1.7-desktop.md", import.meta.url),
   "utf8"
@@ -68,6 +83,7 @@ test("README roadmap numbering is unique and sequential", () => {
 });
 
 test("documentation index points to the current source-of-truth documents", () => {
+  assert.match(docsReadme, /gemini-cli-architecture-alignment\.md/);
   for (const link of [
     "docs/README.md",
     "docs/architecture.md",
@@ -155,6 +171,22 @@ test("next-phase roadmap records the completed ten-goal overnight plan", () => {
     nextRoadmap,
     /8 小时安全无人值守并行开发计划[\s\S]*已经完成[\s\S]*merge preparation \/ maintainer decision gate/
   );
+});
+
+test("documentation index treats the v0.1.5-v0.4.0 checklist as completed history", () => {
+  assert.match(docsReadme, /v0\.1\.5–v0\.4\.0 development plan[\s\S]*completed historical checklist/);
+  assert.doesNotMatch(docsReadme, /v0\.1\.5–v0\.4\.0 development plan[\s\S]*active execution checklist/);
+  assert.match(developmentPlan, /- \[x\] v0\.4\.0：MCP 管理命令与 Desktop metadata-only 状态面板/);
+  assert.doesNotMatch(developmentPlan, /^- \[ \]/m);
+});
+
+test("roadmap separates released v0.1.8 from the deferred Desktop UX candidate", () => {
+  assert.match(nextRoadmap, /Formal release v0\.1\.8 \| \*\*已完成\*\*/);
+  assert.match(nextRoadmap, /v65 Desktop 产品化 UX \| Preserve\/deferred/);
+  assert.match(nextRoadmap, /与已完成的 \[day-plan-v65\.md\][\s\S]*是不同范围/);
+  assert.match(v65WorkBenchPlan, /当前状态：已完成/);
+  assert.match(docsReadme, /v0\.1\.8 formal release is complete/);
+  assert.match(docsReadme, /separate[\s\S]*execution-state Desktop UX candidate deferred/);
 });
 
 test("completed v63 day plan has no stale unchecked delivery items", () => {
@@ -636,4 +668,26 @@ test("runtime manager documents the decompressed archive limit", () => {
   assert.match(cliReadme, /32 MiB/i);
   assert.match(desktopCandidate, /decompress/i);
   assert.match(desktopCandidate, /32 MiB/i);
+});
+
+
+test("team scope review and MCP lifecycle docs match the current runtime boundary", () => {
+  for (const [name, document] of [
+    ["CLI README", cliReadme],
+    ["architecture", architecture],
+    ["Gemini alignment", geminiAlignment],
+    ["task plan", rootTaskPlan],
+    ["current findings", rootFindings],
+  ]) {
+    assert.match(document, /(?:every|each) (?:CLI )?`:team` execution[\s\S]{0,140}(?:requires|required|review|asks|shows)/i, `${name} should describe mandatory team review`);
+    assert.match(document, /reviewTaskToolScopes[\s\S]{0,120}(?:ignored|cannot disable)/i, `${name} should identify the legacy flag as non-operative`);
+  }
+
+  assert.doesNotMatch(architecture, /With `collaboration\.reviewTaskToolScopes: true`/);
+  assert.doesNotMatch(geminiAlignment, /opt-in `collaboration\.reviewTaskToolScopes`/);
+  assert.match(cliReadme, /shares their tool wrappers with workers/);
+  assert.match(cliReadme, /does not\ncreate a separate server process/);
+  assert.match(architecture, /MCP sessions are\s+currently registered once by the CLI at the project root/);
+  assert.match(architecture, /per-task tool scopes do not create separate\s+MCP processes/);
+  assert.match(geminiAlignment, /they do not isolate MCP server\s+processes/);
 });

@@ -41,8 +41,41 @@ export interface ToolCardRenderOptions extends BlockOptions {
 
 export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":help", description: "Show available commands" },
+  { command: ":plan <request>", description: "Create a read-only implementation plan" },
+  { command: ":apply", description: "Confirm and execute the latest plan" },
+  { command: ":mode fast|balanced|deep", description: "Choose reasoning speed and depth" },
+  { command: ":history [count]", description: "Show recent session history" },
+  { command: ":trace", description: "Show the latest metadata-only run trace" },
   { command: ":clear", description: "Clear the terminal view" },
   { command: ":model", description: "Show the current provider and model" },
+  { command: ":project [refresh]", description: "Show or refresh detected project context" },
+  { command: ":instructions [refresh]", description: "Show scoped AGENTS.md instructions and stale status" },
+  { command: ":bench [prompt]", description: "Measure provider-only latency without saving a turn" },
+  { command: ":team <request>", description: "Run parallel specialists in isolated workspaces" },
+  { command: ":team plan <request>", description: "Create a read-only specialist plan" },
+  { command: ":team apply", description: "Confirm and merge a reviewed team result" },
+  { command: ":team retry <taskId>", description: "Retry one failed team task" },
+  { command: ":team cancel [taskId]", description: "Cancel all or one team task" },
+  { command: ":mcp status", description: "Inspect MCP server health and capabilities" },
+  { command: ":mcp test", description: "Probe MCP connections and latency" },
+  { command: ":mcp add <name>", description: "Add an MCP server to the active config" },
+  { command: ":mcp enable|disable <name>", description: "Toggle an MCP server without deleting it" },
+  { command: ":mcp templates", description: "Browse safe MCP server templates" },
+  { command: ":export [markdown|json]", description: "Export the current session" },
+  { command: ":search <query>", description: "Search persisted session history" },
+  { command: ":sessions [query]", description: "Browse stored sessions" },
+  { command: ":resume <query>", description: "Find and continue a stored session" },
+  { command: ":theme [name]", description: "Switch the Ink color theme" },
+  { command: ":retry", description: "Retry the latest failed run" },
+  { command: ":tasks", description: "List local task lifecycle metadata" },
+  { command: ":task <id>", description: "Inspect one local task" },
+  { command: ":checkpoint", description: "Save a conversation checkpoint" },
+  { command: ":checkpoints", description: "List conversation checkpoints" },
+  { command: ":rewind <checkpointId>", description: "Rewind conversation history only" },
+  { command: ":skills", description: "List available skills" },
+  { command: ":skill <name>", description: "Activate a skill or use :skill off" },
+  { command: ":extensions", description: "List discovered extensions" },
+  { command: ":extension <id>", description: "Inspect extension metadata" },
   { command: ":cards", description: "Show the latest tool card" },
   { command: ":collapse", description: "Collapse the latest tool card" },
   { command: ":expand", description: "Expand the latest tool card" },
@@ -52,8 +85,9 @@ export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
 ];
 
 function normalizeWidth(width?: number): number {
-  if (width === undefined || !Number.isFinite(width)) return DEFAULT_WIDTH;
-  return Math.max(1, Math.floor(width));
+  const terminalWidth =
+    width === undefined || !Number.isFinite(width) ? DEFAULT_WIDTH : Math.floor(width);
+  return Math.max(1, terminalWidth - 1);
 }
 
 function stripAnsi(value: string): string {
@@ -343,7 +377,7 @@ export function renderWelcome({
   width: requestedWidth,
 }: WelcomeOptions): string {
   const width = normalizeWidth(requestedWidth);
-  const contentWidth = Math.max(1, width - 2);
+  const contentWidth = Math.max(1, width - 4);
   const state = runState ?? (streaming ? "streaming" : "ready");
   const stateLabel = formatRunState(state);
   const fields = [
@@ -366,7 +400,7 @@ export function renderWelcome({
     fitLine("  Ctrl+L clears the terminal view", contentWidth),
   ];
 
-  const markWidth = Math.min(width, 16);
+  const markWidth = Math.min(width, 64);
   return [
     renderSignalLoomMark({ width: markWidth, color: process.env.NO_COLOR === undefined }),
     renderSignalLoomWordmark({ width, color: process.env.NO_COLOR === undefined }),

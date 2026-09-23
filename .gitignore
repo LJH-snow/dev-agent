@@ -13,3 +13,7 @@ runtime/rust/target/
 .env
 .env.*
 !.env.example
+apps/macos/**/.build/
+apps/macos/**/DerivedData/
+.codex/native-build/
+.codex/native-test/

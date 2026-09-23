@@ -6,7 +6,11 @@ import * as protobuf from "protobufjs";
 type ProtobufModule = typeof protobuf;
 
 import { DEFAULT_MAX_OUTPUT_BYTES } from "./local-executor.js";
-import { ExecutorCancelledError } from "./errors.js";
+import {
+  ExecutorCancelledError,
+  inferSandboxDenialCapability,
+  SandboxDeniedError,
+} from "./errors.js";
 import { assertWorkingDirectory, resolveExecutorMode, type ExecutorMode } from "./index.js";
 
 // protobufjs is CommonJS; Node's ESM loader exposes its API on `default`.
@@ -275,9 +279,9 @@ export class RustExecutor implements SandboxExecutor {
               `Rust executor did not answer "${command}" within ${backstopMs}ms; restarting the runtime`
             )
           );
-          // The runtime handles one envelope at a time, so a request that never
-          // came back is blocking the serial queue: anything else waiting is
-          // stuck behind it. Replace the process so the executor recovers.
+          // Runs normally execute concurrently. If the child stops responding,
+          // other in-flight requests may also be left without responses; replace
+          // the process to reset the transport and pending runtime state.
           void this.dispose().catch(() => undefined);
         }, backstopMs);
       }
@@ -511,6 +515,16 @@ export class RustExecutor implements SandboxExecutor {
     if (json.error) {
       if (json.error.code === "CANCELLED") {
         pending.reject(new ExecutorCancelledError(pending.command));
+      } else if (json.error.code === "SANDBOX_DENIED" || json.error.code === "POLICY_DENIED") {
+        const message = `${json.error.code}: ${json.error.message}`;
+        pending.reject(
+          new SandboxDeniedError(
+            pending.command,
+            message,
+            inferSandboxDenialCapability(message),
+            json.error.code,
+          )
+        );
       } else {
         pending.reject(new Error(`${json.error.code}: ${json.error.message}`));
       }

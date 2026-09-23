@@ -11,7 +11,7 @@ const repositoryRoot = dirname(dirname(cliRoot));
 const smokeScript = join(repositoryRoot, "scripts", "cli-package-smoke.mjs");
 
 test("CLI tarball installs and runs from outside the workspace", async () => {
-  const result = await execFileAsync(process.execPath, [smokeScript], {
+  const result = await execFileAsync(process.execPath, [smokeScript, "--skip-build"], {
     cwd: repositoryRoot,
     env: {
       ...process.env,

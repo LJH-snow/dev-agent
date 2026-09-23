@@ -5,16 +5,59 @@ import { join } from "node:path";
 import test from "node:test";
 
 import { LocalExecutor } from "@dev-agent/executor";
+import type { ToolCollection } from "@dev-agent/agent-core";
 
 import {
   CodeSearchTool,
+  createBuiltInToolSandboxProfile,
   createDefaultTools,
+  expandBuiltInToolSandboxProfile,
   FilesystemTool,
   GitTool,
   SearchTool,
   ShellTool,
   ToolRegistry,
 } from "../dist/index.js";
+
+test("built-in tool sandbox profiles keep search read-only and commands writable", () => {
+  assert.deepEqual(createBuiltInToolSandboxProfile("search", "/repo"), {
+    name: "agent-read-only",
+    network: "disabled",
+    writablePaths: [],
+    readonlyPaths: ["/repo"],
+  });
+  assert.deepEqual(createBuiltInToolSandboxProfile("shell", "/repo"), {
+    name: "agent-workspace-write",
+    network: "enabled",
+    writablePaths: ["/repo"],
+    readonlyPaths: [],
+  });
+  assert.deepEqual(createBuiltInToolSandboxProfile("filesystem", "/repo"), undefined);
+  assert.deepEqual(createBuiltInToolSandboxProfile("code-search", "/repo"), undefined);
+});
+
+test("built-in sandbox expansion only adds network access", () => {
+  const profile = {
+    name: "agent-read-only",
+    network: "disabled" as const,
+    writablePaths: [] as const,
+    readonlyPaths: ["/repo"] as const,
+  };
+
+  assert.deepEqual(expandBuiltInToolSandboxProfile(profile, "network"), {
+    ...profile,
+    name: "agent-read-only+network",
+    network: "enabled",
+  });
+  assert.equal(expandBuiltInToolSandboxProfile(profile, "path"), undefined);
+  assert.equal(expandBuiltInToolSandboxProfile({ ...profile, network: "enabled" }, "network"), undefined);
+  assert.deepEqual(profile, {
+    name: "agent-read-only",
+    network: "disabled",
+    writablePaths: [],
+    readonlyPaths: ["/repo"],
+  });
+});
 
 test("filesystem tool reads and lists a directory", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-fs-"));
@@ -130,6 +173,21 @@ test("default tools register under expected names", () => {
     .map((tool) => tool.name)
     .sort();
   assert.deepEqual(names, ["code-search", "filesystem", "git", "search", "shell"]);
+});
+
+test("the built-in registry uses the Agent Loop tool contract", () => {
+  const registry = new ToolRegistry();
+  registry.register(new ShellTool(new LocalExecutor()));
+
+  const collection: ToolCollection = registry;
+  assert.equal(collection.get("shell")?.name, "shell");
+  assert.deepEqual(collection.metadata?.("shell"), {
+    risk: "dangerous",
+    confirmation: "on-risk",
+    resultFormat: "text",
+    supportsProgress: false,
+  });
+  assert.equal(collection.list().length, 1);
 });
 
 test("code-search schema explains its default scope and position inputs", () => {

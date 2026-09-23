@@ -10,10 +10,14 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
 
-function runCli(args, env = process.env): Promise<any> {
+function runCli(args, env = {}): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
-      env,
+      env: {
+        ...process.env,
+        DEV_AGENT_MCP_SERVERS: "[]",
+        ...env,
+      },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -71,11 +75,13 @@ test("--session-list --json prints the session files as JSON", async () => {
     });
 
     assert.equal(result.code, 0, result.stderr);
-    const sessions = JSON.parse(result.stdout);
-    assert.equal(sessions.length, 1);
-    assert.equal(sessions[0].file, "demo.json");
-    assert.ok(typeof sessions[0].size === "number");
-    assert.ok(!Number.isNaN(Date.parse(sessions[0].modifiedAt)));
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.total, 1);
+    assert.equal(payload.truncated, false);
+    assert.equal(payload.sessions.length, 1);
+    assert.equal(payload.sessions[0].file, "demo.json");
+    assert.ok(typeof payload.sessions[0].size === "number");
+    assert.ok(!Number.isNaN(Date.parse(payload.sessions[0].modifiedAt)));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

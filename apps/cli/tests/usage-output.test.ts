@@ -36,6 +36,7 @@ test("CLI prints the token usage the provider reported", async () => {
           OPENAI_API_KEY: "test-key",
           OPENAI_BASE_URL: `http://127.0.0.1:${port}/v1`,
           DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+          DEV_AGENT_MCP_SERVERS: "[]",
         },
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -55,7 +56,7 @@ test("CLI prints the token usage the provider reported", async () => {
       result.stdout,
       /\[runtime\] provider=openai model=gpt-4o-mini streaming=disabled/
     );
-    assert.match(result.stdout, /\[timing\] first-token=n\/a total=\d+ms/);
+    assert.match(result.stdout, /\[timing\] queue=\d+ms first-token=n\/a model=\d+ms tool=(?:\d+ms|n\/a) total=\d+ms/);
     assert.match(result.stdout, /\[usage\] prompt=21 completion=8 total=29/);
   } finally {
     await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -99,6 +100,7 @@ test("CLI appends the estimated cost when the config has prices", async () => {
           OPENAI_API_KEY: "test-key",
           OPENAI_BASE_URL: `http://127.0.0.1:${port}/v1`,
           DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+          DEV_AGENT_MCP_SERVERS: "[]",
         },
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -163,6 +165,7 @@ test("CLI reports the first-token timing for streamed responses", async () => {
           OPENAI_API_KEY: "test-key",
           OPENAI_BASE_URL: `http://127.0.0.1:${port}/v1`,
           DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+          DEV_AGENT_MCP_SERVERS: "[]",
         },
         stdio: ["pipe", "pipe", "pipe"],
       });
@@ -182,7 +185,7 @@ test("CLI reports the first-token timing for streamed responses", async () => {
       result.stdout,
       /\[runtime\] provider=openai model=gpt-4o-mini streaming=enabled/
     );
-    assert.match(result.stdout, /\[timing\] first-token=\d+ms total=\d+ms/);
+    assert.match(result.stdout, /\[timing\] queue=\d+ms first-token=\d+ms model=\d+ms tool=(?:\d+ms|n\/a) total=\d+ms/);
     assert.match(result.stdout, /streamed/);
     assert.doesNotMatch(result.stdout, /streamed\[turn 1\]/);
   } finally {

@@ -10,6 +10,7 @@ import {
 
 test("agent loop invokes onToken callback when model provides streamChat", async () => {
   const tokens = [];
+  const reasoning = [];
   const toolCalls = [];
   const toolResults = [];
 
@@ -32,6 +33,8 @@ test("agent loop invokes onToken callback when model provides streamChat", async
     async streamChat(_messages, options) {
       callCount += 1;
       if (callCount === 1) {
+        options.onReasoning?.("thinking ");
+        options.onReasoning?.("done");
         options.onToken?.("Hello ");
         options.onToken?.("world");
         return {
@@ -51,6 +54,7 @@ test("agent loop invokes onToken callback when model provides streamChat", async
     tools,
     maxTurns: 3,
     onToken: (token) => tokens.push(token),
+    onReasoning: (token) => reasoning.push(token),
     onToolCall: (call) => toolCalls.push(call.name),
     onToolResult: (result) => toolResults.push(result.name),
   });
@@ -58,6 +62,7 @@ test("agent loop invokes onToken callback when model provides streamChat", async
   const result = await loop.run(context, "stream test");
 
   assert.equal(result.state.status, "done");
+  assert.deepEqual(reasoning, ["thinking ", "done"]);
   assert.deepEqual(tokens, ["Hello ", "world", "done"]);
   assert.deepEqual(toolCalls, ["echo"]);
   assert.deepEqual(toolResults, ["echo"]);
@@ -91,6 +96,86 @@ test("agent loop falls back to chat when onToken is not provided", async () => {
   assert.equal(chatCalled, true);
   assert.equal(streamChatCalled, false);
   assert.equal(tokens.length, 0);
+});
+
+test("agent loop can disable provider streaming while preserving runtime events", async () => {
+  const events: Array<{ readonly type: string; readonly data: unknown }> = [];
+  let chatCalled = false;
+  let streamChatCalled = false;
+  const loop = new AgentLoop({
+    model: {
+      id: "openai",
+      model: "test-model",
+      async chat() {
+        chatCalled = true;
+        return {
+          content: "non-streamed answer",
+          usage: { promptTokens: 2, completionTokens: 3, totalTokens: 5 },
+        };
+      },
+      async streamChat() {
+        streamChatCalled = true;
+        return { content: "wrong streamed answer", toolCalls: [] };
+      },
+    },
+    streamModelResponses: false,
+    eventSink: (event) => events.push({ type: event.type, data: event.data }),
+  });
+
+  const result = await loop.run(
+    createAgentContext("non-streaming-events", new InMemoryMemory()),
+    "answer without streaming",
+  );
+
+  assert.equal(result.state.status, "done");
+  assert.equal(chatCalled, true);
+  assert.equal(streamChatCalled, false);
+  assert.equal(result.usage?.totalTokens, 5);
+  assert.deepEqual(
+    events.filter((event) => event.type === "assistant.delta"),
+    [],
+  );
+  assert.ok(
+    events.some(
+      (event) =>
+        event.type === "assistant.completed" &&
+        (event.data as { readonly text?: string }).text === "non-streamed answer",
+    ),
+  );
+});
+
+test("agent loop normalizes non-stream reasoning into the reasoning callback and runtime events", async () => {
+  const reasoning: string[] = [];
+  const events: Array<{ readonly type: string; readonly data: unknown }> = [];
+  const loop = new AgentLoop({
+    model: {
+      id: "openai",
+      model: "test-model",
+      async chat() {
+        return {
+          content: "answer",
+          reasoning: "provider thought",
+          toolCalls: [],
+        };
+      },
+    },
+    onReasoning: (token) => reasoning.push(token),
+    eventSink: (event) => {
+      events.push({ type: event.type, data: event.data });
+    },
+  });
+
+  const result = await loop.run(
+    createAgentContext("reasoning-normalization", new InMemoryMemory()),
+    "explain",
+  );
+
+  assert.equal(result.state.status, "done");
+  assert.deepEqual(reasoning, ["provider thought"]);
+  assert.deepEqual(
+    events.filter((event) => event.type === "assistant.delta").map((event) => event.data),
+    [{ text: "provider thought", channel: "reasoning" }],
+  );
 });
 
 test("agent loop emits onToolCall then onToolResult for each tool invocation", async () => {

@@ -124,7 +124,7 @@ function runCliInteractiveValidation(
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child: ChildProcess = spawn("node", [cliPath, ...args], {
-      env,
+      env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -179,7 +179,7 @@ function runCliInteractiveCleanup(
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child: ChildProcess = spawn("node", [cliPath, ...args], {
-      env,
+      env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -267,6 +267,7 @@ async function createGitWorkspace(): Promise<{ dir: string; target: string }> {
 function environment(dir: string, providerBaseUrl: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
+    DEV_AGENT_MCP_SERVERS: "[]",
     INIT_CWD: dir,
     DEV_AGENT_MODEL_PROVIDER: "openai",
     OPENAI_API_KEY: "test-key",
@@ -742,6 +743,7 @@ test("interactive CLI exposes explicit evidence cleanup", async () => {
     await seedEvidenceMemory(memoryFile, workspace.dir);
     const result = await runCliInteractiveCleanup([], {
       ...process.env,
+      DEV_AGENT_MCP_SERVERS: "[]",
       DEV_AGENT_MODEL_PROVIDER: "ollama",
       DEV_AGENT_MEMORY_FILE: memoryFile,
     });

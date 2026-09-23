@@ -4,14 +4,18 @@ import { basename, join } from "node:path";
 
 import {
   AgentLoop,
+  AgentHookRegistry,
+  AgentRunTrace,
   AgentToolRegistry,
   compileApprovalConfig,
   normalizeApprovalKey,
+  createApprovalPolicy,
   createAgentContext,
   createBlockedValidationResult,
   createValidationAttemptId,
-  denyDangerousPolicy,
-  reviewWritesPolicy,
+  composePrompt,
+  DEFAULT_DESKTOP_PROMPT_MODULES,
+  FileMemoryCheckpointStore,
   FileMemory,
   type AgentContext,
   type ApprovalPolicy,
@@ -23,8 +27,18 @@ import {
   type ValidationResult,
   type ApprovalRequest,
   type ChangeSetReview,
+  type RuntimeEvent,
+  type AgentTraceSnapshot,
+  type SandboxExpansionDecision,
+  type SandboxExpansionRequest,
 } from "@dev-agent/agent-core";
-import { createExecutor, getExecutorMode, type Executor, type ExecutorMode } from "@dev-agent/executor";
+import {
+  createExecutor,
+  getExecutorMode,
+  isSandboxExecutor,
+  type Executor,
+  type ExecutorMode,
+} from "@dev-agent/executor";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -36,6 +50,8 @@ import {
   type ModelProvider,
 } from "@dev-agent/model";
 import {
+  createBuiltInToolSandboxProfile,
+  expandBuiltInToolSandboxProfile,
   createDefaultTools,
   createValidationRunner,
   deriveValidationPlan,
@@ -46,7 +62,14 @@ import {
   type ValidationPolicy,
   type ValidationPolicySettings,
 } from "@dev-agent/tools";
-import { McpStdioClient, type McpClientConfig } from "@dev-agent/mcp";
+import {
+  buildMcpSystemPromptSupplement,
+  McpServerSession,
+  type McpClientConfig,
+  type McpPromptPromptLine,
+  type McpResourcePromptLine,
+  type McpSessionSnapshot,
+} from "@dev-agent/mcp";
 import {
   createDesktopStatus,
   type DesktopStatusSnapshot,
@@ -56,6 +79,7 @@ import {
 export interface StreamEvent {
   readonly type:
     | "token"
+    | "reasoning"
     | "tool"
     | "tool-progress"
     | "tool-result"
@@ -63,10 +87,20 @@ export interface StreamEvent {
     | "usage"
     | "approval"
     | "approval-request"
+    | "plan-review"
     | "validation"
+    | "runtime"
     | "done"
     | "error";
   readonly data: Record<string, unknown>;
+}
+
+/** Projects the versioned core event into the Desktop SSE transport. */
+export function projectRuntimeEvent(event: RuntimeEvent): StreamEvent {
+  return {
+    type: "runtime",
+    data: { event },
+  };
 }
 
 export type DesktopApprovalMode = "allow" | "deny-dangerous" | "ask" | "review-writes";
@@ -120,8 +154,12 @@ export class ChatSession {
   private readonly compiledApproval: { patterns: readonly RegExp[]; allowlist: readonly string[] };
   private readonly pricing?: PriceTable;
   private readonly mcpServers: readonly McpClientConfig[];
-  private readonly mcpClients: McpStdioClient[] = [];
+  private readonly mcpSessions: McpServerSession[] = [];
+  private readonly mcpSnapshots = new Map<string, McpSessionSnapshot>();
+  private readonly hooks: AgentHookRegistry;
+  private readonly trace: AgentRunTrace;
   private mcpToolsReady?: Promise<void>;
+  private mcpSystemPromptSupplement = "";
   private context: AgentContext;
   private readonly sessionId: string;
 
@@ -159,10 +197,11 @@ export class ChatSession {
     const sessionId = normalizeSessionId(options.sessionId ?? "desktop-default");
     const memoryFile =
       options.memoryFilePath ?? process.env.DEV_AGENT_MEMORY_FILE ?? defaultMemoryPath(sessionId);
-    this.memory = new FileMemory({ filePath: memoryFile });
     this.sessionId = sessionId;
+    this.memory = new FileMemory({ filePath: memoryFile, sessionId });
     this.workingDirectory = options.workingDirectory ?? process.cwd();
-    this.systemPrompt = options.systemPrompt ?? defaultSystemPrompt;
+    this.systemPrompt =
+      options.systemPrompt ?? composePrompt(DEFAULT_DESKTOP_PROMPT_MODULES);
     this.maxTurns = options.maxTurns ?? 12;
     this.maxContextChars =
       options.maxContextChars ?? parsePositiveInt(process.env.DEV_AGENT_MAX_CONTEXT_CHARS);
@@ -174,6 +213,8 @@ export class ChatSession {
     this.compiledApproval = compileApprovalConfig(config.approval);
     this.pricing = config.pricing;
     this.mcpServers = options.mcpServers ?? loadMcpServers(config.mcpServers);
+    this.hooks = new AgentHookRegistry();
+    this.trace = new AgentRunTrace(this.hooks);
     this.context = createAgentContext("desktop", this.memory, {
       sessionId,
       workingDirectory: this.workingDirectory,
@@ -187,20 +228,104 @@ export class ChatSession {
     options: {
       readonly signal?: AbortSignal;
       readonly requestApproval?: ApprovalRequester;
+      readonly runId?: string;
+      readonly mode?: "normal" | "plan";
     } = {}
   ): Promise<void> {
     await this.restorePersistedChangeSets();
     let turns = this.context.state.turns;
+    const loop = this.createLoop(emit, options, (turn) => {
+      turns = turn;
+      emit({ type: "turn", data: { turn } });
+    });
+
+    try {
+      await this.ensureMcpTools(options.signal);
+      const result = await loop.run(this.context, message, {
+        signal: options.signal,
+        mode: options.mode ?? "normal",
+        ...(options.runId === undefined ? {} : { runId: options.runId }),
+      });
+      this.context = result;
+      emit({
+        type: "done",
+        data: { status: result.state.status, turns: result.state.turns },
+      });
+    } catch (error) {
+      if (options.signal?.aborted) {
+        // The interrupted run keeps its previous context; tell the client the
+        // stream is over instead of leaving it waiting for more events.
+        emit({ type: "done", data: { status: "aborted", turns } });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  /** Applies a reviewed plan without asking the model to recreate the mutation. */
+  async applyPlannedChangeSet(
+    review: ChangeSetReview,
+    prompt: string,
+    emit: (event: StreamEvent) => void,
+    options: {
+      readonly signal?: AbortSignal;
+      readonly runId?: string;
+    } = {},
+  ): Promise<void> {
+    await this.restorePersistedChangeSets();
+    const loop = this.createLoop(emit, options);
+    const turns = this.context.state.turns;
+    try {
+      const result = await loop.applyPlannedChangeSet(this.context, {
+        prompt,
+        review,
+        signal: options.signal,
+        ...(options.runId === undefined ? {} : { runId: options.runId }),
+      });
+      this.context = result;
+      emit({
+        type: "done",
+        data: { status: result.state.status, turns: result.state.turns },
+      });
+    } catch (error) {
+      if (options.signal?.aborted) {
+        emit({ type: "done", data: { status: "aborted", turns } });
+        return;
+      }
+      throw error;
+    }
+  }
+
+  private createLoop(
+    emit: (event: StreamEvent) => void,
+    options: {
+      readonly signal?: AbortSignal;
+      readonly requestApproval?: ApprovalRequester;
+      readonly runId?: string;
+    },
+    onTurn?: (turn: number) => void,
+  ): AgentLoop {
     const approval = buildApprovalPolicy(
       this.approvalMode,
       options.requestApproval,
       this.compiledApproval,
       this.filesystem
     );
-    const loop = new AgentLoop({
+    return new AgentLoop({
       model: this.model,
       tools: this.tools,
-      systemPrompt: this.systemPrompt,
+      hooks: this.hooks,
+      toolSandboxProfile: isSandboxExecutor(this.executor)
+        ? (_toolName, toolContext) =>
+            createBuiltInToolSandboxProfile(_toolName, toolContext.workingDirectory)
+        : undefined,
+      onSandboxExpansion: (request) =>
+        requestDesktopSandboxExpansion(request, options.requestApproval, emit),
+      systemPromptProvider: () =>
+        composePrompt([
+          { id: "desktop", content: this.systemPrompt },
+          { id: "mcp", content: this.mcpSystemPromptSupplement },
+        ]),
       maxTurns: this.maxTurns,
       contextBudget:
         this.maxContextChars === undefined && !this.summarizeContext
@@ -210,11 +335,11 @@ export class ChatSession {
               summarize: this.summarizeContext,
               summaryMaxChars: this.summaryMaxChars,
             },
-      onTurn: (turn) => {
-        turns = turn;
-        emit({ type: "turn", data: { turn } });
-      },
+      onTurn: onTurn === undefined
+        ? undefined
+        : (turn) => onTurn(turn),
       onToken: (token) => emit({ type: "token", data: { token } }),
+      onReasoning: (token) => emit({ type: "reasoning", data: { reasoning: token } }),
       onToolCall: (call) => emit({ type: "tool", data: { name: call.name, input: call.input } }),
       onToolProgress: (progress) =>
         emit({
@@ -225,7 +350,8 @@ export class ChatSession {
             ...(progress.total === undefined ? {} : { total: progress.total }),
           },
         }),
-      onToolResult: (result) => emit({ type: "tool-result", data: { name: result.name, output: result.output } }),
+      onToolResult: (result) =>
+        emit({ type: "tool-result", data: { name: result.name, output: result.output } }),
       onUsage: (usage) => {
         const cost = estimateUsageCost(usage, this.model.model, this.pricing);
         emit({
@@ -249,30 +375,14 @@ export class ChatSession {
             ...(request.review === undefined ? {} : { review: request.review }),
           },
         }),
+      onPlanReview: (review) => emit({ type: "plan-review", data: { review } }),
       validation: this.validation,
       onValidation: (result) => {
         this.lastValidationResult = result.status;
         emitValidation(emit, this.sessionId, result);
       },
+      eventSink: (event) => emit(projectRuntimeEvent(event)),
     });
-
-    try {
-      await this.ensureMcpTools(options.signal);
-      const result = await loop.run(this.context, message, { signal: options.signal });
-      this.context = result;
-      emit({
-        type: "done",
-        data: { status: result.state.status, turns: result.state.turns },
-      });
-    } catch (error) {
-      if (options.signal?.aborted) {
-        // The interrupted run keeps its previous context; tell the client the
-        // stream is over instead of leaving it waiting for more events.
-        emit({ type: "done", data: { status: "aborted", turns } });
-        return;
-      }
-      throw error;
-    }
   }
 
   /** Rolls back the most recently prepared change set when its postimage still matches. */
@@ -357,6 +467,24 @@ export class ChatSession {
     return result;
   }
 
+  /** Creates a metadata-only conversation checkpoint without touching files. */
+  async createCheckpoint() {
+    const store = new FileMemoryCheckpointStore(this.memory);
+    return await store.create();
+  }
+
+  /** Returns the bounded checkpoint records attached to this session. */
+  async listCheckpoints() {
+    const store = new FileMemoryCheckpointStore(this.memory);
+    return await store.list();
+  }
+
+  /** Truncates conversation history at a validated anchor; files are unchanged. */
+  async rewindToCheckpoint(checkpointId: string) {
+    const store = new FileMemoryCheckpointStore(this.memory);
+    return await store.rewind(checkpointId);
+  }
+
   private async restorePersistedChangeSets() {
     const records = (await this.memory.changeSets?.()) ?? [];
     return this.filesystem.restoreAppliedChangeSets(records, {
@@ -390,54 +518,179 @@ export class ChatSession {
     try {
       for (const [index, serverConfig] of this.mcpServers.entries()) {
         const prefix = prefixes[index] ?? "mcp";
-        const client = new McpStdioClient();
-        this.mcpClients.push(client);
-        await client.connect({
-          ...serverConfig,
-          name: prefix,
-          rootDirectory: this.workingDirectory,
-          env: {
-            DEV_AGENT_SESSION_ID: this.sessionId,
-            DEV_AGENT_WORKING_DIRECTORY: this.workingDirectory,
-            ...(serverConfig.env ?? {}),
+        const session = new McpServerSession({
+          config: {
+            ...serverConfig,
+            name: prefix,
+            rootDirectory: this.workingDirectory,
+            env: {
+              DEV_AGENT_SESSION_ID: this.sessionId,
+              DEV_AGENT_WORKING_DIRECTORY: this.workingDirectory,
+              ...(serverConfig.env ?? {}),
+            },
           },
         });
-        const tools = await client.listTools();
-        for (const tool of tools) {
-          this.tools.register({
-            name: `${prefix}:${tool.name}`,
-            description: tool.description,
-            parameters: tool.parameters,
-            async execute(input, context) {
-              return tool.execute(input, {
-                signal: context?.signal,
-                onProgress: context?.onProgress,
-              });
-            },
-          });
-        }
+        const snapshot = await session.connect();
+        this.mcpSessions.push(session);
+        this.mcpSnapshots.set(prefix, snapshot);
+        this.registerMcpCapabilities(session, prefix, snapshot);
+        session.onChange((updated) => {
+          if (!this.mcpSessions.includes(session)) {
+            return;
+          }
+          this.unregisterMcpTools(prefix);
+          this.mcpSnapshots.set(prefix, updated);
+          this.registerMcpCapabilities(session, prefix, updated);
+          this.rebuildMcpSystemPrompt();
+        });
       }
+      this.rebuildMcpSystemPrompt();
     } catch (error) {
-      await this.closeMcpClients();
+      await this.closeMcpSessions();
       throw error;
     }
   }
 
-  private async closeMcpClients(): Promise<void> {
-    const clients = this.mcpClients.splice(0);
-    await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
+  private registerMcpCapabilities(
+    session: McpServerSession,
+    prefix: string,
+    snapshot: McpSessionSnapshot,
+  ): void {
+    const client = session.getClient();
+    for (const tool of snapshot.tools) {
+      this.tools.register({
+        name: `${prefix}:${tool.name}`,
+        description: tool.description,
+        parameters: tool.parameters,
+        metadata: {
+          // MCP server actions are arbitrary remote behavior. Never downgrade
+          // their risk based on annotations supplied by the server itself.
+          risk: "dangerous",
+          confirmation: "always",
+          resultFormat: "text",
+          supportsProgress: true,
+        },
+        async execute(input, context) {
+          return tool.execute(input, {
+            signal: context?.signal,
+            onProgress: context?.onProgress,
+          });
+        },
+      });
+    }
+
+    this.tools.register({
+      name: `${prefix}:resource`,
+      description: `Read an MCP resource from server ${prefix} by URI.`,
+      parameters: {
+        type: "object",
+        properties: { uri: { type: "string" } },
+        required: ["uri"],
+      },
+      metadata: {
+        risk: "read-only",
+        confirmation: "never",
+        resultFormat: "json",
+        supportsProgress: false,
+      },
+      async execute(input) {
+        const uri = readMcpString(input, "uri");
+        const contents = await client.readResourceContents(uri);
+        return contents.length > 0 ? contents : [{ uri }];
+      },
+    });
+
+    this.tools.register({
+      name: `${prefix}:prompt`,
+      description: `Get an MCP prompt from server ${prefix} by name.`,
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string" },
+          arguments: { type: "object" },
+        },
+        required: ["name"],
+      },
+      metadata: {
+        risk: "read-only",
+        confirmation: "never",
+        resultFormat: "json",
+        supportsProgress: false,
+      },
+      async execute(input) {
+        const name = readMcpString(input, "name");
+        return client.getPrompt(name, readMcpArguments(input));
+      },
+    });
+  }
+
+  private unregisterMcpTools(prefix: string): void {
+    const marker = `${prefix}:`;
+    for (const tool of this.tools.list()) {
+      if (tool.name.startsWith(marker)) {
+        this.tools.unregister(tool.name);
+      }
+    }
+  }
+
+  private rebuildMcpSystemPrompt(): void {
+    const resources: McpResourcePromptLine[] = [];
+    const prompts: McpPromptPromptLine[] = [];
+    for (const [prefix, snapshot] of this.mcpSnapshots) {
+      for (const resource of snapshot.resources) {
+        resources.push({
+          prefix,
+          uri: resource.info.uri,
+          name: resource.info.name,
+          description: resource.info.description,
+        });
+      }
+      for (const prompt of snapshot.prompts) {
+        prompts.push({
+          prefix,
+          name: prompt.info.name,
+          description: prompt.info.description,
+          argumentNames: prompt.info.arguments?.map((argument) => argument.name),
+        });
+      }
+    }
+    this.mcpSystemPromptSupplement = buildMcpSystemPromptSupplement(resources, prompts);
+  }
+
+  private async closeMcpSessions(): Promise<void> {
+    this.clearMcpCapabilities();
+    const sessions = this.mcpSessions.splice(0);
+    this.mcpSnapshots.clear();
+    this.mcpSystemPromptSupplement = "";
+    await Promise.all(sessions.map((session) => session.close().catch(() => undefined)));
   }
 
   /** Closes any configured MCP stdio children owned by this session. */
   async close(): Promise<void> {
+    this.trace.dispose();
     await this.mcpToolsReady?.catch(() => undefined);
-    const clients = this.mcpClients.splice(0);
+    this.clearMcpCapabilities();
+    const sessions = this.mcpSessions.splice(0);
+    this.mcpSnapshots.clear();
+    this.mcpSystemPromptSupplement = "";
     this.mcpToolsReady = undefined;
-    await Promise.all(clients.map((client) => client.close().catch(() => undefined)));
+    await Promise.all(sessions.map((session) => session.close().catch(() => undefined)));
+    await this.executor.dispose?.();
+  }
+
+  private clearMcpCapabilities(): void {
+    for (const prefix of this.mcpSnapshots.keys()) {
+      this.unregisterMcpTools(prefix);
+    }
   }
 
   get id(): string {
     return this.sessionId;
+  }
+
+  /** Returns the bounded, metadata-only lifecycle trace for this session. */
+  getTraceSnapshot(): AgentTraceSnapshot {
+    return this.trace.snapshot();
   }
 
   /** Returns the allowlisted metadata exposed by the desktop status panel. */
@@ -446,7 +699,7 @@ export class ChatSession {
       sessionId: this.sessionId,
       workspaceLabel: basename(this.workingDirectory),
       mcpConfigured: this.mcpServers.length,
-      mcpConnected: this.mcpClients.length,
+      mcpConnected: this.mcpSessions.length,
       executorMode: this.executorMode,
       providerId: this.model.id,
       model: this.model.model,
@@ -476,9 +729,6 @@ function emitValidation(
     data: { sessionId, ...result },
   });
 }
-
-const defaultSystemPrompt =
-  "You are dev-agent, a coding agent running in a desktop chat UI. Use tools when they help answer the user.";
 
 export function normalizeSessionId(sessionId: string): string {
   const normalized = sessionId
@@ -538,73 +788,95 @@ function buildApprovalPolicy(
   compiled: { patterns: readonly RegExp[]; allowlist: readonly string[] },
   filesystem: FilesystemTool
 ): ApprovalPolicy | undefined {
-  if (mode === "allow") {
-    return undefined;
-  }
-
-  const dangerous = denyDangerousPolicy({
-    patterns: [...compiled.patterns],
-    allowlist: [...compiled.allowlist],
-  });
-  if (mode === "deny-dangerous") {
-    return dangerous;
-  }
-
-  if (mode === "review-writes") {
-    return reviewWritesPolicy({
-      prepare: (request) =>
-        filesystem.prepareChangeSet(request.input, {
-          sessionId: request.sessionId,
-          workingDirectory: request.workingDirectory,
-        }),
-      patterns: [...compiled.patterns],
-      allowlist: [...compiled.allowlist],
-      requestApproval: requestApproval
-        ? async (request, reason) => {
-            const answer = await requestApproval({
-              tool: request.toolName,
-              reason,
-              input: request.input,
-              key: normalizeApprovalKey(request),
-              ...(request.review === undefined ? {} : { review: request.review }),
-            });
-            return answer === "allow"
-              ? { decision: "allow" }
-              : {
-                  decision: "deny",
-                  reason: request.review
-                    ? `filesystem ${reviewAction(request)} review declined`
-                    : `${reason ?? "dangerous call"} (declined)`,
-                };
-          }
-        : undefined,
-    });
-  }
-
-  if (!requestApproval) {
-    return dangerous;
-  }
-
-  return {
-    async decide(request) {
-      const outcome = await dangerous.decide(request);
-      const decision = typeof outcome === "string" ? outcome : outcome.decision;
-      if (decision === "allow") {
-        return { decision: "allow" };
+  const approvalRequester = requestApproval
+    ? async (request: ApprovalRequest, reason?: string) => {
+        const answer = await requestApproval({
+          tool: request.toolName,
+          reason,
+          input: request.input,
+          key: normalizeApprovalKey(request),
+          ...(request.review === undefined ? {} : { review: request.review }),
+        });
+        return answer === "allow"
+          ? { decision: "allow" as const }
+          : {
+              decision: "deny" as const,
+              reason: request.review
+                ? `filesystem ${reviewAction(request)} review declined`
+                : `${reason ?? "dangerous call"} (declined)`,
+            };
       }
+    : undefined;
 
-      const reason = typeof outcome === "string" ? undefined : outcome.reason;
-      const answer = await requestApproval({
+  return createApprovalPolicy({
+    mode,
+    patterns: compiled.patterns,
+    allowlist: compiled.allowlist,
+    prepare: (request) =>
+      filesystem.prepareChangeSet(request.input, {
+        sessionId: request.sessionId,
+        workingDirectory: request.workingDirectory,
+      }),
+    requestApproval: approvalRequester,
+  });
+}
+
+async function requestDesktopSandboxExpansion(
+  request: SandboxExpansionRequest,
+  requestApproval: ApprovalRequester | undefined,
+  emit: (event: StreamEvent) => void,
+): Promise<SandboxExpansionDecision> {
+  const expanded = expandBuiltInToolSandboxProfile(request.profile, request.error.capability);
+  if (expanded === undefined) {
+    return {
+      decision: "deny",
+      reason: `sandbox expansion for ${request.error.capability} is unavailable`,
+    };
+  }
+  if (requestApproval === undefined) {
+    return {
+      decision: "deny",
+      reason: "sandbox expansion requires an interactive approval requester",
+    };
+  }
+
+  const reason =
+    `Sandbox denied ${request.error.capability} access. ` +
+    "Retry with network access while keeping the existing workspace boundary?";
+  try {
+    const answer = await requestApproval({
+      tool: request.toolName,
+      reason,
+      input: request.input,
+    });
+    emit({
+      type: "approval",
+      data: {
         tool: request.toolName,
-        reason,
-        input: request.input,
-        key: normalizeApprovalKey(request),
-      });
-      return answer === "allow"
-        ? { decision: "allow" }
-        : { decision: "deny", reason: `${reason ?? "dangerous call"} (declined)` };
-    },
-  };
+        decision: answer,
+        reason: answer === "allow"
+          ? "sandbox expansion approved"
+          : "sandbox expansion declined",
+      },
+    });
+    return answer === "allow"
+      ? { decision: "allow", profile: expanded }
+      : { decision: "deny", reason: "sandbox expansion declined" };
+  } catch (error) {
+    const failure =
+      `sandbox expansion approval failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+    emit({
+      type: "approval",
+      data: {
+        tool: request.toolName,
+        decision: "deny",
+        reason: failure,
+      },
+    });
+    return { decision: "deny", reason: failure };
+  }
 }
 
 function reviewAction(request: ApprovalRequest): string {
@@ -684,6 +956,33 @@ function assignMcpPrefixes(names: readonly (string | undefined)[]): readonly str
     used.add(candidate);
     return candidate;
   });
+}
+
+function readMcpString(input: unknown, key: string): string {
+  if (typeof input !== "object" || input === null) {
+    throw new Error("MCP tool input must be an object");
+  }
+  const value = (input as Record<string, unknown>)[key];
+  if (typeof value !== "string" || value.trim() === "") {
+    throw new Error(`MCP tool input is missing required string field: ${key}`);
+  }
+  return value;
+}
+
+function readMcpArguments(
+  input: unknown
+): Record<string, string | number | boolean> | undefined {
+  if (typeof input !== "object" || input === null) {
+    return undefined;
+  }
+  const value = (input as Record<string, unknown>).arguments;
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("MCP prompt arguments must be an object");
+  }
+  return value as Record<string, string | number | boolean>;
 }
 
 /** Reads the shared sections of ~/.dev-agent/config.json. */

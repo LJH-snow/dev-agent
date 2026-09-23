@@ -28,26 +28,34 @@
     "LICENSE"
   ],
   "dependencies": {
+    "ink": "^6.8.0",
+    "react": "^19.3.0",
+    "signal-exit": "^3.0.7",
     "typescript": "^5.9.0"
   },
   "scripts": {
+    "pretest": "rm -rf tests-dist",
     "build": "tsc -p tsconfig.json",
     "build:package": "node build-package.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "start": "node dist/index.js",
-    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test --test-concurrency=1 tests-dist/*.test.js",
+    "start": "node dist/cli-entry.js",
+    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node build-package.mjs && node --test --test-concurrency=1 tests-dist/*.test.js",
     "clean": "rm -rf dist tests-dist"
   },
   "devDependencies": {
+    "@dev-agent/a2a": "workspace:*",
+    "@dev-agent/acp": "workspace:*",
     "@dev-agent/agent-core": "workspace:*",
     "@dev-agent/code-intelligence": "workspace:*",
     "@dev-agent/executor": "workspace:*",
     "@dev-agent/mcp": "workspace:*",
     "@dev-agent/model": "workspace:*",
+    "@dev-agent/runtime-manager": "workspace:*",
     "@dev-agent/tools": "workspace:*",
     "@types/node": "^26.0.0",
+    "@types/react": "^19.3.0",
     "esbuild": "^0.28.2",
-    "@dev-agent/runtime-manager": "workspace:*"
+    "zod": "^4.6.5"
   },
   "engines": {
     "node": ">=20"

@@ -1,10 +1,12 @@
 import { readBoundedJsonResponse } from "./json-response.js";
 import { MAX_STREAM_LINE_BYTES, assertBoundedLineBuffer } from "./line-reader.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
+import { StreamOutputBudget, StreamOutputLimitError } from "./stream-budget.js";
 import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatStreamOptions,
   ChatUsage,
   ModelProvider,
   ProviderConfig,
@@ -38,6 +40,9 @@ interface OpenAIResponse {
   readonly choices?: readonly {
     readonly message?: {
       readonly content?: string | null;
+      readonly reasoning_content?: string | null;
+      readonly reasoning?: string | null;
+      readonly thinking?: string | null;
       readonly tool_calls?: readonly OpenAIWireToolCall[];
     };
   }[];
@@ -86,6 +91,9 @@ export class OpenAIProvider implements ModelProvider {
             messages: messages.map(toOpenAIMessage),
             temperature: options.temperature,
             max_tokens: options.maxTokens,
+            ...(supportsOpenAIReasoningEffort(this.model) && options.reasoningEffort
+              ? { reasoning_effort: options.reasoningEffort }
+              : {}),
             ...(options.tools ? { tools: options.tools.map(toOpenAITool) } : {}),
           }),
           signal: options.signal,
@@ -101,6 +109,7 @@ export class OpenAIProvider implements ModelProvider {
     }
     return {
       content: message.content ?? "",
+      reasoning: message.reasoning_content ?? message.reasoning ?? message.thinking ?? undefined,
       toolCalls: message.tool_calls?.map(parseOpenAIToolCall),
       usage,
     };
@@ -108,7 +117,7 @@ export class OpenAIProvider implements ModelProvider {
 
   async streamChat(
     messages: readonly ChatMessage[],
-    options: ChatOptions & { onToken?: (token: string) => void } = {}
+    options: ChatStreamOptions = {}
   ): Promise<ChatCompletion> {
     const response = await requestWithRetry(
       "OpenAI stream request",
@@ -125,6 +134,9 @@ export class OpenAIProvider implements ModelProvider {
             stream: true,
             temperature: options.temperature,
             max_tokens: options.maxTokens,
+            ...(supportsOpenAIReasoningEffort(this.model) && options.reasoningEffort
+              ? { reasoning_effort: options.reasoningEffort }
+              : {}),
             ...(options.tools ? { tools: options.tools.map(toOpenAITool) } : {}),
           }),
           signal: options.signal,
@@ -139,7 +151,9 @@ export class OpenAIProvider implements ModelProvider {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const budget = new StreamOutputBudget();
     let content = "";
+    let reasoningText = "";
     let buffer = "";
     let finished = false;
     let usage: ChatUsage | undefined;
@@ -158,6 +172,9 @@ export class OpenAIProvider implements ModelProvider {
           choices?: readonly {
             delta?: {
               content?: string;
+              reasoning_content?: string | null;
+              reasoning?: string | null;
+              thinking?: string | null;
               tool_calls?: readonly OpenAIStreamToolCallDelta[];
             };
           }[];
@@ -168,19 +185,36 @@ export class OpenAIProvider implements ModelProvider {
         }
         const delta = json.choices?.[0]?.delta;
         if (!delta) return;
+        const reasoning = delta.reasoning_content || delta.reasoning || delta.thinking || "";
+        if (reasoning) {
+          budget.addText(reasoning);
+          reasoningText += reasoning;
+          options.onReasoning?.(reasoning);
+        }
         if (delta.content) {
+          budget.addText(delta.content);
           content += delta.content;
           options.onToken?.(delta.content);
         }
         for (const call of delta.tool_calls ?? []) {
           const index = call.index ?? 0;
           const accumulated = toolCallDeltas.get(index) ?? { id: "", name: "", args: "" };
-          if (call.id) accumulated.id = call.id;
-          if (call.function?.name) accumulated.name = call.function.name;
-          if (call.function?.arguments) accumulated.args += call.function.arguments;
+          if (call.id) {
+            budget.addText(call.id);
+            accumulated.id = call.id;
+          }
+          if (call.function?.name) {
+            budget.addText(call.function.name);
+            accumulated.name = call.function.name;
+          }
+          if (call.function?.arguments) {
+            budget.addText(call.function.arguments);
+            accumulated.args += call.function.arguments;
+          }
           toolCallDeltas.set(index, accumulated);
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof StreamOutputLimitError) throw error;
         // skip malformed
       }
     };
@@ -203,6 +237,11 @@ export class OpenAIProvider implements ModelProvider {
       if (!finished && buffer.length > 0) {
         handleLine(buffer);
       }
+    } catch (error) {
+      if (error instanceof StreamOutputLimitError) {
+        await reader.cancel().catch(() => undefined);
+      }
+      throw error;
     } finally {
       reader.releaseLock();
     }
@@ -216,7 +255,12 @@ export class OpenAIProvider implements ModelProvider {
         })
       );
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
+    return {
+      content,
+      reasoning: reasoningText || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage,
+    };
   }
 }
 
@@ -294,4 +338,8 @@ function parseOpenAIToolCall(call: OpenAIWireToolCall): ToolCall {
     name: call.function.name,
     input,
   };
+}
+
+export function supportsOpenAIReasoningEffort(model: string): boolean {
+  return /^(?:gpt-5(?:[.-]|$)|o(?:1|3|4)(?:[.-]|$))/i.test(model.trim());
 }

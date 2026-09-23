@@ -60,7 +60,7 @@ async function startStubProvider(toolInput) {
 function runCli(args, env, input = undefined): Promise<any> {
   return new Promise((resolve) => {
     const child = spawn("node", [cliPath, ...args], {
-      env,
+      env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -71,12 +71,60 @@ function runCli(args, env, input = undefined): Promise<any> {
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
     });
-    if (input !== undefined) {
-      child.stdin.end(input);
+    if (Array.isArray(input)) {
+      void (async () => {
+        for (const chunk of input) {
+          child.stdin.write(chunk);
+          await new Promise((resume) => setTimeout(resume, 10));
+        }
+        child.stdin.end();
+      })();
     } else {
-      child.stdin.end();
+      child.stdin.end(input);
     }
     child.on("close", (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
+function runCliWithOpenInput(args, env, input): Promise<any> {
+  return new Promise((resolve) => {
+    const child = spawn("node", [cliPath, ...args], {
+      env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let timedOut = false;
+    let timeout: ReturnType<typeof setTimeout>;
+    const finish = (result): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(result);
+    };
+    timeout = setTimeout(() => {
+      if (settled) return;
+      timedOut = true;
+      child.kill("SIGTERM");
+      const killTimeout = setTimeout(() => {
+        finish({ code: null, stdout, stderr, timedOut: true });
+      }, 500);
+      child.once("close", (code) => {
+        clearTimeout(killTimeout);
+        finish({ code, stdout, stderr, timedOut: true });
+      });
+    }, 2_000);
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.stdin.write(input);
+    child.on("close", (code) => {
+      finish({ code, stdout, stderr, timedOut });
+    });
   });
 }
 
@@ -167,6 +215,119 @@ test("--approval ask runs the command when the answer starts with y", async () =
 
     assert.equal(result.code, 0, result.stderr);
     assert.equal(await modeOf(target), 0o777, "the approved command should have run");
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--approval ask accepts a split UTF-8 response below the byte limit", async () => {
+  const { dir, target } = await setup();
+  const provider = await startStubProvider({ command: "chmod", args: ["777", target] });
+  try {
+    const bytes = Buffer.from(`y${"é".repeat(2_047)}`, "utf8");
+    assert.equal(bytes.byteLength, 4 * 1024 - 1);
+    const result = await runCli(
+      ["--once", "run it", "--no-stream", "--approval", "ask"],
+      {
+        ...process.env,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: provider.baseUrl,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      },
+      [bytes.subarray(0, -1), bytes.subarray(-1)]
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(await modeOf(target), 0o777, "a valid response below the limit should run");
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--approval ask accepts exactly the byte limit", async () => {
+  const { dir, target } = await setup();
+  const provider = await startStubProvider({ command: "chmod", args: ["777", target] });
+  try {
+    const input = `y${"x".repeat(4 * 1024 - 1)}`;
+    assert.equal(Buffer.byteLength(input, "utf8"), 4 * 1024);
+    const result = await runCli(
+      ["--once", "run it", "--no-stream", "--approval", "ask"],
+      {
+        ...process.env,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: provider.baseUrl,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      },
+      input
+    );
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.equal(await modeOf(target), 0o777, "the exact limit should still be accepted");
+  } finally {
+    await provider.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--approval ask denies pre-newline input over the byte limit", async (t) => {
+  const inputs = [
+    ["ASCII", `y${"x".repeat(4 * 1024)}`],
+    ["UTF-8", `y${"é".repeat(2_048)}`],
+  ] as const;
+
+  for (const [label, input] of inputs) {
+    await t.test(label, async () => {
+      const { dir, target } = await setup();
+      const provider = await startStubProvider({ command: "chmod", args: ["777", target] });
+      try {
+        const result = await runCli(
+          ["--once", "run it", "--no-stream", "--approval", "ask"],
+          {
+            ...process.env,
+            DEV_AGENT_MODEL_PROVIDER: "openai",
+            OPENAI_API_KEY: "test-key",
+            OPENAI_BASE_URL: provider.baseUrl,
+            DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+          },
+          input
+        );
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.match(result.stdout, /\[denied\] shell/);
+        assert.doesNotMatch(result.stderr, new RegExp(input.slice(0, 32)));
+        assert.notEqual(await modeOf(target), 0o777, "the oversized approval must not run");
+      } finally {
+        await provider.close();
+        await rm(dir, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test("--approval ask closes a non-tty input after overflow without EOF", async () => {
+  const { dir, target } = await setup();
+  const provider = await startStubProvider({ command: "chmod", args: ["777", target] });
+  try {
+    const result = await runCliWithOpenInput(
+      ["--once", "run it", "--no-stream", "--approval", "ask"],
+      {
+        ...process.env,
+        DEV_AGENT_MODEL_PROVIDER: "openai",
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: provider.baseUrl,
+        DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+      },
+      `y${"x".repeat(4 * 1024)}`
+    );
+
+    assert.equal(result.timedOut, false, "overflow must not leave the one-shot CLI hanging");
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /\[denied\] shell/);
+    assert.notEqual(await modeOf(target), 0o777);
   } finally {
     await provider.close();
     await rm(dir, { recursive: true, force: true });

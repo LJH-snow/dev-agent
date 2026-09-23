@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -68,6 +68,103 @@ test("a deleted file is dropped from the cached index", async () => {
     const after = await tool.execute({ mode: "search", query: "alphaSymbol", path: dir });
     assert.equal(after.count, 0);
     assert.equal(tool.getCacheStats().rescanned, 1);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("code-search does not follow source symlinks outside the scan root", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-symlink-"));
+  const outside = await mkdtemp(join(tmpdir(), "dev-agent-code-search-outside-"));
+  try {
+    const outsideFile = join(outside, "outside.ts");
+    await writeFile(
+      outsideFile,
+      "export function outsideOnlySymbol() { return 1; }\n",
+      "utf8"
+    );
+    await symlink(outsideFile, join(dir, "linked.ts"));
+
+    const tool: any = new CodeSearchTool();
+    const result = await tool.execute({
+      mode: "search",
+      query: "outsideOnlySymbol",
+      path: dir,
+    });
+
+    assert.equal(result.count, 0);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test("a file-count scan limit rejects before caching a partial symbol index", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-file-limit-"));
+  try {
+    await writeFile(join(dir, "first.rs"), "fn first() {}\n", "utf8");
+    await writeFile(join(dir, "second.rs"), "fn second() {}\n", "utf8");
+    await writeFile(join(dir, "third.rs"), "fn third() {}\n", "utf8");
+    const tool: any = new (CodeSearchTool as any)({
+      maxFiles: 2,
+      maxSourceBytes: 1_000,
+    });
+
+    await assert.rejects(
+      tool.execute({ mode: "search", query: "first", path: dir }),
+      (error) => {
+        const candidate = error as any;
+        assert.equal(candidate.code, "CODE_SEARCH_SCAN_LIMIT_EXCEEDED");
+        assert.equal(candidate.dimension, "files");
+        assert.equal(candidate.limit, 2);
+        assert.equal(candidate.observed, 3);
+        assert.equal(candidate.message, "code-search scan files limit exceeded");
+        assert.ok(!candidate.message.includes(dir));
+        return true;
+      }
+    );
+    assert.deepEqual(tool.getCacheStats(), {
+      hits: 0,
+      misses: 0,
+      rescanned: 0,
+      loadedFromDisk: 0,
+      persisted: 0,
+    });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a source-byte scan limit rejects before returning partial symbols", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-code-search-byte-limit-"));
+  try {
+    await writeFile(join(dir, "first.rs"), "fn a(){}", "utf8");
+    await writeFile(join(dir, "second.rs"), "fn b(){}", "utf8");
+    const tool: any = new (CodeSearchTool as any)({
+      maxFiles: 2,
+      maxSourceBytes: 10,
+    });
+
+    await assert.rejects(
+      tool.execute({ mode: "search", query: "a", path: dir }),
+      (error) => {
+        const candidate = error as any;
+        assert.equal(candidate.code, "CODE_SEARCH_SCAN_LIMIT_EXCEEDED");
+        assert.equal(candidate.dimension, "bytes");
+        assert.equal(candidate.limit, 10);
+        assert.equal(candidate.observed, 16);
+        assert.equal(candidate.message, "code-search scan bytes limit exceeded");
+        assert.ok(!candidate.message.includes(dir));
+        return true;
+      }
+    );
+    assert.deepEqual(tool.getCacheStats(), {
+      hits: 0,
+      misses: 0,
+      rescanned: 0,
+      loadedFromDisk: 0,
+      persisted: 0,
+    });
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

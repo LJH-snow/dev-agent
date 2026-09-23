@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { richPromptPrefix, shouldUseRichUi } from "../dist/tui-mode.js";
+import {
+  richPromptPrefix,
+  resolveTuiRenderer,
+  shouldUseRichUi,
+} from "../dist/tui-mode.js";
 
 test("uses rich UI only when both standard streams are TTYs", () => {
   assert.equal(
@@ -51,4 +55,31 @@ test("rich prompt prefix is a readable visible prompt", () => {
   assert.notEqual(prefix, "");
   assert.match(prefix, /[^\s]/);
   assert.match(prefix, /\s$/);
+});
+
+test("Ink is the only interactive renderer", () => {
+  assert.equal(
+    resolveTuiRenderer({
+      stdinIsTTY: true,
+      stdoutIsTTY: true,
+      env: {},
+    }),
+    "ink"
+  );
+  assert.equal(
+    resolveTuiRenderer({
+      stdinIsTTY: true,
+      stdoutIsTTY: true,
+      env: { DEV_AGENT_TUI: "ansi" },
+    }),
+    "ink"
+  );
+  assert.equal(
+    resolveTuiRenderer({
+      stdinIsTTY: false,
+      stdoutIsTTY: true,
+      env: {},
+    }),
+    "none"
+  );
 });

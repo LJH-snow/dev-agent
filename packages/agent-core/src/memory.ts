@@ -9,8 +9,10 @@ import type {
   ValidationResult,
   ValidationStatus,
 } from "./validation.js";
+import type { AgentCheckpoint } from "./checkpoint.js";
 
 const MAX_MEMORY_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
+const MAX_CHECKPOINT_RECORDS = 100;
 
 async function assertMemoryFileSize(path: string, maxBytes: number): Promise<void> {
   const fileStat = await stat(path);
@@ -113,6 +115,12 @@ export interface AgentMemory {
   recordChangeSet?(record: AppliedChangeSetRecord): Promise<void>;
   /** Returns change-set evidence in recording order. */
   changeSets?(): Promise<readonly AppliedChangeSetRecord[]>;
+  /** Persists a bounded, metadata-only memory checkpoint. */
+  recordCheckpoint?(checkpoint: AgentCheckpoint): Promise<void>;
+  /** Returns checkpoints in creation order. */
+  checkpoints?(): Promise<readonly AgentCheckpoint[]>;
+  /** Truncates conversation history at a validated checkpoint anchor. */
+  rewindToCheckpoint?(checkpoint: AgentCheckpoint): Promise<MemoryRewindResult>;
   /** Marks a successfully rolled-back change set without reviving its before-image. */
   markChangeSetRolledBack?(changeSetId: string): Promise<boolean>;
   /** Prunes metadata-only evidence without touching the working directory. */
@@ -129,12 +137,19 @@ export interface ContextSummary {
   readonly text: string;
 }
 
+export interface MemoryRewindResult {
+  readonly removedEntryCount: number;
+  readonly remainingEntryCount: number;
+  readonly retainedCheckpointIds: readonly string[];
+}
+
 export class InMemoryMemory implements AgentMemory {
   private readonly items: MemoryEntry[] = [];
   private summary?: ContextSummary;
   private usage?: ChatUsage;
   private readonly validationRecords: ValidationRecord[] = [];
   private readonly changeSetRecords: AppliedChangeSetRecord[] = [];
+  private readonly checkpointRecords: AgentCheckpoint[] = [];
   private readonly evidenceRetention: Required<EvidenceRetentionOptions>;
   private readonly createdAt = new Date().toISOString();
   private lastActiveAt = this.createdAt;
@@ -158,6 +173,7 @@ export class InMemoryMemory implements AgentMemory {
     this.usage = undefined;
     this.validationRecords.length = 0;
     this.changeSetRecords.length = 0;
+    this.checkpointRecords.length = 0;
     this.lastActiveAt = new Date().toISOString();
   }
 
@@ -213,6 +229,45 @@ export class InMemoryMemory implements AgentMemory {
 
   async changeSets(): Promise<readonly AppliedChangeSetRecord[]> {
     return [...this.changeSetRecords];
+  }
+
+  async recordCheckpoint(checkpoint: AgentCheckpoint): Promise<void> {
+    const index = this.checkpointRecords.findIndex((candidate) => candidate.id === checkpoint.id);
+    if (index >= 0) {
+      this.checkpointRecords[index] = checkpoint;
+    } else {
+      this.checkpointRecords.push(checkpoint);
+    }
+    trimCheckpointsInPlace(this.checkpointRecords);
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async checkpoints(): Promise<readonly AgentCheckpoint[]> {
+    return [...this.checkpointRecords];
+  }
+
+  async rewindToCheckpoint(checkpoint: AgentCheckpoint): Promise<MemoryRewindResult> {
+    validateRewindAnchor(this.items, checkpoint, "in-memory");
+    const removedEntryCount = this.items.length - checkpoint.entryCount;
+    this.items.splice(checkpoint.entryCount);
+    if (this.summary && this.summary.entriesCovered > checkpoint.entryCount) {
+      this.summary = undefined;
+    }
+    const retainedCheckpoints = retainCheckpointsAtAnchor(
+      this.checkpointRecords,
+      checkpoint
+    );
+    this.checkpointRecords.splice(
+      0,
+      this.checkpointRecords.length,
+      ...retainedCheckpoints
+    );
+    this.lastActiveAt = new Date().toISOString();
+    return {
+      removedEntryCount,
+      remainingEntryCount: this.items.length,
+      retainedCheckpointIds: retainedCheckpoints.map((candidate) => candidate.id),
+    };
   }
 
   async evidenceSummary(): Promise<EvidenceSummary> {
@@ -288,6 +343,7 @@ interface MemoryFile {
   readonly summary?: ContextSummary;
   readonly validations?: ValidationRecord[];
   readonly changeSets?: AppliedChangeSetRecord[];
+  readonly checkpoints?: AgentCheckpoint[];
 }
 
 export class FileMemory implements AgentMemory {
@@ -436,6 +492,79 @@ export class FileMemory implements AgentMemory {
     });
   }
 
+  recordCheckpoint(checkpoint: AgentCheckpoint): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const checkpoints = [
+        ...(existing?.checkpoints ?? []).filter((candidate) => candidate.id !== checkpoint.id),
+        checkpoint,
+      ];
+      trimCheckpointsInPlace(checkpoints);
+      await this.persist(entries, undefined, undefined, undefined, undefined, checkpoints);
+    });
+  }
+
+  checkpoints(): Promise<readonly AgentCheckpoint[]> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return [...(file.checkpoints ?? [])];
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return [];
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error(`Invalid memory file: ${this.filePath}`);
+      }
+    });
+  }
+
+  rewindToCheckpoint(checkpoint: AgentCheckpoint): Promise<MemoryRewindResult> {
+    return this.enqueue(async () => {
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const entries = [...(existing?.entries ?? [])];
+      validateRewindAnchor(
+        entries,
+        checkpoint,
+        existing?.metadata?.sessionId ?? this.sessionId
+      );
+      const rewoundEntries = entries.slice(0, checkpoint.entryCount);
+      const retainedCheckpoints = retainCheckpointsAtAnchor(
+        existing?.checkpoints ?? [],
+        checkpoint
+      );
+      await this.persist(
+        rewoundEntries,
+        existing?.summary !== undefined &&
+          existing.summary.entriesCovered <= checkpoint.entryCount
+          ? existing.summary
+          : null,
+        undefined,
+        undefined,
+        undefined,
+        retainedCheckpoints
+      );
+      return {
+        removedEntryCount: entries.length - rewoundEntries.length,
+        remainingEntryCount: rewoundEntries.length,
+        retainedCheckpointIds: retainedCheckpoints.map((candidate) => candidate.id),
+      };
+    });
+  }
+
   evidenceSummary(): Promise<EvidenceSummary> {
     return this.enqueue(async () => {
       try {
@@ -559,10 +688,11 @@ export class FileMemory implements AgentMemory {
 
   private async persist(
     entries: readonly MemoryEntry[],
-    summary?: ContextSummary,
+    summary?: ContextSummary | null,
     usage?: ChatUsage,
     validations?: readonly ValidationRecord[],
-    changeSets?: readonly AppliedChangeSetRecord[]
+    changeSets?: readonly AppliedChangeSetRecord[],
+    checkpoints?: readonly AgentCheckpoint[]
   ): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     const existing = await this.readMemoryFile().catch(() => undefined);
@@ -579,9 +709,10 @@ export class FileMemory implements AgentMemory {
       metadata,
       entries: [...entries],
       // Keep an existing digest unless this write replaces it.
-      summary: summary ?? existing?.summary,
+      summary: summary === null ? undefined : summary ?? existing?.summary,
       validations: validations === undefined ? existing?.validations : [...validations],
       changeSets: changeSets === undefined ? existing?.changeSets : [...changeSets],
+      checkpoints: checkpoints === undefined ? existing?.checkpoints : [...checkpoints],
     };
     const serialized = `${JSON.stringify(payload, null, 2)}\n`;
     if (Buffer.byteLength(serialized, "utf8") > MAX_MEMORY_FILE_BYTES) {
@@ -730,7 +861,9 @@ function isMemoryFile(value: unknown): value is MemoryFile {
     (candidate.validations === undefined ||
       (Array.isArray(candidate.validations) && candidate.validations.every(isValidationRecord))) &&
     (candidate.changeSets === undefined ||
-      (Array.isArray(candidate.changeSets) && candidate.changeSets.every(isAppliedChangeSetRecord)))
+      (Array.isArray(candidate.changeSets) && candidate.changeSets.every(isAppliedChangeSetRecord))) &&
+    (candidate.checkpoints === undefined ||
+      (Array.isArray(candidate.checkpoints) && candidate.checkpoints.every(isAgentCheckpoint)))
   );
 }
 
@@ -859,6 +992,74 @@ function isValidationCheckResult(value: unknown): boolean {
 
 function isValidationStatus(value: unknown): value is ValidationStatus {
   return value === "passed" || value === "failed" || value === "skipped" || value === "blocked";
+}
+
+function trimCheckpointsInPlace(records: AgentCheckpoint[]): number {
+  const removed = Math.max(0, records.length - MAX_CHECKPOINT_RECORDS);
+  if (removed > 0) {
+    records.splice(0, removed);
+  }
+  return removed;
+}
+
+function validateRewindAnchor(
+  entries: readonly MemoryEntry[],
+  checkpoint: AgentCheckpoint,
+  currentSessionId: string
+): void {
+  if (
+    checkpoint.sessionId !== "unknown" &&
+    checkpoint.sessionId !== currentSessionId
+  ) {
+    throw new Error("checkpoint belongs to another session");
+  }
+  if (checkpoint.entryCount > entries.length) {
+    throw new Error("checkpoint is ahead of current memory");
+  }
+  const anchorEntry = checkpoint.entryCount === 0
+    ? undefined
+    : entries[checkpoint.entryCount - 1];
+  if (
+    checkpoint.lastEntryId !== undefined &&
+    anchorEntry?.id !== checkpoint.lastEntryId
+  ) {
+    throw new Error("checkpoint anchor does not match current memory");
+  }
+  if (checkpoint.entryCount === 0 && checkpoint.lastEntryId !== undefined) {
+    throw new Error("checkpoint anchor does not match current memory");
+  }
+}
+
+function retainCheckpointsAtAnchor(
+  checkpoints: readonly AgentCheckpoint[],
+  target: AgentCheckpoint
+): AgentCheckpoint[] {
+  return checkpoints.filter((candidate) =>
+    candidate.entryCount < target.entryCount ||
+    (
+      candidate.entryCount === target.entryCount &&
+      candidate.lastEntryId === target.lastEntryId
+    )
+  );
+}
+
+function isAgentCheckpoint(value: unknown): value is AgentCheckpoint {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    typeof candidate.sessionId === "string" &&
+    candidate.sessionId.length > 0 &&
+    typeof candidate.createdAt === "string" &&
+    candidate.createdAt.length > 0 &&
+    (candidate.lastEntryId === undefined || typeof candidate.lastEntryId === "string") &&
+    isNonNegativeInteger(candidate.entryCount) &&
+    Array.isArray(candidate.changeSetIds) &&
+    candidate.changeSetIds.every((id) => typeof id === "string" && id.length > 0)
+  );
 }
 
 function isContextSummary(value: unknown): value is ContextSummary {

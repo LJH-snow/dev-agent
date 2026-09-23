@@ -5,12 +5,50 @@ export interface ToolDefaults {
   readonly timeoutMs?: number;
 }
 
+export type AgentToolRisk = "read-only" | "mutating" | "dangerous";
+export type AgentToolConfirmation = "never" | "on-risk" | "always";
+export type AgentToolResultFormat = "text" | "json" | "diff";
+
+export interface AgentToolMetadata {
+  readonly risk: AgentToolRisk;
+  readonly confirmation: AgentToolConfirmation;
+  readonly resultFormat: AgentToolResultFormat;
+  readonly supportsProgress: boolean;
+}
+
+const DEFAULT_TOOL_METADATA: AgentToolMetadata = {
+  // A tool that has not declared its capabilities is not safe to treat as a
+  // reader. Callers must opt into read-only behavior explicitly.
+  risk: "dangerous",
+  confirmation: "always",
+  resultFormat: "text",
+  supportsProgress: false,
+};
+
 const DEFAULT_MAX_OUTPUT_CHARS = 50000;
 const DEFAULT_TIMEOUT_MS = 30000;
 
 export interface ToolProgress {
   readonly progress: number;
   readonly total?: number;
+}
+
+export type ToolSandboxNetworkPolicy = "enabled" | "disabled" | "loopback";
+export type SandboxDenialCapability = "network" | "path" | "unknown";
+
+/**
+ * UI- and executor-neutral restrictions for one tool invocation.
+ *
+ * The executor adapter decides how to enforce this profile. Agent Core only
+ * carries the bounded intent across the tool boundary.
+ */
+export interface ToolSandboxProfile {
+  readonly name: string;
+  readonly network?: ToolSandboxNetworkPolicy;
+  readonly writablePaths?: readonly string[];
+  readonly readonlyPaths?: readonly string[];
+  readonly environment?: Readonly<Record<string, string | undefined>>;
+  readonly timeoutMs?: number;
 }
 
 export interface ToolExecutionContext {
@@ -20,17 +58,57 @@ export interface ToolExecutionContext {
   readonly signal?: AbortSignal;
   /** Reports incremental progress from a long-running tool. */
   readonly onProgress?: (progress: ToolProgress) => void;
+  /** Optional executor-level restrictions selected by the application edge. */
+  readonly sandbox?: ToolSandboxProfile;
+}
+
+export interface SandboxDeniedErrorShape {
+  readonly message: string;
+  readonly code?: string;
+  readonly originalCode?: string;
+  readonly capability: SandboxDenialCapability;
+  readonly command?: string;
+}
+
+export interface SandboxExpansionRequest {
+  readonly toolName: string;
+  readonly input: unknown;
+  readonly sessionId: string;
+  readonly workingDirectory: string;
+  readonly profile: ToolSandboxProfile;
+  readonly error: SandboxDeniedErrorShape;
+}
+
+export interface SandboxExpansionDecision {
+  readonly decision: "allow" | "deny";
+  readonly reason?: string;
+  readonly profile?: ToolSandboxProfile;
+}
+
+export function isSandboxDeniedError(error: unknown): error is SandboxDeniedErrorShape {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const candidate = error as Error & Partial<SandboxDeniedErrorShape>;
+  return (
+    candidate.code === "SANDBOX_DENIED" &&
+    (candidate.capability === "network" ||
+      candidate.capability === "path" ||
+      candidate.capability === "unknown")
+  );
 }
 
 export interface AgentTool {
   readonly name: string;
   readonly description: string;
   readonly parameters?: Record<string, unknown>;
+  readonly metadata?: Partial<AgentToolMetadata>;
   execute(input: unknown, context?: ToolExecutionContext): Promise<unknown>;
 }
 
 export interface ToolLookup {
   get(name: string): AgentTool | undefined;
+  metadata?(name: string): AgentToolMetadata | undefined;
 }
 
 export interface ToolCollection extends ToolLookup {
@@ -39,13 +117,16 @@ export interface ToolCollection extends ToolLookup {
 
 export class AgentToolRegistry implements ToolCollection {
   private readonly tools = new Map<string, AgentTool>();
+  private readonly toolMetadata = new Map<string, AgentToolMetadata>();
 
   register(tool: AgentTool): this {
     this.tools.set(tool.name, tool);
+    this.toolMetadata.set(tool.name, normalizeToolMetadata(tool));
     return this;
   }
 
   unregister(name: string): boolean {
+    this.toolMetadata.delete(name);
     return this.tools.delete(name);
   }
 
@@ -56,6 +137,34 @@ export class AgentToolRegistry implements ToolCollection {
   list(): AgentTool[] {
     return [...this.tools.values()];
   }
+
+  metadata(name: string): AgentToolMetadata | undefined {
+    const metadata = this.toolMetadata.get(name);
+    return metadata === undefined ? undefined : { ...metadata };
+  }
+}
+
+export function normalizeToolMetadata(tool: Pick<AgentTool, "name" | "metadata">): AgentToolMetadata {
+  const declaredConfirmation = tool.metadata?.confirmation;
+  const inferredConfirmation = tool.metadata?.risk === "read-only"
+    ? "never"
+    : tool.metadata?.risk === "mutating"
+      ? "on-risk"
+      : DEFAULT_TOOL_METADATA.confirmation;
+  return {
+    ...DEFAULT_TOOL_METADATA,
+    ...(tool.metadata ?? {}),
+    ...(declaredConfirmation === undefined ? { confirmation: inferredConfirmation } : {}),
+    ...(tool.name === "shell" && tool.metadata === undefined
+      ? { risk: "dangerous", confirmation: "on-risk" }
+      : {}),
+    ...(tool.name === "filesystem" && tool.metadata === undefined
+      ? { risk: "mutating", confirmation: "on-risk", resultFormat: "json" }
+      : {}),
+    ...(tool.name === "git" && tool.metadata === undefined
+      ? { risk: "mutating", confirmation: "on-risk" }
+      : {}),
+  };
 }
 
 export async function runTool(

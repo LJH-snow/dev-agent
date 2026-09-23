@@ -10,7 +10,7 @@
   "scripts": {
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run typecheck",
-    "test": "pnpm -r run test",
+    "test": "pnpm -r --workspace-concurrency=1 run test",
     "verify": "node scripts/release-gate.mjs",
     "verify:typescript": "node scripts/release-gate.mjs --typescript",
     "verify:rust": "node scripts/release-gate.mjs --rust",
@@ -22,6 +22,7 @@
     "test:benchmark": "pnpm --filter @dev-agent/agent-core run build && node --test tests/evidence-preview-benchmark.test.mjs",
     "test:preview-parity": "pnpm --filter @dev-agent/agent-core run build && pnpm --filter @agent_cli/cli run build && pnpm --filter @dev-agent/desktop run build && node --test tests/evidence-preview-parity.test.mjs",
     "package:smoke": "node scripts/cli-package-smoke.mjs",
+    "test:evals": "pnpm --filter @agent_cli/cli build && node evals/cli-rich-tui.evals.mjs",
     "runtime:smoke": "node scripts/runtime-install-smoke.mjs",
     "release:preflight": "node scripts/npm-release-preflight.mjs",
     "release:publish": "node scripts/npm-release-publish.mjs"

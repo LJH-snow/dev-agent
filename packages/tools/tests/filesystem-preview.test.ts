@@ -125,3 +125,29 @@ test("preview rejects invalid or unsafe changes without touching the workspace",
     assert.equal(await readFile(occupiedPath, "utf8"), "file\n");
   });
 });
+
+test("preview rejects a postimage above the 16 MiB write limit", async () => {
+  await withWorkspace(async (directory, context) => {
+    const path = join(directory, "too-large.txt");
+    const tool: any = new FilesystemTool();
+
+    await assert.rejects(
+      () =>
+        tool.execute(
+          {
+            action: "preview",
+            changes: [
+              {
+                action: "write",
+                path: "too-large.txt",
+                content: "x".repeat(16 * 1024 * 1024 + 1),
+              },
+            ],
+          },
+          context
+        ),
+      /filesystem file exceeds the 16 MiB write limit/
+    );
+    assert.equal(await lstat(path).then(() => true, () => false), false);
+  });
+});

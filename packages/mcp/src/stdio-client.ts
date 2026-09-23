@@ -233,10 +233,20 @@ export class McpStdioClient implements McpClient {
   }
 
   async listResources(): Promise<McpResource[]> {
-    const result = (await this.request("resources/list", {})) as
-      | { readonly resources?: readonly McpResourceInfo[] }
-      | undefined;
-    return (result?.resources ?? []).map((info) => createMcpResource(this, info));
+    try {
+      const result = (await this.request("resources/list", {})) as
+        | { readonly resources?: readonly McpResourceInfo[] }
+        | undefined;
+      return (result?.resources ?? []).map((info) => createMcpResource(this, info));
+    } catch (error) {
+      // MCP servers may advertise the resources capability while omitting the
+      // optional discovery method. Treat that partial implementation as an
+      // empty resource list, but preserve all other failures.
+      if (isMethodNotFoundError(error)) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   /**
@@ -266,10 +276,19 @@ export class McpStdioClient implements McpClient {
   }
 
   async listPrompts(): Promise<McpPrompt[]> {
-    const result = (await this.request("prompts/list", {})) as
-      | { readonly prompts?: readonly McpPromptInfo[] }
-      | undefined;
-    return (result?.prompts ?? []).map((info) => createMcpPrompt(this, info));
+    try {
+      const result = (await this.request("prompts/list", {})) as
+        | { readonly prompts?: readonly McpPromptInfo[] }
+        | undefined;
+      return (result?.prompts ?? []).map((info) => createMcpPrompt(this, info));
+    } catch (error) {
+      // Keep optional prompt discovery compatible with servers that expose
+      // prompts only through tools or do not implement prompts/list yet.
+      if (isMethodNotFoundError(error)) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async getPrompt(
@@ -636,6 +655,10 @@ export class McpRequestError extends Error {
     this.name = "McpRequestError";
     this.code = code;
   }
+}
+
+function isMethodNotFoundError(error: unknown): error is McpRequestError {
+  return error instanceof McpRequestError && error.code === -32601;
 }
 
 export function createMcpTool(client: McpClient, info: McpToolInfo): McpTool {

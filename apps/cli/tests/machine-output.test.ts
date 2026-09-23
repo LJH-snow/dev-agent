@@ -98,7 +98,7 @@ function runCli(
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, ...args], {
-      env,
+      env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -140,7 +140,7 @@ function runInteractiveCli(
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [cliPath, ...args], {
-      env,
+      env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
     let stdout = "";
@@ -178,6 +178,7 @@ function runInteractiveCli(
 function environment(baseUrl: string, memoryFile: string): NodeJS.ProcessEnv {
   return {
     ...process.env,
+    DEV_AGENT_MCP_SERVERS: "[]",
     DEV_AGENT_MODEL_PROVIDER: "openai",
     OPENAI_API_KEY: "test-key",
     OPENAI_BASE_URL: baseUrl,

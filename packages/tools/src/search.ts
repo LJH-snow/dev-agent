@@ -1,5 +1,6 @@
 import type { Executor } from "@dev-agent/executor";
 
+import { runExecutorCommand } from "./executor-run.js";
 import type { Tool, ToolExecutionContext } from "./index.js";
 import { resolveWorkspacePath } from "./workspace-path.js";
 
@@ -13,6 +14,12 @@ export class SearchTool implements Tool {
   readonly name = "search" as const;
   readonly description =
     "Search code and text with ripgrep. Use a short literal or symbol pattern; if there are no matches, inspect the directory or file layout instead of repeating near-identical natural-language queries.";
+  readonly metadata = {
+    risk: "read-only" as const,
+    confirmation: "never" as const,
+    resultFormat: "text" as const,
+    supportsProgress: false,
+  };
   readonly parameters: Record<string, unknown> = {
     type: "object",
     properties: {
@@ -47,9 +54,12 @@ export class SearchTool implements Tool {
     // Preserve the caller's relative spelling for executor adapters and tests;
     // validation above has already checked its project boundary.
     args.push("--", params.query, params.path);
-    return this.executor.run("rg", args, {
-      cwd: workingDirectory,
-      ...(context?.signal ? { signal: context.signal } : {}),
+    if (context === undefined) {
+      return this.executor.run("rg", args, { cwd: workingDirectory });
+    }
+    return runExecutorCommand(this.executor, "rg", args, {
+      ...context,
+      workingDirectory,
     });
   }
 }

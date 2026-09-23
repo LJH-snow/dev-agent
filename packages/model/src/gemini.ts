@@ -1,10 +1,12 @@
 import { readBoundedJsonResponse } from "./json-response.js";
 import { MAX_STREAM_LINE_BYTES, assertBoundedLineBuffer } from "./line-reader.js";
 import { requestWithRetry, type RetryOptions } from "./retry.js";
+import { StreamOutputBudget, StreamOutputLimitError } from "./stream-budget.js";
 import type {
   ChatCompletion,
   ChatMessage,
   ChatOptions,
+  ChatStreamOptions,
   ChatUsage,
   ModelProvider,
   ProviderConfig,
@@ -16,6 +18,7 @@ export interface GeminiProviderConfig extends ProviderConfig {}
 
 interface GeminiPart {
   readonly text?: string;
+  readonly thought?: boolean;
   readonly functionCall?: {
     readonly name?: string;
     readonly args?: unknown;
@@ -81,10 +84,17 @@ export class GeminiProvider implements ModelProvider {
         },
       ];
     }
-    if (options.temperature !== undefined || options.maxTokens !== undefined) {
+    if (
+      options.temperature !== undefined ||
+      options.maxTokens !== undefined ||
+      (options.thinkingLevel !== undefined && supportsGeminiThinkingLevel(this.model))
+    ) {
       body.generationConfig = {
         temperature: options.temperature,
         maxOutputTokens: options.maxTokens,
+        ...(options.thinkingLevel !== undefined && supportsGeminiThinkingLevel(this.model)
+          ? { thinkingConfig: { thinkingLevel: options.thinkingLevel.toUpperCase() } }
+          : {}),
       };
     }
 
@@ -121,9 +131,15 @@ export class GeminiProvider implements ModelProvider {
 
     return {
       content: parts
+        .filter((part) => part.thought !== true)
         .map((part) => part.text ?? "")
         .filter(Boolean)
         .join("\n"),
+      reasoning: parts
+        .filter((part) => part.thought === true)
+        .map((part) => part.text ?? "")
+        .filter(Boolean)
+        .join(""),
       toolCalls,
       usage,
     };
@@ -131,7 +147,7 @@ export class GeminiProvider implements ModelProvider {
 
   async streamChat(
     messages: readonly ChatMessage[],
-    options: ChatOptions & { onToken?: (token: string) => void } = {}
+    options: ChatStreamOptions = {}
   ): Promise<ChatCompletion> {
     const url =
       `${this.baseUrl}/v1beta/models/${encodeURIComponent(this.model)}:streamGenerateContent` +
@@ -155,10 +171,17 @@ export class GeminiProvider implements ModelProvider {
         },
       ];
     }
-    if (options.temperature !== undefined || options.maxTokens !== undefined) {
+    if (
+      options.temperature !== undefined ||
+      options.maxTokens !== undefined ||
+      (options.thinkingLevel !== undefined && supportsGeminiThinkingLevel(this.model))
+    ) {
       body.generationConfig = {
         temperature: options.temperature,
         maxOutputTokens: options.maxTokens,
+        ...(options.thinkingLevel !== undefined && supportsGeminiThinkingLevel(this.model)
+          ? { thinkingConfig: { thinkingLevel: options.thinkingLevel.toUpperCase() } }
+          : {}),
       };
     }
 
@@ -181,7 +204,9 @@ export class GeminiProvider implements ModelProvider {
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
+    const budget = new StreamOutputBudget();
     let content = "";
+    let reasoning = "";
     let buffer = "";
     let usage: ChatUsage | undefined;
     const toolCalls: ToolCall[] = [];
@@ -203,18 +228,30 @@ export class GeminiProvider implements ModelProvider {
         const parts = json.candidates?.[0]?.content?.parts ?? [];
         for (const part of parts) {
           if (part.text) {
-            content += part.text;
-            options.onToken?.(part.text);
+            budget.addText(part.text);
+            if (part.thought === true) {
+              reasoning += part.text;
+              options.onReasoning?.(part.text);
+            } else {
+              content += part.text;
+              options.onToken?.(part.text);
+            }
           }
           if (part.functionCall) {
+            if (part.functionCall.name) {
+              budget.addText(part.functionCall.name);
+            }
+            const input = part.functionCall.args ?? part.functionCall.arguments ?? {};
+            budget.addJson(input);
             toolCalls.push({
               id: `gemini-${toolCalls.length}`,
               name: part.functionCall.name ?? "unknown",
-              input: part.functionCall.args ?? part.functionCall.arguments ?? {},
+              input,
             });
           }
         }
-      } catch {
+      } catch (error) {
+        if (error instanceof StreamOutputLimitError) throw error;
         // skip malformed
       }
     };
@@ -235,11 +272,21 @@ export class GeminiProvider implements ModelProvider {
       if (buffer.length > 0) {
         handleLine(buffer);
       }
+    } catch (error) {
+      if (error instanceof StreamOutputLimitError) {
+        await reader.cancel().catch(() => undefined);
+      }
+      throw error;
     } finally {
       reader.releaseLock();
     }
 
-    return { content, toolCalls: toolCalls.length > 0 ? toolCalls : undefined, usage };
+    return {
+      content,
+      reasoning: reasoning || undefined,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
+      usage,
+    };
   }
 }
 
@@ -320,4 +367,8 @@ function parseToolResult(content: string): unknown {
   } catch {
     return { output: content };
   }
+}
+
+export function supportsGeminiThinkingLevel(model: string): boolean {
+  return /^gemini-3(?:[.-]|$)/i.test(model.trim());
 }

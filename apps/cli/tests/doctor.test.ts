@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { spawn } from "node:child_process";
@@ -75,6 +75,38 @@ test("runDoctor reports a healthy environment as ok", async () => {
     assert.equal(report.summary.ok, 6);
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("doctor does not retain an oversized external version banner", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-doctor-version-limit-"));
+  const previousPath = process.env.PATH;
+  try {
+    await writeFile(
+      join(directory, "rg"),
+      "#!/usr/bin/env node\nprocess.stdout.write('x'.repeat(70 * 1024));\n",
+      "utf8"
+    );
+    await chmod(join(directory, "rg"), 0o755);
+    process.env.PATH = `${directory}:${previousPath ?? ""}`;
+
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir: directory,
+      configPath: join(directory, "config.json"),
+      env: {},
+    });
+    const check = checkFor(report, "ripgrep");
+    assert.ok(check);
+    assert.equal(check.status, "fail");
+    assert.ok(Buffer.byteLength(check.detail, "utf8") < 1024);
+  } finally {
+    if (previousPath === undefined) {
+      delete process.env.PATH;
+    } else {
+      process.env.PATH = previousPath;
+    }
+    await rm(directory, { recursive: true, force: true });
   }
 });
 

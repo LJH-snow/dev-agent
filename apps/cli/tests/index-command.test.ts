@@ -15,6 +15,8 @@ import { spawn } from "node:child_process";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { refreshIndexDirectory } from "../dist/index-command.js";
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const cliPath = join(__dirname, "..", "dist", "index.js");
 
@@ -61,6 +63,7 @@ test("--index writes a symbol index and skips ignored directories", async () => 
 
     assert.equal(result.code, 0, result.stderr);
     const report = JSON.parse(result.stdout);
+    assert.equal(report.written, true);
     assert.equal(report.files, 2, "node_modules must be skipped");
     assert.ok(report.symbols >= 3, `expected several symbols, got ${report.symbols}`);
     assert.deepEqual(report.languages, { typescript: 1, python: 1 });
@@ -105,6 +108,68 @@ test("--index skips supported source files above the fixed 16 MiB read limit", a
   }
 });
 
+test("--index reports an oversized serialized write and preserves the previous index", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-write-limit-"));
+  const indexPath = join(dir, ".dev-agent", "index.json");
+  try {
+    await writeFile(join(dir, "seed.ts"), "export const seed = 1;\n", "utf8");
+    const baseline = await runCli(["--index", dir, "--json"]);
+    assert.equal(baseline.code, 0, baseline.stderr);
+    const previousIndex = await readFile(indexPath);
+
+    const source = `/*${"x".repeat(16 * 1024 * 1024 - 256)}*/\nexport const kept = 1;\n`;
+    assert.ok(Buffer.byteLength(source, "utf8") < 16 * 1024 * 1024);
+    await writeFile(join(dir, "large.ts"), source, "utf8");
+
+    const result = await runCli(["--index", dir, "--json"]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.files, 2);
+    assert.equal(report.written, false);
+    assert.deepEqual(await readFile(indexPath), previousIndex);
+
+    const human = await runCli(["--index", dir]);
+    assert.equal(human.code, 0, human.stderr);
+    assert.match(human.stdout, /Index not written: serialized index exceeds the 16 MiB limit/);
+    assert.doesNotMatch(human.stdout, /Index written to/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("--index keeps file and symbol order stable and skips source symlinks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-order-"));
+  const outside = await mkdtemp(join(tmpdir(), "dev-agent-index-outside-"));
+  try {
+    await writeFile(join(dir, "z.ts"), "export function zSymbol() {}\n", "utf8");
+    await writeFile(join(dir, "a.ts"), "export function aSymbol() {}\n", "utf8");
+    const outsideFile = join(outside, "outside.ts");
+    await writeFile(
+      outsideFile,
+      "export function outsideOnlySymbol() {}\n",
+      "utf8"
+    );
+    await symlink(outsideFile, join(dir, "linked.ts"));
+
+    const result = await runCli(["--index", dir, "--json"]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const index = JSON.parse(await readFile(join(dir, ".dev-agent", "index.json"), "utf8"));
+    assert.deepEqual(Object.keys(index.files), [join(dir, "a.ts"), join(dir, "z.ts")]);
+    assert.deepEqual(Object.keys(index.signatures), [join(dir, "a.ts"), join(dir, "z.ts")]);
+    assert.deepEqual(
+      index.symbols.map((symbol) => symbol.name),
+      ["aSymbol", "zSymbol"]
+    );
+    assert.ok(!JSON.stringify(index).includes("outsideOnlySymbol"));
+    assert.equal(JSON.parse(result.stdout).files, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
 test("--index ignores an oversized persisted index and rescans its sources", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-persisted-limit-"));
   const sourcePath = join(dir, "sample.ts");
@@ -133,6 +198,44 @@ test("--index ignores an oversized persisted index and rescans its sources", asy
     const names = refreshed.symbols.map((symbol) => symbol.name);
     assert.ok(names.includes("real"));
     assert.ok(!names.includes("ghost"));
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("index refresh rejects a scan limit before replacing the previous index", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-scan-limit-"));
+  const indexPath = join(dir, ".dev-agent", "index.json");
+  try {
+    await writeFile(join(dir, "first.ts"), "export const first = 1;\n", "utf8");
+    const initial = await runCli(["--index", dir, "--json"]);
+    assert.equal(initial.code, 0, initial.stderr);
+    const before = await readFile(indexPath);
+
+    await writeFile(join(dir, "second.ts"), "export const second = 2;\n", "utf8");
+
+    await assert.rejects(
+      refreshIndexDirectory(
+        dir,
+        undefined,
+        [],
+        indexPath,
+        { maxFiles: 1, maxSourceBytes: 256 * 1024 * 1024 } as any
+      ),
+      (error) => {
+        const candidate = error as any;
+        assert.equal(candidate.code, "INDEX_SCAN_LIMIT_EXCEEDED");
+        assert.equal(candidate.dimension, "files");
+        assert.equal(candidate.limit, 1);
+        assert.equal(candidate.observed, 2);
+        assert.equal(candidate.message, "index scan files limit exceeded");
+        assert.ok(!candidate.message.includes(dir));
+        assert.ok(!JSON.stringify(candidate).includes(dir));
+        return true;
+      }
+    );
+
+    assert.deepEqual(await readFile(indexPath), before);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
@@ -270,12 +373,17 @@ test("--index skips an unreadable child directory and completes", async (t) => {
   }
 
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-index-"));
-  const protectedDir = join(dir, "protected");
+  const protectedDirs = [
+    join(dir, "z-protected"),
+    join(dir, "a-protected"),
+  ];
   try {
     await writeFile(join(dir, "readable.ts"), "export const answer = 42;\n", "utf8");
-    await mkdir(protectedDir);
-    await writeFile(join(protectedDir, "hidden.ts"), "export const hidden = true;\n", "utf8");
-    await chmod(protectedDir, 0);
+    for (const protectedDir of protectedDirs) {
+      await mkdir(protectedDir);
+      await writeFile(join(protectedDir, "hidden.ts"), "export const hidden = true;\n", "utf8");
+      await chmod(protectedDir, 0);
+    }
 
     const result = await runCli(["--index", dir, "--json"]);
 
@@ -284,13 +392,17 @@ test("--index skips an unreadable child directory and completes", async (t) => {
     assert.doesNotThrow(() => JSON.parse(result.stdout));
     const report = JSON.parse(result.stdout);
     assert.equal(report.files, 1);
-    assert.equal(report.skipped, 1);
-    assert.equal(report.warnings.length, 1);
-    assert.equal(report.warnings[0].path, "protected");
-    assert.ok(["EACCES", "EPERM"].includes(report.warnings[0].code));
+    assert.equal(report.skipped, 2);
+    assert.deepEqual(
+      report.warnings.map((warning) => warning.path),
+      ["a-protected", "z-protected"]
+    );
+    assert.ok(report.warnings.every((warning) => ["EACCES", "EPERM"].includes(warning.code)));
     assert.ok(!JSON.stringify(report.warnings).includes(dir));
   } finally {
-    await chmod(protectedDir, 0o700).catch(() => undefined);
+    for (const protectedDir of protectedDirs) {
+      await chmod(protectedDir, 0o700).catch(() => undefined);
+    }
     await rm(dir, { recursive: true, force: true });
   }
 });

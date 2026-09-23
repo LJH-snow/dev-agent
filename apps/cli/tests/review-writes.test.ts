@@ -107,6 +107,7 @@ function environment(dir: string, providerBaseUrl: string): NodeJS.ProcessEnv {
     ...process.env,
     INIT_CWD: dir,
     DEV_AGENT_MODEL_PROVIDER: "openai",
+    DEV_AGENT_MCP_SERVERS: "[]",
     OPENAI_API_KEY: "test-key",
     OPENAI_BASE_URL: providerBaseUrl,
     DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),

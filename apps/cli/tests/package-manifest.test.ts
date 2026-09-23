@@ -16,9 +16,11 @@ type PackageManifest = {
   exports?: unknown;
   bin?: Record<string, string>;
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
   engines?: Record<string, string>;
   files?: string[];
   scripts?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
 };
 
 const cliRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -49,6 +51,12 @@ test("CLI package is publishable and exposes the bundled executable", async () =
   assert.deepEqual(manifest.files, ["dist/cli.js", "dist/cli.js.map", "LICENSE"]);
   assert.match(sourceEntry, /^#!\/usr\/bin\/env node\n/);
   await assert.doesNotReject(readFile(bundlePath), "the package bundle must be built");
+  const bundle = await readFile(bundlePath, "utf8");
+  assert.match(
+    bundle,
+    /const require = __devAgentCreateRequire\(import\.meta\.url\)/,
+    "the ESM bundle must bridge dynamic CommonJS requires",
+  );
   const bundleStats = await stat(bundlePath);
   assert.notEqual(bundleStats.mode & 0o111, 0, "the npm bin target must be executable");
 });
@@ -71,5 +79,18 @@ test("the npm CLI package does not install a Rust runtime implicitly", async () 
   assert.equal(
     (manifest.files ?? []).some((file) => file.includes("dev-agent-executor")),
     false
+  );
+});
+
+test("rich TTY rendering is backed by Ink and React", async () => {
+  const manifest = await readManifest();
+
+  assert.match(manifest.dependencies?.ink ?? "", /^\^?6\./);
+  assert.match(manifest.dependencies?.react ?? "", /^\^?19\./);
+  assert.match(manifest.devDependencies?.["@types/react"] ?? "", /^\^?19\./);
+  assert.equal(
+    manifest.dependencies?.["react-devtools-core"],
+    undefined,
+    "React DevTools is optional and must not be a published CLI runtime dependency",
   );
 });
