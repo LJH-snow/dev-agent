@@ -739,24 +739,138 @@ as part of the comparison, not just feature names.
   this provides passing evidence for all three repository gate modes. It does
   not substitute local macOS results for the separate Linux hosted `bwrap` CI job.
 
-## 2026-09-23 Generic tool risk classification audit
+## 2026-09-23 Generic tool risk classification audit — resolved
 
-- `AgentToolRegistry` currently defaults every non-built-in tool without
-  metadata to `risk: "read-only"` / `confirmation: "never"`. Plan mode trusts
-  this classification for non-filesystem/non-git tools.
-- Both CLI and Desktop register MCP action tools without metadata. The CLI also
-  leaves MCP resource and prompt wrappers unclassified, while Desktop already
-  marks those two read-only. Therefore a configured MCP action can run in plan
-  mode and is not recognized by the generic approval policies, which currently
-  inspect command text and filesystem writes by exact built-in tool name.
-- The MCP client does not currently preserve server-supplied tool annotations
-  in `McpTool`, so the safe boundary should be owned by the application wrapper,
-  not inferred from a server declaration. Classify MCP actions conservatively
-  and keep the local resource/prompt wrappers separately classified as
-  read-only.
-- Broader fail-closed default under consideration: unclassified registered
-  tools should be treated as dangerous and require an explicit metadata
-  declaration to be considered read-only. Preserve the explicit `allow` mode
-  and existing exact built-in classifications. Generic approval decisions
-  should consume Agent Core's registry metadata, not guess from tool-name
-  prefixes.
+- `AgentToolRegistry` now defaults tools without explicit trusted metadata to
+  `risk: "dangerous"` / `confirmation: "always"`; explicit built-in metadata
+  remains unchanged. Plan mode denies tools that are mutating or lack an
+  explicit read-only classification, while preserving the documented
+  read-only inspection exceptions.
+- Generic approval requests receive the normalized risk and confirmation
+  values from the registry. Approval policy decisions therefore use trusted
+  registration metadata rather than guessing from tool-name prefixes.
+- CLI and Desktop MCP action wrappers are explicitly dangerous and always
+  confirmed. Their host-side resource and prompt wrappers are explicitly
+  read-only. Server-provided annotations do not override these classifications;
+  the fake MCP server advertises a read-only hint on an action as a regression
+  against trusting untrusted server metadata.
+- Regression coverage verifies fail-closed defaults, trusted metadata at the
+  approval callback, plan-mode denial, and CLI/Desktop MCP action gating. The
+  Agent Core suite passes **211/211**, focused plan-mode tests **8/8**, and the
+  CLI and Desktop MCP integration tests **2/2** each.
+- The first release-gate attempts exposed an npm registry timeout while fetching
+  `widest-line-6.0.0.tgz`; this affected only package installation, not risk
+  classification behavior. The package smoke now accepts an explicit trusted
+  npm cache through `DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE`, while keeping its
+  temporary HOME and proxy isolation unchanged.
+- Reusing the populated local npm cache made the CLI package smoke pass and
+  allowed `pnpm verify:typescript --report` to complete successfully. The latest
+  full gate passed structure, build, typecheck, serial workspace tests (CLI
+  **629/629**), package smoke, release/preview/CI contracts, documentation
+  contracts **60/60**, and native Desktop contracts **2/2**.
+
+## 2026-09-23 Anthropic SDK adoption finding
+
+- `@anthropic-ai/sdk@0.126.0` is now a used runtime dependency of
+  `@dev-agent/model`, not a manifest-only addition. The official client is
+  wrapped at the provider boundary rather than exposed to CLI/Desktop callers.
+- The SDK's own retry loop is disabled (`maxRetries: 0`) so the repository's
+  `withRetry` contract remains authoritative. API errors are normalized back to
+  the existing `ModelRequestError` shape, preserving status, bounded/redacted
+  detail, Retry-After, and network-error retry behavior.
+- The SDK consumes response bodies internally, so the injected fetch seam now
+  bounds successful JSON and error bodies before returning SDK-visible
+  responses. Streaming responses are transformed through a bounded SSE body to
+  preserve line-size and cancellation guarantees.
+- The official SDK expects SSE `event:` names. The adapter supports the official
+  event envelope and retains structural compatibility for existing bounded
+  data-only fixtures/proxies, including legacy payloads that omit `type`; no
+  provider API shape changed.
+- Claude Agent SDK adoption is now available as an optional package. Its native
+  host-capability surface remains disabled; the adapter routes allowlisted
+  project tools through the existing approval/sandbox contracts, and the
+  platform-native runtime is kept out of the default CLI bundle.
+
+
+## 2026-09-23 Claude Agent SDK adapter
+
+- Added optional `@dev-agent/claude-agent-sdk` integration. It disables native
+  tools, uses an allowlisted `mcp__dev_agent__*` in-process MCP server, sets
+  `settingSources: []` and `strictMcpConfig: true`, and routes every call
+  through the existing `ApprovalPolicy` and `ToolExecutionContext`.
+- The adapter is not imported by the default single-file CLI bundle because
+  the SDK carries a platform native runtime and is an explicit backend choice.
+
+
+## 2026-09-24 final adapter verification
+
+- The optional Claude Agent SDK package builds and typechecks with the workspace
+  and its focused suite passes **7/7**. The full TypeScript release gate passed
+  with the default CLI bundle still excluding the platform-native Agent SDK
+  runtime.
+
+## 2026-09-24 Claude Agent SDK MCP execution-boundary hardening
+
+- The installed Claude Agent SDK types document `canUseTool` as a callback
+  before tool execution, but its in-process MCP handler is an independent
+  Model Context Protocol execution seam and does not receive the SDK
+  `toolUseID`. The adapter therefore no longer treats the callback as its only
+  permission boundary.
+- The MCP handler now enforces the existing `ApprovalPolicy` itself when no
+  matching preflight result exists. A bounded one-use canonical-input binding
+  carries an allow/deny result from `canUseTool` into the handler, preserves a
+  reviewed `updatedInput`, and keeps a cached denial from being replaced by a
+  second policy decision.
+- Pending bindings are capped at 256, expire after five minutes, and only use
+  canonical JSON inputs up to 1 MiB before SHA-256 fingerprinting. Unbindable
+  input or capacity exhaustion fails closed. Real MCP `Client`/`InMemoryTransport`
+  tests cover approval denial/allow, reviewed input, direct handler execution,
+  bounded failures, allowlist isolation, and cancellation context forwarding.
+- Focused adapter verification is now **12/12**. Serial workspace build,
+  typecheck, and tests pass; the full release gate must be rerun after the
+  documentation update.
+
+## 2026-09-24 Claude Agent SDK post-hardening verification
+
+- The full TypeScript release gate passed after the MCP handler enforcement,
+  bounded authorization binding, real transport regressions, and documentation
+  sync. The optional package participates in workspace build/typecheck/tests,
+  while the default CLI bundle still excludes the platform-native Agent SDK
+  runtime.
+- Current evidence: Claude adapter **12/12**, CLI **629/629**, Desktop
+  **222/222**, documentation **60/60**, native Desktop **2/2**, CLI tarball
+  package smoke, and `git diff --check` all pass.
+
+## 2026-09-24 Claude Agent SDK lifecycle cleanup
+
+- Pending preflight approvals are now explicitly cleared from the bridge at
+  the end of `runClaudeAgentSdk()` and can be cleared by an embedding host.
+  This prevents an approved-but-never-executed input from being reused after a
+  query has ended. Focused adapter evidence is **13/13**.
+
+## 2026-09-24 Next-nine Desktop browser findings
+
+- The initial Desktop bootstrap invoked workspace/terminal/capability refreshes
+  before `loadSessions()` had selected the active session. A reload could
+  therefore show an empty terminal selector and capabilities stuck in loading
+  even though the APIs were healthy. The bootstrap now serializes session load,
+  session view restoration, workspace refresh, terminal refresh, and the final
+  capabilities request.
+- The external stylesheet did not define `--assistant-bg`; the legacy inline
+  fallback stayed light in dark mode, producing a low-contrast capability and
+  runtime panel. Theme-scoped tokens now define readable dark/light values.
+- Preview acceptance used a tiny loopback static page on an explicit port. The
+  iframe deliberately keeps an opaque sandbox origin (`allow-scripts
+  allow-forms`, no `allow-same-origin`); loading the Desktop app itself inside
+  that frame emits expected module CORS errors, so the QA evidence uses a plain
+  local preview fixture and preserves the isolation boundary.
+
+## 2026-09-24 Claude Agent SDK lifecycle-cleanup final finding
+
+- The final green gate confirms that explicit cleanup of unused preflight
+  authorizations does not regress the optional adapter, default CLI bundle,
+  Desktop, packaging, or documentation contracts.
+- Current verified counts are Claude adapter **13/13**, CLI **629/629**,
+  Desktop **222/222**, documentation **60/60**, and native Desktop **2/2**;
+  package smoke and `git diff --check` also pass.
+- The working tree remains intentionally uncommitted and unpublished.

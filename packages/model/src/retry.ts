@@ -150,7 +150,7 @@ async function readBoundedErrorBody(
  * normal API failures, but do not copy credentials or unbounded response
  * bodies into agent memory, CLI JSON, or Desktop error events.
  */
-function summarizeErrorBody(value: string): string {
+export function summarizeErrorBody(value: string): string {
   const redacted = value
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g, " ")
     .replace(PRIVATE_KEY_PATTERN, "[redacted-private-key]")

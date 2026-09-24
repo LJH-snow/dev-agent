@@ -26,3 +26,12 @@ test("in-suite package smoke does not start a nested workspace build", async () 
   assert.match(source, /execFileAsync\(process\.execPath, \[smokeScript, "--skip-build"\]/);
   assert.doesNotMatch(source, /execFileAsync\(process\.execPath, \[smokeScript\]/);
 });
+
+test("package smoke can reuse an explicit npm cache without sharing user configuration", async () => {
+  const source = await readFile(join(cliRoot, "..", "..", "scripts", "cli-package-smoke.mjs"), "utf8");
+
+  assert.match(source, /DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE/);
+  assert.match(source, /NPM_CONFIG_CACHE:\s*cacheDirectory/);
+  assert.match(source, /HOME:\s*homeDirectory/);
+  assert.match(source, /join\(stagingRoot, "npm-cache"\)/);
+});

@@ -23,13 +23,23 @@ export function createTaskTerminalUI({
   translate,
   getSessionId,
   insertFeedback = () => {},
+  storage,
+  storageKeyPrefix = "dev-agent:terminal-selection:",
+  onFinished = () => {},
 }) {
+  let terminalStorage = storage;
+  if (terminalStorage === undefined) {
+    try { terminalStorage = globalThis.sessionStorage; } catch { terminalStorage = undefined; }
+  }
   const panel = documentRef.getElementById("task-terminal-panel");
   const statusNode = documentRef.getElementById("task-terminal-status");
   const runList = documentRef.getElementById("task-terminal-runs");
   const commandInput = documentRef.getElementById("task-terminal-command");
   const runButton = documentRef.getElementById("task-terminal-run");
   const stopButton = documentRef.getElementById("task-terminal-stop");
+  const reconnectButton = documentRef.getElementById("task-terminal-reconnect");
+  const clearButton = documentRef.getElementById("task-terminal-clear");
+  const exportButton = documentRef.getElementById("task-terminal-export");
   const output = documentRef.getElementById("task-terminal-output");
   const inputForm = documentRef.getElementById("task-terminal-input-form");
   const inputSubmit = inputForm.querySelector('button[type="submit"]');
@@ -37,6 +47,7 @@ export function createTaskTerminalUI({
   const attachButton = documentRef.getElementById("task-terminal-attach-output");
   const previewInput = documentRef.getElementById("task-preview-url");
   const previewButton = documentRef.getElementById("task-preview-open");
+  const previewClearButton = documentRef.getElementById("task-preview-clear");
   const previewFrame = documentRef.getElementById("task-preview-frame");
   const previewStatus = documentRef.getElementById("task-preview-status");
 
@@ -47,6 +58,25 @@ export function createTaskTerminalUI({
   let pollTimer;
   let busy = false;
   let outputText = "";
+  const finishedNotified = new Set();
+
+  function selectionKey(id) {
+    return `${storageKeyPrefix}${id}`;
+  }
+
+  function readSelectedRun(id) {
+    try {
+      const value = terminalStorage?.getItem(selectionKey(id));
+      return typeof value === "string" && value.length <= 128 ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function rememberSelectedRun(id, value) {
+    if (!id || !value) return;
+    try { terminalStorage?.setItem(selectionKey(id), value); } catch { /* optional browser storage */ }
+  }
 
   function status(key, values = {}) {
     statusNode.textContent = translate(key, values);
@@ -65,6 +95,9 @@ export function createTaskTerminalUI({
     if (activeId && runs.some((run) => run.id === activeId)) runList.value = activeId;
     const selected = activeRun();
     stopButton.disabled = !selected || selected.state !== "running" || busy;
+    reconnectButton.disabled = !selected || busy;
+    clearButton.disabled = !outputText;
+    exportButton.disabled = !outputText;
     input.disabled = !selected || selected.state !== "running" || busy;
     inputSubmit.disabled = input.disabled;
     attachButton.disabled = !outputText;
@@ -83,8 +116,10 @@ export function createTaskTerminalUI({
 
   function setActive(run) {
     activeId = run?.id;
+    if (run?.id && sessionId) rememberSelectedRun(sessionId, run.id);
     cursor = 0;
     outputText = "";
+    output.dataset.gap = "false";
     output.textContent = translate("terminal.output.empty");
     if (run) {
       status("terminal.status.selected", { state: translate(`terminal.state.${run.state}`) });
@@ -134,7 +169,8 @@ export function createTaskTerminalUI({
       const payload = await payloadOf(response);
       if (!response.ok || requestedSessionId !== sessionId || requestedRunId !== activeId) return;
       if (payload.outputTruncated) {
-        outputText = "[Earlier terminal output was truncated or the poll cursor expired.]\n";
+        outputText = "[Earlier terminal output was truncated or the poll cursor expired; the visible buffer was rehydrated.]\n";
+        output.dataset.gap = "true";
       }
       appendEvents(payload.events);
       cursor = Number(payload.lastSequence) || cursor;
@@ -142,13 +178,58 @@ export function createTaskTerminalUI({
       if (index >= 0) runs[index] = { ...runs[index], ...payload };
       renderRuns();
       if (payload.state === "running") pollTimer = setTimeout(pollOutput, 700);
-      else status("terminal.status.finished", { state: translate(`terminal.state.${payload.state}`), code: payload.exitCode ?? "—" });
+      else {
+        status("terminal.status.finished", { state: translate(`terminal.state.${payload.state}`), code: payload.exitCode ?? "—" });
+        if (!finishedNotified.has(requestedRunId)) {
+          finishedNotified.add(requestedRunId);
+          onFinished(payload);
+        }
+      }
     } catch {
       if (requestedSessionId === sessionId && requestedRunId === activeId) {
         status("terminal.status.error");
         pollTimer = setTimeout(pollOutput, 1500);
       }
     }
+  }
+
+  function clearOutput() {
+    const run = activeRun();
+    outputText = "";
+    cursor = Number(run?.lastSequence) || cursor;
+    output.dataset.gap = "false";
+    output.textContent = translate("terminal.output.empty");
+    status("terminal.status.bufferCleared");
+    renderRuns();
+  }
+
+  function reconnectOutput() {
+    if (!activeRun()) return;
+    outputText = "";
+    cursor = 0;
+    output.dataset.gap = "false";
+    output.textContent = translate("terminal.output.empty");
+    status("terminal.status.reconnecting");
+    void pollOutput();
+  }
+
+  function redactTerminalText(value) {
+    return String(value).replace(/(api[_-]?key|token|secret|password)\s*[:=]\s*([^\s]+)/gi, "$1=[redacted]");
+  }
+
+  function exportOutput() {
+    if (!outputText || typeof Blob === "undefined" || !globalThis.URL?.createObjectURL) return;
+    const run = activeRun();
+    const safeId = String(run?.id ?? "run").replace(/[^a-z0-9_-]/gi, "-").slice(0, 48);
+    const blob = new Blob([redactTerminalText(outputText).slice(-256 * 1024)], { type: "text/plain;charset=utf-8" });
+    const url = globalThis.URL.createObjectURL(blob);
+    const link = documentRef.createElement("a");
+    link.href = url;
+    link.download = `dev-agent-terminal-${safeId}.log`;
+    link.rel = "noopener";
+    link.click();
+    globalThis.setTimeout(() => globalThis.URL.revokeObjectURL(url), 0);
+    status("terminal.status.exported");
   }
 
   async function startCommand() {
@@ -237,14 +318,22 @@ export function createTaskTerminalUI({
   function openPreview() {
     const url = normalizeLoopbackPreviewUrl(previewInput.value);
     if (!url) {
-      previewFrame.hidden = true;
-      previewFrame.removeAttribute("src");
-      previewStatus.textContent = translate("preview.status.invalid");
+      clearPreview("preview.status.invalid");
       return;
     }
     previewFrame.src = url;
     previewFrame.hidden = false;
+    previewFrame.setAttribute("aria-busy", "true");
+    previewStatus.dataset.state = "loading";
     previewStatus.textContent = translate("preview.status.loading", { url });
+  }
+
+  function clearPreview(message = "preview.status.cleared") {
+    previewFrame.hidden = true;
+    previewFrame.removeAttribute("src");
+    previewFrame.removeAttribute("aria-busy");
+    previewStatus.dataset.state = "idle";
+    previewStatus.textContent = translate(message);
   }
 
   function sessionChanged() {
@@ -254,8 +343,7 @@ export function createTaskTerminalUI({
     cursor = 0;
     outputText = "";
     output.textContent = translate("terminal.output.empty");
-    previewFrame.hidden = true;
-    previewFrame.removeAttribute("src");
+    clearPreview();
     previewInput.value = "";
     clearTimeout(pollTimer);
     renderRuns();
@@ -270,13 +358,28 @@ export function createTaskTerminalUI({
     }
   });
   stopButton.addEventListener("click", () => void stopCommand());
+  reconnectButton.addEventListener("click", reconnectOutput);
+  clearButton.addEventListener("click", clearOutput);
+  exportButton.addEventListener("click", exportOutput);
   runList.addEventListener("change", () => {
     setActive(runs.find((run) => run.id === runList.value));
   });
   inputForm.addEventListener("submit", sendInput);
   previewButton.addEventListener("click", openPreview);
+  previewClearButton.addEventListener("click", () => clearPreview());
   previewFrame.addEventListener("load", () => {
-    if (!previewFrame.hidden) previewStatus.textContent = translate("preview.status.loaded", { url: previewFrame.src });
+    if (!previewFrame.hidden) {
+      previewFrame.removeAttribute("aria-busy");
+      previewStatus.dataset.state = "loaded";
+      previewStatus.textContent = translate("preview.status.loaded", { url: previewFrame.src });
+    }
+  });
+  previewFrame.addEventListener("error", () => {
+    if (!previewFrame.hidden) {
+      previewFrame.removeAttribute("aria-busy");
+      previewStatus.dataset.state = "error";
+      previewStatus.textContent = translate("preview.status.error");
+    }
   });
   attachButton.addEventListener("click", () => {
     if (outputText) insertFeedback(outputText.slice(-8000));

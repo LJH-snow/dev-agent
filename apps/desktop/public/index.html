@@ -475,8 +475,13 @@
             <textarea id="task-terminal-command" rows="2" maxlength="4096" aria-label="Terminal command" data-i18n-aria-label="terminal.command" data-i18n-placeholder="terminal.commandPlaceholder" placeholder="npm run dev"></textarea>
             <button type="button" id="task-terminal-run" data-i18n="terminal.run">Run</button>
             <button type="button" id="task-terminal-stop" data-i18n="terminal.stop" disabled>Stop</button>
+            <button type="button" id="task-terminal-reconnect" data-i18n="terminal.reconnect" disabled>Reconnect</button>
           </div>
           <pre id="task-terminal-output" class="task-terminal-output" role="log" aria-live="polite" tabindex="0" data-i18n="terminal.output.empty">Terminal output appears here.</pre>
+          <div class="task-terminal-output-actions">
+            <button type="button" id="task-terminal-clear" data-i18n="terminal.clear" disabled>Clear view</button>
+            <button type="button" id="task-terminal-export" data-i18n="terminal.export" disabled>Export output</button>
+          </div>
           <form id="task-terminal-input-form" class="task-terminal-input-row">
             <input id="task-terminal-input" type="text" autocomplete="off" aria-label="Terminal input" data-i18n-aria-label="terminal.input" data-i18n-placeholder="terminal.inputPlaceholder" placeholder="Send input to the running process" disabled />
             <button type="submit" data-i18n="terminal.sendInput" disabled>Send input</button>
@@ -489,8 +494,26 @@
           <div class="task-preview-url-row">
             <input id="task-preview-url" type="url" inputmode="url" aria-label="Local preview URL" data-i18n-aria-label="preview.url" data-i18n-placeholder="preview.urlPlaceholder" placeholder="http://localhost:5173" />
             <button type="button" id="task-preview-open" data-i18n="preview.open">Open preview</button>
+            <button type="button" id="task-preview-clear" data-i18n="preview.clear">Clear preview</button>
           </div>
           <iframe id="task-preview-frame" class="task-preview-frame" title="Local task preview" data-i18n-title="preview.frameTitle" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer" loading="lazy" hidden></iframe>
+        </section>
+        <section id="workbench-capabilities-panel" class="desktop-status-panel workbench-capabilities-panel" aria-labelledby="workbench-capabilities-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="workbench-capabilities-title" class="desktop-status-title" data-i18n="capabilities.title">Workbench capabilities</div>
+              <div id="workbench-capabilities-status" class="desktop-status-note" role="status" data-i18n="capabilities.loading">Loading metadata-only capabilities…</div>
+            </div>
+            <button type="button" id="workbench-capabilities-refresh" class="desktop-status-refresh" data-i18n="action.refresh">Refresh</button>
+          </div>
+          <div class="workbench-capabilities-grid">
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="capabilities.github">GitHub</span><strong id="capabilities-github" class="desktop-status-value">—</strong><span id="capabilities-github-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="capabilities.monitoring">Monitoring</span><strong id="capabilities-monitoring" class="desktop-status-value">—</strong><span id="capabilities-monitoring-state" class="desktop-status-state">—</span></div>
+          </div>
+          <div class="workbench-capabilities-lists">
+            <div><h4 data-i18n="capabilities.skills">Skills</h4><ul id="capabilities-skills" class="workbench-capabilities-list"></ul></div>
+            <div><h4 data-i18n="capabilities.jobs">Scheduled jobs</h4><ul id="capabilities-jobs" class="workbench-capabilities-list"></ul></div>
+          </div>
         </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
           <div class="desktop-status-header">
@@ -589,7 +612,7 @@
       createTurnLedger,
     } from "/public/chat-queue.js";
     import { filterSessionSummaries } from "/public/session-filter.js";
-    import { createTaskWorkspaceUI } from "/public/task-workspace-ui.js";
+    import { createTaskWorkspaceUI, formatReviewComments } from "/public/task-workspace-ui.js";
     import { createTaskTerminalUI } from "/public/task-terminal-ui.js";
     import {
       getTurnActivityForEvent,
@@ -656,6 +679,14 @@
     const runtimeTraceStatus = document.getElementById("runtime-trace-status");
     const runtimeTraceList = document.getElementById("runtime-trace-list");
     const runtimeTraceRefreshButton = document.getElementById("runtime-trace-refresh");
+    const workbenchCapabilitiesStatus = document.getElementById("workbench-capabilities-status");
+    const workbenchCapabilitiesRefreshButton = document.getElementById("workbench-capabilities-refresh");
+    const capabilitiesGithub = document.getElementById("capabilities-github");
+    const capabilitiesGithubState = document.getElementById("capabilities-github-state");
+    const capabilitiesMonitoring = document.getElementById("capabilities-monitoring");
+    const capabilitiesMonitoringState = document.getElementById("capabilities-monitoring-state");
+    const capabilitiesSkills = document.getElementById("capabilities-skills");
+    const capabilitiesJobs = document.getElementById("capabilities-jobs");
     const stopButton = document.getElementById("stop");
     const desktopStatusNote = document.getElementById("desktop-status-note");
     const desktopStatusRefreshButton = document.getElementById("desktop-status-refresh");
@@ -718,6 +749,8 @@
     let desktopHistoryController = null;
     let desktopRunRequestId = 0;
     let desktopRunController = null;
+    let capabilitiesRequestId = 0;
+    let capabilitiesController = null;
     let runSnapshotSessionId = null;
     let runSnapshot = null;
     let runRecoveryTimer = null;
@@ -798,6 +831,21 @@
         "action.copyCodeFailedTitle": "Could not copy code",
         "action.send": "Send",
         "action.refresh": "Refresh",
+        "capabilities.title": "Workbench capabilities",
+        "capabilities.loading": "Loading metadata-only capabilities…",
+        "capabilities.ready": "Capabilities are metadata-only; no remote mutation is available.",
+        "capabilities.error": "Capability metadata is unavailable.",
+        "capabilities.github": "GitHub",
+        "capabilities.github.optIn": "Opt-in required",
+        "capabilities.github.ready": "Authenticated",
+        "capabilities.github.unavailable": "Unavailable",
+        "capabilities.github.readOnly": "Read-only",
+        "capabilities.monitoring": "Monitoring",
+        "capabilities.monitoring.value": "{active} active · {pending} approvals",
+        "capabilities.monitoring.readOnly": "Read-only; approvals stay in the active chat.",
+        "capabilities.skills": "Skills",
+        "capabilities.jobs": "Scheduled jobs",
+        "capabilities.none": "None detected",
         "workspace.label": "Workspace",
         "workspace.title": "Task workspaces",
         "workspace.description": "Each task gets its own branch and Git worktree.",
@@ -961,6 +1009,12 @@
         "terminal.commandPlaceholder": "npm run dev",
         "terminal.run": "Run",
         "terminal.stop": "Stop",
+        "terminal.reconnect": "Reconnect",
+        "terminal.clear": "Clear view",
+        "terminal.export": "Export output",
+        "terminal.status.reconnecting": "Rehydrating terminal output…",
+        "terminal.status.bufferCleared": "The local output view was cleared; process history is unchanged.",
+        "terminal.status.exported": "Terminal output export started.",
         "terminal.input": "Terminal input",
         "terminal.inputPlaceholder": "Send input to the running process",
         "terminal.sendInput": "Send input",
@@ -974,11 +1028,14 @@
         "preview.url": "Local preview URL",
         "preview.urlPlaceholder": "http://localhost:5173",
         "preview.open": "Open preview",
+        "preview.clear": "Clear preview",
         "preview.frameTitle": "Local task preview",
         "preview.status.help": "Preview a loopback URL such as http://localhost:5173.",
         "preview.status.invalid": "Only a loopback HTTP(S) URL with an explicit port can be previewed.",
         "preview.status.loading": "Loading {url}…",
         "preview.status.loaded": "Loaded {url}",
+        "preview.status.error": "The local preview could not be loaded.",
+        "preview.status.cleared": "Preview cleared.",
         "runtime.status": "Runtime status",
         "runtime.loading": "Loading metadata-only status…",
         "runtime.unavailable": "Runtime status unavailable.",
@@ -1222,6 +1279,21 @@
         "action.copyCodeFailedTitle": "无法复制代码",
         "action.send": "发送",
         "action.refresh": "刷新",
+        "capabilities.title": "工作台能力",
+        "capabilities.loading": "正在加载仅含元数据的能力…",
+        "capabilities.ready": "能力仅提供元数据；不提供远程变更操作。",
+        "capabilities.error": "能力元数据不可用。",
+        "capabilities.github": "GitHub",
+        "capabilities.github.optIn": "需要显式启用",
+        "capabilities.github.ready": "已认证",
+        "capabilities.github.unavailable": "不可用",
+        "capabilities.github.readOnly": "只读",
+        "capabilities.monitoring": "监控",
+        "capabilities.monitoring.value": "{active} 个运行中 · {pending} 个审批",
+        "capabilities.monitoring.readOnly": "只读；审批仍在当前对话中完成。",
+        "capabilities.skills": "技能",
+        "capabilities.jobs": "计划任务",
+        "capabilities.none": "未检测到",
         "workspace.label": "工作区",
         "workspace.title": "任务工作区",
         "workspace.description": "每个任务使用独立 Git 分支和 worktree。",
@@ -1385,6 +1457,12 @@
         "terminal.commandPlaceholder": "npm run dev",
         "terminal.run": "运行",
         "terminal.stop": "停止",
+        "terminal.reconnect": "重新连接",
+        "terminal.clear": "清除视图",
+        "terminal.export": "导出输出",
+        "terminal.status.reconnecting": "正在重新载入终端输出…",
+        "terminal.status.bufferCleared": "已清除本地输出视图；进程历史未改变。",
+        "terminal.status.exported": "已开始导出终端输出。",
         "terminal.input": "终端输入",
         "terminal.inputPlaceholder": "向运行中的进程发送输入",
         "terminal.sendInput": "发送输入",
@@ -1398,11 +1476,14 @@
         "preview.url": "本地预览网址",
         "preview.urlPlaceholder": "http://localhost:5173",
         "preview.open": "打开预览",
+        "preview.clear": "清除预览",
         "preview.frameTitle": "本地任务预览",
         "preview.status.help": "输入回环地址进行预览，例如 http://localhost:5173。",
         "preview.status.invalid": "只能预览带明确端口的本机 HTTP(S) 回环地址。",
         "preview.status.loading": "正在加载 {url}…",
         "preview.status.loaded": "已加载 {url}",
+        "preview.status.error": "本地预览加载失败。",
+        "preview.status.cleared": "预览已清除。",
         "runtime.status": "运行时状态",
         "runtime.loading": "正在加载仅含元数据的状态…",
         "runtime.unavailable": "运行时状态不可用。",
@@ -1672,6 +1753,7 @@
       renderSessionMeta(sessionSummaries.get(currentSessionId));
       renderSessionRunStatus(sessionSummaries.get(currentSessionId));
       taskWorkspaceUI?.render();
+      void loadWorkbenchCapabilities(currentSessionId);
       applyThemePreference(themePreference);
       syncInspectorToggle();
     }
@@ -2801,6 +2883,71 @@
           return languagePreference === "en"
             ? "Refresh status to try again."
             : t("runtime.retry");
+      }
+    }
+
+    function renderCapabilityItems(node, items, formatter) {
+      node.replaceChildren();
+      if (!Array.isArray(items) || items.length === 0) {
+        const empty = document.createElement("li");
+        empty.textContent = t("capabilities.none");
+        node.appendChild(empty);
+        return;
+      }
+      for (const item of items.slice(0, 100)) {
+        const entry = document.createElement("li");
+        entry.textContent = formatter(item);
+        node.appendChild(entry);
+      }
+    }
+
+    async function loadWorkbenchCapabilities(sessionId) {
+      if (!sessionId) return;
+      const requestId = ++capabilitiesRequestId;
+      capabilitiesController?.abort();
+      const controller = new AbortController();
+      capabilitiesController = controller;
+      workbenchCapabilitiesRefreshButton.disabled = true;
+      workbenchCapabilitiesRefreshButton.setAttribute("aria-busy", "true");
+      workbenchCapabilitiesStatus.textContent = t("capabilities.loading");
+      try {
+        const query = "?sessionId=" + encodeURIComponent(sessionId);
+        const [githubResponse, workbenchResponse, monitoringResponse] = await Promise.all([
+          fetch("/api/capabilities/github", { cache: "no-store", signal: controller.signal }),
+          fetch("/api/capabilities/workbench" + query, { cache: "no-store", signal: controller.signal }),
+          fetch("/api/monitoring", { cache: "no-store", signal: controller.signal }),
+        ]);
+        if (![githubResponse, workbenchResponse, monitoringResponse].every((response) => response.ok)) throw new Error("capability response unavailable");
+        const [github, workbench, monitoring] = await Promise.all([
+          githubResponse.json(),
+          workbenchResponse.json(),
+          monitoringResponse.json(),
+        ]);
+        if (requestId !== capabilitiesRequestId || sessionId !== currentSessionId) return;
+        capabilitiesGithub.textContent = github?.authenticated ? t("capabilities.github.ready") : github?.enabled ? t("capabilities.github.unavailable") : t("capabilities.github.optIn");
+        capabilitiesGithubState.textContent = t("capabilities.github.readOnly");
+        const active = Number.isSafeInteger(monitoring?.activeSessionCount) ? monitoring.activeSessionCount : 0;
+        const pending = Number.isSafeInteger(monitoring?.pendingApprovalCount) ? monitoring.pendingApprovalCount : 0;
+        capabilitiesMonitoring.textContent = t("capabilities.monitoring.value", { active, pending });
+        capabilitiesMonitoringState.textContent = t("capabilities.monitoring.readOnly");
+        renderCapabilityItems(capabilitiesSkills, workbench?.skills, (item) => `${String(item?.name ?? "").slice(0, 96)} — ${String(item?.description ?? "").slice(0, 240)}`);
+        renderCapabilityItems(capabilitiesJobs, workbench?.jobs, (item) => `${String(item?.id ?? "").slice(0, 96)} · ${String(item?.status ?? "").slice(0, 32)} · runs=${Number(item?.runCount) || 0}`);
+        workbenchCapabilitiesStatus.textContent = t("capabilities.ready");
+      } catch {
+        if (controller.signal.aborted || requestId !== capabilitiesRequestId || sessionId !== currentSessionId) return;
+        capabilitiesGithub.textContent = "—";
+        capabilitiesGithubState.textContent = "—";
+        capabilitiesMonitoring.textContent = "—";
+        capabilitiesMonitoringState.textContent = "—";
+        renderCapabilityItems(capabilitiesSkills, [], () => "");
+        renderCapabilityItems(capabilitiesJobs, [], () => "");
+        workbenchCapabilitiesStatus.textContent = t("capabilities.error");
+      } finally {
+        if (requestId === capabilitiesRequestId) {
+          capabilitiesController = null;
+          workbenchCapabilitiesRefreshButton.disabled = false;
+          workbenchCapabilitiesRefreshButton.setAttribute("aria-busy", "false");
+        }
       }
     }
 
@@ -5470,6 +5617,7 @@
       await loadSessionView(currentSessionId);
       updateComposerAvailability(currentSessionId);
       resetDesktopStatus("Isolated task workspace ready.");
+      void loadWorkbenchCapabilities(currentSessionId);
       setStatus("new isolated task");
       taskWorkspaceUI?.render();
     }
@@ -5483,7 +5631,7 @@
       confirmAction: (message) => window.confirm(message),
       requestReviewComment: ({ path, anchor }) => window.prompt(t("workspace.comment.prompt", { path, anchor }), ""),
       insertReviewComments: (comments) => {
-        const block = comments.map((comment) => `[Review comment ${comment.path}:${comment.anchor}]\n${comment.text}`).join("\n\n");
+        const block = formatReviewComments(comments);
         const separator = input.value.trim() ? "\n\n" : "";
         input.value = `${input.value}${separator}${block}`;
         input.focus();
@@ -5504,10 +5652,18 @@
         input.setSelectionRange(input.value.length, input.value.length);
         input.dispatchEvent(new Event("input", { bubbles: true }));
       },
+      onFinished: () => {
+        void taskWorkspaceUI?.refresh();
+      },
     });
-    loadSessions().then(() => loadSessionView(currentSessionId));
-    void taskWorkspaceUI.refresh();
-    void taskTerminalUI.refresh();
+    workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
+    void (async () => {
+      await loadSessions();
+      await loadSessionView(currentSessionId);
+      await taskWorkspaceUI.refresh();
+      await taskTerminalUI.refresh();
+      if (currentSessionId !== null) void loadWorkbenchCapabilities(currentSessionId);
+    })();
     applyPanelPreferences();
     syncInspectorToggle();
     applyLanguage(languagePreference);

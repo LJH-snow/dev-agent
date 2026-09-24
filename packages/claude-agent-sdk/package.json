@@ -1,0 +1,36 @@
+{
+  "name": "@dev-agent/claude-agent-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Safe optional Claude Agent SDK adapter backed by dev-agent tools and approvals.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.280",
+    "@anthropic-ai/sdk": "0.126.0",
+    "@dev-agent/agent-core": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.6.5"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test --test-concurrency=1 tests-dist/*.test.js",
+    "clean": "rm -rf dist tests-dist"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.9.0"
+  }
+}

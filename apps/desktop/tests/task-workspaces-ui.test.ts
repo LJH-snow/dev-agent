@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import test from "node:test";
 
 const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
@@ -49,4 +50,25 @@ test("task worktree actions use the bounded API and confirm merge or cleanup", (
   assert.doesNotMatch(controller, /\.innerHTML\s*=/, "Git paths and diffs must not enter an HTML parser");
   assert.match(controller, /renderPatch\(selectedWorkspace\(\), activeChoice\.group, activeChoice\.diff\)/);
   assert.match(controller, /textContent = file\.path/);
+});
+
+test("review comments persist per task session and stay bounded when inserted", async () => {
+  const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+  const storage = new Map<string, string>();
+  const adapter = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => { storage.set(key, value); },
+  };
+  const comments = [
+    { path: "src/app.ts", anchor: "@@ -1,2 +1,3 @@", group: "unstaged", text: "check this branch" },
+    { path: "bad\u0000path", anchor: "line 2", group: "unknown", text: "safe" },
+  ];
+  assert.equal(module.writeReviewComments(adapter, "task-a", comments), true);
+  const restored = module.readReviewComments(adapter, "task-a");
+  assert.equal(restored.length, 2);
+  assert.equal(restored[1].group, "all");
+  const formatted = module.formatReviewComments(restored);
+  assert.match(formatted, /Review comment src\/app\.ts:/);
+  assert.doesNotMatch(formatted, /\u0000/);
+  assert.ok(formatted.length <= 32 * 1024);
 });

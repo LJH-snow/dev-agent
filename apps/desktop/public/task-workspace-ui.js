@@ -1,3 +1,60 @@
+const REVIEW_COMMENT_STORAGE_VERSION = 1;
+const MAX_REVIEW_COMMENTS = 64;
+const MAX_REVIEW_COMMENT_TEXT = 2000;
+const MAX_REVIEW_COMMENT_PATH = 512;
+const MAX_REVIEW_COMMENT_ANCHOR = 128;
+const MAX_REVIEW_COMMENT_BYTES = 32 * 1024;
+
+const REVIEW_COMMENT_GROUPS = new Set(["committed", "staged", "unstaged", "untracked", "all"]);
+
+function truncateUtf8(value, maxBytes) {
+  const bytes = new TextEncoder().encode(value);
+  if (bytes.byteLength <= maxBytes) return value;
+  return new TextDecoder().decode(bytes.slice(0, maxBytes));
+}
+
+function normalizedReviewComment(value) {
+  if (!value || typeof value !== "object") return undefined;
+  const path = typeof value.path === "string" ? value.path.replace(/[\u0000-\u001f\u007f]/g, "�").trim().slice(0, MAX_REVIEW_COMMENT_PATH) : "";
+  const anchor = typeof value.anchor === "string" ? value.anchor.replace(/[\u0000-\u001f\u007f]/g, "�").trim().slice(0, MAX_REVIEW_COMMENT_ANCHOR) : "";
+  const text = typeof value.text === "string" ? value.text.replace(/\0/g, "�").trim().slice(0, MAX_REVIEW_COMMENT_TEXT) : "";
+  const group = typeof value.group === "string" && REVIEW_COMMENT_GROUPS.has(value.group) ? value.group : "all";
+  if (!path || !anchor || !text) return undefined;
+  return { path, anchor, group, text };
+}
+
+export function formatReviewComments(input) {
+  const comments = Array.isArray(input) ? input.map(normalizedReviewComment).filter(Boolean).slice(0, MAX_REVIEW_COMMENTS) : [];
+  const output = comments.map((comment) => `[Review comment ${comment.path}:${comment.anchor}]\n${comment.text}`).join("\n\n");
+  return truncateUtf8(output, MAX_REVIEW_COMMENT_BYTES);
+}
+
+export function readReviewComments(storage, key) {
+  if (!storage || typeof storage.getItem !== "function") return [];
+  try {
+    const raw = storage.getItem(key);
+    if (!raw || new TextEncoder().encode(raw).byteLength > MAX_REVIEW_COMMENT_BYTES) return [];
+    const parsed = JSON.parse(raw);
+    if (!parsed || parsed.version !== REVIEW_COMMENT_STORAGE_VERSION || !Array.isArray(parsed.comments)) return [];
+    return parsed.comments.map(normalizedReviewComment).filter(Boolean).slice(0, MAX_REVIEW_COMMENTS);
+  } catch {
+    return [];
+  }
+}
+
+export function writeReviewComments(storage, key, comments) {
+  if (!storage || typeof storage.setItem !== "function") return false;
+  const normalized = (Array.isArray(comments) ? comments : []).map(normalizedReviewComment).filter(Boolean).slice(0, MAX_REVIEW_COMMENTS);
+  try {
+    const raw = JSON.stringify({ version: REVIEW_COMMENT_STORAGE_VERSION, comments: normalized });
+    if (new TextEncoder().encode(raw).byteLength > MAX_REVIEW_COMMENT_BYTES) return false;
+    storage.setItem(key, raw);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const workspaceStateKeys = {
   ready: "workspace.state.ready",
   dirty: "workspace.state.dirty",
@@ -37,7 +94,13 @@ export function createTaskWorkspaceUI({
   confirmAction = (message) => window.confirm(message),
   requestReviewComment = () => window.prompt(translate("workspace.comment.prompt"), ""),
   insertReviewComments = () => {},
+  storage,
+  storageKeyPrefix = "dev-agent:review-comments:",
 }) {
+  let reviewStorage = storage;
+  if (reviewStorage === undefined) {
+    try { reviewStorage = globalThis.sessionStorage; } catch { reviewStorage = undefined; }
+  }
   const newTaskButton = documentRef.getElementById("new-task");
   const refreshButton = documentRef.getElementById("task-workspace-refresh");
   const statusNode = documentRef.getElementById("task-workspace-status");
@@ -69,6 +132,14 @@ export function createTaskWorkspaceUI({
   let activeDiffGroup = "all";
   let currentDiff;
   const commentsBySession = new Map();
+
+  function commentsStorageKey(sessionId) {
+    return `${storageKeyPrefix}${sessionId}`;
+  }
+
+  function persistComments(sessionId) {
+    writeReviewComments(reviewStorage, commentsStorageKey(sessionId), commentsBySession.get(sessionId) ?? []);
+  }
 
   function stateLabel(state) {
     const key = workspaceStateKeys[state] ?? "workspace.state.missing";
@@ -133,7 +204,9 @@ export function createTaskWorkspaceUI({
   }
 
   function commentsFor(sessionId) {
-    if (!commentsBySession.has(sessionId)) commentsBySession.set(sessionId, []);
+    if (!commentsBySession.has(sessionId)) {
+      commentsBySession.set(sessionId, readReviewComments(reviewStorage, commentsStorageKey(sessionId)));
+    }
     return commentsBySession.get(sessionId);
   }
 
@@ -155,6 +228,7 @@ export function createTaskWorkspaceUI({
       remove.setAttribute("aria-label", translate("workspace.comment.removeAt", { path: comment.path, anchor: comment.anchor }));
       remove.addEventListener("click", () => {
         comments.splice(index, 1);
+        persistComments(workspace.sessionId);
         renderComments();
       });
       item.append(copy, remove);
@@ -170,12 +244,17 @@ export function createTaskWorkspaceUI({
       setStatus("workspace.comment.limit");
       return;
     }
-    comments.push({ path, anchor, group, text: text.trim().slice(0, 2000) });
+    const comment = normalizedReviewComment({ path, anchor, group, text });
+    if (!comment) return;
+    comments.push(comment);
+    persistComments(workspace.sessionId);
     renderComments();
     setStatus("workspace.comment.added");
   }
 
   function renderPatch(workspace, group, patch) {
+    diffContent.dataset.selectedPath = selectedFile ?? "";
+    diffContent.dataset.selectedGroup = group;
     diffContent.replaceChildren();
     const lines = patch.split("\n");
     let hunkIndex = -1;
@@ -308,6 +387,8 @@ export function createTaskWorkspaceUI({
     const allFilesButton = documentRef.createElement("button");
     allFilesButton.type = "button";
     allFilesButton.className = "task-workspace-file-filter";
+    allFilesButton.dataset.filePath = "";
+    allFilesButton.setAttribute("aria-current", selectedFile === undefined ? "true" : "false");
     allFilesButton.textContent = translate("workspace.diff.allFiles");
     allFilesButton.setAttribute("aria-pressed", String(selectedFile === undefined));
     allFilesButton.addEventListener("click", () => {
@@ -323,7 +404,16 @@ export function createTaskWorkspaceUI({
       const fileButton = documentRef.createElement("button");
       fileButton.type = "button";
       fileButton.className = "task-workspace-file-filter";
+      fileButton.dataset.filePath = file.path;
       fileButton.setAttribute("aria-pressed", String(selectedFile === file.path));
+      fileButton.setAttribute("aria-current", selectedFile === file.path ? "true" : "false");
+      fileButton.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+        event.preventDefault();
+        const buttons = [...diffFiles.querySelectorAll("button.task-workspace-file-filter")];
+        const index = buttons.indexOf(fileButton);
+        buttons[index + (event.key === "ArrowDown" ? 1 : -1)]?.focus();
+      });
       const path = documentRef.createElement("span");
       path.textContent = file.path;
       const state = documentRef.createElement("span");
@@ -354,14 +444,26 @@ export function createTaskWorkspaceUI({
       tab.type = "button";
       tab.className = "task-workspace-diff-tab";
       tab.setAttribute("role", "tab");
+      tab.setAttribute("tabindex", choice.group === activeDiffGroup ? "0" : "-1");
       tab.setAttribute("aria-selected", String(choice.group === activeDiffGroup));
       tab.textContent = choice.label;
+      tab.addEventListener("keydown", (event) => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...diffTabs.querySelectorAll('[role="tab"]')];
+        const index = tabs.indexOf(tab);
+        const targetIndex = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : index + (event.key === "ArrowRight" ? 1 : -1);
+        const target = tabs[(targetIndex + tabs.length) % tabs.length];
+        target?.focus();
+        target?.click();
+      });
       tab.addEventListener("click", () => {
         activeDiffGroup = choice.group;
         if (choice.diff) renderPatch(selectedWorkspace(), choice.group, choice.diff);
         else diffContent.textContent = translate("workspace.diff.empty");
         for (const candidate of diffTabs.querySelectorAll('[role="tab"]')) {
           candidate.setAttribute("aria-selected", String(candidate === tab));
+          candidate.setAttribute("tabindex", candidate === tab ? "0" : "-1");
         }
       });
       diffTabs.appendChild(tab);

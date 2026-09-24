@@ -286,6 +286,60 @@ test("Anthropic streamChat streams text deltas and returns content", async () =>
   assert.deepEqual(tokens, ["Hey", "!"]);
 });
 
+test("Anthropic streamChat consumes official event-named SSE blocks", async () => {
+  const event = (name, payload) =>
+    `event: ${name}\ndata: ${JSON.stringify(payload)}\n\n`;
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4",
+    apiKey: "secret",
+    fetch: async () =>
+      streamFromStrings([
+        event("message_start", {
+          type: "message_start",
+          message: { usage: { input_tokens: 4, output_tokens: 0 } },
+        }),
+        event("content_block_start", {
+          type: "content_block_start",
+          index: 0,
+          content_block: { type: "text", text: "" },
+        }),
+        event("content_block_delta", {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "done" },
+        }),
+        event("content_block_start", {
+          type: "content_block_start",
+          index: 1,
+          content_block: { type: "tool_use", id: "toolu_1", name: "search", input: {} },
+        }),
+        event("content_block_delta", {
+          type: "content_block_delta",
+          index: 1,
+          delta: { type: "input_json_delta", partial_json: '{"query":"needle"}' },
+        }),
+        event("message_delta", {
+          type: "message_delta",
+          delta: { stop_reason: "tool_use", stop_sequence: null },
+          usage: { output_tokens: 2 },
+        }),
+        event("message_stop", { type: "message_stop" }),
+      ]),
+  });
+
+  const completion = await provider.streamChat([{ role: "user", content: "search" }]);
+
+  assert.equal(completion.content, "done");
+  assert.deepEqual(completion.toolCalls, [
+    { id: "toolu_1", name: "search", input: { query: "needle" } },
+  ]);
+  assert.deepEqual(completion.usage, {
+    promptTokens: 4,
+    completionTokens: 2,
+    totalTokens: 6,
+  });
+});
+
 test("Anthropic streamChat forwards thinking deltas separately from answer tokens", async () => {
   const reasoning = [];
   const tokens = [];

@@ -6,8 +6,9 @@ Current package capabilities include:
 
 - Shared `ChatMessage`, `ToolCall`, `ToolSchema`, and `ChatCompletion` types
 - `ModelProvider` contract with optional tool-calling
-- OpenAI, Anthropic, Gemini, and Ollama providers built on Node `fetch`, no SDK
-  dependency
+- OpenAI, Gemini, and Ollama providers use Node `fetch`; the Anthropic adapter
+  uses the official `@anthropic-ai/sdk` client while retaining the package's
+  shared retry, cancellation, streaming, and response-size boundaries
 
 ## Usage reporting
 

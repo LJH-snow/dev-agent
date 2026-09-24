@@ -13,6 +13,7 @@
   --accent: #58d6d1;
   --accent-strong: #8af2e9;
   --accent-ink: #082325;
+  --assistant-bg: #1a252b;
   --amber: #f4bd67;
   --amber-bg: #2a2114;
   --green: #75d49b;
@@ -46,6 +47,7 @@
     --accent: #087f7b;
     --accent-strong: #0a625f;
     --accent-ink: #f2fffd;
+    --assistant-bg: #ffffff;
     --amber: #a96716;
     --amber-bg: #fff4df;
     --green: #257943;
@@ -72,6 +74,7 @@ html[data-theme="dark"] {
   --accent: #58d6d1;
   --accent-strong: #8af2e9;
   --accent-ink: #082325;
+  --assistant-bg: #1a252b;
   --amber: #f4bd67;
   --amber-bg: #2a2114;
   --green: #75d49b;
@@ -97,6 +100,7 @@ html[data-theme="light"] {
   --accent: #087f7b;
   --accent-strong: #0a625f;
   --accent-ink: #f2fffd;
+  --assistant-bg: #ffffff;
   --amber: #a96716;
   --amber-bg: #fff4df;
   --green: #257943;
@@ -3312,4 +3316,50 @@ html[data-theme="light"] {
 @media (max-width: 680px) {
   .task-workspace-list { max-height: 260px; }
   .task-workspace-diff { max-height: 260px; }
+}
+
+/* Metadata-only workbench capability surface. It has no mutation controls. */
+.workbench-capabilities-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.workbench-capabilities-lists {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 0.85rem;
+}
+
+.workbench-capabilities-lists h4 {
+  margin: 0 0 0.35rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.workbench-capabilities-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--fg);
+  font-size: 0.78rem;
+}
+
+.workbench-capabilities-list li {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .workbench-capabilities-grid,
+  .workbench-capabilities-lists {
+    grid-template-columns: 1fr;
+  }
 }

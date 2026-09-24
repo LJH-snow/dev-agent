@@ -35,13 +35,13 @@ fit against the current code and user requirements.
   protects this scheduling requirement. Separate concurrent test invocations
   still share CLI `tests-dist`, so verification was rerun only after confirming
   no other test process was active.
-- The clean post-change `pnpm verify:typescript --report` gate passed structure,
-  workspace build/typecheck/tests, CLI package-install smoke, release/preview/CI
-  contracts, documentation contracts, and native Desktop contracts. Latest key
-  suite counts at that full gate: Agent Core **200/200**, Tools **159/159**,
-  CLI **618/618**, Desktop **211/211**, documentation **57/57**, native Desktop
-  **2/2**. After later documentation reconciliations, the standalone documentation
-  contract suite passes **60/60**.
+- At the earlier collaboration-scope checkpoint, `pnpm verify:typescript
+  --report` passed structure, workspace build/typecheck/tests, package-install
+  smoke, release/preview/CI contracts, documentation contracts, and native
+  Desktop contracts. Its historical key suite counts were Agent Core **200/200**,
+  Tools **159/159**, CLI **618/618**, Desktop **211/211**, documentation **57/57**,
+  and native Desktop **2/2**. After later documentation reconciliations, the
+  standalone documentation contract suite passes **60/60**.
 - Separate final gate phases passed on the current worktree: `pnpm verify:rust
   --report` (format, Clippy, **54/54** Rust unit tests) and
   `pnpm verify:integration --report` (**11/11** real Rust sandbox integration
@@ -50,13 +50,35 @@ fit against the current code and user requirements.
   **60/60**, with `git diff --check` also passing.
 - The checkout contains extensive pre-existing modified and untracked files.
   Continue preserving them; do not reset, clean, or overwrite unrelated work.
+- The late Anthropic package/model change is now implemented and focused-verified:
+  `@anthropic-ai/sdk@0.126.0` is used by the provider adapter, with the shared
+  retry/bounds/cancellation contracts preserved. Model tests pass **94/94**.
+  The optional Claude Agent SDK adapter is now implemented safely behind the
+  existing tool registry, approval policy, and sandbox; the default CLI remains
+  on the existing AgentLoop/provider path.
 
 ## Active work
 
-- [ ] Close the generic-tool/MCP approval and plan-mode gap: make missing
+- [x] Close the generic-tool/MCP approval and plan-mode gap: make missing
       tool-risk metadata fail closed, propagate trusted registry metadata into
       approval requests, classify MCP action wrappers separately from resource
       and prompt reads, and cover CLI/Desktop/core behavior with regressions.
+
+- Current closure checks: Agent Core **211/211**; plan-mode focused tests **8/8**;
+  CLI and Desktop MCP integration tests **2/2** each; CLI MCP prefix/classification
+  regressions pass. Added an optional package-smoke npm-cache override while
+  preserving isolated HOME and proxy settings. With the populated local npm
+  cache selected, the CLI tarball smoke passed and the full
+  `pnpm verify:typescript --report` gate passed all selected phases, including
+  workspace tests (**629/629** CLI tests), npm package smoke, documentation
+  (**60/60**), and native Desktop contracts (**2/2**). `git diff --check` passes.
+  The final gate was rerun after the Anthropic SDK adapter and dependency
+  changes settled, so the report covers the current audited TypeScript tree.
+
+- [x] Make the CLI package-install smoke accept an explicit npm-cache path while
+      keeping its temporary HOME and proxy isolation. Use the already populated
+      local npm cache to rerun the package smoke and full TypeScript gate without
+      relying on another registry download.
 
 - [x] Verify and document that team workers share CLI-created, project-rooted
       MCP sessions and that task tool scopes do not isolate MCP processes or
@@ -1403,3 +1425,83 @@ Verification completed on 2026-09-23:
 - `git diff --check`: passed.
 
 Phase status: **complete**.
+
+
+## 2026-09-23 Claude Agent SDK optional integration
+
+- Added optional `packages/claude-agent-sdk` integration for
+  `@anthropic-ai/claude-agent-sdk@0.3.280`. It disables native tools, isolates
+  filesystem/settings/MCP configuration, exposes only allowlisted project tools
+  through an in-process MCP server, routes permission decisions through the
+  existing `ApprovalPolicy`, and passes the existing session/cwd/signal/sandbox
+  context into tool execution. The default single-file CLI remains unchanged so
+  the platform-native Agent SDK runtime is not bundled accidentally.
+
+## 2026-09-24 Claude Agent SDK permission-boundary hardening
+
+The optional adapter's initial `canUseTool` integration was not sufficient as
+an independently verified execution boundary because the in-process MCP
+handler is a separate seam and does not expose the SDK tool-use id. This
+follow-up closes that gap without changing the default CLI runtime.
+
+- [x] Enforce the existing `ApprovalPolicy` again at the project-owned MCP
+      handler when no matching preflight decision is available.
+- [x] Bind preflight allow/deny results to one canonical input, preserve
+      reviewed `updatedInput`, and bound/expire pending authorization state.
+- [x] Add real MCP client/server transport regressions for deny, allow,
+      reviewed input, direct handler execution, bounded errors, allowlist
+      isolation, and cancellation.
+- [x] Rebuild, typecheck, run the focused package suite, and run serial
+      workspace build/typecheck/tests. Re-run the full release gate after the
+      final documentation synchronization.
+
+Focused evidence on 2026-09-24: `@dev-agent/claude-agent-sdk` **12/12**;
+workspace build/typecheck/tests passed, with current CLI **629/629** and
+Desktop **222/222** observed. The full post-edit release-gate report remains
+to be regenerated before claiming final repository-wide closure.
+
+## 2026-09-24 Claude Agent SDK post-hardening closure
+
+- The handler-level approval boundary is now verified with real MCP transport
+  tests, not only direct bridge/unit tests.
+- `HOME=/private/tmp/dev-agent-test-home
+  DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE=/Users/Admin/.npm pnpm verify:typescript
+  --report` passed after the change and documentation sync. Current evidence:
+  CLI **629/629**, Desktop **222/222**, Claude adapter **12/12**,
+  documentation **60/60**, native Desktop contracts **2/2**, and package smoke.
+- No commit, tag, publish, or push was performed.
+
+## 2026-09-24 Claude Agent SDK lifecycle cleanup correction
+
+- [x] Clear unused one-use MCP authorization bindings when the host query
+      lifecycle ends, and cover the explicit bridge cleanup seam.
+
+The focused adapter suite is now **13/13**. The previously recorded **12/12**
+count referred to the state before this lifecycle regression was added.
+
+## 2026-09-24 Next nine Desktop workflow features (complete)
+
+The nearest unfinished Desktop workflow slice was completed as nine bounded
+features: review-comment durability and insertion, diff keyboard navigation,
+terminal reconnect/gap recovery, terminal clear/export, loopback preview
+lifecycle, post-terminal workspace refresh, opt-in GitHub metadata probing,
+skills/job metadata projection, and read-only monitoring/approval boundaries.
+
+Browser acceptance also fixed the session-bootstrap ordering so the selected
+session is loaded before workspace, terminal, and capability panels refresh.
+The dark-mode status-panel background was made theme-aware. Final evidence and
+commands are recorded in `.planning/2026-09-24-next-nine-features/`.
+
+Status: **complete**. No commit, tag, publish, or push was performed.
+
+## 2026-09-24 Claude Agent SDK lifecycle-cleanup final gate
+
+- [x] Clear unused preflight authorization bindings at query end.
+- [x] Add and pass the focused cleanup regression (**13/13**).
+- [x] Regenerate the repository-wide TypeScript gate after lifecycle cleanup.
+- [x] Re-run documentation and diff checks.
+
+Final gate evidence: report status `passed`; CLI **629/629**, Desktop **222/222**,
+Claude adapter **13/13**, documentation **60/60**, native Desktop **2/2**, and
+CLI package smoke all passed. `git diff --check` passed. No commit, tag,
+publish, or push was performed.

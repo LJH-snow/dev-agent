@@ -166,6 +166,35 @@ test("provider error bodies are bounded before becoming model errors", async () 
   );
 });
 
+test("Anthropic SDK errors remain bounded and redact credentials", async () => {
+  const provider = createAnthropicProvider({
+    model: "claude-sonnet-4",
+    apiKey: "secret",
+    fetch: async () =>
+      new Response(
+        JSON.stringify({
+          error: "invalid request",
+          apiKey: "secret-value",
+          authorization: "Bearer super-secret",
+          password: "hunter2",
+        }),
+        { status: 400, headers: { "content-type": "application/json" } }
+      ),
+    retry: { retries: 0 },
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.match(error.message, /Anthropic request failed \(400\)/);
+      assert.doesNotMatch(error.message, /secret-value|super-secret|hunter2/);
+      assert.match(error.message, /\[redacted\]/);
+      return true;
+    }
+  );
+});
+
 test("network failures are retried", async () => {
   let calls = 0;
 
