@@ -132,3 +132,18 @@ Those remain deferred until a separate trust/install/rollback design exists.
 - Observability callbacks are best-effort: trace recording is wrapped so a
   telemetry failure cannot alter the AgentLoop result or terminal process
   lifecycle.
+
+
+## 2026-09-24 — browser acceptance finding
+
+- Isolated browser acceptance exercised the actual Desktop server against a
+  temporary Git repository. Repository/remote cards stayed metadata-only, the
+  task terminal executed inside the fixture, and the loopback preview iframe
+  loaded without exposing its URL in the Runtime trace.
+- The first trace showed duplicate terminal start/completion events. The source
+  of truth was split between the server terminal manager callback and the UI's
+  generic lifecycle callback. Removing terminal emissions from the UI and
+  retaining the server callback produced exactly one terminal lifecycle pair.
+- Preview iframe events can arrive after a preview is cleared or before an
+  active preview exists. `load`/`error` handlers now require `previewActive`
+  as well as a visible frame, preventing false `failed` lifecycle records.

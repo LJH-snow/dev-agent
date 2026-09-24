@@ -81,8 +81,11 @@ strong tests and browser evidence.
       the final Desktop suite is green at **232/232** tests and the agent-core
       suite at **212/212**. Earlier CLI/release-gate evidence remains recorded
       above.
-- [ ] Run browser acceptance against an isolated temporary repository and
-      capture fresh evidence without using the real project worktree.
+- [x] Run browser acceptance against an isolated temporary repository and
+      capture fresh evidence without using the real project worktree; the UI
+      exposed repository/GitHub/CI metadata, executed an isolated terminal
+      command, loaded/cleared a loopback preview, and rendered a single
+      terminal/preview lifecycle trace.
 - [x] Review the diff, exclude QA artifacts, update progress/findings, and
       commit/push only the intended source, test, and documentation changes.
 
@@ -104,7 +107,7 @@ strong tests and browser evidence.
 
 The plan is active. The baseline/inventory hour, CLI/Desktop UX tranche,
 capability-token tranche, terminal canonical-cwd/lifecycle hardening,
-read-only project capability panel, and metadata-only authorization/lifecycle
-observability are complete. Manual browser/PTY acceptance against an isolated
-temporary repository remains intentionally open; local QA artifacts are not
-part of the delivery commit.
+read-only project capability panel, metadata-only authorization/lifecycle
+observability, and isolated browser acceptance are complete. A separate real
+CLI PTY acceptance remains open; local QA artifacts are not part of the
+delivery commit.

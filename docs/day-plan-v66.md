@@ -78,6 +78,17 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - 自动化证据：agent-core **212/212**、Desktop **232/232**、build/typecheck、
   `git diff --check`；浏览器/PTY 手工验收仍保留为未完成项。
 
+## 隔离浏览器验收补充（2026-09-24）
+
+- 使用临时 Git fixture（不使用真实项目工作区）启动已构建 Desktop，确认
+  Repository/Remote/GitHub/CI cards 的只读状态。
+- 通过浏览器执行 terminal command，并通过 loopback HTTP preview 加载/清理 iframe；
+  Runtime trace 显示单一 `Terminal: started/completed` 与 `Preview: started/loaded`，
+  没有 prompt、tool payload、路径、URL 或 secret。
+- 发现并修复 UI 与 server 重复记录 terminal lifecycle、以及 stale iframe error
+  造成的 false preview failure；修复后 targeted Desktop **39/39** 通过。
+- CLI 外部真实 PTY 手工验收仍保留为后续项；QA 进程已停止，产物不提交。
+
 ## 阶段门槛
 
 每个阶段完成后更新：
@@ -104,7 +115,7 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
   focused Desktop **227/227**。
 - [x] read-only capability-panel、Git branch/dirty/remote metadata、显式 opt-in
   GitHub/CI 状态与 malformed-metadata 回归已完成；Desktop **230/230**。
-- [ ] 浏览器/PTY 手工验收仍待在隔离临时仓库中完成；metadata-only authorization
-  trace 已实现并通过自动化验证，不在本轮宣称完成。
+- [x] 已在隔离临时 Git 仓库中完成 Desktop 浏览器验收：能力面板、真实 terminal
+  命令、loopback preview 和单一 lifecycle trace 均通过；CLI 外部真实 PTY 仍待后续。
 - [x] focused/runtime verification 已通过；前一阶段的 full release-gate 证据保留有效。
 - [x] 已提交并推送本轮变更；最新 metadata-only observability commit 为 `7d2331a`。

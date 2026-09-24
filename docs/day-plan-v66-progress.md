@@ -24,6 +24,7 @@
 | capability token | 已完成本轮范围 | 生产 launcher、`/api/` mutation guard、served HTML 注入、token tests |
 | 会话恢复/维护审计 | 延后 | 不在本轮已提交范围内 |
 | 全量门禁/推送 | 已完成本轮范围 | agent-core 212/212、Desktop 232/232、build/typecheck、diff check；`7d2331a` 已推送 |
+| 隔离浏览器验收 | 已完成 | 临时 Git fixture；capability cards、terminal command、loopback preview、single lifecycle trace；CLI 外部真实 PTY 仍待后续 |
 
 ## 操作规则
 
@@ -136,3 +137,16 @@
 - 已推送到 `origin/codex/desktop-cli-workbench`。提交前验证 agent-core **212/212**、
   Desktop **232/232**、build、typecheck 与 `git diff --check`。
 - 浏览器/真实 PTY 验收仍未完成；`.playwright-cli/`、`output/` 与重复计划目录继续排除。
+
+
+## 2026-09-24 — isolated browser acceptance
+
+- 使用临时 Git fixture 而非真实项目工作区启动 Desktop。浏览器确认 Repository、
+  Remote、GitHub、CI metadata cards 的只读状态，并执行真实 task-terminal command。
+- 通过 loopback HTTP preview 加载并清除 iframe；Runtime trace 最终显示单一
+  `Terminal: started/completed` 与 `Preview: started/loaded`，未显示 prompt、tool
+  payload、路径、URL 或 secret。
+- 浏览器验收发现 UI 与 server 重复记录 terminal lifecycle，以及 stale iframe
+  event 可能制造 false preview failure；已修复并通过 targeted Desktop **39/39**、
+  build 与 `git diff --check`。
+- CLI 外部真实 PTY 手工验收仍为后续项；临时 server/browser 已停止，QA 目录继续排除。

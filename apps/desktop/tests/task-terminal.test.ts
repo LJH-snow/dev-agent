@@ -321,7 +321,9 @@ test("terminal and preview panels are wired to session state and safe text rende
   assert.match(controller, /ArrowDown/);
   assert.match(controller, /followOutput/);
   assert.match(controller, /recordLifecycle/);
+  assert.doesNotMatch(controller, /emitLifecycle\("terminal"/);
   assert.match(controller, /emitLifecycle\("preview", "started"\)/);
+  assert.match(controller, /if \(previewActive && !previewFrame.hidden\)/);
   assert.match(controller, /updateOutputFollowState/);
   assert.match(controller, /createObjectURL/);
   assert.doesNotMatch(controller, /\.innerHTML\s*=/);

@@ -262,7 +262,6 @@ export function createTaskTerminalUI({
         status("terminal.status.finished", { state: translate(`terminal.state.${payload.state}`), code: payload.exitCode ?? "—" });
         if (!finishedNotified.has(requestedRunId)) {
           finishedNotified.add(requestedRunId);
-          emitLifecycle("terminal", payload.state === "exited" ? "completed" : payload.state === "stopped" ? "stopped" : "failed");
           onFinished(payload);
         }
       }
@@ -334,7 +333,6 @@ export function createTaskTerminalUI({
         return;
       }
       commandHistory.add(command);
-      emitLifecycle("terminal", "started");
       runs = [payload, ...runs.filter((run) => run.id !== payload.id)];
       activeId = payload.id;
       cursor = 0;
@@ -347,7 +345,6 @@ export function createTaskTerminalUI({
       renderRuns();
       pollTimer = setTimeout(pollOutput, 250);
     } catch {
-      emitLifecycle("terminal", "failed");
       status("terminal.status.error");
     } finally {
       busy = false;
@@ -364,18 +361,14 @@ export function createTaskTerminalUI({
       const response = await fetcher(`/api/terminal/${encodeURIComponent(sessionId)}/${encodeURIComponent(run.id)}`, { method: "DELETE" });
       const payload = await payloadOf(response);
       if (!response.ok) {
-        emitLifecycle("terminal", "failed");
         status("terminal.status.error");
       } else {
-        emitLifecycle("terminal", "input");
         const index = runs.findIndex((candidate) => candidate.id === run.id);
         if (index >= 0) runs[index] = { ...runs[index], ...payload };
-        emitLifecycle("terminal", "stopped");
         status("terminal.status.stopping");
         pollTimer = setTimeout(pollOutput, 300);
       }
     } catch {
-      emitLifecycle("terminal", "failed");
       status("terminal.status.error");
     } finally {
       busy = false;
@@ -424,10 +417,9 @@ export function createTaskTerminalUI({
   }
 
   function clearPreview(message = "preview.status.cleared") {
-    if (previewActive) {
-      emitLifecycle("preview", "cleared");
-      previewActive = false;
-    }
+    const wasActive = previewActive;
+    previewActive = false;
+    if (wasActive) emitLifecycle("preview", "cleared");
     previewFrame.hidden = true;
     previewFrame.removeAttribute("src");
     previewFrame.removeAttribute("aria-busy");
@@ -496,7 +488,7 @@ export function createTaskTerminalUI({
   previewButton.addEventListener("click", openPreview);
   previewClearButton.addEventListener("click", () => clearPreview());
   previewFrame.addEventListener("load", () => {
-    if (!previewFrame.hidden) {
+    if (previewActive && !previewFrame.hidden) {
       previewFrame.removeAttribute("aria-busy");
       previewStatus.dataset.state = "loaded";
       emitLifecycle("preview", "loaded");
@@ -504,7 +496,7 @@ export function createTaskTerminalUI({
     }
   });
   previewFrame.addEventListener("error", () => {
-    if (!previewFrame.hidden) {
+    if (previewActive && !previewFrame.hidden) {
       previewFrame.removeAttribute("aria-busy");
       previewStatus.dataset.state = "error";
       emitLifecycle("preview", "failed");

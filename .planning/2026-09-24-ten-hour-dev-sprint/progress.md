@@ -103,3 +103,23 @@
 - 本次提交只包含预期源码、测试和文档；`.planning/2026-09-24-ten-hour-development/`、
   `.playwright-cli/` 与 `output/` 仍为未跟踪 QA/重复计划目录，未纳入 GitHub。
 - 浏览器/真实 PTY 手工验收仍是后续未完成项，不将自动化证据误报为手工验收。
+
+
+## 2026-09-24 — isolated browser acceptance
+
+- Against a temporary Git fixture repository (not the real project worktree),
+  the built Desktop served the repository/GitHub/CI capability cards, ran an
+  actual task-terminal command, loaded and cleared a loopback preview, and
+  rendered the metadata-only Runtime trace. The trace showed exactly one
+  `Terminal: started`, one `Terminal: completed`, `Preview: started`, and
+  `Preview: loaded`; it exposed no prompt, tool payload, URL, path, or secret.
+- Browser evidence uncovered duplicate terminal lifecycle events because both
+  the authoritative server terminal manager and the browser controller reported
+  the same state. The browser controller now reports preview lifecycle only;
+  server terminal callbacks remain authoritative. Stale iframe load/error events
+  are ignored when no preview is active.
+- Targeted regression/build evidence after the fix: Desktop **39/39** trace,
+  server, and terminal tests; Desktop build and `git diff --check` pass.
+  The prior full Desktop suite remains **232/232**.
+- The isolated browser server, fixture HTTP server, and browser session were
+  stopped after acceptance. QA artifacts remain untracked and excluded.
