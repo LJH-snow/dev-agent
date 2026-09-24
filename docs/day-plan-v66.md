@@ -21,14 +21,17 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - 本轮推送前基线：`737b5ed feat: harden terminal history and desktop capabilities`
 - 已推送 terminal hardening commit：`95c1d91 feat: harden desktop terminal lifecycle`
 - 已推送 read-only project capability commit：`a52680f feat: expose read-only project capabilities`
+- 已推送 metadata-only observability commit：`7d2331a feat: add metadata-only capability observability`
+- 已推送 browser acceptance lifecycle fix：`e148abb fix: deduplicate desktop lifecycle trace events`
 - 远程分支已同步：`origin/codex/desktop-cli-workbench`
 - 已有验证：Desktop 222/222、CLI 629/629、Claude Agent SDK adapter 13/13、文档 60/60、
   native Desktop 2/2、TypeScript build/typecheck、CLI package smoke。
-- 本轮新增 evidence：CLI 630/630、Desktop 224/224；workspace build/typecheck、
-  TypeScript release gate、CLI package smoke、preview/documentation/native contracts 和
-  `git diff --check` 均已通过；terminal hardening focused Desktop suite 为
-  **227/227**，本次 read-only capability slice 后 Desktop suite 为
-  **230/230**，Desktop build/typecheck 也已通过。
+- 本轮新增 evidence：CLI 630/630、agent-core 212/212、Desktop 232/232；workspace
+  build/typecheck、TypeScript release gate、CLI package smoke、
+  preview/documentation/native contracts 和 `git diff --check` 均已通过；terminal
+  hardening focused Desktop suite 为 **227/227**，read-only capability slice 后为
+  **230/230**，metadata-only observability 后最终为 **232/232**。Desktop
+  build/typecheck 也已通过。
 - 当前仅有本地未跟踪验收产物：`.playwright-cli/`、`output/`；不纳入本轮提交，除非明确需要。
 
 ## 10 小时排程
@@ -65,6 +68,28 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - 不重新设计 provider、审批协议、MCP schema、session schema 或发布版本策略。
 - 不把 `.playwright-cli/`、`output/` 等本地临时产物加入提交。
 
+## 本轮追加：metadata-only observability（2026-09-24）
+
+- AgentRunTrace 现在只展示可信工具 registry 的 capability class、授权结果，
+  以及 terminal/preview 的有界 lifecycle；不会记录 prompt、tool input/output、
+  URL、路径、凭据或 raw error。
+- plan mode 的拒绝会产生 `authorizationResult: deny`，terminal callback 与 preview
+  lifecycle route 都保持 host-owned、enum-only、fail-closed。
+- 已移除未被 UI 使用的重复 Desktop capability trace registry，避免双重 schema。
+- 自动化证据：agent-core **212/212**、Desktop **232/232**、build/typecheck、
+  `git diff --check`；浏览器/PTY 手工验收仍保留为未完成项。
+
+## 隔离浏览器验收补充（2026-09-24）
+
+- 使用临时 Git fixture（不使用真实项目工作区）启动已构建 Desktop，确认
+  Repository/Remote/GitHub/CI cards 的只读状态。
+- 通过浏览器执行 terminal command，并通过 loopback HTTP preview 加载/清理 iframe；
+  Runtime trace 显示单一 `Terminal: started/completed` 与 `Preview: started/loaded`，
+  没有 prompt、tool payload、路径、URL 或 secret。
+- 发现并修复 UI 与 server 重复记录 terminal lifecycle、以及 stale iframe error
+  造成的 false preview failure；修复后 targeted Desktop **39/39** 通过。
+- CLI 外部真实 PTY 手工验收仍保留为后续项；QA 进程已停止，产物不提交。
+
 ## 阶段门槛
 
 每个阶段完成后更新：
@@ -81,8 +106,8 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 
 - [x] 已创建 10 小时排程文档。
 - [x] 已确认当前分支与远程提交基线。
-- [x] CLI 滚动/历史体验阶段（focused tests 已通过，待 PTY 验收）。
-- [x] Desktop 终端命令历史阶段（focused tests 已通过，待浏览器验收）。
+- [x] CLI 滚动/历史体验阶段（focused tests 与真实 PTY launch/exit smoke 已通过）。
+- [x] Desktop 终端命令历史阶段（focused tests 与隔离浏览器验收已通过）。
 - [x] 输出滚动阶段（focused tests 已通过）；会话恢复和维护审计待继续。
 - [x] capability token 第一阶段（terminal/workspace mutation，focused tests 已通过）。
 - [x] capability token 本轮范围：生产 launcher、所有 `/api/` mutation、served HTML
@@ -91,7 +116,7 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
   focused Desktop **227/227**。
 - [x] read-only capability-panel、Git branch/dirty/remote metadata、显式 opt-in
   GitHub/CI 状态与 malformed-metadata 回归已完成；Desktop **230/230**。
-- [ ] 浏览器/PTY 手工验收与 metadata-only authorization trace 仍待后续 sprint，
-  不在本轮宣称完成。
+- [x] 已在隔离临时 Git 仓库中完成 Desktop 浏览器验收：能力面板、真实 terminal
+  命令、loopback preview 和单一 lifecycle trace 均通过；CLI 真实 PTY launch/exit smoke 也已完成。
 - [x] focused/runtime verification 已通过；前一阶段的 full release-gate 证据保留有效。
-- [x] 已提交并推送本轮变更；read-only capability commit 为 `a52680f`。
+- [x] 已提交并推送本轮变更；最新 metadata-only observability commit 为 `7d2331a`。

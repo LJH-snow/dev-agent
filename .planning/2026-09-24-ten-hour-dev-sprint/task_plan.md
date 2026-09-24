@@ -65,23 +65,27 @@ strong tests and browser evidence.
 
 ### Hour 7–8.5 — Gemini-inspired policy and observability audit
 
-- [ ] Verify every new Desktop capability is represented in trusted registry
-      metadata or an explicit host-owned boundary; remote annotations must not
-      downgrade risk.
-- [ ] Add metadata-only run-trace fields for authorization result, capability
-      class, and terminal/preview lifecycle without prompts, file contents, or
-      secrets.
-- [ ] Document the boundary and list deliberately deferred executable plugin
+- [x] Verify every new Desktop capability is represented in trusted registry
+      metadata or an explicit host-owned boundary; remote annotations cannot
+      downgrade risk. The Desktop repository/GitHub/CI probes remain host-owned
+      read-only boundaries, while tool risk comes only from the trusted registry.
+- [x] Add metadata-only run-trace fields for authorization result, capability
+      class, and terminal/preview lifecycle without prompts, file contents,
+      paths, URLs, raw errors, or secrets. Lifecycle retention is bounded.
+- [x] Document the boundary and list deliberately deferred executable plugin
       loading, remote control, and unrestricted GitHub mutation.
 
 ### Hour 8.5–10 — acceptance, release gate, and delivery
 
 - [x] Run focused Desktop tests, package build/typecheck, and `git diff --check`;
-      the current capability slice is green at **230/230** Desktop tests, while
-      the terminal hardening sub-slice remains covered at **227/227**. Earlier
-      CLI/release-gate evidence remains recorded above.
-- [ ] Run browser acceptance against an isolated temporary repository and
-      capture fresh evidence without using the real project worktree.
+      the final Desktop suite is green at **232/232** tests and the agent-core
+      suite at **212/212**. Earlier CLI/release-gate evidence remains recorded
+      above.
+- [x] Run browser acceptance against an isolated temporary repository and
+      capture fresh evidence without using the real project worktree; the UI
+      exposed repository/GitHub/CI metadata, executed an isolated terminal
+      command, loaded/cleared a loopback preview, and rendered a single
+      terminal/preview lifecycle trace.
 - [x] Review the diff, exclude QA artifacts, update progress/findings, and
       commit/push only the intended source, test, and documentation changes.
 
@@ -101,8 +105,10 @@ strong tests and browser evidence.
 
 ## Current status
 
-The plan is active. The baseline/inventory hour, CLI/Desktop UX tranche,
-capability-token tranche, terminal canonical-cwd/lifecycle hardening, and the
-read-only project capability panel are complete. The next concrete slices are
-metadata-only authorization/lifecycle observability and manual browser/PTY
-acceptance; they are intentionally not claimed complete by this push.
+The planned sprint scope is complete. The baseline/inventory hour,
+CLI/Desktop UX tranche, capability-token tranche, terminal canonical-cwd/lifecycle
+hardening, read-only project capability panel, metadata-only authorization/lifecycle
+observability, isolated browser acceptance, and the real CLI PTY launch/exit smoke
+are complete. Full provider-backed transcript replay remains deliberately deferred
+outside this bounded release gate; local QA artifacts are not part of the delivery
+commit.

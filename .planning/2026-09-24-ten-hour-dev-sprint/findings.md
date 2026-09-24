@@ -111,3 +111,88 @@ Those remain deferred until a separate trust/install/rollback design exists.
 - 已将只读项目能力面板、Git/GitHub bounded metadata、CI 状态与 custom-host normalization 提交为 `a52680f feat: expose read-only project capabilities`。
 - 已推送到 `origin/codex/desktop-cli-workbench`；push 前验证 Desktop **230/230**、build、typecheck、`git diff --check`。
 - 浏览器/真实 PTY 验收和 authorization/lifecycle trace fields 仍未完成；未跟踪 QA/重复计划目录继续排除。
+
+
+## 2026-09-24 — trace boundary findings
+
+- The shared runtime event stream already carries trusted tool-registry metadata,
+  so capability class must be derived only from `tool.started` or
+  `tool.approval-requested` metadata. Arbitrary event payloads are ignored.
+  Plan-mode denials now emit an explicit metadata-only approval resolution so
+  the trace records `deny` rather than mistaking a policy block for an
+  unrequested tool.
+- Terminal lifecycle is observed at the host-owned terminal manager boundary;
+  preview lifecycle accepts only typed enum state and never accepts or stores a
+  URL. Both paths feed the session's bounded `AgentRunTrace` rather than a
+  second desktop registry.
+- A concurrent untracked `DesktopCapabilityTraceRegistry` implementation was
+  found during review. It duplicated `/trace/lifecycle`, added a second
+  `/capability-trace` endpoint, and was not consumed by the UI. It was removed
+  instead of allowing two divergent trace schemas.
+- Observability callbacks are best-effort: trace recording is wrapped so a
+  telemetry failure cannot alter the AgentLoop result or terminal process
+  lifecycle.
+
+
+## 2026-09-24 — browser acceptance finding
+
+- Isolated browser acceptance exercised the actual Desktop server against a
+  temporary Git repository. Repository/remote cards stayed metadata-only, the
+  task terminal executed inside the fixture, and the loopback preview iframe
+  loaded without exposing its URL in the Runtime trace.
+- The first trace showed duplicate terminal start/completion events. The source
+  of truth was split between the server terminal manager callback and the UI's
+  generic lifecycle callback. Removing terminal emissions from the UI and
+  retaining the server callback produced exactly one terminal lifecycle pair.
+- Preview iframe events can arrive after a preview is cleared or before an
+  active preview exists. `load`/`error` handlers now require `previewActive`
+  as well as a visible frame, preventing false `failed` lifecycle records.
+
+
+## 2026-09-24 — CLI PTY smoke finding
+
+- A real pseudo-terminal launch is useful evidence that the shipped CLI path
+  reaches the Ink renderer rather than the non-interactive fallback. The smoke
+  capture showed the Signal Loom banner, `PageUp/PageDown` guidance, composer,
+  and status footer, then exited cleanly on Ctrl-C.
+- No startup `ESC[2J`, `ESC[3J`, or `ESC[H` clear-screen sequence appeared in
+  the capture. A provider-backed fixture run then streamed a long transcript
+  and accepted PageUp/PageDown escape input; the existing automated Ink tests
+  remain the stronger assertion of the exact viewport offsets.
+
+
+## 2026-09-24 — provider-backed CLI PTY finding
+
+- The first PTY smoke used an unreachable provider and only proved launch/exit.
+  A local fixture Ollama endpoint was then configured through
+  `DEV_AGENT_CONFIG_FILE`, which avoided the real Ollama service and produced a
+  deterministic streamed response. This is the correct boundary for manual
+  PTY acceptance without credentials.
+- The fixture path accepted `hello`, rendered a long transcript, received
+  PageUp/PageDown bytes, and preserved the no-clear startup behavior. The next
+  unresolved area is session recovery/maintenance, not terminal scrolling.
+
+## 2026-09-24 — session recovery / maintenance finding
+
+- Persisted session files were recoverable after a server reload, but the
+  in-memory runtime registries were not lifecycle-coupled to rename/delete.
+  A renamed session could leave its pending plan keyed by the old id, while a
+  deleted session could leave replay/allowlist metadata available to a later
+  same-id recovery.
+- The maintenance fix keeps the session id as the lifecycle boundary: delete
+  clears run, allowlist, and pending-plan state; rename moves session-scoped
+  plan/allowlist state, drops the old replay cursor, and materializes the new
+  session. The fix is intentionally metadata-only and does not broaden any
+  capability or mutation boundary.
+- Regression evidence: the renamed-session pending-plan workflow passes, and
+  the full Desktop suite is green at **233/233**.
+
+## 2026-09-24 — active session recovery finding
+
+- A persisted session could be renamed successfully while the server continued
+  advertising the original `defaultSessionId`. After a page reload, the Desktop
+  picker could therefore select a stale id even though the renamed file was
+  present. Delete could leave the same stale active-id behavior.
+- The server now keeps a bounded active-session pointer, updates it on rename,
+  invalidates it on delete, and derives a safe fallback from the current
+  persisted summaries. Requests that omit `sessionId` follow that pointer.

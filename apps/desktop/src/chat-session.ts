@@ -29,6 +29,8 @@ import {
   type ChangeSetReview,
   type RuntimeEvent,
   type AgentTraceSnapshot,
+  type AgentTraceLifecycleKind,
+  type AgentTraceLifecycleStatus,
   type SandboxExpansionDecision,
   type SandboxExpansionRequest,
 } from "@dev-agent/agent-core";
@@ -381,7 +383,14 @@ export class ChatSession {
         this.lastValidationResult = result.status;
         emitValidation(emit, this.sessionId, result);
       },
-      eventSink: (event) => emit(projectRuntimeEvent(event)),
+      eventSink: (event) => {
+        try {
+          this.trace.recordRuntimeEvent(event);
+        } catch {
+          // Observability must never change the AgentLoop execution result.
+        }
+        emit(projectRuntimeEvent(event));
+      },
     });
   }
 
@@ -691,6 +700,11 @@ export class ChatSession {
   /** Returns the bounded, metadata-only lifecycle trace for this session. */
   getTraceSnapshot(): AgentTraceSnapshot {
     return this.trace.snapshot();
+  }
+
+  /** Records only allowlisted terminal/preview lifecycle metadata. */
+  recordTraceLifecycle(kind: AgentTraceLifecycleKind, status: AgentTraceLifecycleStatus): void {
+    this.trace.recordLifecycle(kind, status);
   }
 
   /** Returns the allowlisted metadata exposed by the desktop status panel. */

@@ -72,6 +72,7 @@ export function createTaskTerminalUI({
   storage,
   storageKeyPrefix = "dev-agent:terminal-selection:",
   onFinished = () => {},
+  recordLifecycle = () => {},
 }) {
   let terminalStorage = storage;
   if (terminalStorage === undefined) {
@@ -106,6 +107,7 @@ export function createTaskTerminalUI({
   let busy = false;
   let outputText = "";
   let followOutput = true;
+  let previewActive = false;
   const commandHistory = new TerminalCommandHistory();
   const finishedNotified = new Set();
 
@@ -129,6 +131,15 @@ export function createTaskTerminalUI({
 
   function status(key, values = {}) {
     statusNode.textContent = translate(key, values);
+  }
+
+  function emitLifecycle(kind, state) {
+    try {
+      const result = recordLifecycle(kind, state);
+      if (result && typeof result.catch === "function") result.catch(() => {});
+    } catch {
+      // Lifecycle telemetry is best effort and must not change terminal UX.
+    }
   }
 
   function activeRun() { return runs.find((run) => run.id === activeId); }
@@ -349,8 +360,9 @@ export function createTaskTerminalUI({
     try {
       const response = await fetcher(`/api/terminal/${encodeURIComponent(sessionId)}/${encodeURIComponent(run.id)}`, { method: "DELETE" });
       const payload = await payloadOf(response);
-      if (!response.ok) status("terminal.status.error");
-      else {
+      if (!response.ok) {
+        status("terminal.status.error");
+      } else {
         const index = runs.findIndex((candidate) => candidate.id === run.id);
         if (index >= 0) runs[index] = { ...runs[index], ...payload };
         status("terminal.status.stopping");
@@ -391,9 +403,12 @@ export function createTaskTerminalUI({
   function openPreview() {
     const url = normalizeLoopbackPreviewUrl(previewInput.value);
     if (!url) {
+      emitLifecycle("preview", "failed");
       clearPreview("preview.status.invalid");
       return;
     }
+    previewActive = true;
+    emitLifecycle("preview", "started");
     previewFrame.src = url;
     previewFrame.hidden = false;
     previewFrame.setAttribute("aria-busy", "true");
@@ -402,6 +417,9 @@ export function createTaskTerminalUI({
   }
 
   function clearPreview(message = "preview.status.cleared") {
+    const wasActive = previewActive;
+    previewActive = false;
+    if (wasActive) emitLifecycle("preview", "cleared");
     previewFrame.hidden = true;
     previewFrame.removeAttribute("src");
     previewFrame.removeAttribute("aria-busy");
@@ -470,16 +488,18 @@ export function createTaskTerminalUI({
   previewButton.addEventListener("click", openPreview);
   previewClearButton.addEventListener("click", () => clearPreview());
   previewFrame.addEventListener("load", () => {
-    if (!previewFrame.hidden) {
+    if (previewActive && !previewFrame.hidden) {
       previewFrame.removeAttribute("aria-busy");
       previewStatus.dataset.state = "loaded";
+      emitLifecycle("preview", "loaded");
       previewStatus.textContent = translate("preview.status.loaded", { url: previewFrame.src });
     }
   });
   previewFrame.addEventListener("error", () => {
-    if (!previewFrame.hidden) {
+    if (previewActive && !previewFrame.hidden) {
       previewFrame.removeAttribute("aria-busy");
       previewStatus.dataset.state = "error";
+      emitLifecycle("preview", "failed");
       previewStatus.textContent = translate("preview.status.error");
     }
   });

@@ -24,6 +24,8 @@ import {
   type MemoryEntry,
   type SessionMetadata,
   type AgentTraceSnapshot,
+  type AgentTraceLifecycleKind,
+  type AgentTraceLifecycleStatus,
   type ValidationRecord,
   type ValidationResult,
   type ValidationStatus,
@@ -106,6 +108,8 @@ export interface DesktopChatSession {
   evidenceSummary?(): Promise<EvidenceSummary>;
   /** Returns the bounded, metadata-only lifecycle trace for this session. */
   getTraceSnapshot?(): AgentTraceSnapshot;
+  /** Records only allowlisted terminal/preview lifecycle metadata. */
+  recordTraceLifecycle?(kind: AgentTraceLifecycleKind, status: AgentTraceLifecycleStatus): void;
   /** Reruns trusted validation for an applied change set without changing files. */
   rerunValidation?(
     changeSetId: string,
@@ -267,6 +271,7 @@ const mimeTypes: Record<string, string> = {
 export function createDesktopServer(options: DesktopServerOptions = {}): Server {
   const defaultSession: DesktopChatSession = options.session ?? new ChatSession();
   const defaultSessionId = defaultSession.id ?? "desktop-default";
+  let activeSessionId: string | undefined = defaultSessionId;
   const createSession =
     options.createSession ?? ((sessionId: string, workingDirectory?: string) =>
       new ChatSession({ sessionId, ...(workingDirectory ? { workingDirectory } : {}) }));
@@ -284,8 +289,50 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     ...(options.worktreeDirectory === undefined ? {} : { worktreeDirectory: options.worktreeDirectory }),
     ...(options.workspaceStateFile === undefined ? {} : { stateFile: options.workspaceStateFile }),
   });
-  const terminalManager = new DesktopTaskTerminalManager();
+  const terminalManager = new DesktopTaskTerminalManager({
+    onLifecycle: ({ sessionId, status }) => {
+      sessions.get(sessionId)?.recordTraceLifecycle?.("terminal", status);
+    },
+  });
   const sessionAllowlist = new Map<string, Set<string>>();
+
+  // Session ids can outlive the in-memory ChatSession (for example after a
+  // rename or a delete). Keep all ephemeral runtime state aligned with the
+  // persisted session lifecycle so a later recovery cannot inherit stale run,
+  // approval, or plan metadata from the old id.
+  const clearSessionRuntimeState = (sessionId: string): void => {
+    runs.delete(sessionId);
+    sessionAllowlist.delete(sessionId);
+    const prefix = `${sessionId}\u0000`;
+    for (const key of pendingPlans.keys()) {
+      if (key.startsWith(prefix)) {
+        pendingPlans.delete(key);
+      }
+    }
+  };
+
+  const moveSessionRuntimeState = (from: string, to: string): void => {
+    const allowlist = sessionAllowlist.get(from);
+    if (allowlist !== undefined) {
+      sessionAllowlist.delete(from);
+      sessionAllowlist.set(to, allowlist);
+    }
+    // A completed plan run may leave an applyable review behind. Move that
+    // review with the session rather than stranding it under the old id.
+    const prefix = `${from}\u0000`;
+    for (const [key, pending] of pendingPlans.entries()) {
+      if (!key.startsWith(prefix)) continue;
+      pendingPlans.delete(key);
+      pendingPlans.set(pendingPlanKey(to, pending.review.changeSetId), {
+        ...pending,
+        sessionId: to,
+      });
+    }
+    // Renames are only allowed once no run is active; discard the old replay
+    // cursor so the new id cannot report a stale run after recovery.
+    runs.delete(from);
+  };
+
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
   // This token is generated per server instance and is only injected into the
@@ -300,14 +347,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     sessionId?: string
   ): string | undefined => {
     if (sessionId === undefined) {
-      return defaultSessionId;
+      return activeSessionId ?? defaultSessionId;
     }
-    const id = normalizeSessionId(sessionId ?? defaultSessionId);
+    const id = normalizeSessionId(sessionId ?? activeSessionId ?? defaultSessionId);
     return id.length > maxSessionIdLength ? undefined : id;
   };
 
   const sessionFor = (sessionId?: string): { id: string; session: DesktopChatSession } | undefined => {
-    const id = normalizeSessionId(sessionId ?? defaultSessionId);
+    const id = normalizeSessionId(sessionId ?? activeSessionId ?? defaultSessionId);
     const existing = sessions.get(id);
     if (existing) {
       return { id, session: existing };
@@ -528,9 +575,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return cost === undefined ? withRun : { ...withRun, cost };
         });
         res.writeHead(200, { "content-type": "application/json" });
+        const activeSummary = activeSessionId === undefined
+          ? undefined
+          : withCost.find((summary) => summary.sessionId === activeSessionId);
+        const fallbackActiveSessionId = activeSummary?.sessionId
+          ?? withCost[0]?.sessionId
+          ?? defaultSessionId;
+        activeSessionId = fallbackActiveSessionId;
         res.end(
           JSON.stringify({
-            activeSessionId: defaultSessionId,
+            activeSessionId: fallbackActiveSessionId,
             sessions: withCost,
           })
         );
@@ -774,6 +828,68 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         } catch (error) {
           sendTaskWorkspaceError(res, error);
         }
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        url.pathname.startsWith("/api/sessions/") &&
+        url.pathname.endsWith("/trace/lifecycle")
+      ) {
+        const suffix = "/trace/lifecycle";
+        const rawId = url.pathname.slice("/api/sessions/".length, -suffix.length);
+        let sessionId: string;
+        try {
+          sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        if (sessionId.length > maxSessionIdLength || rawId.includes("/")) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        const session = sessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        if (!session.recordTraceLifecycle) {
+          res.writeHead(501, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "trace lifecycle is unavailable" }));
+          return;
+        }
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsed.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: parsed.error }));
+          return;
+        }
+        const kind = parsed.value.kind;
+        const status = parsed.value.status;
+        let lifecycle: { readonly kind: AgentTraceLifecycleKind; readonly status: AgentTraceLifecycleStatus } | undefined;
+        if (kind === "terminal") {
+          if (status === "started" || status === "completed" || status === "failed" || status === "stopped") {
+            lifecycle = { kind: "terminal", status };
+          }
+        } else if (kind === "preview") {
+          if (status === "started" || status === "loaded" || status === "failed" || status === "cleared") {
+            lifecycle = { kind: "preview", status };
+          }
+        }
+        if (!lifecycle) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid trace lifecycle metadata" }));
+          return;
+        }
+        session.recordTraceLifecycle(lifecycle.kind, lifecycle.status);
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ ok: true }));
         return;
       }
 
@@ -1075,6 +1191,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           }
         }
         sessions.delete(sessionId);
+        clearSessionRuntimeState(sessionId);
+        if (activeSessionId === sessionId) {
+          activeSessionId = undefined;
+        }
 
         inFlight.add(sessionId);
         try {
@@ -1196,8 +1316,17 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
               }
               await rename(source, memoryPathFor(to));
               // The in-memory session is bound to the old path; drop it so the new
-              // id is created fresh against the renamed file.
+              // id is created fresh against the renamed file. Move any
+              // session-scoped ephemeral state before dropping the old id.
               sessions.delete(from);
+              moveSessionRuntimeState(from, to);
+              if (activeSessionId === from) {
+                activeSessionId = to;
+              }
+              // Materialize the renamed session immediately so queued plan
+              // application and other session-scoped mutations can continue
+              // without requiring a separate status/chat request first.
+              sessionFor(to);
             }
 
             res.writeHead(200, { "content-type": "application/json" });
@@ -1988,6 +2117,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
   server.once("close", () => {
     terminalManager.closeAll();
+    for (const sessionId of sessions.keys()) {
+      clearSessionRuntimeState(sessionId);
+    }
     void Promise.all(
       [...sessions.values()].map((session) => session.close?.())
     ).catch(() => undefined);

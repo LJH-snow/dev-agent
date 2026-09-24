@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import { createDesktopServer } from "../dist/server.js";
@@ -356,5 +359,65 @@ test("pending plans stay isolated when sessions share a change-set id", async ()
     assert.equal(betaApply.status, 404);
   } finally {
     await close(server);
+  }
+});
+
+
+test("renaming a session preserves its pending plan for the new id", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-desktop-plan-rename-"));
+  const previousDirectory = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = directory;
+  await writeFile(join(directory, "desktop-default.json"), "{}");
+  const applied: { sessionId: string; prompt: string }[] = [];
+  const createSession = (sessionId: string) => ({
+    id: sessionId,
+    async run(_message: string, emit: any) {
+      emit({ type: "plan-review", data: { review } });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+    async applyPlannedChangeSet(
+      _receivedReview: unknown,
+      prompt: string,
+      emit: any,
+    ) {
+      applied.push({ sessionId, prompt });
+      emit({ type: "done", data: { status: "done", turns: 1 } });
+    },
+  });
+  const server = createDesktopServer({
+    session: createSession("desktop-default"),
+    createSession,
+  });
+  const base = await start(server);
+  try {
+    const planned = await postJson(base, "/api/chat", {
+      sessionId: "desktop-default",
+      message: "keep this plan",
+      mode: "plan",
+    });
+    assert.equal(planned.status, 200);
+    await readSse(planned);
+
+    const renamed = await postJson(base, "/api/sessions/desktop-default/rename", {
+      sessionId: "renamed-plan",
+    });
+    assert.equal(renamed.status, 200);
+
+    const sessionList = await fetch(`${base}/api/sessions`);
+    assert.equal(sessionList.status, 200);
+    assert.equal(((await sessionList.json()) as any).activeSessionId, "renamed-plan");
+
+    const appliedResponse = await postJson(base, "/api/plans/apply", {
+      sessionId: "renamed-plan",
+      changeSetId: review.changeSetId,
+    });
+    assert.equal(appliedResponse.status, 200);
+    await readSse(appliedResponse);
+    assert.deepEqual(applied, [{ sessionId: "renamed-plan", prompt: "keep this plan" }]);
+  } finally {
+    await close(server);
+    if (previousDirectory === undefined) delete process.env.DEV_AGENT_SESSION_DIR;
+    else process.env.DEV_AGENT_SESSION_DIR = previousDirectory;
+    await rm(directory, { recursive: true, force: true });
   }
 });

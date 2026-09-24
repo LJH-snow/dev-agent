@@ -72,3 +72,117 @@
 - 已将只读项目能力面板、Git/GitHub bounded metadata、CI 状态与 custom-host normalization 提交为 `a52680f feat: expose read-only project capabilities`。
 - 已推送到 `origin/codex/desktop-cli-workbench`；push 前验证 Desktop **230/230**、build、typecheck、`git diff --check`。
 - 未跟踪的 `.playwright-cli/`、`output/` 与重复计划目录继续排除；浏览器/真实 PTY 验收、authorization trace 仍是后续工作。
+
+
+## 2026-09-24 — metadata-only observability
+
+- `AgentRunTrace` now records only allowlisted tool capability class
+  (`read-only`/`mutating`/`dangerous`/`unknown`) and authorization outcome
+  (`allow`/`deny`/`not-requested`/`unknown`) from trusted runtime metadata;
+  prompt, tool input/output, paths, credentials, and raw errors remain excluded.
+- Bounded terminal/preview lifecycle events (`started`, `loaded`, `completed`,
+  `failed`, `stopped`, `cleared`) are exposed through the existing session trace;
+  terminal callbacks and the preview lifecycle route are fail-closed and
+  metadata-only. Trace retention is capped, and observability failures cannot
+  change AgentLoop or terminal execution behavior.
+- Removed an overlapping, unconsumed Desktop capability-trace registry and
+  duplicate lifecycle endpoint so the shared `AgentRunTrace` is the single
+  trace source. Host-owned repository/GitHub/CI probes remain read-only explicit
+  boundaries rather than executable remote capabilities.
+- Final verification: agent-core **212/212**, Desktop **232/232**, agent-core and
+  Desktop build, Desktop typecheck, and `git diff --check` all pass. Browser/real
+  PTY acceptance remains open; `.playwright-cli/`, `output/`, and the duplicate
+  planning directory stay untracked and excluded.
+
+
+## 2026-09-24 — metadata-only observability delivery
+
+- 已将 metadata-only capability observability、自动化回归与 canonical 文档提交为
+  `7d2331a feat: add metadata-only capability observability`。
+- 已推送到 `origin/codex/desktop-cli-workbench`；远程分支已包含该提交。
+- 本次提交只包含预期源码、测试和文档；`.planning/2026-09-24-ten-hour-development/`、
+  `.playwright-cli/` 与 `output/` 仍为未跟踪 QA/重复计划目录，未纳入 GitHub。
+- 浏览器/真实 PTY 手工验收仍是后续未完成项，不将自动化证据误报为手工验收。
+
+
+## 2026-09-24 — isolated browser acceptance
+
+- Against a temporary Git fixture repository (not the real project worktree),
+  the built Desktop served the repository/GitHub/CI capability cards, ran an
+  actual task-terminal command, loaded and cleared a loopback preview, and
+  rendered the metadata-only Runtime trace. The trace showed exactly one
+  `Terminal: started`, one `Terminal: completed`, `Preview: started`, and
+  `Preview: loaded`; it exposed no prompt, tool payload, URL, path, or secret.
+- Browser evidence uncovered duplicate terminal lifecycle events because both
+  the authoritative server terminal manager and the browser controller reported
+  the same state. The browser controller now reports preview lifecycle only;
+  server terminal callbacks remain authoritative. Stale iframe load/error events
+  are ignored when no preview is active.
+- Targeted regression/build evidence after the fix: Desktop **39/39** trace,
+  server, and terminal tests; Desktop build and `git diff --check` pass.
+  The prior full Desktop suite remains **232/232**.
+- The isolated browser server, fixture HTTP server, and browser session were
+  stopped after acceptance. QA artifacts remain untracked and excluded.
+
+
+## 2026-09-24 — lifecycle trace fix delivery
+
+- 已将浏览器验收发现的 terminal lifecycle 重复记录与 stale preview event 修复提交为
+  `e148abb fix: deduplicate desktop lifecycle trace events`，并推送到
+  `origin/codex/desktop-cli-workbench`。
+- 修复后 targeted Desktop trace/server/terminal tests **39/39** 通过；浏览器重新验收
+  显示单一 `Terminal: started/completed` 与 `Preview: started/loaded`。
+
+
+## 2026-09-24 — CLI PTY smoke acceptance
+
+- Built the CLI and launched `apps/cli/dist/cli-entry.js` inside a real Expect
+  pseudo-terminal with an isolated temporary `HOME`; the provider was pointed
+  at a local fixture endpoint so no external credentials or network service were
+  used.
+- The actual Ink workbench rendered its Signal Loom banner, provider/model
+  metadata, scroll instructions, composer, status line, and clean Ctrl-C exit.
+  The captured launch/exit stream contained no startup clear-screen sequences
+  (`ESC[2J`, `ESC[3J`, or `ESC[H`), preserving terminal scrollback at startup.
+- A second provider-backed fixture run exercised the full path: the CLI accepted
+  a prompt through the PTY, rendered a long streamed transcript, received
+  PageUp/PageDown escape input, and exited cleanly. The capture still contained
+  no startup `ESC[2J`, `ESC[3J`, or `ESC[H`; the automated Ink viewport tests
+  remain the authoritative assertion of the resulting scroll offsets.
+
+
+## 2026-09-24 — provider-backed CLI PTY acceptance
+
+- A local fixture Ollama endpoint returned an 80-line streamed response to the
+  built CLI inside a real PTY. The harness submitted `hello`, observed the
+  streamed transcript and ready state, sent PageUp (`ESC[5~`) and PageDown
+  (`ESC[6~`), then exited with Ctrl-C. No external provider or credential was
+  used.
+- The PTY capture showed no startup clear-screen sequences (`ESC[2J`, `ESC[3J`,
+  `ESC[H`). Existing Ink tests cover the exact viewport offset and mouse-wheel
+  semantics; the manual fixture confirms the packaged interactive path reaches
+  those handlers.
+- The follow-up session-recovery/maintenance audit remains outside this
+  acceptance slice and is the next project tranche.
+
+## 2026-09-24 — session recovery / maintenance audit
+
+- Audited Desktop session rename/delete/reload seams and found that ephemeral
+  runtime state could outlive the persisted session id: pending plan reviews,
+  approval allowlists, and run replay state were not aligned with rename/delete.
+- Added bounded session-runtime cleanup on delete/server close and migration on
+  rename. Renamed sessions are materialized immediately so a pending plan can
+  still be applied without a separate reload request.
+- Added a regression proving a pending plan survives a session rename and is
+  applied under the new id. Desktop verification now passes **233/233** tests,
+  including Desktop build and `git diff --check`.
+
+## 2026-09-24 — active session recovery boundary
+
+- Extended session recovery so the server tracks the active session id across
+  rename/delete. `/api/sessions` now returns a valid active id after rename and
+  falls back to an available persisted session after deletion; omitted-session
+  requests follow that active id instead of a stale original default.
+- Added an assertion to the rename recovery regression for the active-session
+  response. Full Desktop verification remains **233/233**, with build and
+  `git diff --check` passing.

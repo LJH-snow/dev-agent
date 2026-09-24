@@ -325,6 +325,47 @@ test("GET /api/sessions/:id/trace returns bounded metadata-only trace", async ()
   }
 });
 
+test("POST /api/sessions/:id/trace/lifecycle stores only allowlisted lifecycle metadata", async () => {
+  const lifecycle = [];
+  const session = {
+    async run() {},
+    recordTraceLifecycle(kind, status) {
+      lifecycle.push({ kind, status });
+    },
+    getTraceSnapshot() {
+      return { schemaVersion: 1 as const, metadataOnly: true as const, droppedRuns: 0, runs: [], lifecycle };
+    },
+  };
+  const server = createDesktopServer({ session });
+  const base = await start(server);
+  try {
+    const response = await fetch(`${base}/api/sessions/desktop-default/trace/lifecycle`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "preview", status: "loaded", url: "/Users/private/secret" }),
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
+    assert.deepEqual(lifecycle, [{ kind: "preview", status: "loaded" }]);
+
+    const invalid = await fetch(`${base}/api/sessions/desktop-default/trace/lifecycle`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: "preview", status: "opened" }),
+    });
+    assert.equal(invalid.status, 400);
+    assert.deepEqual(lifecycle, [{ kind: "preview", status: "loaded" }]);
+
+    const trace = await fetch(`${base}/api/sessions/desktop-default/trace`);
+    assert.equal(trace.status, 200);
+    const tracePayload = await trace.json() as { readonly lifecycle?: unknown };
+    assert.deepEqual(tracePayload.lifecycle, [{ kind: "preview", status: "loaded" }]);
+    assert.doesNotMatch(JSON.stringify(lifecycle), /Users|secret|url/i);
+  } finally {
+    await close(server);
+  }
+});
+
 test("GET /api/sessions/:id/trace stays stable for legacy sessions", async () => {
   const server = createDesktopServer({
     session: { async run() {} },

@@ -14,6 +14,16 @@ export type AgentTraceSpanKind = "model" | "tool";
 export type AgentTraceSpeedMode = "fast" | "balanced" | "deep";
 export type AgentTraceSpanStatus = "running" | "completed" | "failed";
 export type AgentTraceRunStatus = "running" | "completed" | "failed" | "interrupted";
+export type AgentTraceCapabilityClass = "read-only" | "mutating" | "dangerous" | "unknown";
+export type AgentTraceAuthorizationResult = "allow" | "deny" | "not-requested" | "unknown";
+export type AgentTraceLifecycleKind = "terminal" | "preview";
+export type AgentTraceLifecycleStatus = "started" | "loaded" | "completed" | "failed" | "stopped" | "cleared";
+
+export interface AgentTraceLifecycleEvent {
+  readonly kind: AgentTraceLifecycleKind;
+  readonly status: AgentTraceLifecycleStatus;
+  readonly occurredAt: string;
+}
 
 export interface AgentTraceSpan {
   readonly id: string;
@@ -25,6 +35,10 @@ export interface AgentTraceSpan {
   readonly durationMs?: number;
   readonly turn?: number;
   readonly providerTiming?: ProviderTiming;
+  /** Trusted tool-registry risk class; never derived from tool input. */
+  readonly capabilityClass?: AgentTraceCapabilityClass;
+  /** Metadata-only approval outcome for this tool span. */
+  readonly authorizationResult?: AgentTraceAuthorizationResult;
 }
 
 export interface AgentTraceRun {
@@ -51,11 +65,14 @@ export interface AgentTraceSnapshot {
   readonly runs: readonly AgentTraceRun[];
   readonly activeRunId?: string;
   readonly droppedRuns: number;
+  /** Bounded terminal/preview lifecycle metadata; no URL, path, or output. */
+  readonly lifecycle?: readonly AgentTraceLifecycleEvent[];
 }
 
 export interface AgentRunTraceOptions {
   readonly maxRuns?: number;
   readonly maxSpansPerRun?: number;
+  readonly maxLifecycleEvents?: number;
   readonly now?: () => Date;
   readonly nowMs?: () => number;
 }
@@ -70,6 +87,8 @@ interface MutableTraceSpan {
   completedAt?: string;
   durationMs?: number;
   providerTiming?: ProviderTiming;
+  capabilityClass?: AgentTraceCapabilityClass;
+  authorizationResult?: AgentTraceAuthorizationResult;
 }
 
 interface MutableTraceRun {
@@ -77,6 +96,7 @@ interface MutableTraceRun {
   readonly startedAt: string;
   readonly spans: MutableTraceSpan[];
   readonly pendingSpans: Map<string, MutableTraceSpan>;
+  readonly pendingToolSpans: Map<string, MutableTraceSpan[]>;
   status: AgentTraceRunStatus;
   completedAt?: string;
   durationMs?: number;
@@ -93,6 +113,7 @@ interface MutableTraceRun {
 
 const DEFAULT_MAX_RUNS = 20;
 const DEFAULT_MAX_SPANS_PER_RUN = 100;
+const DEFAULT_MAX_LIFECYCLE_EVENTS = 64;
 
 /**
  * Collects bounded, metadata-only timings from Agent lifecycle Hooks.
@@ -106,6 +127,7 @@ export class AgentRunTrace {
   private readonly removeHooks: RemoveAgentHook[];
   private readonly maxRuns: number;
   private readonly maxSpansPerRun: number;
+  private readonly maxLifecycleEvents: number;
   private readonly now: () => Date;
   private readonly nowMs: () => number;
   private pendingRunContext:
@@ -113,6 +135,7 @@ export class AgentRunTrace {
     | undefined;
   private activeRunId: string | undefined;
   private droppedRuns = 0;
+  private readonly lifecycleEvents: AgentTraceLifecycleEvent[] = [];
 
   constructor(hooks: AgentHookRegistry, options: AgentRunTraceOptions = {}) {
     this.maxRuns = positiveLimit(options.maxRuns, DEFAULT_MAX_RUNS, "maxRuns");
@@ -120,6 +143,11 @@ export class AgentRunTrace {
       options.maxSpansPerRun,
       DEFAULT_MAX_SPANS_PER_RUN,
       "maxSpansPerRun",
+    );
+    this.maxLifecycleEvents = positiveLimit(
+      options.maxLifecycleEvents,
+      DEFAULT_MAX_LIFECYCLE_EVENTS,
+      "maxLifecycleEvents",
     );
     this.now = options.now ?? (() => new Date());
     this.nowMs = options.nowMs ?? (() => performance.now());
@@ -155,6 +183,7 @@ export class AgentRunTrace {
       runs: this.runs.map((run) => cloneRun(run)),
       ...(this.activeRunId === undefined ? {} : { activeRunId: this.activeRunId }),
       droppedRuns: this.droppedRuns,
+      ...(this.lifecycleEvents.length === 0 ? {} : { lifecycle: this.lifecycleEvents.map((event) => ({ ...event })) }),
     };
   }
 
@@ -177,8 +206,8 @@ export class AgentRunTrace {
   }
 
   /**
-   * Observes only event type, run id, timestamp, and answer/reasoning channel.
-   * Prompt, answer, tool input, and output payloads are intentionally ignored.
+   * Observes only allowlisted event metadata. Prompt, answer, tool input,
+   * tool output, paths, credentials, and raw errors are intentionally ignored.
    */
   recordRuntimeEvent(event: RuntimeEvent): void {
     const runId = event.runId;
@@ -187,19 +216,7 @@ export class AgentRunTrace {
     if (event.type === "run.started") {
       let run = this.runs.find((candidate) => candidate.runId === runId);
       if (!run) {
-        run = {
-          runId,
-          startedAt: event.emittedAt,
-          status: "running",
-          spans: [],
-          pendingSpans: new Map(),
-          droppedSpans: 0,
-        };
-        this.runs.push(run);
-        while (this.runs.length > this.maxRuns) {
-          this.runs.shift();
-          this.droppedRuns += 1;
-        }
+        run = this.createRun(runId, event.emittedAt);
       }
       const pending = this.pendingRunContext;
       const current = this.nowMs();
@@ -217,6 +234,38 @@ export class AgentRunTrace {
     if (event.type === "assistant.delta") {
       if (event.data.channel === "answer" && run.firstTokenMs === undefined) {
         run.firstTokenMs = elapsedSince(run.submittedAtMs, this.nowMs());
+      }
+      return;
+    }
+
+    if (event.type === "tool.started" || event.type === "tool.approval-requested") {
+      const span = this.pendingToolSpan(run, event.data.tool);
+      if (span) {
+        const capabilityClass = capabilityClassFromRisk(event.data.metadata?.risk);
+        if (capabilityClass !== undefined) span.capabilityClass = capabilityClass;
+        if (event.type === "tool.approval-requested" && span.authorizationResult === undefined) {
+          span.authorizationResult = "unknown";
+        }
+      }
+      return;
+    }
+
+    if (event.type === "tool.approval-resolved") {
+      const span = this.pendingToolSpan(run, event.data.tool);
+      if (span) {
+        span.authorizationResult = event.data.decision === "allow"
+          ? "allow"
+          : event.data.decision === "deny"
+            ? "deny"
+            : "unknown";
+      }
+      return;
+    }
+
+    if (event.type === "tool.completed" || event.type === "tool.failed") {
+      const span = this.pendingToolSpan(run, event.data.tool);
+      if (span && span.authorizationResult === undefined) {
+        span.authorizationResult = "not-requested";
       }
       return;
     }
@@ -241,6 +290,22 @@ export class AgentRunTrace {
     }
   }
 
+  /** Records bounded terminal/preview lifecycle metadata without payloads. */
+  recordLifecycle(
+    kind: AgentTraceLifecycleKind,
+    status: AgentTraceLifecycleStatus,
+    occurredAt = this.now().toISOString(),
+  ): void {
+    if (!isLifecycleKind(kind) || !isLifecycleStatus(status)) return;
+    const safeOccurredAt = Number.isFinite(Date.parse(occurredAt))
+      ? occurredAt
+      : this.now().toISOString();
+    this.lifecycleEvents.push({ kind, status, occurredAt: safeOccurredAt });
+    while (this.lifecycleEvents.length > this.maxLifecycleEvents) {
+      this.lifecycleEvents.shift();
+    }
+  }
+
   /**
    * Adds usage from an external adapter that does not attach it to
    * `after.model`. AgentLoop already attaches provider usage to that Hook, so
@@ -257,6 +322,28 @@ export class AgentRunTrace {
     }
   }
 
+  private createRun(runId: string, startedAt: string): MutableTraceRun {
+    const run: MutableTraceRun = {
+      runId,
+      startedAt,
+      status: "running",
+      spans: [],
+      pendingSpans: new Map(),
+      pendingToolSpans: new Map(),
+      droppedSpans: 0,
+    };
+    this.runs.push(run);
+    while (this.runs.length > this.maxRuns) {
+      this.runs.shift();
+      this.droppedRuns += 1;
+    }
+    return run;
+  }
+
+  private pendingToolSpan(run: MutableTraceRun, toolName: string): MutableTraceSpan | undefined {
+    return run.pendingToolSpans.get(toolName)?.find((span) => span.status === "running");
+  }
+
   private startRun(context: AgentHookContext): void {
     const runId = context.runId;
     if (!runId) {
@@ -267,19 +354,7 @@ export class AgentRunTrace {
       this.activeRunId = runId;
       return;
     }
-    const run: MutableTraceRun = {
-      runId,
-      startedAt: this.timestamp(context),
-      status: "running",
-      spans: [],
-      pendingSpans: new Map(),
-      droppedSpans: 0,
-    };
-    this.runs.push(run);
-    while (this.runs.length > this.maxRuns) {
-      this.runs.shift();
-      this.droppedRuns += 1;
-    }
+    this.createRun(runId, this.timestamp(context));
     this.activeRunId = runId;
   }
 
@@ -310,6 +385,11 @@ export class AgentRunTrace {
     };
     run.spans.push(span);
     run.pendingSpans.set(id, span);
+    if (kind === "tool" && context.toolName !== undefined) {
+      const pending = run.pendingToolSpans.get(context.toolName) ?? [];
+      pending.push(span);
+      run.pendingToolSpans.set(context.toolName, pending);
+    }
     if (context.turn !== undefined) {
       run.turns = Math.max(run.turns ?? 0, context.turn);
     }
@@ -339,6 +419,13 @@ export class AgentRunTrace {
       span.providerTiming = sanitizeProviderTiming(context.providerTiming);
     }
     run.pendingSpans.delete(id);
+    if (span.kind === "tool") {
+      for (const [toolName, pending] of run.pendingToolSpans) {
+        const remaining = pending.filter((candidate) => candidate !== span);
+        if (remaining.length === 0) run.pendingToolSpans.delete(toolName);
+        else if (remaining.length !== pending.length) run.pendingToolSpans.set(toolName, remaining);
+      }
+    }
   }
 
   private finishRun(context: AgentHookContext): void {
@@ -364,6 +451,7 @@ export class AgentRunTrace {
       span.durationMs = elapsedMs(span.startedAt, completedAt);
     }
     run.pendingSpans.clear();
+    run.pendingToolSpans.clear();
     if (this.activeRunId === run.runId) {
       this.activeRunId = undefined;
     }
@@ -416,9 +504,25 @@ function cloneRun(run: MutableTraceRun): AgentTraceRun {
       ...(span.providerTiming === undefined
         ? {}
         : { providerTiming: { ...span.providerTiming } }),
+      ...(span.capabilityClass === undefined ? {} : { capabilityClass: span.capabilityClass }),
+      ...(span.authorizationResult === undefined ? {} : { authorizationResult: span.authorizationResult }),
     })),
     ...(run.droppedSpans === 0 ? {} : { droppedSpans: run.droppedSpans }),
   };
+}
+
+function capabilityClassFromRisk(value: unknown): AgentTraceCapabilityClass | undefined {
+  if (value === "read-only" || value === "mutating" || value === "dangerous") return value;
+  return value === undefined ? undefined : "unknown";
+}
+
+function isLifecycleKind(value: string): value is AgentTraceLifecycleKind {
+  return value === "terminal" || value === "preview";
+}
+
+function isLifecycleStatus(value: string): value is AgentTraceLifecycleStatus {
+  return value === "started" || value === "loaded" || value === "completed"
+    || value === "failed" || value === "stopped" || value === "cleared";
 }
 
 function sanitizeProviderTiming(timing: ProviderTiming): ProviderTiming {
