@@ -144,6 +144,23 @@
   metadata, scroll instructions, composer, status line, and clean Ctrl-C exit.
   The captured launch/exit stream contained no startup clear-screen sequences
   (`ESC[2J`, `ESC[3J`, or `ESC[H`), preserving terminal scrollback at startup.
-- This is a PTY launch/exit smoke check only. Full interactive transcript
-  scrolling with a provider-backed response remains open because the fixture
-  input submission did not produce a stable response in this shell harness.
+- A second provider-backed fixture run exercised the full path: the CLI accepted
+  a prompt through the PTY, rendered a long streamed transcript, received
+  PageUp/PageDown escape input, and exited cleanly. The capture still contained
+  no startup `ESC[2J`, `ESC[3J`, or `ESC[H`; the automated Ink viewport tests
+  remain the authoritative assertion of the resulting scroll offsets.
+
+
+## 2026-09-24 — provider-backed CLI PTY acceptance
+
+- A local fixture Ollama endpoint returned an 80-line streamed response to the
+  built CLI inside a real PTY. The harness submitted `hello`, observed the
+  streamed transcript and ready state, sent PageUp (`ESC[5~`) and PageDown
+  (`ESC[6~`), then exited with Ctrl-C. No external provider or credential was
+  used.
+- The PTY capture showed no startup clear-screen sequences (`ESC[2J`, `ESC[3J`,
+  `ESC[H`). Existing Ink tests cover the exact viewport offset and mouse-wheel
+  semantics; the manual fixture confirms the packaged interactive path reaches
+  those handlers.
+- The follow-up session-recovery/maintenance audit remains outside this
+  acceptance slice and is the next project tranche.

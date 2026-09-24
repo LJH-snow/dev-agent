@@ -156,6 +156,18 @@ Those remain deferred until a separate trust/install/rollback design exists.
   capture showed the Signal Loom banner, `PageUp/PageDown` guidance, composer,
   and status footer, then exited cleanly on Ctrl-C.
 - No startup `ESC[2J`, `ESC[3J`, or `ESC[H` clear-screen sequence appeared in
-  the capture. This confirms the scrollback-preservation guard at process
-  startup, but it does not prove long-transcript PageUp/PageDown behavior; the
-  existing automated Ink tests remain the stronger evidence for that path.
+  the capture. A provider-backed fixture run then streamed a long transcript
+  and accepted PageUp/PageDown escape input; the existing automated Ink tests
+  remain the stronger assertion of the exact viewport offsets.
+
+
+## 2026-09-24 — provider-backed CLI PTY finding
+
+- The first PTY smoke used an unreachable provider and only proved launch/exit.
+  A local fixture Ollama endpoint was then configured through
+  `DEV_AGENT_CONFIG_FILE`, which avoided the real Ollama service and produced a
+  deterministic streamed response. This is the correct boundary for manual
+  PTY acceptance without credentials.
+- The fixture path accepted `hello`, rendered a long transcript, received
+  PageUp/PageDown bytes, and preserved the no-clear startup behavior. The next
+  unresolved area is session recovery/maintenance, not terminal scrolling.

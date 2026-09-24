@@ -169,3 +169,14 @@
 - 捕获内容没有 startup `ESC[2J`、`ESC[3J`、`ESC[H` 清屏序列，说明启动不会清掉
   terminal scrollback。长 transcript 的交互式 PageUp/PageDown 仍以既有自动化 Ink
   测试为主要证据，外部 provider-backed PTY 回放仍待后续。
+
+
+## 2026-09-24 — provider-backed CLI PTY acceptance
+
+- 使用本地 fixture Ollama endpoint（通过 `DEV_AGENT_CONFIG_FILE`，不使用外部
+  provider 或 credential）启动真实 CLI PTY。CLI 接收 `hello`，渲染长 streamed
+  transcript，并接收 PageUp/PageDown escape input 后由 Ctrl-C clean exit。
+- capture 没有 startup `ESC[2J`、`ESC[3J`、`ESC[H`；自动化 Ink viewport tests
+  继续验证具体 scroll offset 和 mouse-wheel semantics。
+- 终端滚动/历史与 Desktop 浏览器验收范围已完成；下一阶段转向 session recovery
+  与 maintenance audit。
