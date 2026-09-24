@@ -223,14 +223,18 @@ export class DesktopTaskWorkspaceManager {
   /** A previously-created task uses the same linked worktree after server restart. */
   workingDirectoryForSession(sessionId: string): string | undefined {
     const record = this.records.get(sessionId);
-    if (!record || record.cleanedAt || canonicalTaskWorktreePath(
+    if (!record || record.cleanedAt) {
+      return undefined;
+    }
+    const canonicalPath = canonicalTaskWorktreePath(
       this.worktreeDirectory,
       record.path,
       record.sessionId,
-    ) === undefined) {
+    );
+    if (canonicalPath === undefined) {
       return undefined;
     }
-    return record.path;
+    return canonicalPath;
   }
 
   /** Resolve a verified task worktree for task sessions, or the verified project root otherwise. */
@@ -593,7 +597,7 @@ export class DesktopTaskWorkspaceManager {
     this.repositoryPromise ??= (async () => {
       try {
         const actual = await runGit(["rev-parse", "--show-toplevel"], this.requestedRoot);
-        const root = resolve(actual);
+        const root = realpathSync(resolve(actual));
         this.repositoryRoot = root;
         for (const [sessionId, record] of this.records) {
           if (record.repositoryRoot !== root || !inside(this.worktreeDirectory, resolve(record.path))) {

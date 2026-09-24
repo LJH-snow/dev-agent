@@ -1,5 +1,6 @@
-import { spawn, type ChildProcess } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { lstatSync, realpathSync } from "node:fs";
+import { spawn, type ChildProcess } from "node:child_process";
 
 const maxCommandBytes = 4096;
 const maxInputBytes = 8192;
@@ -10,6 +11,21 @@ const maxConcurrentRuns = 24;
 const maxRetainedRuns = 128;
 const maxRunLifetimeMs = 30 * 60 * 1000;
 const retainedRunLifetimeMs = 60 * 60 * 1000;
+const terminationGraceMs = 1_500;
+
+const SENSITIVE_KEY_PATTERN =
+  /((?:["']?(?:api[-_ ]?key|access[-_ ]?key|access[-_ ]?token|auth(?:orization)?|cookie|password|passphrase|secret|token|private[-_ ]?key)["']?\s*[:=]\s*)(["']))[^"'\\]*(?:\\.[^"'\\]*)*\2/gi;
+const SENSITIVE_UNQUOTED_KEY_PATTERN =
+  /((?:["']?(?:api[-_ ]?key|access[-_ ]?key|access[-_ ]?token|auth(?:orization)?|cookie|password|passphrase|secret|token|private[-_ ]?key)["']?\s*[:=]\s*))(?!["'])([^"'\s,}\]]+)/gi;
+const SENSITIVE_FLAG_PATTERN =
+  /((?:^|\s)--?(?:api[-_ ]?key|access[-_ ]?key|access[-_ ]?token|auth(?:orization)?|cookie|password|passphrase|secret|token|private[-_ ]?key)(?:=|\s+))(["']?)([^"'\s,}\]]+)\2/gi;
+const BEARER_TOKEN_PATTERN = /\bBearer\s+[A-Za-z0-9._~+/=-]+/gi;
+const PRIVATE_KEY_PATTERN =
+  /-----BEGIN [A-Z0-9 ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]+ PRIVATE KEY-----/g;
+const TOKEN_SHAPE_PATTERN =
+  /\b(?:sk|pk|gh[pousr]|xox[baprs])[-_][A-Za-z0-9_-]{16,}\b/gi;
+const ANSI_ESCAPE_PATTERN =
+  /(?:\u001B\][\s\S]*?(?:\u0007|\u001B\\)|\u001B\[[0-?]*[ -/]*[@-~]|\u001B[@-_])/g;
 
 export type TaskTerminalState = "running" | "exited" | "stopped" | "failed";
 export type TaskTerminalStream = "stdout" | "stderr" | "input" | "system";
@@ -61,6 +77,7 @@ interface TerminalRun {
   stopRequested: boolean;
   lifetimeTimer: NodeJS.Timeout;
   retentionTimer?: NodeJS.Timeout;
+  killTimer?: NodeJS.Timeout;
 }
 
 export class TaskTerminalError extends Error {
@@ -74,6 +91,55 @@ function safeText(value: string): string {
   return value.replace(/\0/g, "�");
 }
 
+function redactSensitiveText(value: string): string {
+  return value
+    .replace(PRIVATE_KEY_PATTERN, "[redacted-private-key]")
+    .replace(SENSITIVE_KEY_PATTERN, "$1$2[redacted]$2")
+    .replace(SENSITIVE_UNQUOTED_KEY_PATTERN, "$1[redacted]")
+    .replace(SENSITIVE_FLAG_PATTERN, "$1$2[redacted]$2")
+    .replace(BEARER_TOKEN_PATTERN, "Bearer [redacted]")
+    .replace(TOKEN_SHAPE_PATTERN, "[redacted-token]");
+}
+
+function displayCommand(command: string): string {
+  const normalized = redactSensitiveText(safeText(command))
+    .replace(ANSI_ESCAPE_PATTERN, "")
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized.length <= maxCommandBytes
+    ? normalized
+    : `${normalized.slice(0, maxCommandBytes - 1)}…`;
+}
+
+/**
+ * Terminal cwd is an internal capability selected by the Desktop workspace
+ * manager. Resolve it immediately before spawning and reject symlinked or
+ * missing directories so a stale task record cannot redirect a process to an
+ * arbitrary path. The workspace manager performs the repository/worktree
+ * ownership check; this second check closes the terminal's own spawn seam.
+ */
+function canonicalWorkingDirectory(workingDirectory: string): string {
+  try {
+    const requested = lstatSync(workingDirectory);
+    if (!requested.isDirectory() || requested.isSymbolicLink()) {
+      throw new Error("not a real directory");
+    }
+    const canonical = realpathSync(workingDirectory);
+    const resolved = lstatSync(canonical);
+    if (!resolved.isDirectory() || resolved.isSymbolicLink()) {
+      throw new Error("not a real directory");
+    }
+    return canonical;
+  } catch {
+    throw new TaskTerminalError(
+      "The terminal working directory is unavailable or unsafe.",
+      409,
+      "terminal-working-directory-invalid",
+    );
+  }
+}
+
 export class DesktopTaskTerminalManager {
   private readonly runs = new Map<string, TerminalRun>();
 
@@ -82,6 +148,7 @@ export class DesktopTaskTerminalManager {
     if (!command.trim() || commandBytes > maxCommandBytes || command.includes("\0")) {
       throw new TaskTerminalError("Command must be between 1 byte and 4 KiB.", 400, "terminal-command-invalid");
     }
+    const canonicalCwd = canonicalWorkingDirectory(workingDirectory);
     const allRuns = [...this.runs.values()];
     const activeRuns = allRuns.filter((run) => run.state === "running");
     if (activeRuns.length >= maxConcurrentRuns) {
@@ -95,13 +162,28 @@ export class DesktopTaskTerminalManager {
       throw new TaskTerminalError("The retained terminal history limit has been reached.", 409, "terminal-history-limit");
     }
 
+    const safeCommand = displayCommand(command);
     const shell = process.platform === "win32" ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
-    const args = process.platform === "win32" ? ["/d", "/s", "/c", command] : ["-lc", command];
+    const guardedCommand = process.platform === "win32"
+      ? command
+      : [
+        'if [ "$(pwd -P)" != "$DEV_AGENT_TERMINAL_EXPECTED_CWD" ]; then',
+        '  printf "%s\\n" "[terminal cwd verification failed]" >&2; exit 125;',
+        "fi",
+        "unset DEV_AGENT_TERMINAL_EXPECTED_CWD",
+        command,
+      ].join("\n");
+    const args = process.platform === "win32" ? ["/d", "/s", "/c", command] : ["-lc", guardedCommand];
     let child: ChildProcess;
     try {
       child = spawn(shell, args, {
-        cwd: workingDirectory,
-        env: { ...process.env, TERM: "dumb", NO_COLOR: "1" },
+        cwd: canonicalCwd,
+        env: {
+          ...process.env,
+          TERM: "dumb",
+          NO_COLOR: "1",
+          DEV_AGENT_TERMINAL_EXPECTED_CWD: canonicalCwd,
+        },
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
         detached: process.platform !== "win32",
@@ -114,7 +196,7 @@ export class DesktopTaskTerminalManager {
     const run: TerminalRun = {
       id,
       sessionId,
-      command,
+      command: safeCommand,
       process: child,
       startedAt: new Date().toISOString(),
       events: [],
@@ -127,7 +209,7 @@ export class DesktopTaskTerminalManager {
     };
     run.lifetimeTimer.unref();
     this.runs.set(id, run);
-    this.append(run, "system", `$ ${command}\n`);
+    this.append(run, "system", `$ ${safeCommand}\n`);
 
     child.stdout?.on("data", (chunk: Buffer | string) => this.append(run, "stdout", String(chunk)));
     child.stderr?.on("data", (chunk: Buffer | string) => this.append(run, "stderr", String(chunk)));
@@ -177,30 +259,14 @@ export class DesktopTaskTerminalManager {
       throw new TaskTerminalError("Terminal input is unavailable.", 409, "terminal-input-unavailable");
     }
     run.process.stdin.write(text);
-    this.append(run, "input", text);
+    this.append(run, "input", `[input ${Buffer.byteLength(text, "utf8")} bytes]\n`);
     return this.snapshot(run);
   }
 
   stop(sessionId: string, id: string): TaskTerminalSnapshot {
     const run = this.requireRun(sessionId, id);
     if (run.state !== "running") return this.snapshot(run);
-    run.stopRequested = true;
-    try {
-      if (process.platform !== "win32" && run.process.pid) process.kill(-run.process.pid, "SIGTERM");
-      else run.process.kill("SIGTERM");
-    } catch {
-      try { run.process.kill("SIGTERM"); } catch { /* process already exited */ }
-    }
-    const timer = setTimeout(() => {
-      if (run.state !== "running") return;
-      try {
-        if (process.platform !== "win32" && run.process.pid) process.kill(-run.process.pid, "SIGKILL");
-        else run.process.kill("SIGKILL");
-      } catch {
-        try { run.process.kill("SIGKILL"); } catch { /* process already exited */ }
-      }
-    }, 1500);
-    timer.unref();
+    this.requestStop(run);
     return this.snapshot(run);
   }
 
@@ -208,19 +274,58 @@ export class DesktopTaskTerminalManager {
     return [...this.runs.values()].some((run) => run.sessionId === sessionId && run.state === "running");
   }
 
+  async stopSession(sessionId: string, timeoutMs = terminationGraceMs + 500): Promise<boolean> {
+    const active = [...this.runs.values()].filter((run) => run.sessionId === sessionId && run.state === "running");
+    if (active.length === 0) return true;
+    for (const run of active) this.requestStop(run);
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      let timer: NodeJS.Timeout;
+      const finish = (): void => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      timer = setTimeout(finish, timeoutMs);
+      timer.unref();
+      const checkClosed = (): void => {
+        if (active.every((run) => run.state !== "running")) finish();
+      };
+      for (const run of active) run.process.once("close", checkClosed);
+      if (active.every((run) => run.state !== "running")) finish();
+    });
+    return !this.hasRunning(sessionId);
+  }
+
   closeAll(): void {
     for (const run of this.runs.values()) {
       clearTimeout(run.lifetimeTimer);
       if (run.retentionTimer) clearTimeout(run.retentionTimer);
       if (run.state === "running") {
-        run.stopRequested = true;
-        try {
-          if (process.platform !== "win32" && run.process.pid) process.kill(-run.process.pid, "SIGTERM");
-          else run.process.kill("SIGTERM");
-        } catch {
-          try { run.process.kill("SIGTERM"); } catch { /* process already exited */ }
-        }
+        this.requestStop(run);
       }
+    }
+  }
+
+  private requestStop(run: TerminalRun): void {
+    if (run.state !== "running") return;
+    run.stopRequested = true;
+    this.signal(run, "SIGTERM");
+    if (run.killTimer) return;
+    run.killTimer = setTimeout(() => {
+      run.killTimer = undefined;
+      if (run.state === "running") this.signal(run, "SIGKILL");
+    }, terminationGraceMs);
+    run.killTimer.unref();
+  }
+
+  private signal(run: TerminalRun, signal: "SIGTERM" | "SIGKILL"): void {
+    try {
+      if (process.platform !== "win32" && run.process.pid) process.kill(-run.process.pid, signal);
+      else run.process.kill(signal);
+    } catch {
+      try { run.process.kill(signal); } catch { /* process already exited */ }
     }
   }
 
@@ -248,6 +353,10 @@ export class DesktopTaskTerminalManager {
 
   private finalize(run: TerminalRun): void {
     clearTimeout(run.lifetimeTimer);
+    if (run.killTimer) {
+      clearTimeout(run.killTimer);
+      run.killTimer = undefined;
+    }
     run.retentionTimer = setTimeout(() => this.runs.delete(run.id), retainedRunLifetimeMs);
     run.retentionTimer.unref();
   }

@@ -1,6 +1,6 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { isIP } from "node:net";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import { opendir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -58,9 +58,14 @@ import {
 } from "./task-workspaces.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "./task-terminal.js";
 import {
+  loadProjectCapabilityMetadata,
   loadWorkbenchMetadata,
+  normalizeGitHubCapabilitySnapshot,
+  normalizeRepositoryCapabilitySnapshot,
+  normalizeWorkbenchMetadataSnapshot,
   probeGitHubCapability,
   type GitHubCapabilitySnapshot,
+  type RepositoryCapabilitySnapshot,
   type WorkbenchMetadataSnapshot,
 } from "./capabilities.js";
 
@@ -130,9 +135,15 @@ export interface DesktopServerOptions {
   /** Injects the managed runtime status for tests and custom hosts. */
   readonly managedRuntime?: () => Promise<DesktopManagedRuntimeStatus | undefined>;
   /** Optional metadata-only GitHub capability probe for tests/custom hosts. */
-  readonly githubCapability?: () => Promise<GitHubCapabilitySnapshot>;
+  readonly githubCapability?: (workingDirectory?: string) => Promise<GitHubCapabilitySnapshot>;
+  /** Optional bounded project capability projection for tests/custom hosts. */
+  readonly projectCapability?: (workingDirectory: string) => Promise<RepositoryCapabilitySnapshot>;
   /** Optional bounded workbench metadata projection for tests/custom hosts. */
   readonly workbenchMetadata?: (workingDirectory: string) => Promise<WorkbenchMetadataSnapshot>;
+  /** Enables the server-scoped capability token for browser-originated mutations. */
+  readonly requireCapabilityToken?: boolean;
+  /** Optional deterministic capability token for tests or an embedding host. */
+  readonly capabilityToken?: string;
 }
 
 export interface DesktopSessionSummary {
@@ -277,6 +288,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const sessionAllowlist = new Map<string, Set<string>>();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
+  // This token is generated per server instance and is only injected into the
+  // served Desktop document. Loopback/origin checks remain necessary, but the
+  // token prevents an unrelated local process from mutating the workbench by
+  // accident or through a forged browser request.
+  const capabilityToken = options.requireCapabilityToken === true || options.capabilityToken !== undefined
+    ? options.capabilityToken ?? randomBytes(32).toString("base64url")
+    : undefined;
 
   const normalizeSessionIdForRequest = (
     sessionId?: string
@@ -317,6 +335,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       return;
     }
 
+    if (capabilityToken !== undefined && requiresDesktopCapability(url.pathname, req.method) && !hasDesktopCapability(req, capabilityToken)) {
+      req.resume();
+      res.writeHead(403, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(JSON.stringify({ error: "desktop capability token is required", code: "desktop-capability-required" }));
+      return;
+    }
+
     try {
       if (req.method === "GET" && url.pathname === "/") {
         const index = await resolvePublicFile("index.html");
@@ -325,7 +350,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "not found" }));
           return;
         }
-        await serveFile(res, index.filePath, index.ext);
+        await serveFile(res, index.filePath, index.ext, capabilityToken);
         return;
       }
 
@@ -336,9 +361,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "GET" && url.pathname === "/api/capabilities/github") {
-        const probe = options.githubCapability ?? (() => probeGitHubCapability());
+        const sessionId = normalizeSessionIdForRequest(url.searchParams.get("sessionId") ?? undefined);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        const workingDirectory = taskWorkspaces.workingDirectoryForSession(sessionId) ?? process.cwd();
+        const probe = options.githubCapability ?? ((directory?: string) => probeGitHubCapability(undefined, directory));
         try {
-          const snapshot = await probe();
+          const snapshot = normalizeGitHubCapabilitySnapshot(await probe(workingDirectory));
           const serialized = JSON.stringify(snapshot);
           if (Buffer.byteLength(serialized, "utf8") > 16 * 1024) {
             res.writeHead(500, { "content-type": "application/json" });
@@ -367,7 +399,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const workingDirectory = taskWorkspaces.workingDirectoryForSession(sessionId) ?? process.cwd();
         const load = options.workbenchMetadata ?? loadWorkbenchMetadata;
         try {
-          const snapshot = await load(workingDirectory);
+          const snapshot = normalizeWorkbenchMetadataSnapshot(await load(workingDirectory));
           const serialized = JSON.stringify({ sessionId, ...snapshot });
           if (Buffer.byteLength(serialized, "utf8") > 256 * 1024) {
             res.writeHead(413, { "content-type": "application/json" });
@@ -388,12 +420,38 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
       if (req.method === "GET" && url.pathname === "/api/monitoring") {
         const sessionIds = [...new Set([...sessions.keys(), ...inFlight])].slice(0, maxSessionListEntries);
+        const projectLoader = options.projectCapability ?? loadProjectCapabilityMetadata;
+        let project: RepositoryCapabilitySnapshot;
+        try {
+          project = normalizeRepositoryCapabilitySnapshot(await projectLoader(process.cwd()));
+        } catch {
+          project = { provider: "git", state: "unavailable", reason: "git-unavailable" };
+        }
+        let github: GitHubCapabilitySnapshot;
+        try {
+          const probe = options.githubCapability ?? ((directory?: string) => probeGitHubCapability(undefined, directory));
+          github = normalizeGitHubCapabilitySnapshot(await probe(process.cwd()));
+        } catch {
+          github = normalizeGitHubCapabilitySnapshot(undefined);
+        }
         const snapshot = {
           readOnly: true as const,
           canApprove: false as const,
           canMutate: false as const,
           pendingApprovalCount: approvals.size,
           activeSessionCount: inFlight.size,
+          project,
+          capabilities: {
+            github: {
+              provider: github.provider,
+              state: github.state,
+              enabled: github.enabled,
+              cliAvailable: github.cliAvailable,
+              authenticated: github.authenticated,
+              mutationAllowed: false as const,
+            },
+            ci: github.ci,
+          },
           sessions: sessionIds.map((sessionId) => ({
             sessionId,
             active: inFlight.has(sessionId),
@@ -1007,6 +1065,15 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: activeSessionRequestMessage }));
           return;
         }
+        if (terminalManager.hasRunning(sessionId)) {
+          req.resume();
+          const stopped = await terminalManager.stopSession(sessionId);
+          if (!stopped) {
+            res.writeHead(409, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "stop terminal processes before deleting this session", code: "terminal-running" }));
+            return;
+          }
+        }
         sessions.delete(sessionId);
 
         inFlight.add(sessionId);
@@ -1058,6 +1125,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           req.resume();
           res.writeHead(409, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "task session IDs are tied to their Git branch and worktree" }));
+          return;
+        }
+        if (terminalManager.hasRunning(from)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "stop terminal processes before renaming this session", code: "terminal-running" }));
           return;
         }
 
@@ -1331,7 +1404,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "not found" }));
           return;
         }
-        await serveFile(res, resolved.filePath, resolved.ext);
+        await serveFile(
+          res,
+          resolved.filePath,
+          resolved.ext,
+          relative === "index.html" ? capabilityToken : undefined,
+        );
         return;
       }
 
@@ -1918,7 +1996,30 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   return server;
 }
 
-async function serveFile(res: ServerResponse, filePath: string, ext: string): Promise<void> {
+const desktopCapabilityHeader = "x-dev-agent-capability";
+const desktopMutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function requiresDesktopCapability(pathname: string, method: string | undefined): boolean {
+  if (method === undefined || !desktopMutationMethods.has(method.toUpperCase())) return false;
+  return pathname.startsWith("/api/");
+}
+
+function hasDesktopCapability(req: IncomingMessage, expected: string): boolean {
+  const value = req.headers[desktopCapabilityHeader];
+  if (typeof value !== "string" || value.length !== expected.length || value.length > 256) return false;
+  try {
+    return timingSafeEqual(Buffer.from(value, "utf8"), Buffer.from(expected, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+async function serveFile(
+  res: ServerResponse,
+  filePath: string,
+  ext: string,
+  capabilityToken?: string,
+): Promise<void> {
   let fileStat;
   try {
     fileStat = await stat(filePath);
@@ -1951,7 +2052,14 @@ async function serveFile(res: ServerResponse, filePath: string, ext: string): Pr
     res.end(JSON.stringify({ error: "static response exceeds the 1 MiB limit" }));
     return;
   }
-  res.writeHead(200, { "content-type": mimeTypes[ext] ?? "application/octet-stream" });
+  if (ext === ".html") {
+    const html = content.toString("utf8").replaceAll("__DEV_AGENT_CAPABILITY_TOKEN__", capabilityToken ?? "");
+    content = Buffer.from(html, "utf8");
+  }
+  res.writeHead(200, {
+    "content-type": mimeTypes[ext] ?? "application/octet-stream",
+    ...(ext === ".html" ? { "cache-control": "no-store" } : {}),
+  });
   res.end(content);
 }
 
@@ -2767,7 +2875,6 @@ export function startServer(options: DesktopServerOptions = {}): Promise<Server>
   const server = createDesktopServer(options);
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
-
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {

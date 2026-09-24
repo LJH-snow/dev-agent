@@ -61,6 +61,22 @@ export class InkViewportModel {
     return this.snapshot();
   }
 
+  /**
+   * Move the transcript by a small number of wrapped rows, as terminal mouse
+   * wheels do. PageUp/PageDown remain page-sized navigation for keyboard use.
+   */
+  scrollBy(deltaRows: number): InkViewportSnapshot {
+    const maximumOffset = this.maximumOffset();
+    if (maximumOffset === 0 || !Number.isFinite(deltaRows)) return this.snapshot();
+    const delta = Math.trunc(deltaRows);
+    if (delta === 0) return this.snapshot();
+    const startingOffset = this.followOutput ? maximumOffset : this.offset;
+    this.offset = clamp(startingOffset + delta, 0, maximumOffset);
+    this.followOutput = this.offset === maximumOffset;
+    if (this.followOutput) this.newOutput = 0;
+    return this.snapshot();
+  }
+
   pageUp(): InkViewportSnapshot {
     const maximumOffset = this.maximumOffset();
     if (maximumOffset === 0) return this.snapshot();

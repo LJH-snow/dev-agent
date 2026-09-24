@@ -142,10 +142,15 @@ export function InkCliApp({
   const [viewport, setViewport] = useState<InkViewportSnapshot>(() =>
     viewportModel.snapshot(),
   );
-  const moveViewport = useCallback((direction: MouseWheelDirection): void => {
-    const next = direction === "up"
-      ? viewportModel.pageUp()
-      : viewportModel.pageDown();
+  const moveViewport = useCallback((
+    direction: MouseWheelDirection,
+    mode: "page" | "wheel" = "page",
+  ): void => {
+    const next = mode === "wheel"
+      ? viewportModel.scrollBy(direction === "up" ? -3 : 3)
+      : direction === "up"
+        ? viewportModel.pageUp()
+        : viewportModel.pageDown();
     setViewport(next);
   }, [viewportModel]);
 
@@ -154,7 +159,7 @@ export function InkCliApp({
     const handleMouseInput = (input: string): void => {
       const parsed = viewportMouseInput.push(input);
       for (const direction of parsed.directions) {
-        moveViewport(direction);
+        moveViewport(direction, "wheel");
       }
     };
     internal_eventEmitter.on("input", handleMouseInput);

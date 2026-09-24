@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="dev-agent-capability-token" content="__DEV_AGENT_CAPABILITY_TOKEN__" />
   <title>dev-agent</title>
   <link rel="icon" href="/public/signal-loom.svg" type="image/svg+xml" />
   <style>
@@ -470,7 +471,7 @@
             </div>
             <select id="task-terminal-runs" aria-label="Terminal process" data-i18n-aria-label="terminal.process"></select>
           </div>
-          <p class="task-terminal-note" data-i18n="terminal.note">Commands run in this session's repository/worktree. Pipe-backed shell; full-screen TUI apps are not supported.</p>
+          <p class="task-terminal-note" data-i18n="terminal.note">Commands run in this session's repository/worktree. Pipe-backed shell; full-screen TUI apps are not supported. Use ↑/↓ to recall recent commands.</p>
           <div class="task-terminal-command-row">
             <textarea id="task-terminal-command" rows="2" maxlength="4096" aria-label="Terminal command" data-i18n-aria-label="terminal.command" data-i18n-placeholder="terminal.commandPlaceholder" placeholder="npm run dev"></textarea>
             <button type="button" id="task-terminal-run" data-i18n="terminal.run">Run</button>
@@ -479,6 +480,7 @@
           </div>
           <pre id="task-terminal-output" class="task-terminal-output" role="log" aria-live="polite" tabindex="0" data-i18n="terminal.output.empty">Terminal output appears here.</pre>
           <div class="task-terminal-output-actions">
+            <button type="button" id="task-terminal-follow" data-i18n="terminal.followLatest" disabled>Follow latest</button>
             <button type="button" id="task-terminal-clear" data-i18n="terminal.clear" disabled>Clear view</button>
             <button type="button" id="task-terminal-export" data-i18n="terminal.export" disabled>Export output</button>
           </div>
@@ -508,6 +510,9 @@
           </div>
           <div class="workbench-capabilities-grid">
             <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="capabilities.github">GitHub</span><strong id="capabilities-github" class="desktop-status-value">—</strong><span id="capabilities-github-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="capabilities.ci">CI</span><strong id="capabilities-ci" class="desktop-status-value">—</strong><span id="capabilities-ci-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="capabilities.repository">Repository</span><strong id="capabilities-repository" class="desktop-status-value">—</strong><span id="capabilities-repository-state" class="desktop-status-state">—</span></div>
+            <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="capabilities.remote">Remote</span><strong id="capabilities-remote" class="desktop-status-value">—</strong><span id="capabilities-remote-state" class="desktop-status-state">—</span></div>
             <div class="desktop-status-item"><span class="desktop-status-label" data-i18n="capabilities.monitoring">Monitoring</span><strong id="capabilities-monitoring" class="desktop-status-value">—</strong><span id="capabilities-monitoring-state" class="desktop-status-state">—</span></div>
           </div>
           <div class="workbench-capabilities-lists">
@@ -626,6 +631,34 @@
       writePersistedQueue,
     } from "/public/queue-persistence.js";
 
+    const desktopCapabilityToken = document
+      .querySelector('meta[name="dev-agent-capability-token"]')
+      ?.getAttribute("content") ?? "";
+    const nativeFetch = window.fetch.bind(window);
+    // Mutating Desktop APIs require the server-scoped token. Keeping this in
+    // one request seam prevents individual panels from accidentally omitting
+    // the capability header as new actions are added.
+    window.fetch = (input, init = {}) => {
+      const requestUrl = typeof input === "string"
+        ? input
+        : input instanceof Request
+          ? input.url
+          : String(input);
+      const resolvedUrl = new URL(requestUrl, window.location.href);
+      const requestMethod = String(init.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (
+        resolvedUrl.origin === window.location.origin
+        && resolvedUrl.pathname.startsWith("/api/")
+        && ["POST", "PUT", "PATCH", "DELETE"].includes(requestMethod)
+        && desktopCapabilityToken
+      ) {
+        const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
+        headers.set("x-dev-agent-capability", desktopCapabilityToken);
+        return nativeFetch(input, { ...init, headers });
+      }
+      return nativeFetch(input, init);
+    };
+
     const messages = document.getElementById("messages");
     const form = document.getElementById("form");
     const input = document.getElementById("input");
@@ -683,6 +716,12 @@
     const workbenchCapabilitiesRefreshButton = document.getElementById("workbench-capabilities-refresh");
     const capabilitiesGithub = document.getElementById("capabilities-github");
     const capabilitiesGithubState = document.getElementById("capabilities-github-state");
+    const capabilitiesCi = document.getElementById("capabilities-ci");
+    const capabilitiesCiState = document.getElementById("capabilities-ci-state");
+    const capabilitiesRepository = document.getElementById("capabilities-repository");
+    const capabilitiesRepositoryState = document.getElementById("capabilities-repository-state");
+    const capabilitiesRemote = document.getElementById("capabilities-remote");
+    const capabilitiesRemoteState = document.getElementById("capabilities-remote-state");
     const capabilitiesMonitoring = document.getElementById("capabilities-monitoring");
     const capabilitiesMonitoringState = document.getElementById("capabilities-monitoring-state");
     const capabilitiesSkills = document.getElementById("capabilities-skills");
@@ -839,7 +878,26 @@
         "capabilities.github.optIn": "Opt-in required",
         "capabilities.github.ready": "Authenticated",
         "capabilities.github.unavailable": "Unavailable",
+        "capabilities.github.notAuthenticated": "Not authenticated",
         "capabilities.github.readOnly": "Read-only",
+        "capabilities.ci": "CI",
+        "capabilities.ci.latest": "Latest: {status}",
+        "capabilities.ci.noRuns": "No runs",
+        "capabilities.ci.optIn": "Opt-in required",
+        "capabilities.ci.cliUnavailable": "CLI unavailable",
+        "capabilities.ci.notAuthenticated": "Not authenticated",
+        "capabilities.ci.unsupported": "Unsupported repository",
+        "capabilities.ci.unavailable": "Unavailable",
+        "capabilities.ci.readOnly": "Read-only",
+        "capabilities.repository": "Repository",
+        "capabilities.repository.clean": "Clean",
+        "capabilities.repository.dirty": "{count} changed paths",
+        "capabilities.repository.notRepository": "Not a Git repository",
+        "capabilities.repository.unavailable": "Unavailable",
+        "capabilities.remote": "Remote",
+        "capabilities.remote.readOnly": "Host only · read-only",
+        "capabilities.remote.none": "No origin",
+        "capabilities.remote.unavailable": "Unavailable",
         "capabilities.monitoring": "Monitoring",
         "capabilities.monitoring.value": "{active} active · {pending} approvals",
         "capabilities.monitoring.readOnly": "Read-only; approvals stay in the active chat.",
@@ -1004,12 +1062,13 @@
         "terminal.status.finished": "Process {state} (exit {code}).",
         "terminal.status.unavailable": "Terminal is not available for this task.",
         "terminal.status.error": "Terminal request failed.",
-        "terminal.note": "Commands run in this session's repository/worktree. Pipe-backed shell; full-screen TUI apps are not supported.",
+        "terminal.note": "Commands run in this session's repository/worktree. Pipe-backed shell; full-screen TUI apps are not supported. Use ↑/↓ to recall recent commands.",
         "terminal.command": "Terminal command",
         "terminal.commandPlaceholder": "npm run dev",
         "terminal.run": "Run",
         "terminal.stop": "Stop",
         "terminal.reconnect": "Reconnect",
+        "terminal.followLatest": "Follow latest",
         "terminal.clear": "Clear view",
         "terminal.export": "Export output",
         "terminal.status.reconnecting": "Rehydrating terminal output…",
@@ -1287,7 +1346,26 @@
         "capabilities.github.optIn": "需要显式启用",
         "capabilities.github.ready": "已认证",
         "capabilities.github.unavailable": "不可用",
+        "capabilities.github.notAuthenticated": "未认证",
         "capabilities.github.readOnly": "只读",
+        "capabilities.ci": "CI",
+        "capabilities.ci.latest": "最近运行：{status}",
+        "capabilities.ci.noRuns": "暂无运行记录",
+        "capabilities.ci.optIn": "需要显式启用",
+        "capabilities.ci.cliUnavailable": "CLI 不可用",
+        "capabilities.ci.notAuthenticated": "未认证",
+        "capabilities.ci.unsupported": "不支持的仓库",
+        "capabilities.ci.unavailable": "不可用",
+        "capabilities.ci.readOnly": "只读",
+        "capabilities.repository": "仓库",
+        "capabilities.repository.clean": "干净",
+        "capabilities.repository.dirty": "{count} 个变更路径",
+        "capabilities.repository.notRepository": "不是 Git 仓库",
+        "capabilities.repository.unavailable": "不可用",
+        "capabilities.remote": "远程",
+        "capabilities.remote.readOnly": "仅显示主机 · 只读",
+        "capabilities.remote.none": "没有 origin",
+        "capabilities.remote.unavailable": "不可用",
         "capabilities.monitoring": "监控",
         "capabilities.monitoring.value": "{active} 个运行中 · {pending} 个审批",
         "capabilities.monitoring.readOnly": "只读；审批仍在当前对话中完成。",
@@ -1452,12 +1530,13 @@
         "terminal.status.finished": "进程{state}（退出码 {code}）。",
         "terminal.status.unavailable": "此任务暂不可用终端。",
         "terminal.status.error": "终端请求失败。",
-        "terminal.note": "命令在当前会话的仓库/worktree 中运行。使用管道式 Shell；不支持全屏 TUI 程序。",
+        "terminal.note": "命令在当前会话的仓库/worktree 中运行。使用管道式 Shell；不支持全屏 TUI 程序。可用 ↑/↓ 调出最近命令。",
         "terminal.command": "终端命令",
         "terminal.commandPlaceholder": "npm run dev",
         "terminal.run": "运行",
         "terminal.stop": "停止",
         "terminal.reconnect": "重新连接",
+        "terminal.followLatest": "跟随最新输出",
         "terminal.clear": "清除视图",
         "terminal.export": "导出输出",
         "terminal.status.reconnecting": "正在重新载入终端输出…",
@@ -2901,6 +2980,49 @@
       }
     }
 
+    function githubCiLabel(ci) {
+      const reason = ci?.reason;
+      if (ci?.state === "ready") {
+        const latest = ci.latestRun;
+        if (!latest) return reason === "no-runs" ? t("capabilities.ci.noRuns") : t("capabilities.ci.unavailable");
+        const conclusion = latest.conclusion && latest.conclusion !== "unknown" ? " · " + latest.conclusion : "";
+        return t("capabilities.ci.latest", { status: latest.status + conclusion });
+      }
+      if (ci?.state === "disabled" || reason === "opt-in-required") return t("capabilities.ci.optIn");
+      if (ci?.state === "unauthenticated" || reason === "not-authenticated") return t("capabilities.ci.notAuthenticated");
+      if (ci?.state === "unsupported") return reason === "no-workflows" ? t("capabilities.ci.noRuns") : t("capabilities.ci.unsupported");
+      if (reason === "cli-unavailable") return t("capabilities.ci.cliUnavailable");
+      if (ci?.state === "unavailable") return t("capabilities.ci.unavailable");
+      return "—";
+    }
+
+    function renderRepositoryCapability(workbench, monitoring) {
+      const repository = workbench?.repository ?? monitoring?.project;
+      if (!repository || repository.state === "unavailable" || repository.state === "invalid") {
+        capabilitiesRepository.textContent = "—";
+        capabilitiesRepositoryState.textContent = t("capabilities.repository.unavailable");
+        capabilitiesRemote.textContent = "—";
+        capabilitiesRemoteState.textContent = t("capabilities.remote.unavailable");
+        return;
+      }
+      if (repository.state === "not-a-repository") {
+        capabilitiesRepository.textContent = t("capabilities.repository.notRepository");
+        capabilitiesRepositoryState.textContent = t("capabilities.repository.notRepository");
+        capabilitiesRemote.textContent = t("capabilities.remote.none");
+        capabilitiesRemoteState.textContent = t("capabilities.remote.none");
+        return;
+      }
+      const branch = typeof repository.branch === "string" ? repository.branch.slice(0, 200) : "detached";
+      const changedFiles = Number.isSafeInteger(repository.changedFiles) ? Math.max(0, repository.changedFiles) : 0;
+      capabilitiesRepository.textContent = branch;
+      capabilitiesRepositoryState.textContent = repository.dirty
+        ? t("capabilities.repository.dirty", { count: changedFiles })
+        : t("capabilities.repository.clean");
+      const remote = typeof repository.remoteHost === "string" ? repository.remoteHost.slice(0, 255) : "";
+      capabilitiesRemote.textContent = remote || t("capabilities.remote.none");
+      capabilitiesRemoteState.textContent = remote ? t("capabilities.remote.readOnly") : t("capabilities.remote.none");
+    }
+
     async function loadWorkbenchCapabilities(sessionId) {
       if (!sessionId) return;
       const requestId = ++capabilitiesRequestId;
@@ -2913,7 +3035,7 @@
       try {
         const query = "?sessionId=" + encodeURIComponent(sessionId);
         const [githubResponse, workbenchResponse, monitoringResponse] = await Promise.all([
-          fetch("/api/capabilities/github", { cache: "no-store", signal: controller.signal }),
+          fetch("/api/capabilities/github" + query, { cache: "no-store", signal: controller.signal }),
           fetch("/api/capabilities/workbench" + query, { cache: "no-store", signal: controller.signal }),
           fetch("/api/monitoring", { cache: "no-store", signal: controller.signal }),
         ]);
@@ -2924,8 +3046,17 @@
           monitoringResponse.json(),
         ]);
         if (requestId !== capabilitiesRequestId || sessionId !== currentSessionId) return;
-        capabilitiesGithub.textContent = github?.authenticated ? t("capabilities.github.ready") : github?.enabled ? t("capabilities.github.unavailable") : t("capabilities.github.optIn");
+        capabilitiesGithub.textContent = github?.authenticated
+          ? t("capabilities.github.ready")
+          : github?.state === "unauthenticated" || github?.reason === "not-authenticated"
+            ? t("capabilities.github.notAuthenticated")
+            : github?.enabled
+              ? t("capabilities.github.unavailable")
+              : t("capabilities.github.optIn");
         capabilitiesGithubState.textContent = t("capabilities.github.readOnly");
+        capabilitiesCi.textContent = githubCiLabel(github?.ci);
+        capabilitiesCiState.textContent = t("capabilities.ci.readOnly");
+        renderRepositoryCapability(workbench, monitoring);
         const active = Number.isSafeInteger(monitoring?.activeSessionCount) ? monitoring.activeSessionCount : 0;
         const pending = Number.isSafeInteger(monitoring?.pendingApprovalCount) ? monitoring.pendingApprovalCount : 0;
         capabilitiesMonitoring.textContent = t("capabilities.monitoring.value", { active, pending });
@@ -2937,6 +3068,12 @@
         if (controller.signal.aborted || requestId !== capabilitiesRequestId || sessionId !== currentSessionId) return;
         capabilitiesGithub.textContent = "—";
         capabilitiesGithubState.textContent = "—";
+        capabilitiesCi.textContent = "—";
+        capabilitiesCiState.textContent = "—";
+        capabilitiesRepository.textContent = "—";
+        capabilitiesRepositoryState.textContent = "—";
+        capabilitiesRemote.textContent = "—";
+        capabilitiesRemoteState.textContent = "—";
         capabilitiesMonitoring.textContent = "—";
         capabilitiesMonitoringState.textContent = "—";
         renderCapabilityItems(capabilitiesSkills, [], () => "");

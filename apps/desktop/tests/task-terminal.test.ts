@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { realpathSync } from "node:fs";
 import { request as httpRequest } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -11,7 +12,7 @@ import { createDesktopServer } from "../dist/server.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "../dist/task-terminal.js";
 
 const publicModuleUrl = pathToFileURL(fileURLToPath(new URL("../public/task-terminal-ui.js", import.meta.url))).href;
-const { normalizeLoopbackPreviewUrl } = await import(publicModuleUrl);
+const { normalizeLoopbackPreviewUrl, TerminalCommandHistory } = await import(publicModuleUrl);
 
 async function waitFor(
   check: () => boolean,
@@ -41,9 +42,87 @@ test("terminal processes are bound to a session and accept bounded stdin", async
     const completed = manager.get("task-one", started.id);
     assert.equal(completed.state, "exited");
     assert.ok(completed.events.some((event) => event.stream === "stdout" && event.text.includes("received:hello-terminal")));
-    assert.ok(completed.events.some((event) => event.stream === "input" && event.text.includes("hello-terminal")));
+    assert.ok(completed.events.some((event) => event.stream === "input" && event.text.includes("[input ")));
     assert.equal(manager.list("task-one").length, 1);
     assert.equal(manager.list("task-two").length, 0);
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("terminal refuses missing, non-directory, and symlinked working directories", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-cwd-"));
+  const manager = new DesktopTaskTerminalManager();
+  const file = join(directory, "not-a-directory.txt");
+  const missing = join(directory, "missing");
+  const link = join(directory, "directory-link");
+  try {
+    await writeFile(file, "file\n", "utf8");
+    for (const cwd of [missing, file]) {
+      assert.throws(
+        () => manager.start("task-cwd", cwd, "echo should-not-run"),
+        (error: unknown) => error instanceof TaskTerminalError
+          && error.statusCode === 409
+          && error.code === "terminal-working-directory-invalid",
+      );
+    }
+    if (process.platform !== "win32") {
+      await symlink(directory, link, "dir");
+      assert.throws(
+        () => manager.start("task-cwd", link, "echo should-not-run"),
+        (error: unknown) => error instanceof TaskTerminalError
+          && error.statusCode === 409
+          && error.code === "terminal-working-directory-invalid",
+      );
+    }
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("terminal uses a canonical cwd and keeps command/input secrets out of metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-metadata-"));
+  const manager = new DesktopTaskTerminalManager();
+  try {
+    const expectedCwd = realpathSync(directory);
+    const run = manager.start(
+      "task-metadata",
+      directory,
+      `TOKEN=super-secret-123 node -e "process.stdout.write(process.cwd()); setTimeout(() => {}, 1000)"`,
+    );
+    assert.doesNotMatch(run.command, /super-secret-123/);
+    assert.match(run.command, /redacted/);
+
+    manager.writeInput("task-metadata", run.id, "password=super-secret-456\n");
+    assert.doesNotMatch(JSON.stringify(manager.get("task-metadata", run.id)), /super-secret-[0-9]+/);
+
+    await waitFor(() => manager.get("task-metadata", run.id).events.some(
+      (event) => event.stream === "stdout" && event.text.includes(expectedCwd),
+    ));
+    manager.stop("task-metadata", run.id);
+    await waitFor(() => manager.get("task-metadata", run.id).state !== "running");
+    const completed = manager.get("task-metadata", run.id);
+    assert.ok(completed.events.some((event) => event.stream === "stdout" && event.text.includes(expectedCwd)));
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("terminal session cleanup escalates to the process group when needed", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-cleanup-"));
+  const manager = new DesktopTaskTerminalManager();
+  try {
+    const run = manager.start(
+      "task-cleanup",
+      directory,
+      `node -e "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"`,
+    );
+    assert.equal(await manager.stopSession("task-cleanup"), true);
+    await waitFor(() => manager.get("task-cleanup", run.id).state !== "running");
+    assert.equal(manager.get("task-cleanup", run.id).state, "stopped");
   } finally {
     manager.closeAll();
     await rm(directory, { recursive: true, force: true });
@@ -81,6 +160,24 @@ test("terminal output and process counts are bounded, and process groups can be 
   }
 });
 
+test("terminal command history is bounded, deduplicated, and restores the draft", () => {
+  const history = new TerminalCommandHistory(2);
+  history.add(" first ");
+  history.add("second");
+  history.add("third");
+  history.add("second");
+
+  assert.deepEqual(history.entries, ["third", "second"]);
+  assert.deepEqual(history.previous("draft"), { value: "second", active: true });
+  assert.deepEqual(history.previous(), { value: "third", active: true });
+  assert.deepEqual(history.next(), { value: "second", active: true });
+  assert.deepEqual(history.next(), { value: "draft", active: false });
+  assert.deepEqual(history.next(), { value: "draft", active: false });
+
+  history.add("x".repeat(5000));
+  assert.equal(history.entries.at(-1)?.length, 4096);
+});
+
 test("browser preview accepts explicit-port loopback HTTP(S) URLs only", () => {
   assert.equal(normalizeLoopbackPreviewUrl("http://localhost:5173/"), "http://localhost:5173/");
   assert.equal(normalizeLoopbackPreviewUrl("https://127.0.0.1:8443/app"), "https://127.0.0.1:8443/app");
@@ -94,6 +191,7 @@ test("terminal API accepts only loopback clients and loopback browser origins", 
   const server = createDesktopServer({
     host: "127.0.0.1",
     session: { id: "terminal-security", run: async () => undefined },
+    capabilityToken: "test-capability-token",
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -110,6 +208,17 @@ test("terminal API accepts only loopback clients and loopback browser origins", 
     });
     assert.equal(sameLoopbackOrigin.status, 200);
 
+    const missingCapability = await fetch(`${baseUrl}/api/terminal`, {
+      method: "POST",
+      headers: { origin: baseUrl, "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "terminal-security", command: "echo blocked" }),
+    });
+    assert.equal(missingCapability.status, 403);
+    assert.deepEqual(await missingCapability.json(), {
+      error: "desktop capability token is required",
+      code: "desktop-capability-required",
+    });
+
     const differentLoopbackOrigin = await fetch(`${baseUrl}/api/terminal`, {
       headers: { origin: "http://127.0.0.1:5173" },
     });
@@ -122,6 +231,22 @@ test("terminal API accepts only loopback clients and loopback browser origins", 
     });
     assert.equal(untrustedOrigin.status, 403);
     assert.match(await untrustedOrigin.text(), /trusted loopback requests/);
+
+    const trustedMutation = await fetch(`${baseUrl}/api/terminal`, {
+      method: "POST",
+      headers: {
+        origin: baseUrl,
+        "content-type": "application/json",
+        "x-dev-agent-capability": "test-capability-token",
+      },
+      body: JSON.stringify({ sessionId: "terminal-security", command: "printf token-ok" }),
+    });
+    assert.equal(trustedMutation.status, 201);
+    const terminal = await trustedMutation.json() as { id: string };
+    await fetch(`${baseUrl}/api/terminal/terminal-security/${terminal.id}`, {
+      method: "DELETE",
+      headers: { origin: baseUrl, "x-dev-agent-capability": "test-capability-token" },
+    });
   } finally {
     server.close();
     await once(server, "close");
@@ -161,6 +286,7 @@ test("terminal and preview panels are wired to session state and safe text rende
   assert.match(html, /id="task-terminal-panel"/);
   assert.match(html, /id="task-preview-frame"[^>]*sandbox="allow-scripts allow-forms"/);
   assert.match(html, /id="task-terminal-reconnect"/);
+  assert.match(html, /id="task-terminal-follow"/);
   assert.match(html, /id="task-terminal-clear"/);
   assert.match(html, /id="task-terminal-export"/);
   assert.match(html, /id="task-preview-clear"/);
@@ -169,6 +295,11 @@ test("terminal and preview panels are wired to session state and safe text rende
   assert.match(controller, /normalizeLoopbackPreviewUrl/);
   assert.match(controller, /outputTruncated/);
   assert.match(controller, /reconnectOutput/);
+  assert.match(controller, /TerminalCommandHistory/);
+  assert.match(controller, /ArrowUp/);
+  assert.match(controller, /ArrowDown/);
+  assert.match(controller, /followOutput/);
+  assert.match(controller, /updateOutputFollowState/);
   assert.match(controller, /createObjectURL/);
   assert.doesNotMatch(controller, /\.innerHTML\s*=/);
   assert.match(html, /await loadSessions\(\);[\s\S]{0,220}await loadSessionView\(currentSessionId\);[\s\S]{0,220}await taskTerminalUI\.refresh\(\)/);
