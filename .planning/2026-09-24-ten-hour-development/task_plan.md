@@ -34,7 +34,7 @@
 - [x] Phase 2：Desktop 有界命令历史。
 - [x] Phase 3：Desktop 手动输出滚动与 Follow latest。
 - [x] Phase 4：会话恢复、终端清理和 Changes Center 维护。
-- [x] Phase 5：可选 Anthropic adapter 边界审计（adapter 保持可选）。
+- [x] Phase 5：可选 Anthropic adapter 边界审计（adapter 保持可选；adapter 13/13、model 94/94）。
 - [x] Phase 6：最终 PTY/浏览器证据、完整门禁、提交和推送后的审计。
 
 ## 不可违反的边界

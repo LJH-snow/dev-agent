@@ -48,3 +48,9 @@
 - 提交 `491d03d fix: keep desktop conversation follow-up visible` 已推送，`HEAD` 与 `origin/codex/desktop-cli-workbench` 一致。
 - 仅 `.playwright-cli/` 与 `output/` 仍未跟踪；它们是已有本地验收产物，未加入提交。
 - Phase 6 的代码、文档、测试、build/typecheck、diff check 和浏览器证据均已完成。
+
+## 2026-09-24 17:40 — Anthropic maintenance verification
+
+- `@dev-agent/claude-agent-sdk` adapter 测试 **13/13** 通过：工具 allowlist、审批绑定、updatedInput、取消、结果上限和 query 清理均有证据。
+- `@dev-agent/model` 测试 **94/94** 通过：Anthropic SDK provider、streaming、usage/cache、retry、错误脱敏和 output budget 均通过。
+- 本轮没有改变 adapter 的可选性质，也没有把 Claude Agent SDK 接入默认 CLI AgentLoop。

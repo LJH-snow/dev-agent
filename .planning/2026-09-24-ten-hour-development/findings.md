@@ -20,3 +20,10 @@
 - CLI 全量测试曾出现一次 approval overflow 时序超时，但单独重跑通过；需要在最终文档中区分 flaky evidence 与确定性失败。
 - CLI package smoke 依赖 npm 安装本地 tarball 的网络/registry 读取，曾因 `ETIMEDOUT` 失败；重试前不应修改依赖或放宽安全边界。
 - PTY 和浏览器验收只能使用临时 HOME/Git fixture/loopback server，不得让真实项目 worktree 或远程 GitHub 发生 mutation。
+
+## Anthropic adapter audit
+
+- Adapter package remains isolated under `packages/claude-agent-sdk` and uses only the supplied project tool registry through `mcp__dev_agent__*`; native SDK tools are disabled.
+- `settingSources: []` and `strictMcpConfig: true` preserve the fail-closed package boundary.
+- Permission decisions are bounded, one-use, fingerprint-bound, and cleared at host lifecycle boundaries; the real MCP handler repeats policy checks when preflight is absent.
+- Fresh verification: adapter **13/13**, model provider **94/94**.
