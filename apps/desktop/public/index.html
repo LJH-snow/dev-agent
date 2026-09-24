@@ -4499,9 +4499,24 @@
       clearPendingLiveOutput();
     }
 
+    function setMessagesScrollTop(behavior = "auto") {
+      const top = messages.scrollHeight;
+      if (typeof messages.scrollTo === "function") {
+        try {
+          messages.scrollTo({ top, left: 0, behavior });
+          return;
+        } catch {
+          // Older or test DOMs may expose scrollTo without the options overload.
+        }
+      }
+      messages.scrollTop = top;
+    }
+
     function scrollMessagesToBottom(wasAtBottom = isMessagesAtBottom()) {
       if (wasAtBottom) {
-        messages.scrollTop = messages.scrollHeight;
+        // Streaming must follow immediately even though the stylesheet allows
+        // smooth scrolling for ordinary user navigation.
+        setMessagesScrollTop();
         clearPendingLiveOutput();
       } else {
         markLiveOutputPending();

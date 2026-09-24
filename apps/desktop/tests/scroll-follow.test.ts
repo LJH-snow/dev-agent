@@ -39,9 +39,13 @@ test("desktop message streaming preserves a reader's manual scroll position", as
       html,
       /function scrollMessagesToBottom\(wasAtBottom = isMessagesAtBottom\(\)\)/
     );
-    assert.equal(
-      html.match(/messages\.scrollTop = messages\.scrollHeight;/g)?.length ?? 0,
-      1
+    assert.match(
+      html,
+      /function setMessagesScrollTop\(behavior = "auto"\)[\s\S]{0,420}messages\.scrollTo\(\{ top, left: 0, behavior \}\)/
+    );
+    assert.match(
+      html,
+      /function setMessagesScrollTop\([\s\S]{0,520}messages\.scrollTop = top;/
     );
     assert.match(
       html,

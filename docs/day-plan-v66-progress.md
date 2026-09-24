@@ -212,3 +212,13 @@
 - 使用临时 Git fixture 完成浏览器验收，确认统计摘要、分栏视图和 README 文件筛选；
   未使用真实项目 worktree，也未执行远程 mutation。
 - Desktop **236/236**、build 与 `git diff --check` 均通过。
+
+## 2026-09-24 — conversation streaming auto-follow fix
+
+- 真实浏览器复现发现中间对话面板的 `#messages` 使用 smooth scroll，而流式 token
+  反复直接写入 `scrollTop`，导致最新输出在动画追赶旧目标时仍停留在可视区下方。
+- `apps/desktop/public/index.html` 现在通过 `scrollTo({ behavior: "auto" })` 执行
+  follow-latest，并保留旧浏览器/test DOM 的安全 fallback；用户手动上滚仍保留
+  `New output below`，不会被强制拉回底部。
+- 新 server 的浏览器验收确认大块新 assistant 输出会立即到达最大 scroll offset；
+  Desktop 全量测试 **236/236** 通过，build/typecheck 与 `git diff --check` 通过。
