@@ -203,3 +203,12 @@
 
 - 增加删除 active session 后从剩余持久化 session 选择 fallback 的端到端回归测试；
   Desktop suite 已提升至 **234/234**，build 与 `git diff --check` 通过。
+
+
+## 2026-09-24 — Changes Center 1.0
+
+- 完成 task-workspace Changes Center：变更统计、bounded 文件筛选、状态标记，以及
+  Unified/Split 差异视图；保持 textContent 渲染、原有批注锚点和 merge/cleanup 边界。
+- 使用临时 Git fixture 完成浏览器验收，确认统计摘要、分栏视图和 README 文件筛选；
+  未使用真实项目 worktree，也未执行远程 mutation。
+- Desktop **236/236**、build 与 `git diff --check` 均通过。

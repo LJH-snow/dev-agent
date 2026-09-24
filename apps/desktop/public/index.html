@@ -451,9 +451,22 @@
               <button type="button" id="task-workspace-cleanup" data-i18n="workspace.cleanup" disabled>Clean up</button>
             </div>
             <section id="task-workspace-diff-panel" class="task-workspace-diff-panel" aria-labelledby="task-workspace-diff-title" hidden>
-              <h3 id="task-workspace-diff-title" data-i18n="workspace.diff.title">Task changes</h3>
+              <div class="task-workspace-diff-heading">
+                <div>
+                  <h3 id="task-workspace-diff-title" data-i18n="workspace.diff.title">Changes</h3>
+                  <div id="task-workspace-diff-summary" class="task-workspace-diff-summary" role="status" data-i18n="workspace.diff.summary.empty">No changes loaded.</div>
+                </div>
+                <div id="task-workspace-diff-view" class="task-workspace-diff-view" role="tablist" aria-label="Diff view" data-i18n-aria-label="workspace.diff.view">
+                  <button type="button" id="task-workspace-diff-view-unified" class="task-workspace-diff-view-button" role="tab" aria-selected="true" data-view="unified" data-i18n="workspace.diff.view.unified">Unified</button>
+                  <button type="button" id="task-workspace-diff-view-split" class="task-workspace-diff-view-button" role="tab" aria-selected="false" data-view="split" data-i18n="workspace.diff.view.split">Split</button>
+                </div>
+              </div>
+              <div class="task-workspace-diff-controls">
+                <label class="task-workspace-diff-search-label" for="task-workspace-diff-search" data-i18n="workspace.diff.searchLabel">Filter files</label>
+                <input id="task-workspace-diff-search" class="task-workspace-diff-search" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="workspace.diff.searchPlaceholder" placeholder="Filter changed files" />
+              </div>
               <div id="task-workspace-diff-tabs" class="task-workspace-diff-tabs" role="tablist" aria-label="Diff change groups" data-i18n-aria-label="workspace.diff.groups"></div>
-              <ul id="task-workspace-diff-files" class="task-workspace-diff-files"></ul>
+              <ul id="task-workspace-diff-files" class="task-workspace-diff-files" aria-label="Changed files" data-i18n-aria-label="workspace.diff.files"></ul>
               <div id="task-workspace-diff" class="task-workspace-diff" role="region" aria-label="Diff content" data-i18n-aria-label="workspace.diff.content" tabindex="0"></div>
               <section id="task-workspace-comments-panel" class="task-workspace-comments-panel" hidden aria-labelledby="task-workspace-comments-title">
                 <h4 id="task-workspace-comments-title" data-i18n="workspace.comment.title">Review comments</h4>
@@ -929,9 +942,22 @@
         "workspace.compare": "Review diff",
         "workspace.merge": "Merge task",
         "workspace.cleanup": "Clean up",
-        "workspace.diff.title": "Task changes",
+        "workspace.diff.title": "Changes",
         "workspace.diff.content": "Diff content",
         "workspace.diff.groups": "Diff change groups",
+        "workspace.diff.files": "Changed files",
+        "workspace.diff.view": "Diff view",
+        "workspace.diff.view.unified": "Unified",
+        "workspace.diff.view.split": "Split",
+        "workspace.diff.searchLabel": "Filter files",
+        "workspace.diff.searchPlaceholder": "Filter changed files",
+        "workspace.diff.summary.empty": "No changes loaded.",
+        "workspace.diff.summary.files": "{count} file(s)",
+        "workspace.diff.summary.additions": "+{count}",
+        "workspace.diff.summary.deletions": "−{count}",
+        "workspace.diff.summary.comments": "{count} comment(s)",
+        "workspace.diff.summary.status": "{added} added · {modified} modified · {deleted} deleted",
+        "workspace.diff.noMatches": "No changed files match this filter.",
         "workspace.diff.all": "All changes",
         "workspace.diff.committed": "Committed",
         "workspace.diff.staged": "Staged",
@@ -1408,9 +1434,22 @@
         "workspace.compare": "审查差异",
         "workspace.merge": "合并任务",
         "workspace.cleanup": "清理",
-        "workspace.diff.title": "任务变更",
+        "workspace.diff.title": "变更中心",
         "workspace.diff.content": "差异内容",
         "workspace.diff.groups": "差异变更分组",
+        "workspace.diff.files": "变更文件",
+        "workspace.diff.view": "差异视图",
+        "workspace.diff.view.unified": "统一视图",
+        "workspace.diff.view.split": "分栏视图",
+        "workspace.diff.searchLabel": "筛选文件",
+        "workspace.diff.searchPlaceholder": "筛选变更文件",
+        "workspace.diff.summary.empty": "尚未加载变更。",
+        "workspace.diff.summary.files": "{count} 个文件",
+        "workspace.diff.summary.additions": "+{count}",
+        "workspace.diff.summary.deletions": "−{count}",
+        "workspace.diff.summary.comments": "{count} 条评论",
+        "workspace.diff.summary.status": "新增 {added} · 修改 {modified} · 删除 {deleted}",
+        "workspace.diff.noMatches": "没有匹配的变更文件。",
         "workspace.diff.all": "全部变更",
         "workspace.diff.committed": "已提交",
         "workspace.diff.staged": "已暂存",

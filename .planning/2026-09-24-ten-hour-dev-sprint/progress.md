@@ -195,3 +195,13 @@
   id.
 - Full Desktop verification is now **234/234** after the recovery boundary
   changes; Desktop build and `git diff --check` also pass.
+
+
+## 2026-09-24 — Changes Center 1.0
+
+- Completed the next bounded Desktop UX tranche over task-workspace diffs:
+  summary metrics, capped local file search, status badges, and Unified/Split
+  rendering with existing review-comment anchors.
+- Browser acceptance used an isolated temporary Git fixture and confirmed the
+  summary, split view, and README-only file filter.
+- Desktop suite is green at **236/236**; build and `git diff --check` pass.

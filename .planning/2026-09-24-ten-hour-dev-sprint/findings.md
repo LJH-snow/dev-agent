@@ -203,3 +203,12 @@ Those remain deferred until a separate trust/install/rollback design exists.
   the new id active, while deleting the active id selects an existing persisted
   session. This prevents the picker from restoring a session that no longer
   exists after reload.
+
+
+## 2026-09-24 — Changes Center finding
+
+- The existing bounded diff API was sufficient for an IDE-like presentation
+  increment. Keeping search local to the file list avoided changing server
+  authorization, path bounds, or patch semantics.
+- Split rendering remains text-only and reuses parsed line anchors, so review
+  comments, stale-session guards, merge, and cleanup boundaries remain intact.
