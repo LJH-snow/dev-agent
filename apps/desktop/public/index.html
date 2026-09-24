@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="dev-agent-capability-token" content="__DEV_AGENT_CAPABILITY_TOKEN__" />
   <title>dev-agent</title>
   <link rel="icon" href="/public/signal-loom.svg" type="image/svg+xml" />
   <style>
@@ -470,7 +471,7 @@
             </div>
             <select id="task-terminal-runs" aria-label="Terminal process" data-i18n-aria-label="terminal.process"></select>
           </div>
-          <p class="task-terminal-note" data-i18n="terminal.note">Commands run in this session's repository/worktree. Pipe-backed shell; full-screen TUI apps are not supported.</p>
+          <p class="task-terminal-note" data-i18n="terminal.note">Commands run in this session's repository/worktree. Pipe-backed shell; full-screen TUI apps are not supported. Use ↑/↓ to recall recent commands.</p>
           <div class="task-terminal-command-row">
             <textarea id="task-terminal-command" rows="2" maxlength="4096" aria-label="Terminal command" data-i18n-aria-label="terminal.command" data-i18n-placeholder="terminal.commandPlaceholder" placeholder="npm run dev"></textarea>
             <button type="button" id="task-terminal-run" data-i18n="terminal.run">Run</button>
@@ -479,6 +480,7 @@
           </div>
           <pre id="task-terminal-output" class="task-terminal-output" role="log" aria-live="polite" tabindex="0" data-i18n="terminal.output.empty">Terminal output appears here.</pre>
           <div class="task-terminal-output-actions">
+            <button type="button" id="task-terminal-follow" data-i18n="terminal.followLatest" disabled>Follow latest</button>
             <button type="button" id="task-terminal-clear" data-i18n="terminal.clear" disabled>Clear view</button>
             <button type="button" id="task-terminal-export" data-i18n="terminal.export" disabled>Export output</button>
           </div>
@@ -625,6 +627,34 @@
       readPersistedQueue,
       writePersistedQueue,
     } from "/public/queue-persistence.js";
+
+    const desktopCapabilityToken = document
+      .querySelector('meta[name="dev-agent-capability-token"]')
+      ?.getAttribute("content") ?? "";
+    const nativeFetch = window.fetch.bind(window);
+    // Mutating Desktop APIs require the server-scoped token. Keeping this in
+    // one request seam prevents individual panels from accidentally omitting
+    // the capability header as new actions are added.
+    window.fetch = (input, init = {}) => {
+      const requestUrl = typeof input === "string"
+        ? input
+        : input instanceof Request
+          ? input.url
+          : String(input);
+      const resolvedUrl = new URL(requestUrl, window.location.href);
+      const requestMethod = String(init.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (
+        resolvedUrl.origin === window.location.origin
+        && resolvedUrl.pathname.startsWith("/api/")
+        && ["POST", "PUT", "PATCH", "DELETE"].includes(requestMethod)
+        && desktopCapabilityToken
+      ) {
+        const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
+        headers.set("x-dev-agent-capability", desktopCapabilityToken);
+        return nativeFetch(input, { ...init, headers });
+      }
+      return nativeFetch(input, init);
+    };
 
     const messages = document.getElementById("messages");
     const form = document.getElementById("form");
@@ -1004,12 +1034,13 @@
         "terminal.status.finished": "Process {state} (exit {code}).",
         "terminal.status.unavailable": "Terminal is not available for this task.",
         "terminal.status.error": "Terminal request failed.",
-        "terminal.note": "Commands run in this session's repository/worktree. Pipe-backed shell; full-screen TUI apps are not supported.",
+        "terminal.note": "Commands run in this session's repository/worktree. Pipe-backed shell; full-screen TUI apps are not supported. Use ↑/↓ to recall recent commands.",
         "terminal.command": "Terminal command",
         "terminal.commandPlaceholder": "npm run dev",
         "terminal.run": "Run",
         "terminal.stop": "Stop",
         "terminal.reconnect": "Reconnect",
+        "terminal.followLatest": "Follow latest",
         "terminal.clear": "Clear view",
         "terminal.export": "Export output",
         "terminal.status.reconnecting": "Rehydrating terminal output…",
@@ -1452,12 +1483,13 @@
         "terminal.status.finished": "进程{state}（退出码 {code}）。",
         "terminal.status.unavailable": "此任务暂不可用终端。",
         "terminal.status.error": "终端请求失败。",
-        "terminal.note": "命令在当前会话的仓库/worktree 中运行。使用管道式 Shell；不支持全屏 TUI 程序。",
+        "terminal.note": "命令在当前会话的仓库/worktree 中运行。使用管道式 Shell；不支持全屏 TUI 程序。可用 ↑/↓ 调出最近命令。",
         "terminal.command": "终端命令",
         "terminal.commandPlaceholder": "npm run dev",
         "terminal.run": "运行",
         "terminal.stop": "停止",
         "terminal.reconnect": "重新连接",
+        "terminal.followLatest": "跟随最新输出",
         "terminal.clear": "清除视图",
         "terminal.export": "导出输出",
         "terminal.status.reconnecting": "正在重新载入终端输出…",

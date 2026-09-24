@@ -1,3 +1,49 @@
+
+export const TERMINAL_COMMAND_HISTORY_LIMIT = 64;
+const TERMINAL_COMMAND_MAX_CHARS = 4096;
+
+/**
+ * Keeps command recall bounded to the current page/session. It deliberately
+ * does not use browser storage because terminal commands can contain secrets.
+ */
+export class TerminalCommandHistory {
+  constructor(limit = TERMINAL_COMMAND_HISTORY_LIMIT) {
+    this.limit = Math.max(1, Math.min(TERMINAL_COMMAND_HISTORY_LIMIT, Number(limit) || TERMINAL_COMMAND_HISTORY_LIMIT));
+    this.entries = [];
+    this.index = -1;
+    this.draft = "";
+  }
+
+  add(command) {
+    const normalized = String(command ?? "").trim().slice(0, TERMINAL_COMMAND_MAX_CHARS);
+    if (!normalized) return;
+    this.entries = [...this.entries.filter((entry) => entry !== normalized), normalized].slice(-this.limit);
+    this.reset("");
+  }
+
+  reset(value = "") {
+    this.index = -1;
+    this.draft = String(value ?? "").slice(0, TERMINAL_COMMAND_MAX_CHARS);
+  }
+
+  previous(currentValue = "") {
+    if (this.entries.length === 0) return { value: String(currentValue ?? ""), active: false };
+    if (this.index < 0) this.draft = String(currentValue ?? "").slice(0, TERMINAL_COMMAND_MAX_CHARS);
+    this.index = this.index < 0 ? this.entries.length - 1 : Math.max(0, this.index - 1);
+    return { value: this.entries[this.index] ?? "", active: true };
+  }
+
+  next() {
+    if (this.index < 0) return { value: this.draft, active: false };
+    if (this.index >= this.entries.length - 1) {
+      this.index = -1;
+      return { value: this.draft, active: false };
+    }
+    this.index += 1;
+    return { value: this.entries[this.index] ?? "", active: true };
+  }
+}
+
 export function normalizeLoopbackPreviewUrl(rawValue) {
   try {
     const url = new URL(String(rawValue).trim());
@@ -38,6 +84,7 @@ export function createTaskTerminalUI({
   const runButton = documentRef.getElementById("task-terminal-run");
   const stopButton = documentRef.getElementById("task-terminal-stop");
   const reconnectButton = documentRef.getElementById("task-terminal-reconnect");
+  const followButton = documentRef.getElementById("task-terminal-follow");
   const clearButton = documentRef.getElementById("task-terminal-clear");
   const exportButton = documentRef.getElementById("task-terminal-export");
   const output = documentRef.getElementById("task-terminal-output");
@@ -58,6 +105,8 @@ export function createTaskTerminalUI({
   let pollTimer;
   let busy = false;
   let outputText = "";
+  let followOutput = true;
+  const commandHistory = new TerminalCommandHistory();
   const finishedNotified = new Set();
 
   function selectionKey(id) {
@@ -84,6 +133,11 @@ export function createTaskTerminalUI({
 
   function activeRun() { return runs.find((run) => run.id === activeId); }
 
+  function renderOutputControls() {
+    followButton.disabled = followOutput || !outputText;
+    output.dataset.follow = followOutput ? "true" : "false";
+  }
+
   function renderRuns() {
     runList.replaceChildren();
     for (const run of runs) {
@@ -101,6 +155,7 @@ export function createTaskTerminalUI({
     input.disabled = !selected || selected.state !== "running" || busy;
     inputSubmit.disabled = input.disabled;
     attachButton.disabled = !outputText;
+    renderOutputControls();
   }
 
   function appendEvents(events) {
@@ -110,8 +165,21 @@ export function createTaskTerminalUI({
     const maxChars = 256 * 1024;
     if (outputText.length > maxChars) outputText = outputText.slice(-maxChars);
     output.textContent = outputText || translate("terminal.output.empty");
-    output.scrollTop = output.scrollHeight;
+    if (followOutput) output.scrollTop = output.scrollHeight;
     attachButton.disabled = !outputText;
+    renderOutputControls();
+  }
+
+  function updateOutputFollowState() {
+    const distanceFromBottom = output.scrollHeight - output.scrollTop - output.clientHeight;
+    followOutput = distanceFromBottom <= 24;
+    renderOutputControls();
+  }
+
+  function followLatestOutput() {
+    followOutput = true;
+    output.scrollTop = output.scrollHeight;
+    renderOutputControls();
   }
 
   function setActive(run) {
@@ -119,6 +187,7 @@ export function createTaskTerminalUI({
     if (run?.id && sessionId) rememberSelectedRun(sessionId, run.id);
     cursor = 0;
     outputText = "";
+    followOutput = true;
     output.dataset.gap = "false";
     output.textContent = translate("terminal.output.empty");
     if (run) {
@@ -196,6 +265,7 @@ export function createTaskTerminalUI({
   function clearOutput() {
     const run = activeRun();
     outputText = "";
+    followOutput = true;
     cursor = Number(run?.lastSequence) || cursor;
     output.dataset.gap = "false";
     output.textContent = translate("terminal.output.empty");
@@ -206,6 +276,7 @@ export function createTaskTerminalUI({
   function reconnectOutput() {
     if (!activeRun()) return;
     outputText = "";
+    followOutput = true;
     cursor = 0;
     output.dataset.gap = "false";
     output.textContent = translate("terminal.output.empty");
@@ -250,10 +321,12 @@ export function createTaskTerminalUI({
         statusNode.textContent = payload?.error || translate("terminal.status.error");
         return;
       }
+      commandHistory.add(command);
       runs = [payload, ...runs.filter((run) => run.id !== payload.id)];
       activeId = payload.id;
       cursor = 0;
       outputText = "";
+      followOutput = true;
       appendEvents(payload.events);
       cursor = Number(payload.lastSequence) || 0;
       commandInput.value = "";
@@ -342,6 +415,8 @@ export function createTaskTerminalUI({
     activeId = undefined;
     cursor = 0;
     outputText = "";
+    followOutput = true;
+    commandHistory.reset();
     output.textContent = translate("terminal.output.empty");
     clearPreview();
     previewInput.value = "";
@@ -351,7 +426,32 @@ export function createTaskTerminalUI({
   }
 
   runButton.addEventListener("click", () => void startCommand());
+  commandInput.addEventListener("input", () => {
+    commandHistory.reset(commandInput.value);
+  });
   commandInput.addEventListener("keydown", (event) => {
+    const value = commandInput.value;
+    const singleLine = !value.includes("\n");
+    const atStart = (commandInput.selectionStart ?? 0) === 0;
+    const atEnd = (commandInput.selectionEnd ?? value.length) === value.length;
+    if (singleLine && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowUp" && atStart) {
+      const next = commandHistory.previous(value);
+      if (next.active) {
+        event.preventDefault();
+        commandInput.value = next.value;
+        commandInput.setSelectionRange?.(next.value.length, next.value.length);
+      }
+      return;
+    }
+    if (singleLine && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowDown" && atEnd) {
+      const next = commandHistory.next();
+      if (next.active || value !== next.value) {
+        event.preventDefault();
+        commandInput.value = next.value;
+        commandInput.setSelectionRange?.(next.value.length, next.value.length);
+      }
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       void startCommand();
@@ -359,8 +459,10 @@ export function createTaskTerminalUI({
   });
   stopButton.addEventListener("click", () => void stopCommand());
   reconnectButton.addEventListener("click", reconnectOutput);
+  followButton.addEventListener("click", followLatestOutput);
   clearButton.addEventListener("click", clearOutput);
   exportButton.addEventListener("click", exportOutput);
+  output.addEventListener("scroll", updateOutputFollowState);
   runList.addEventListener("change", () => {
     setActive(runs.find((run) => run.id === runList.value));
   });

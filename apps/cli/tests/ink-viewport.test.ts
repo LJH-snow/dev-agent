@@ -16,6 +16,38 @@ test("Ink runtime starts at the live bottom of an empty viewport", () => {
   });
 });
 
+test("mouse-sized scroll moves a few rows and returns to live follow at the bottom", () => {
+  const viewport = new InkViewportModel({ totalRows: 40, visibleRows: 10 });
+
+  assert.deepEqual(viewport.scrollBy(-3), {
+    offset: 27,
+    totalRows: 40,
+    visibleRows: 10,
+    followOutput: false,
+    hiddenAbove: 27,
+    hiddenBelow: 3,
+    newOutput: 0,
+  });
+  assert.deepEqual(viewport.scrollBy(1), {
+    offset: 28,
+    totalRows: 40,
+    visibleRows: 10,
+    followOutput: false,
+    hiddenAbove: 28,
+    hiddenBelow: 2,
+    newOutput: 0,
+  });
+  assert.deepEqual(viewport.scrollBy(2), {
+    offset: 30,
+    totalRows: 40,
+    visibleRows: 10,
+    followOutput: true,
+    hiddenAbove: 30,
+    hiddenBelow: 0,
+    newOutput: 0,
+  });
+});
+
 test("PageUp and PageDown move by one visible page and End follows output", () => {
   const viewport = new InkViewportModel({ totalRows: 40, visibleRows: 10 });
 

@@ -1,6 +1,6 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { isIP } from "node:net";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import { opendir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -133,6 +133,10 @@ export interface DesktopServerOptions {
   readonly githubCapability?: () => Promise<GitHubCapabilitySnapshot>;
   /** Optional bounded workbench metadata projection for tests/custom hosts. */
   readonly workbenchMetadata?: (workingDirectory: string) => Promise<WorkbenchMetadataSnapshot>;
+  /** Enables the server-scoped capability token for browser-originated mutations. */
+  readonly requireCapabilityToken?: boolean;
+  /** Optional deterministic capability token for tests or an embedding host. */
+  readonly capabilityToken?: string;
 }
 
 export interface DesktopSessionSummary {
@@ -277,6 +281,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const sessionAllowlist = new Map<string, Set<string>>();
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
+  // This token is generated per server instance and is only injected into the
+  // served Desktop document. Loopback/origin checks remain necessary, but the
+  // token prevents an unrelated local process from mutating the workbench by
+  // accident or through a forged browser request.
+  const capabilityToken = options.requireCapabilityToken === true || options.capabilityToken !== undefined
+    ? options.capabilityToken ?? randomBytes(32).toString("base64url")
+    : undefined;
 
   const normalizeSessionIdForRequest = (
     sessionId?: string
@@ -317,6 +328,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       return;
     }
 
+    if (capabilityToken !== undefined && requiresDesktopCapability(url.pathname, req.method) && !hasDesktopCapability(req, capabilityToken)) {
+      req.resume();
+      res.writeHead(403, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(JSON.stringify({ error: "desktop capability token is required", code: "desktop-capability-required" }));
+      return;
+    }
+
     try {
       if (req.method === "GET" && url.pathname === "/") {
         const index = await resolvePublicFile("index.html");
@@ -325,7 +343,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "not found" }));
           return;
         }
-        await serveFile(res, index.filePath, index.ext);
+        await serveFile(res, index.filePath, index.ext, capabilityToken);
         return;
       }
 
@@ -1331,7 +1349,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "not found" }));
           return;
         }
-        await serveFile(res, resolved.filePath, resolved.ext);
+        await serveFile(
+          res,
+          resolved.filePath,
+          resolved.ext,
+          relative === "index.html" ? capabilityToken : undefined,
+        );
         return;
       }
 
@@ -1918,7 +1941,30 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   return server;
 }
 
-async function serveFile(res: ServerResponse, filePath: string, ext: string): Promise<void> {
+const desktopCapabilityHeader = "x-dev-agent-capability";
+const desktopMutationMethods = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+function requiresDesktopCapability(pathname: string, method: string | undefined): boolean {
+  if (method === undefined || !desktopMutationMethods.has(method.toUpperCase())) return false;
+  return pathname.startsWith("/api/");
+}
+
+function hasDesktopCapability(req: IncomingMessage, expected: string): boolean {
+  const value = req.headers[desktopCapabilityHeader];
+  if (typeof value !== "string" || value.length !== expected.length || value.length > 256) return false;
+  try {
+    return timingSafeEqual(Buffer.from(value, "utf8"), Buffer.from(expected, "utf8"));
+  } catch {
+    return false;
+  }
+}
+
+async function serveFile(
+  res: ServerResponse,
+  filePath: string,
+  ext: string,
+  capabilityToken?: string,
+): Promise<void> {
   let fileStat;
   try {
     fileStat = await stat(filePath);
@@ -1951,7 +1997,14 @@ async function serveFile(res: ServerResponse, filePath: string, ext: string): Pr
     res.end(JSON.stringify({ error: "static response exceeds the 1 MiB limit" }));
     return;
   }
-  res.writeHead(200, { "content-type": mimeTypes[ext] ?? "application/octet-stream" });
+  if (ext === ".html") {
+    const html = content.toString("utf8").replaceAll("__DEV_AGENT_CAPABILITY_TOKEN__", capabilityToken ?? "");
+    content = Buffer.from(html, "utf8");
+  }
+  res.writeHead(200, {
+    "content-type": mimeTypes[ext] ?? "application/octet-stream",
+    ...(ext === ".html" ? { "cache-control": "no-store" } : {}),
+  });
   res.end(content);
 }
 
@@ -2767,7 +2820,6 @@ export function startServer(options: DesktopServerOptions = {}): Promise<Server>
   const server = createDesktopServer(options);
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
-
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {

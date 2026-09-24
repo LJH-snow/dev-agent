@@ -11,7 +11,7 @@ import { createDesktopServer } from "../dist/server.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "../dist/task-terminal.js";
 
 const publicModuleUrl = pathToFileURL(fileURLToPath(new URL("../public/task-terminal-ui.js", import.meta.url))).href;
-const { normalizeLoopbackPreviewUrl } = await import(publicModuleUrl);
+const { normalizeLoopbackPreviewUrl, TerminalCommandHistory } = await import(publicModuleUrl);
 
 async function waitFor(
   check: () => boolean,
@@ -81,6 +81,24 @@ test("terminal output and process counts are bounded, and process groups can be 
   }
 });
 
+test("terminal command history is bounded, deduplicated, and restores the draft", () => {
+  const history = new TerminalCommandHistory(2);
+  history.add(" first ");
+  history.add("second");
+  history.add("third");
+  history.add("second");
+
+  assert.deepEqual(history.entries, ["third", "second"]);
+  assert.deepEqual(history.previous("draft"), { value: "second", active: true });
+  assert.deepEqual(history.previous(), { value: "third", active: true });
+  assert.deepEqual(history.next(), { value: "second", active: true });
+  assert.deepEqual(history.next(), { value: "draft", active: false });
+  assert.deepEqual(history.next(), { value: "draft", active: false });
+
+  history.add("x".repeat(5000));
+  assert.equal(history.entries.at(-1)?.length, 4096);
+});
+
 test("browser preview accepts explicit-port loopback HTTP(S) URLs only", () => {
   assert.equal(normalizeLoopbackPreviewUrl("http://localhost:5173/"), "http://localhost:5173/");
   assert.equal(normalizeLoopbackPreviewUrl("https://127.0.0.1:8443/app"), "https://127.0.0.1:8443/app");
@@ -94,6 +112,7 @@ test("terminal API accepts only loopback clients and loopback browser origins", 
   const server = createDesktopServer({
     host: "127.0.0.1",
     session: { id: "terminal-security", run: async () => undefined },
+    capabilityToken: "test-capability-token",
   });
   server.listen(0, "127.0.0.1");
   await once(server, "listening");
@@ -110,6 +129,17 @@ test("terminal API accepts only loopback clients and loopback browser origins", 
     });
     assert.equal(sameLoopbackOrigin.status, 200);
 
+    const missingCapability = await fetch(`${baseUrl}/api/terminal`, {
+      method: "POST",
+      headers: { origin: baseUrl, "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "terminal-security", command: "echo blocked" }),
+    });
+    assert.equal(missingCapability.status, 403);
+    assert.deepEqual(await missingCapability.json(), {
+      error: "desktop capability token is required",
+      code: "desktop-capability-required",
+    });
+
     const differentLoopbackOrigin = await fetch(`${baseUrl}/api/terminal`, {
       headers: { origin: "http://127.0.0.1:5173" },
     });
@@ -122,6 +152,22 @@ test("terminal API accepts only loopback clients and loopback browser origins", 
     });
     assert.equal(untrustedOrigin.status, 403);
     assert.match(await untrustedOrigin.text(), /trusted loopback requests/);
+
+    const trustedMutation = await fetch(`${baseUrl}/api/terminal`, {
+      method: "POST",
+      headers: {
+        origin: baseUrl,
+        "content-type": "application/json",
+        "x-dev-agent-capability": "test-capability-token",
+      },
+      body: JSON.stringify({ sessionId: "terminal-security", command: "printf token-ok" }),
+    });
+    assert.equal(trustedMutation.status, 201);
+    const terminal = await trustedMutation.json() as { id: string };
+    await fetch(`${baseUrl}/api/terminal/terminal-security/${terminal.id}`, {
+      method: "DELETE",
+      headers: { origin: baseUrl, "x-dev-agent-capability": "test-capability-token" },
+    });
   } finally {
     server.close();
     await once(server, "close");
@@ -161,6 +207,7 @@ test("terminal and preview panels are wired to session state and safe text rende
   assert.match(html, /id="task-terminal-panel"/);
   assert.match(html, /id="task-preview-frame"[^>]*sandbox="allow-scripts allow-forms"/);
   assert.match(html, /id="task-terminal-reconnect"/);
+  assert.match(html, /id="task-terminal-follow"/);
   assert.match(html, /id="task-terminal-clear"/);
   assert.match(html, /id="task-terminal-export"/);
   assert.match(html, /id="task-preview-clear"/);
@@ -169,6 +216,11 @@ test("terminal and preview panels are wired to session state and safe text rende
   assert.match(controller, /normalizeLoopbackPreviewUrl/);
   assert.match(controller, /outputTruncated/);
   assert.match(controller, /reconnectOutput/);
+  assert.match(controller, /TerminalCommandHistory/);
+  assert.match(controller, /ArrowUp/);
+  assert.match(controller, /ArrowDown/);
+  assert.match(controller, /followOutput/);
+  assert.match(controller, /updateOutputFollowState/);
   assert.match(controller, /createObjectURL/);
   assert.doesNotMatch(controller, /\.innerHTML\s*=/);
   assert.match(html, /await loadSessions\(\);[\s\S]{0,220}await loadSessionView\(currentSessionId\);[\s\S]{0,220}await taskTerminalUI\.refresh\(\)/);

@@ -72,7 +72,7 @@ export async function startDesktopEntry(
     return { ...endpoint, server: null, reused: true };
   }
   try {
-    const server = await startServer(endpoint);
+    const server = await startServer({ ...endpoint, requireCapabilityToken: true });
     return { ...endpoint, server, reused: false };
   } catch (error) {
     if (!isAddressInUse(error) || endpoint.port === 0) throw error;

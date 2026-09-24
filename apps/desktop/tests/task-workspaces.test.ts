@@ -74,13 +74,17 @@ function createServer(
       if (workingDirectory) createdDirectories.set(sessionId, workingDirectory);
       return fakeSession(sessionId, workingDirectory);
     },
+    capabilityToken: "test-capability-token",
   });
 }
 
 async function createWorkspace(base: string) {
   const response = await fetch(`${base}/api/workspaces`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      "x-dev-agent-capability": "test-capability-token",
+    },
     body: JSON.stringify({}),
   });
   return { response, payload: await response.json() as any };
@@ -114,7 +118,10 @@ test("Desktop creates an isolated task worktree and assigns its session to that 
 
     const renameResponse = await fetch(`${base}/api/sessions/${payload.sessionId}/rename`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-dev-agent-capability": "test-capability-token",
+      },
       body: JSON.stringify({ sessionId: "renamed-task" }),
     });
     assert.equal(renameResponse.status, 409, "a task session cannot be detached from its worktree branch");
@@ -207,7 +214,10 @@ test("Desktop merges only committed task changes into a clean base worktree", as
     git(worktreePath, "add", "task.txt");
     git(worktreePath, "commit", "--quiet", "-m", "task result");
 
-    const mergeResponse = await fetch(`${base}/api/workspaces/${payload.sessionId}/merge`, { method: "POST" });
+    const mergeResponse = await fetch(`${base}/api/workspaces/${payload.sessionId}/merge`, {
+      method: "POST",
+      headers: { "x-dev-agent-capability": "test-capability-token" },
+    });
     assert.equal(mergeResponse.status, 200);
     assert.equal((await readFile(join(repo.root, "task.txt"), "utf8")), "isolated result\n");
     assert.equal(git(repo.root, "status", "--porcelain"), "");
@@ -226,12 +236,18 @@ test("Desktop refuses destructive cleanup for dirty task worktrees and cleans af
     const worktreePath = join(repo.worktreeDirectory, payload.sessionId);
     await writeFile(join(worktreePath, "README.md"), "uncommitted change\n", "utf8");
 
-    const refused = await fetch(`${base}/api/workspaces/${payload.sessionId}`, { method: "DELETE" });
+    const refused = await fetch(`${base}/api/workspaces/${payload.sessionId}`, {
+      method: "DELETE",
+      headers: { "x-dev-agent-capability": "test-capability-token" },
+    });
     assert.equal(refused.status, 409);
     assert.equal(git(worktreePath, "rev-parse", "--show-toplevel"), await realpath(worktreePath));
 
     git(worktreePath, "checkout", "--", "README.md");
-    const cleaned = await fetch(`${base}/api/workspaces/${payload.sessionId}`, { method: "DELETE" });
+    const cleaned = await fetch(`${base}/api/workspaces/${payload.sessionId}`, {
+      method: "DELETE",
+      headers: { "x-dev-agent-capability": "test-capability-token" },
+    });
     assert.equal(cleaned.status, 200);
     const result = await cleaned.json() as any;
     assert.equal(result.cleaned, true);
