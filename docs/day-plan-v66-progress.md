@@ -198,3 +198,8 @@
   请求也不再回到旧 default。
 - 增加 active-session response 回归断言；Desktop **233/233**、build 与
   `git diff --check` 均通过。
+
+## 2026-09-24 — active-session fallback regression
+
+- 增加删除 active session 后从剩余持久化 session 选择 fallback 的端到端回归测试；
+  Desktop suite 已提升至 **234/234**，build 与 `git diff --check` 通过。

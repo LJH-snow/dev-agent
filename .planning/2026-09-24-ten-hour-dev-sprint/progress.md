@@ -186,3 +186,12 @@
 - Added an assertion to the rename recovery regression for the active-session
   response. Full Desktop verification remains **233/233**, with build and
   `git diff --check` passing.
+
+## 2026-09-24 — active-session fallback regression
+
+- Added an end-to-end Desktop regression for deleting the active session while
+  another persisted session remains. `/api/sessions` now demonstrably selects
+  the remaining session as the active fallback instead of returning a deleted
+  id.
+- Full Desktop verification is now **234/234** after the recovery boundary
+  changes; Desktop build and `git diff --check` also pass.

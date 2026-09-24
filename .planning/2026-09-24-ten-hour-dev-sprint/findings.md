@@ -196,3 +196,10 @@ Those remain deferred until a separate trust/install/rollback design exists.
 - The server now keeps a bounded active-session pointer, updates it on rename,
   invalidates it on delete, and derives a safe fallback from the current
   persisted summaries. Requests that omit `sessionId` follow that pointer.
+
+## 2026-09-24 — active-session fallback evidence
+
+- The recovery contract now has both rename and delete evidence: rename keeps
+  the new id active, while deleting the active id selects an existing persisted
+  session. This prevents the picker from restoring a session that no longer
+  exists after reload.
