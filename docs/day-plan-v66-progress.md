@@ -150,3 +150,12 @@
   event 可能制造 false preview failure；已修复并通过 targeted Desktop **39/39**、
   build 与 `git diff --check`。
 - CLI 外部真实 PTY 手工验收仍为后续项；临时 server/browser 已停止，QA 目录继续排除。
+
+
+## 2026-09-24 — lifecycle trace fix delivery
+
+- 已将浏览器验收发现的 terminal lifecycle duplicate 与 stale iframe event 修复提交为
+  `e148abb fix: deduplicate desktop lifecycle trace events`，并推送到
+  `origin/codex/desktop-cli-workbench`。
+- 修复后 targeted Desktop **39/39** 通过；最新浏览器 trace 显示单一 terminal
+  start/completed 与 preview start/loaded。CLI 外部真实 PTY 仍待后续。

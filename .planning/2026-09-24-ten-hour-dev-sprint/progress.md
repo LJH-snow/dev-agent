@@ -123,3 +123,12 @@
   The prior full Desktop suite remains **232/232**.
 - The isolated browser server, fixture HTTP server, and browser session were
   stopped after acceptance. QA artifacts remain untracked and excluded.
+
+
+## 2026-09-24 — lifecycle trace fix delivery
+
+- 已将浏览器验收发现的 terminal lifecycle 重复记录与 stale preview event 修复提交为
+  `e148abb fix: deduplicate desktop lifecycle trace events`，并推送到
+  `origin/codex/desktop-cli-workbench`。
+- 修复后 targeted Desktop trace/server/terminal tests **39/39** 通过；浏览器重新验收
+  显示单一 `Terminal: started/completed` 与 `Preview: started/loaded`。
