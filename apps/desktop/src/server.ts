@@ -58,9 +58,14 @@ import {
 } from "./task-workspaces.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "./task-terminal.js";
 import {
+  loadProjectCapabilityMetadata,
   loadWorkbenchMetadata,
+  normalizeGitHubCapabilitySnapshot,
+  normalizeRepositoryCapabilitySnapshot,
+  normalizeWorkbenchMetadataSnapshot,
   probeGitHubCapability,
   type GitHubCapabilitySnapshot,
+  type RepositoryCapabilitySnapshot,
   type WorkbenchMetadataSnapshot,
 } from "./capabilities.js";
 
@@ -130,7 +135,9 @@ export interface DesktopServerOptions {
   /** Injects the managed runtime status for tests and custom hosts. */
   readonly managedRuntime?: () => Promise<DesktopManagedRuntimeStatus | undefined>;
   /** Optional metadata-only GitHub capability probe for tests/custom hosts. */
-  readonly githubCapability?: () => Promise<GitHubCapabilitySnapshot>;
+  readonly githubCapability?: (workingDirectory?: string) => Promise<GitHubCapabilitySnapshot>;
+  /** Optional bounded project capability projection for tests/custom hosts. */
+  readonly projectCapability?: (workingDirectory: string) => Promise<RepositoryCapabilitySnapshot>;
   /** Optional bounded workbench metadata projection for tests/custom hosts. */
   readonly workbenchMetadata?: (workingDirectory: string) => Promise<WorkbenchMetadataSnapshot>;
   /** Enables the server-scoped capability token for browser-originated mutations. */
@@ -354,9 +361,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       }
 
       if (req.method === "GET" && url.pathname === "/api/capabilities/github") {
-        const probe = options.githubCapability ?? (() => probeGitHubCapability());
+        const sessionId = normalizeSessionIdForRequest(url.searchParams.get("sessionId") ?? undefined);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        const workingDirectory = taskWorkspaces.workingDirectoryForSession(sessionId) ?? process.cwd();
+        const probe = options.githubCapability ?? ((directory?: string) => probeGitHubCapability(undefined, directory));
         try {
-          const snapshot = await probe();
+          const snapshot = normalizeGitHubCapabilitySnapshot(await probe(workingDirectory));
           const serialized = JSON.stringify(snapshot);
           if (Buffer.byteLength(serialized, "utf8") > 16 * 1024) {
             res.writeHead(500, { "content-type": "application/json" });
@@ -385,7 +399,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const workingDirectory = taskWorkspaces.workingDirectoryForSession(sessionId) ?? process.cwd();
         const load = options.workbenchMetadata ?? loadWorkbenchMetadata;
         try {
-          const snapshot = await load(workingDirectory);
+          const snapshot = normalizeWorkbenchMetadataSnapshot(await load(workingDirectory));
           const serialized = JSON.stringify({ sessionId, ...snapshot });
           if (Buffer.byteLength(serialized, "utf8") > 256 * 1024) {
             res.writeHead(413, { "content-type": "application/json" });
@@ -406,12 +420,38 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
       if (req.method === "GET" && url.pathname === "/api/monitoring") {
         const sessionIds = [...new Set([...sessions.keys(), ...inFlight])].slice(0, maxSessionListEntries);
+        const projectLoader = options.projectCapability ?? loadProjectCapabilityMetadata;
+        let project: RepositoryCapabilitySnapshot;
+        try {
+          project = normalizeRepositoryCapabilitySnapshot(await projectLoader(process.cwd()));
+        } catch {
+          project = { provider: "git", state: "unavailable", reason: "git-unavailable" };
+        }
+        let github: GitHubCapabilitySnapshot;
+        try {
+          const probe = options.githubCapability ?? ((directory?: string) => probeGitHubCapability(undefined, directory));
+          github = normalizeGitHubCapabilitySnapshot(await probe(process.cwd()));
+        } catch {
+          github = normalizeGitHubCapabilitySnapshot(undefined);
+        }
         const snapshot = {
           readOnly: true as const,
           canApprove: false as const,
           canMutate: false as const,
           pendingApprovalCount: approvals.size,
           activeSessionCount: inFlight.size,
+          project,
+          capabilities: {
+            github: {
+              provider: github.provider,
+              state: github.state,
+              enabled: github.enabled,
+              cliAvailable: github.cliAvailable,
+              authenticated: github.authenticated,
+              mutationAllowed: false as const,
+            },
+            ci: github.ci,
+          },
           sessions: sessionIds.map((sessionId) => ({
             sessionId,
             active: inFlight.has(sessionId),

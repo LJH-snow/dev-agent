@@ -54,13 +54,14 @@ strong tests and browser evidence.
 
 ### Hour 5–7 — read-only project capability panel
 
-- [ ] Extend the metadata-only capability projection with repository branch,
+- [x] Extend the metadata-only capability projection with repository branch,
       dirty state, remote host, and opt-in GitHub/CI status.
-- [ ] Keep GitHub operations read-only and explicit-opt-in; no PR creation,
+- [x] Keep GitHub operations read-only and explicit-opt-in; no PR creation,
       merge, comment, workflow dispatch, or credential material may be exposed.
-- [ ] Surface unavailable/unauthenticated/unsupported states distinctly in the
+- [x] Surface unavailable/unauthenticated/unsupported states distinctly in the
       Desktop panel and monitoring snapshot.
-- [ ] Add bounded parsing and tests for malformed Git/GitHub metadata.
+- [x] Add bounded parsing and tests for malformed Git/GitHub metadata; the
+      updated Desktop suite is green at **230/230**.
 
 ### Hour 7–8.5 — Gemini-inspired policy and observability audit
 
@@ -76,8 +77,9 @@ strong tests and browser evidence.
 ### Hour 8.5–10 — acceptance, release gate, and delivery
 
 - [x] Run focused Desktop tests, package build/typecheck, and `git diff --check`;
-      the current hardening slice is green at **227/227** Desktop tests.
-      Earlier CLI/release-gate evidence remains recorded above.
+      the current capability slice is green at **230/230** Desktop tests, while
+      the terminal hardening sub-slice remains covered at **227/227**. Earlier
+      CLI/release-gate evidence remains recorded above.
 - [ ] Run browser acceptance against an isolated temporary repository and
       capture fresh evidence without using the real project worktree.
 - [x] Review the diff, exclude QA artifacts, update progress/findings, and
@@ -100,6 +102,7 @@ strong tests and browser evidence.
 ## Current status
 
 The plan is active. The baseline/inventory hour, CLI/Desktop UX tranche,
-capability-token tranche, and full TypeScript release gate are complete. The next
-concrete slices are terminal canonical-cwd/lifecycle hardening and manual browser/
-PTY acceptance; they are intentionally not part of this push.
+capability-token tranche, terminal canonical-cwd/lifecycle hardening, and the
+read-only project capability panel are complete. The next concrete slices are
+metadata-only authorization/lifecycle observability and manual browser/PTY
+acceptance; they are intentionally not claimed complete by this push.

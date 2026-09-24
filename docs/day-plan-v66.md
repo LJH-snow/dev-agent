@@ -25,8 +25,9 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
   native Desktop 2/2、TypeScript build/typecheck、CLI package smoke。
 - 本轮新增 evidence：CLI 630/630、Desktop 224/224；workspace build/typecheck、
   TypeScript release gate、CLI package smoke、preview/documentation/native contracts 和
-  `git diff --check` 均已通过；本次 terminal hardening focused Desktop suite 为
-  **227/227**，Desktop build/typecheck 也已通过。
+  `git diff --check` 均已通过；terminal hardening focused Desktop suite 为
+  **227/227**，本次 read-only capability slice 后 Desktop suite 为
+  **230/230**，Desktop build/typecheck 也已通过。
 - 当前仅有本地未跟踪验收产物：`.playwright-cli/`、`output/`；不纳入本轮提交，除非明确需要。
 
 ## 10 小时排程
@@ -87,7 +88,9 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
   注入、浏览器 fetch seam 与 missing/wrong/valid/loopback 回归覆盖。
 - [x] terminal canonical cwd/lifecycle、进程组清理和 command/input metadata 脱敏已完成；
   focused Desktop **227/227**。
-- [ ] 浏览器/PTY 手工验收、read-only capability-panel、Git branch/dirty/remote metadata
-  和 metadata-only authorization trace 仍待后续 sprint，不在本轮宣称完成。
+- [x] read-only capability-panel、Git branch/dirty/remote metadata、显式 opt-in
+  GitHub/CI 状态与 malformed-metadata 回归已完成；Desktop **230/230**。
+- [ ] 浏览器/PTY 手工验收与 metadata-only authorization trace 仍待后续 sprint，
+  不在本轮宣称完成。
 - [x] focused/runtime verification 已通过；前一阶段的 full release-gate 证据保留有效。
-- [x] 已提交并推送本轮变更；terminal hardening commit 为 `95c1d91`。
+- [ ] 已提交并推送本轮变更；待本次 read-only capability commit 完成后更新提交号。

@@ -9,6 +9,7 @@
 - 当前分支 `codex/desktop-cli-workbench` 以 `737b5ed` 为本轮基线；本次 hardening 已在
   `95c1d91` 提交并推送到 GitHub。
 - 本轮已修改 CLI/Desktop 源码、测试和计划文档；`.playwright-cli/`、`output/` 与重复计划目录仍为本地未跟踪产物。
+- 本次新增只读项目能力面板：Git branch/dirty/remote host、GitHub 显式 opt-in、GitHub Actions 最近一次运行状态与 monitoring 投影；所有 mutation 仍 fail-closed。
 
 ## 证据账本
 
@@ -20,7 +21,7 @@
 | Desktop 输出滚动 | focused 已完成 | manual follow-latest contract 已覆盖；浏览器手工验收仍待后续 |
 | capability token | 已完成本轮范围 | 生产 launcher、`/api/` mutation guard、served HTML 注入、token tests |
 | 会话恢复/维护审计 | 延后 | 不在本轮已提交范围内 |
-| 全量门禁/推送 | 本轮已完成 | Desktop 227/227、build/typecheck、diff check；`95c1d91` 已推送 |
+| 全量门禁/推送 | 进行中 | Desktop 230/230、build/typecheck、diff check；read-only capability commit 待推送 |
 
 ## 操作规则
 
@@ -70,6 +71,15 @@
   它们保留在后续 sprint。
 - 下一步：只 stage 预期源代码、测试和文档，排除本地 QA 产物，然后 commit/push。
 
+
+
+## 2026-09-24 — read-only project capability panel
+
+- Desktop workbench metadata now exposes only bounded Git repository metadata：branch、dirty state、changed-file count、remote host/provider；不会返回 remote path、credential、文件内容或工作目录路径。
+- GitHub capability remains explicit opt-in via `DEV_AGENT_DESKTOP_GITHUB=1`；`gh auth status` 与 `gh run list --limit 1` 仅用于只读状态，`mutationAllowed` 在实际 probe 和 HTTP normalizer 中均固定为 `false`。
+- UI 新增 GitHub、CI、Repository、Remote cards，并区分 opt-in required、unauthenticated、CLI unavailable、unsupported、no runs 等状态；monitoring 继续声明 `readOnly`、`canApprove: false`、`canMutate: false`。
+- Git/GitHub 输出和 custom-host metadata 均有大小、枚举、host、branch、secret/path 过滤；in-progress CI runs 保留 `conclusion: unknown`，不会被误报为 malformed。
+- Desktop 全量测试更新为 **230/230**；build、typecheck 与 `git diff --check` 通过。浏览器/真实 PTY 手工验收与 authorization trace 仍未完成。
 
 ## 2026-09-24 — Desktop terminal execution hardening
 

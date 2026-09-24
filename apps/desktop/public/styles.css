@@ -3357,6 +3357,12 @@ html[data-theme="light"] {
   white-space: nowrap;
 }
 
+@media (min-width: 1100px) {
+  .workbench-capabilities-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 760px) {
   .workbench-capabilities-grid,
   .workbench-capabilities-lists {

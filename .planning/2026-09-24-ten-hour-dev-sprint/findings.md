@@ -89,6 +89,15 @@ Those remain deferred until a separate trust/install/rollback design exists.
   untracked and are intentionally excluded from the delivery commit.
 
 
+
+## 2026-09-24 — read-only project capability boundary
+
+- Repository metadata is collected through bounded `git` commands and normalized to branch, dirty boolean, changed-file count, and remote host/provider. Remote URL paths, usernames, query strings, credentials, source contents, and working-directory paths never cross the capability response boundary.
+- GitHub integration is opt-in only (`DEV_AGENT_DESKTOP_GITHUB=1`). The probe uses `gh auth status` and one bounded `gh run list --limit 1` read; no pull-request, merge, comment, workflow-dispatch, or credential-reading operation was added.
+- The Desktop panel and `/api/monitoring` distinguish disabled/opt-in, unauthenticated, CLI unavailable, unsupported repository, no workflows, no runs, and unavailable states while retaining `readOnly: true`, `canApprove: false`, `canMutate: false`, and `mutationAllowed: false`.
+- Custom host metadata is fail-closed at the HTTP boundary. It allowlists repository states, branch/host syntax, CI enums, skill/job fields, and bounded counts; it drops path/secret-like labels and forces mutation flags to false. In-progress CI runs may legitimately have an unknown conclusion and remain visible as status metadata.
+- Verification after this slice: Desktop **230/230**, Desktop build/typecheck, and `git diff --check` pass. Browser/real-PTY acceptance and authorization/lifecycle trace fields remain later work.
+
 ## 2026-09-24 — delivery
 
 - 已完成 staged diff review，并将预期源码、测试与 canonical 计划/文档提交为

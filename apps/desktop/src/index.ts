@@ -10,8 +10,28 @@ export { createDesktopServer, startServer } from "./server.js";
 export type { ChatSessionOptions, StreamEvent } from "./chat-session.js";
 export type { DesktopServerOptions } from "./server.js";
 export { createDesktopStatus } from "./status.js";
-export { loadWorkbenchMetadata, probeGitHubCapability } from "./capabilities.js";
-export type { GitHubCapabilitySnapshot, WorkbenchMetadataSnapshot, SkillMetadataSnapshot, ScheduledJobMetadataSnapshot } from "./capabilities.js";
+export {
+  inspectRepository,
+  loadProjectCapabilityMetadata,
+  loadWorkbenchMetadata,
+  normalizeGitHubCapabilitySnapshot,
+  normalizeRepositoryCapabilitySnapshot,
+  normalizeWorkbenchMetadataSnapshot,
+  parseGitRemoteHost,
+  probeGitHubCapability,
+} from "./capabilities.js";
+export type {
+  CapabilityState,
+  CiCapabilitySnapshot,
+  CiRunConclusion,
+  CiRunStatus,
+  GitHubCapabilitySnapshot,
+  RepositoryCapabilitySnapshot,
+  RepositoryCapabilityState,
+  SkillMetadataSnapshot,
+  ScheduledJobMetadataSnapshot,
+  WorkbenchMetadataSnapshot,
+} from "./capabilities.js";
 export type { DesktopStatusOptions, DesktopStatusSnapshot } from "./status.js";
 
 async function main(): Promise<void> {

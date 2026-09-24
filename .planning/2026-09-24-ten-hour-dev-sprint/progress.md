@@ -57,3 +57,11 @@
 - 已只 stage 预期源码、测试和 canonical 计划/文档，排除本地 QA 产物；commit
   `95c1d91 feat: harden desktop terminal lifecycle` 已推送到
   `origin/codex/desktop-cli-workbench`。
+
+## 2026-09-24 — read-only project capability panel
+
+- 完成 Hour 5–7：`inspectRepository()` 只返回 bounded branch、dirty、changed-file count、remote host/provider；remote path、credential、文件内容和路径不会进入 HTTP response。
+- GitHub/CI 只在 `DEV_AGENT_DESKTOP_GITHUB=1` 时探测；`gh auth status` 和 `gh run list --limit 1` 是 metadata-only read path，GitHub/CI mutation 永远为 `false`。
+- Desktop 新增 GitHub、CI、Repository、Remote cards，monitoring 增加 normalized project/capability metadata，并区分 disabled、unauthenticated、unsupported、unavailable 和 no-runs。
+- Custom host snapshots 在 HTTP 边界重新 normalize，禁止 `mutationAllowed: true`、path/secret-like labels、异常 branch/host 和超界计数；queued/in-progress CI run 保留 unknown conclusion。
+- Desktop 全量测试为 **230/230**；build、typecheck、`git diff --check` 均通过。
