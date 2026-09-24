@@ -93,3 +93,13 @@
   Desktop build, Desktop typecheck, and `git diff --check` all pass. Browser/real
   PTY acceptance remains open; `.playwright-cli/`, `output/`, and the duplicate
   planning directory stay untracked and excluded.
+
+
+## 2026-09-24 — metadata-only observability delivery
+
+- 已将 metadata-only capability observability、自动化回归与 canonical 文档提交为
+  `7d2331a feat: add metadata-only capability observability`。
+- 已推送到 `origin/codex/desktop-cli-workbench`；远程分支已包含该提交。
+- 本次提交只包含预期源码、测试和文档；`.planning/2026-09-24-ten-hour-development/`、
+  `.playwright-cli/` 与 `output/` 仍为未跟踪 QA/重复计划目录，未纳入 GitHub。
+- 浏览器/真实 PTY 手工验收仍是后续未完成项，不将自动化证据误报为手工验收。

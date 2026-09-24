@@ -21,6 +21,7 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - 本轮推送前基线：`737b5ed feat: harden terminal history and desktop capabilities`
 - 已推送 terminal hardening commit：`95c1d91 feat: harden desktop terminal lifecycle`
 - 已推送 read-only project capability commit：`a52680f feat: expose read-only project capabilities`
+- 已推送 metadata-only observability commit：`7d2331a feat: add metadata-only capability observability`
 - 远程分支已同步：`origin/codex/desktop-cli-workbench`
 - 已有验证：Desktop 222/222、CLI 629/629、Claude Agent SDK adapter 13/13、文档 60/60、
   native Desktop 2/2、TypeScript build/typecheck、CLI package smoke。
@@ -106,4 +107,4 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - [ ] 浏览器/PTY 手工验收仍待在隔离临时仓库中完成；metadata-only authorization
   trace 已实现并通过自动化验证，不在本轮宣称完成。
 - [x] focused/runtime verification 已通过；前一阶段的 full release-gate 证据保留有效。
-- [x] 已提交并推送本轮变更；read-only capability commit 为 `a52680f`。
+- [x] 已提交并推送本轮变更；最新 metadata-only observability commit 为 `7d2331a`。

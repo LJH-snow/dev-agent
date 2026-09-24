@@ -9,6 +9,7 @@
 - 当前分支 `codex/desktop-cli-workbench` 以 `737b5ed` 为本轮基线；terminal hardening 已在
   `95c1d91` 提交，read-only project capability 已在 `a52680f` 提交并推送到 GitHub。
 - 本轮已修改 CLI/Desktop 源码、测试和计划文档；`.playwright-cli/`、`output/` 与重复计划目录仍为本地未跟踪产物。
+- metadata-only observability 已提交为 `7d2331a feat: add metadata-only capability observability`，并推送到 GitHub。
 - 本次新增只读项目能力面板：Git branch/dirty/remote host、GitHub 显式 opt-in、GitHub Actions 最近一次运行状态与 monitoring 投影；所有 mutation 仍 fail-closed。
 - 新增 metadata-only observability：trusted tool capability class、authorization result、terminal/preview lifecycle；单一 trace schema，不记录 prompt、路径、URL、凭据或 raw error。
 
@@ -22,7 +23,7 @@
 | Desktop 输出滚动 | focused 已完成 | manual follow-latest contract 已覆盖；浏览器手工验收仍待后续 |
 | capability token | 已完成本轮范围 | 生产 launcher、`/api/` mutation guard、served HTML 注入、token tests |
 | 会话恢复/维护审计 | 延后 | 不在本轮已提交范围内 |
-| 全量门禁/推送 | 本轮进行中 | 本 slice 已完成 agent-core 212/212、Desktop 232/232、build/typecheck、diff check；待提交推送 |
+| 全量门禁/推送 | 已完成本轮范围 | agent-core 212/212、Desktop 232/232、build/typecheck、diff check；`7d2331a` 已推送 |
 
 ## 操作规则
 
@@ -125,3 +126,13 @@
 - Verification: agent-core **212/212**, Desktop **232/232**, package builds,
   Desktop typecheck, and `git diff --check` pass. Browser/real-PTY acceptance is
   still pending and QA artifacts remain excluded.
+
+
+## 2026-09-24 — metadata-only observability delivery
+
+- 已将共享 `AgentRunTrace` 的 capability class、authorization result、
+  terminal/preview lifecycle 与相应回归测试提交为
+  `7d2331a feat: add metadata-only capability observability`。
+- 已推送到 `origin/codex/desktop-cli-workbench`。提交前验证 agent-core **212/212**、
+  Desktop **232/232**、build、typecheck 与 `git diff --check`。
+- 浏览器/真实 PTY 验收仍未完成；`.playwright-cli/`、`output/` 与重复计划目录继续排除。
