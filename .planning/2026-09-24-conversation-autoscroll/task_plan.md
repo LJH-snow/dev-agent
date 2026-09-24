@@ -12,7 +12,7 @@ existing "new output below" affordance.
 - [x] Phase 1: inspect the conversation DOM/CSS and reproduce the layout/scroll bug.
 - [x] Phase 2: implement a bounded flex/overflow and streaming follow-latest fix.
 - [x] Phase 3: add focused contract/browser regression coverage.
-- [ ] Phase 4: run verification, review the diff, commit, and push the fix.
+- [x] Phase 4: run verification, review the diff, commit, and push the fix.
 
 ## Constraints
 
@@ -28,3 +28,8 @@ existing "new output below" affordance.
 - Browser reproduction and fresh-server acceptance completed on 2026-09-24.
 - Desktop full suite: 236/236 passed after the fix.
 - Final build/typecheck, diff review, commit, and GitHub push remain before closing this focused fix.
+
+## Delivery
+
+- Commit `491d03d fix: keep desktop conversation follow-up visible` was pushed to `origin/codex/desktop-cli-workbench`.
+- Working tree source changes are clean; only pre-existing `.playwright-cli/` and `output/` artifacts remain untracked.

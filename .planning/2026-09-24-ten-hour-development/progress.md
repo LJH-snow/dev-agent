@@ -42,3 +42,9 @@
 - Browser verification on a fresh server at 1280×900 showed the follow target was
   reached immediately after synthetic streamed output was appended; the old
   smooth-scroll behavior was the reproduced failure.
+
+## 2026-09-24 17:35 — delivery audit
+
+- 提交 `491d03d fix: keep desktop conversation follow-up visible` 已推送，`HEAD` 与 `origin/codex/desktop-cli-workbench` 一致。
+- 仅 `.playwright-cli/` 与 `output/` 仍未跟踪；它们是已有本地验收产物，未加入提交。
+- Phase 6 的代码、文档、测试、build/typecheck、diff check 和浏览器证据均已完成。

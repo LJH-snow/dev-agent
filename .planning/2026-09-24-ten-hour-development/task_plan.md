@@ -35,7 +35,7 @@
 - [x] Phase 3：Desktop 手动输出滚动与 Follow latest。
 - [x] Phase 4：会话恢复、终端清理和 Changes Center 维护。
 - [x] Phase 5：可选 Anthropic adapter 边界审计（adapter 保持可选）。
-- [ ] Phase 6：最终 PTY/浏览器证据、完整门禁、提交和推送后的审计。
+- [x] Phase 6：最终 PTY/浏览器证据、完整门禁、提交和推送后的审计。
 
 ## 不可违反的边界
 
@@ -45,3 +45,9 @@
 - 命令历史只保留在当前页面内，输出和输入均有界，不写入 session 文件或浏览器持久化存储。
 - 终端输出继续使用安全文本渲染；导出、历史、trace 和 metadata 不包含 prompt、路径、URL、凭据或 raw error。
 - 不执行 `git reset`、`git clean`、`git checkout` 或 broad restore/stash；保留已有未跟踪验收产物。
+
+## 本轮交付
+
+- Desktop 对话流式 follow-latest 修复已通过 focused/full Desktop 验证，提交为 `491d03d`，并已推送到 GitHub。
+- 10 小时计划文档、conversation auto-scroll 子任务文档和进度证据已纳入同一提交。
+- 下一轮如果继续开发，应从新的明确缺口建立新的计划，避免把临时验收产物混入代码。
