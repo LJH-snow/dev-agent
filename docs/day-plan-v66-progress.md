@@ -6,8 +6,8 @@
 
 - 排程文档已建立：`docs/day-plan-v66.md`。
 - canonical 持久化工作文件已建立在：`.planning/2026-09-24-ten-hour-dev-sprint/`。
-- 当前分支 `codex/desktop-cli-workbench` 以 `737b5ed` 为本轮基线；本次 hardening 已在
-  `95c1d91` 提交并推送到 GitHub。
+- 当前分支 `codex/desktop-cli-workbench` 以 `737b5ed` 为本轮基线；terminal hardening 已在
+  `95c1d91` 提交，read-only project capability 已在 `a52680f` 提交并推送到 GitHub。
 - 本轮已修改 CLI/Desktop 源码、测试和计划文档；`.playwright-cli/`、`output/` 与重复计划目录仍为本地未跟踪产物。
 - 本次新增只读项目能力面板：Git branch/dirty/remote host、GitHub 显式 opt-in、GitHub Actions 最近一次运行状态与 monitoring 投影；所有 mutation 仍 fail-closed。
 
@@ -21,7 +21,7 @@
 | Desktop 输出滚动 | focused 已完成 | manual follow-latest contract 已覆盖；浏览器手工验收仍待后续 |
 | capability token | 已完成本轮范围 | 生产 launcher、`/api/` mutation guard、served HTML 注入、token tests |
 | 会话恢复/维护审计 | 延后 | 不在本轮已提交范围内 |
-| 全量门禁/推送 | 进行中 | Desktop 230/230、build/typecheck、diff check；read-only capability commit 待推送 |
+| 全量门禁/推送 | 本轮已完成 | Desktop 230/230、build/typecheck、diff check；`a52680f` 已推送 |
 
 ## 操作规则
 
@@ -102,3 +102,9 @@
   `95c1d91 feat: harden desktop terminal lifecycle`。
 - 已成功推送到 `origin/codex/desktop-cli-workbench`；本地仅保留未跟踪 QA/重复计划目录，
   未纳入提交。
+
+## 2026-09-24 — capability panel delivery
+
+- 已将只读项目能力面板、Git/GitHub bounded metadata、CI 状态与 custom-host normalization 提交为 `a52680f feat: expose read-only project capabilities`。
+- 已推送到 `origin/codex/desktop-cli-workbench`；push 前验证 Desktop **230/230**、build、typecheck、`git diff --check`。
+- 未跟踪的 `.playwright-cli/`、`output/` 与重复计划目录继续排除；浏览器/真实 PTY 验收、authorization trace 仍是后续工作。

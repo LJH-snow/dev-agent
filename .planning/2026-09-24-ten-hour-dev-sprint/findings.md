@@ -105,3 +105,9 @@ Those remain deferred until a separate trust/install/rollback design exists.
 - 已验证 `origin/codex/desktop-cli-workbench` 指向 `95c1d91274d11e2026519a5330c7004895488c1a`。
 - `.planning/2026-09-24-ten-hour-development/`、`.playwright-cli/` 与 `output/`
   仍为本地未跟踪目录，未被纳入 GitHub 推送。
+
+## 2026-09-24 — capability panel delivery
+
+- 已将只读项目能力面板、Git/GitHub bounded metadata、CI 状态与 custom-host normalization 提交为 `a52680f feat: expose read-only project capabilities`。
+- 已推送到 `origin/codex/desktop-cli-workbench`；push 前验证 Desktop **230/230**、build、typecheck、`git diff --check`。
+- 浏览器/真实 PTY 验收和 authorization/lifecycle trace fields 仍未完成；未跟踪 QA/重复计划目录继续排除。

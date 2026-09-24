@@ -65,3 +65,10 @@
 - Desktop 新增 GitHub、CI、Repository、Remote cards，monitoring 增加 normalized project/capability metadata，并区分 disabled、unauthenticated、unsupported、unavailable 和 no-runs。
 - Custom host snapshots 在 HTTP 边界重新 normalize，禁止 `mutationAllowed: true`、path/secret-like labels、异常 branch/host 和超界计数；queued/in-progress CI run 保留 unknown conclusion。
 - Desktop 全量测试为 **230/230**；build、typecheck、`git diff --check` 均通过。
+
+
+## 2026-09-24 — capability panel delivery
+
+- 已将只读项目能力面板、Git/GitHub bounded metadata、CI 状态与 custom-host normalization 提交为 `a52680f feat: expose read-only project capabilities`。
+- 已推送到 `origin/codex/desktop-cli-workbench`；push 前验证 Desktop **230/230**、build、typecheck、`git diff --check`。
+- 未跟踪的 `.playwright-cli/`、`output/` 与重复计划目录继续排除；浏览器/真实 PTY 验收、authorization trace 仍是后续工作。
