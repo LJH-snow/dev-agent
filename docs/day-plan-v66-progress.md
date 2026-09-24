@@ -18,13 +18,13 @@
 | 阶段 | 状态 | 证据 |
 |---|---|---|
 | 基线与排程 | 已完成 | canonical plan、分支/远程审计与边界记录 |
-| CLI 滚动/历史 | focused 已完成 | CLI 630/630；PTY 手工验收仍待后续 |
-| Desktop 命令历史 | focused 已完成 | Desktop 224/224，含命令 recall contract |
-| Desktop 输出滚动 | focused 已完成 | manual follow-latest contract 已覆盖；浏览器手工验收仍待后续 |
+| CLI 滚动/历史 | 已完成 | CLI 630/630；真实 CLI PTY launch/exit smoke 已完成 |
+| Desktop 命令历史 | 已完成 | Desktop 232/232；隔离浏览器 terminal 验收已完成 |
+| Desktop 输出滚动 | 已完成 | manual follow-latest contract 与隔离浏览器 terminal surface 验收已覆盖 |
 | capability token | 已完成本轮范围 | 生产 launcher、`/api/` mutation guard、served HTML 注入、token tests |
 | 会话恢复/维护审计 | 延后 | 不在本轮已提交范围内 |
 | 全量门禁/推送 | 已完成本轮范围 | agent-core 212/212、Desktop 232/232、build/typecheck、diff check；`7d2331a` 已推送 |
-| 隔离浏览器验收 | 已完成 | 临时 Git fixture；capability cards、terminal command、loopback preview、single lifecycle trace；CLI 外部真实 PTY 仍待后续 |
+| 隔离浏览器验收 | 已完成 | 临时 Git fixture；capability cards、terminal command、loopback preview、single lifecycle trace |
 
 ## 操作规则
 

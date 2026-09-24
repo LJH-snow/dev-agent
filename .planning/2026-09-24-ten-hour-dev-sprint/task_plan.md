@@ -105,9 +105,10 @@ strong tests and browser evidence.
 
 ## Current status
 
-The plan is active. The baseline/inventory hour, CLI/Desktop UX tranche,
-capability-token tranche, terminal canonical-cwd/lifecycle hardening,
-read-only project capability panel, metadata-only authorization/lifecycle
-observability, and isolated browser acceptance are complete. A separate real
-CLI PTY acceptance remains open; local QA artifacts are not part of the
-delivery commit.
+The planned sprint scope is complete. The baseline/inventory hour,
+CLI/Desktop UX tranche, capability-token tranche, terminal canonical-cwd/lifecycle
+hardening, read-only project capability panel, metadata-only authorization/lifecycle
+observability, isolated browser acceptance, and the real CLI PTY launch/exit smoke
+are complete. Full provider-backed transcript replay remains deliberately deferred
+outside this bounded release gate; local QA artifacts are not part of the delivery
+commit.

@@ -106,8 +106,8 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 
 - [x] 已创建 10 小时排程文档。
 - [x] 已确认当前分支与远程提交基线。
-- [x] CLI 滚动/历史体验阶段（focused tests 已通过，待 PTY 验收）。
-- [x] Desktop 终端命令历史阶段（focused tests 已通过，待浏览器验收）。
+- [x] CLI 滚动/历史体验阶段（focused tests 与真实 PTY launch/exit smoke 已通过）。
+- [x] Desktop 终端命令历史阶段（focused tests 与隔离浏览器验收已通过）。
 - [x] 输出滚动阶段（focused tests 已通过）；会话恢复和维护审计待继续。
 - [x] capability token 第一阶段（terminal/workspace mutation，focused tests 已通过）。
 - [x] capability token 本轮范围：生产 launcher、所有 `/api/` mutation、served HTML
@@ -117,6 +117,6 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - [x] read-only capability-panel、Git branch/dirty/remote metadata、显式 opt-in
   GitHub/CI 状态与 malformed-metadata 回归已完成；Desktop **230/230**。
 - [x] 已在隔离临时 Git 仓库中完成 Desktop 浏览器验收：能力面板、真实 terminal
-  命令、loopback preview 和单一 lifecycle trace 均通过；CLI 外部真实 PTY 仍待后续。
+  命令、loopback preview 和单一 lifecycle trace 均通过；CLI 真实 PTY launch/exit smoke 也已完成。
 - [x] focused/runtime verification 已通过；前一阶段的 full release-gate 证据保留有效。
 - [x] 已提交并推送本轮变更；最新 metadata-only observability commit 为 `7d2331a`。
