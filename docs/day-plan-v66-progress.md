@@ -1,12 +1,12 @@
 # v66 开发进度：CLI / Desktop 终端历史与工作台可靠性
 
-> 最后更新：2026-09-24 12:45（Asia/Shanghai）
+> 最后更新：2026-09-24（Asia/Shanghai）
 
 ## 当前状态
 
 - 排程文档已建立：`docs/day-plan-v66.md`。
 - canonical 持久化工作文件已建立在：`.planning/2026-09-24-ten-hour-dev-sprint/`。
-- 当前分支 `codex/desktop-cli-workbench` 以 `9a1e08f` 为本轮基线；当前变更待提交并推送。
+- 当前分支 `codex/desktop-cli-workbench` 以 `737b5ed` 为本轮基线；本次 hardening 变更已通过门禁，待提交并推送。
 - 本轮已修改 CLI/Desktop 源码、测试和计划文档；`.playwright-cli/`、`output/` 与重复计划目录仍为本地未跟踪产物。
 
 ## 证据账本
@@ -68,3 +68,18 @@
 - 本轮未宣称 terminal canonical cwd/lifecycle、浏览器手工验收和 PTY 手工验收完成；
   它们保留在后续 sprint。
 - 下一步：只 stage 预期源代码、测试和文档，排除本地 QA 产物，然后 commit/push。
+
+
+## 2026-09-24 — Desktop terminal execution hardening
+
+- terminal cwd 现在在 spawn 前使用 `lstat`/`realpath` canonicalize；缺失、文件和最终
+  symlink 路径均拒绝，POSIX shell 额外用 `pwd -P` guard 防止校验后重定向。
+- session 删除会先停止其 terminal processes；停止流程支持 process-group `SIGTERM`
+  到 `SIGKILL` escalation；运行 terminal 时拒绝 session rename。
+- command summary/system metadata 会脱敏 token、Bearer、私钥和 credential-shaped 值；
+  stdin event 仅保留 `[input N bytes]`，不再保存原始输入。
+- 最新 Desktop focused suite：**227/227**；Desktop build/typecheck 与 `git diff --check`
+  通过。浏览器/PTY 手工验收以及 read-only capability panel、Git metadata 和
+  authorization trace 仍未完成。
+- `.playwright-cli/`、`output/` 与 `.planning/2026-09-24-ten-hour-development/`
+  继续保持未跟踪，不纳入提交。

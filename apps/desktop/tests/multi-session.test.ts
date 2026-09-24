@@ -385,10 +385,36 @@ test("DELETE /api/sessions/<id> removes the stored session", async () => {
     const file = join(dir, "doomed.json");
     await writeFile(file, JSON.stringify({ version: 1, entries: [] }), "utf8");
 
+    const terminalResponse = await fetch(`${base}/api/terminal`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sessionId: "doomed",
+        command: `node -e "setInterval(() => {}, 1000)"`,
+      }),
+    });
+    assert.equal(terminalResponse.status, 201);
+    const terminal = await terminalResponse.json() as { id: string };
+
+    const renameWhileRunning = await fetch(`${base}/api/sessions/doomed/rename`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "renamed-doomed" }),
+    });
+    assert.equal(renameWhileRunning.status, 409);
+    assert.deepEqual(await renameWhileRunning.json(), {
+      error: "stop terminal processes before renaming this session",
+      code: "terminal-running",
+    });
+
     const res = await fetch(`${base}/api/sessions/doomed`, { method: "DELETE" });
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { sessionId: "doomed", deleted: true });
     assert.equal(await exists(file), false, "the memory file should be gone");
+
+    const terminalAfterDelete = await fetch(`${base}/api/terminal/doomed/${terminal.id}`);
+    assert.equal(terminalAfterDelete.status, 200);
+    assert.equal((await terminalAfterDelete.json() as { state: string }).state, "stopped");
   } finally {
     await close(server);
     if (previousDir === undefined) {

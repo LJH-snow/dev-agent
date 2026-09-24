@@ -42,15 +42,15 @@ strong tests and browser evidence.
 
 ### Hour 3–5 — task terminal execution hardening
 
-- [ ] Ensure terminal cwd is canonical, exists, remains inside the managed task
+- [x] Ensure terminal cwd is canonical, exists, remains inside the managed task
       worktree, and cannot be redirected through a symlink after assignment.
-- [ ] Add explicit lifecycle cleanup when a session/worktree is deleted or the
+- [x] Add explicit lifecycle cleanup when a session/worktree is deleted or the
       Desktop server closes; preserve process-group termination and output
       bounds.
-- [ ] Add command/environment redaction to metadata and bounded event output;
+- [x] Add command/environment redaction to metadata and bounded event output;
       keep terminal input/output behavior compatible with the existing UI.
-- [ ] Add regressions for cwd escape, cleanup races, abort/stop, retention, and
-      bounded output.
+- [x] Add regressions for cwd escape, cleanup races, abort/stop, retention, and
+      bounded output; focused Desktop coverage is **227/227**.
 
 ### Hour 5–7 — read-only project capability panel
 
@@ -75,8 +75,9 @@ strong tests and browser evidence.
 
 ### Hour 8.5–10 — acceptance, release gate, and delivery
 
-- [x] Run focused Desktop tests, package build/typecheck, CLI/Desktop suites,
-      documentation contracts, and the repository release gate.
+- [x] Run focused Desktop tests, package build/typecheck, and `git diff --check`;
+      the current hardening slice is green at **227/227** Desktop tests.
+      Earlier CLI/release-gate evidence remains recorded above.
 - [ ] Run browser acceptance against an isolated temporary repository and
       capture fresh evidence without using the real project worktree.
 - [ ] Review the diff, exclude QA artifacts, update progress/findings, and

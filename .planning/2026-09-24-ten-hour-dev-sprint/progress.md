@@ -40,3 +40,18 @@
   lifecycle hardening remain explicitly deferred to later sprint slices.
 - `.playwright-cli/`, `output/`, and the duplicate local planning directory are
   intentionally excluded from the commit.
+
+
+## 2026-09-24 — terminal hardening verification
+
+- 完成 terminal canonical cwd：校验并解析真实目录，拒绝 missing/file/final-symlink cwd，
+  POSIX shell 启动时再用 `pwd -P` 进行 cwd guard。
+- 完成 terminal lifecycle cleanup：session deletion 先停止进程，停止时执行 process-group
+  `SIGTERM`/`SIGKILL` escalation，server close 继续清理全部 terminal；运行 terminal 时
+  session rename 返回稳定的 409。
+- 完成 command/input metadata redaction：command/system metadata 脱敏 credential-shaped
+  值，stdin 只记录 bounded byte count；stdout/stderr 行为和输出上限保持兼容。
+- 最新 focused Desktop suite 为 **227/227**；Desktop build/typecheck 和 `git diff --check`
+  通过。浏览器/PTY 手工验收和后续 read-only capability panel、Git metadata、
+  authorization trace slices 仍明确延后。
+- 下一步是只 stage 预期源码、测试和 canonical 计划/文档，排除本地 QA 产物，commit 并 push。

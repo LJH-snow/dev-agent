@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
+import { realpathSync } from "node:fs";
 import { request as httpRequest } from "node:http";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -41,9 +42,87 @@ test("terminal processes are bound to a session and accept bounded stdin", async
     const completed = manager.get("task-one", started.id);
     assert.equal(completed.state, "exited");
     assert.ok(completed.events.some((event) => event.stream === "stdout" && event.text.includes("received:hello-terminal")));
-    assert.ok(completed.events.some((event) => event.stream === "input" && event.text.includes("hello-terminal")));
+    assert.ok(completed.events.some((event) => event.stream === "input" && event.text.includes("[input ")));
     assert.equal(manager.list("task-one").length, 1);
     assert.equal(manager.list("task-two").length, 0);
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("terminal refuses missing, non-directory, and symlinked working directories", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-cwd-"));
+  const manager = new DesktopTaskTerminalManager();
+  const file = join(directory, "not-a-directory.txt");
+  const missing = join(directory, "missing");
+  const link = join(directory, "directory-link");
+  try {
+    await writeFile(file, "file\n", "utf8");
+    for (const cwd of [missing, file]) {
+      assert.throws(
+        () => manager.start("task-cwd", cwd, "echo should-not-run"),
+        (error: unknown) => error instanceof TaskTerminalError
+          && error.statusCode === 409
+          && error.code === "terminal-working-directory-invalid",
+      );
+    }
+    if (process.platform !== "win32") {
+      await symlink(directory, link, "dir");
+      assert.throws(
+        () => manager.start("task-cwd", link, "echo should-not-run"),
+        (error: unknown) => error instanceof TaskTerminalError
+          && error.statusCode === 409
+          && error.code === "terminal-working-directory-invalid",
+      );
+    }
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("terminal uses a canonical cwd and keeps command/input secrets out of metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-metadata-"));
+  const manager = new DesktopTaskTerminalManager();
+  try {
+    const expectedCwd = realpathSync(directory);
+    const run = manager.start(
+      "task-metadata",
+      directory,
+      `TOKEN=super-secret-123 node -e "process.stdout.write(process.cwd()); setTimeout(() => {}, 1000)"`,
+    );
+    assert.doesNotMatch(run.command, /super-secret-123/);
+    assert.match(run.command, /redacted/);
+
+    manager.writeInput("task-metadata", run.id, "password=super-secret-456\n");
+    assert.doesNotMatch(JSON.stringify(manager.get("task-metadata", run.id)), /super-secret-[0-9]+/);
+
+    await waitFor(() => manager.get("task-metadata", run.id).events.some(
+      (event) => event.stream === "stdout" && event.text.includes(expectedCwd),
+    ));
+    manager.stop("task-metadata", run.id);
+    await waitFor(() => manager.get("task-metadata", run.id).state !== "running");
+    const completed = manager.get("task-metadata", run.id);
+    assert.ok(completed.events.some((event) => event.stream === "stdout" && event.text.includes(expectedCwd)));
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("terminal session cleanup escalates to the process group when needed", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-cleanup-"));
+  const manager = new DesktopTaskTerminalManager();
+  try {
+    const run = manager.start(
+      "task-cleanup",
+      directory,
+      `node -e "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000)"`,
+    );
+    assert.equal(await manager.stopSession("task-cleanup"), true);
+    await waitFor(() => manager.get("task-cleanup", run.id).state !== "running");
+    assert.equal(manager.get("task-cleanup", run.id).state, "stopped");
   } finally {
     manager.closeAll();
     await rm(directory, { recursive: true, force: true });

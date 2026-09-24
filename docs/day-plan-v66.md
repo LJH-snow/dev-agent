@@ -18,13 +18,14 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 ## 当前基线
 
 - 当前分支：`codex/desktop-cli-workbench`
-- 当前提交：`9a1e08f feat: complete Anthropic and Desktop workbench capabilities`
+- 当前提交：`737b5ed feat: harden terminal history and desktop capabilities`
 - 远程分支已同步：`origin/codex/desktop-cli-workbench`
 - 已有验证：Desktop 222/222、CLI 629/629、Claude Agent SDK adapter 13/13、文档 60/60、
   native Desktop 2/2、TypeScript build/typecheck、CLI package smoke。
 - 本轮新增 evidence：CLI 630/630、Desktop 224/224；workspace build/typecheck、
   TypeScript release gate、CLI package smoke、preview/documentation/native contracts 和
-  `git diff --check` 均已通过。
+  `git diff --check` 均已通过；本次 terminal hardening focused Desktop suite 为
+  **227/227**，Desktop build/typecheck 也已通过。
 - 当前仅有本地未跟踪验收产物：`.playwright-cli/`、`output/`；不纳入本轮提交，除非明确需要。
 
 ## 10 小时排程
@@ -83,7 +84,9 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - [x] capability token 第一阶段（terminal/workspace mutation，focused tests 已通过）。
 - [x] capability token 本轮范围：生产 launcher、所有 `/api/` mutation、served HTML
   注入、浏览器 fetch seam 与 missing/wrong/valid/loopback 回归覆盖。
-- [ ] terminal canonical cwd/lifecycle、浏览器/PTY 手工验收和后续 capability-panel
-  工作仍待后续 sprint，不在本轮宣称完成。
-- [x] focused/runtime/full verification 已通过。
+- [x] terminal canonical cwd/lifecycle、进程组清理和 command/input metadata 脱敏已完成；
+  focused Desktop **227/227**。
+- [ ] 浏览器/PTY 手工验收、read-only capability-panel、Git branch/dirty/remote metadata
+  和 metadata-only authorization trace 仍待后续 sprint，不在本轮宣称完成。
+- [x] focused/runtime verification 已通过；前一阶段的 full release-gate 证据保留有效。
 - [ ] 提交并推送本轮变更。

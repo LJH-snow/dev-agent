@@ -68,3 +68,22 @@ Those remain deferred until a separate trust/install/rollback design exists.
 - The full ten-hour plan still contains deferred terminal cwd/lifecycle,
   read-only project capability-panel, metadata trace, and manual browser/PTY
   acceptance work. Those items are not represented as complete by this push.
+
+
+## 2026-09-24 — terminal execution hardening
+
+- Terminal working directories are resolved with `lstat`/`realpath` immediately
+  before spawn; missing paths, non-directories, and final symlink paths fail closed.
+  POSIX shells also verify `pwd -P` before executing the command so a later
+  symlink redirect cannot silently change the effective cwd.
+- Session deletion stops all terminal processes first, terminal shutdown escalates
+  from process-group `SIGTERM` to `SIGKILL`, and session rename is rejected while
+  a terminal is running. Server close still cleans up every terminal process.
+- Terminal command summaries and system metadata redact credential-shaped values;
+  stdin events retain only bounded byte counts rather than raw input. Normal
+  stdout/stderr rendering and bounded retention remain compatible with the UI.
+- Focused Desktop verification is **227/227**; Desktop build/typecheck and
+  `git diff --check` pass. Browser/PTY manual acceptance remains open, as do the
+  read-only project capability panel and metadata-only authorization trace slices.
+- `.playwright-cli/`, `output/`, and the duplicate local planning directory remain
+  untracked and are intentionally excluded from the delivery commit.

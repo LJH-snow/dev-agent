@@ -1025,6 +1025,15 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: activeSessionRequestMessage }));
           return;
         }
+        if (terminalManager.hasRunning(sessionId)) {
+          req.resume();
+          const stopped = await terminalManager.stopSession(sessionId);
+          if (!stopped) {
+            res.writeHead(409, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "stop terminal processes before deleting this session", code: "terminal-running" }));
+            return;
+          }
+        }
         sessions.delete(sessionId);
 
         inFlight.add(sessionId);
@@ -1076,6 +1085,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           req.resume();
           res.writeHead(409, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "task session IDs are tied to their Git branch and worktree" }));
+          return;
+        }
+        if (terminalManager.hasRunning(from)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "stop terminal processes before renaming this session", code: "terminal-running" }));
           return;
         }
 
