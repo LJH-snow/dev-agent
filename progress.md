@@ -1330,3 +1330,169 @@
 - `node --test tests/documentation-contract.test.mjs` passes **60/60**;
   `git diff --check` passes. No runtime code changed, and the existing `pnpm
   cli` process (PID 72505) was left running.
+
+
+## 2026-09-23 Fail-closed generic tool, MCP, and plan-mode closure
+
+- Closed the generic-tool risk gap: tools without explicit trusted registry
+  metadata default to dangerous / always-confirm, and approval requests now
+  receive the normalized registry risk and confirmation values.
+- Plan mode denies unclassified and mutating tools while allowing explicitly
+  read-only external tools and the established safe git inspection path.
+- CLI and Desktop MCP action wrappers are explicitly dangerous; host resource
+  and prompt wrappers are explicitly read-only. Added a fake-server read-only
+  annotation to prove that server metadata cannot weaken the host wrapper's
+  classification.
+- Updated architecture, Gemini-alignment, CLI, and Agent Core documentation to
+  match the fail-closed contract.
+- Verification: Agent Core **211/211**; focused plan-mode tests **8/8**; CLI and
+  Desktop MCP integration tests **2/2** each; CLI MCP classification regressions
+  pass; `git diff --check` passes.
+- The latest TypeScript release-gate attempts passed structure, build, and
+  typecheck. A first serial workspace test run completed its package suites but
+  stalled at the final npm package-install smoke. A network-enabled rerun
+  reported **627/628** CLI tests, with the sole failure caused by registry
+  `ETIMEDOUT` fetching `widest-line-6.0.0.tgz`. The full gate is therefore not
+  claimed green; npm package installation remains unverified in this network
+  environment.
+
+
+## 2026-09-23 Cached npm smoke and full TypeScript gate
+
+- Added `DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE` as an optional cache path for the
+  CLI tarball-install smoke. The default remains a staging-local cache; an
+  explicit override reuses package tarballs while HOME, user config, session
+  paths, and proxy variables remain isolated.
+- Added a package-install isolation regression and documented the override in
+  the root README.
+- The package-install isolation tests pass **3/3**. The standalone packaged CLI
+  smoke passed using the existing npm cache.
+- `HOME=/private/tmp/dev-agent-test-home
+  DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE=/Users/Admin/.npm pnpm verify:typescript
+  --report` passed all selected gates: structure, build, typecheck, serial
+  workspace tests (CLI **629/629**), package smoke, release/preview/CI
+  contracts, documentation **60/60**, and native Desktop **2/2**.
+- `git diff --check` passes. No publish, tag, commit, or push was performed.
+- The gate was rerun after the Anthropic SDK adapter changes settled, so the
+  report covers the current audited TypeScript tree.
+
+## 2026-09-23 Anthropic Client SDK adapter closure
+
+- Completed the late `@anthropic-ai/sdk@0.126.0` package/model change by routing
+  `packages/model/src/anthropic.ts` through the official Messages client while
+  keeping the existing provider contract and custom fetch seam.
+- The adapter disables SDK-owned retries and keeps the shared retry classifier,
+  Retry-After handling, cancellation, tool/message conversion, usage/cache
+  accounting, and model-gated thinking options in project code.
+- Added a bounded SDK fetch boundary: successful JSON remains capped at 16 MiB;
+  error bodies are capped at 16 KiB and redacted; streamed SSE lines remain
+  capped at 1 MiB, output budgets still cancel the underlying reader, and both
+  official event-named streams and legacy data-only fixtures are supported.
+- Updated the model README and added regressions for SDK event-named streams,
+  legacy data-only SSE compatibility, and SDK error redaction. Focused model
+  typecheck/build/tests pass **94/94**.
+- The completed `pnpm verify:typescript --report` run passed structure, workspace
+  build/typecheck/tests, CLI **629/629**, Desktop **217/217**, model **94/94**,
+  package-install smoke, release/preview/CI contracts, documentation **60/60**,
+  and native Desktop contracts **2/2**; `git diff --check` also passes.
+- Phase C Claude Agent SDK work is complete as an optional adapter. Native tools
+  stay disabled; project-owned tools, approval, cancellation, and sandbox context
+  are routed through the existing contracts, while the default CLI bundle stays
+  unchanged.
+
+
+## 2026-09-23 Claude Agent SDK optional adapter
+
+- Added `packages/claude-agent-sdk` using `@anthropic-ai/claude-agent-sdk@0.3.280`,
+  the existing `@dev-agent/agent-core` contracts, Zod schema conversion, and an
+  in-process MCP bridge.
+- Native Agent SDK tools are disabled with `tools: []`; `settingSources: []` and
+  `strictMcpConfig: true` prevent ambient settings or external MCP servers from
+  adding capabilities. Only allowlisted project tools are exposed under
+  `mcp__dev_agent__*`.
+- Existing `ApprovalPolicy`, `ToolExecutionContext`, sandbox profile, abort
+  signal, progress callbacks, bounded tool output, and reviewed input are
+  preserved. Missing approval policy denies tool calls.
+- Added 7 adapter tests covering namespace/allowlist isolation, context and
+  progress forwarding, approval, output bounds, query forwarding, and abort
+  cleanup. Package build/typecheck/tests pass.
+- Kept the adapter out of the default CLI single-file bundle because the Agent
+  SDK carries a platform-native runtime; use it as an explicit backend package.
+
+
+## 2026-09-24 Claude Agent SDK adapter verification
+
+- Rebuilt and typechecked the new `@dev-agent/claude-agent-sdk` package after
+  the final output-boundary fix; adapter tests pass **7/7**.
+- The full `HOME=/private/tmp/dev-agent-test-home
+  DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE=/Users/Admin/.npm pnpm verify:typescript
+  --report` gate passed, including structure, workspace build/typecheck/tests,
+  CLI **629/629**, Desktop **217/217**, package smoke, documentation **60/60**,
+  and native Desktop contracts **2/2**.
+- No commit, tag, publish, or push was performed.
+
+## 2026-09-24 Claude Agent SDK MCP execution-boundary hardening
+
+- Added a second project-owned approval check inside every in-process MCP
+  handler. The adapter no longer depends on the Claude Agent SDK `canUseTool`
+  callback being called for safety.
+- Added bounded, one-use canonical-input authorization bindings with a
+  five-minute TTL and a 256-entry cap. They preserve reviewed inputs from
+  `ApprovalPolicy.prepare()` and keep preflight denials authoritative if the
+  handler is invoked anyway.
+- Added real MCP `Client`/`InMemoryTransport` regressions for approval deny,
+  approval allow, reviewed-input forwarding, direct handler execution without
+  `canUseTool`, bounded tool failures, allowlist isolation, and cancellation.
+- Focused package tests pass **12/12**. Serial workspace build, typecheck, and
+  tests pass; the current observed CLI suite is **629/629** and Desktop is
+  **222/222**. The full post-edit TypeScript release gate is still pending.
+
+## 2026-09-24 Claude Agent SDK post-hardening verification
+
+- The final `HOME=/private/tmp/dev-agent-test-home
+  DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE=/Users/Admin/.npm pnpm verify:typescript
+  --report` gate passed after the handler-level approval enforcement and docs
+  sync: structure, workspace build/typecheck/tests, CLI package smoke,
+  release/preview/CI contracts, documentation **60/60**, and native Desktop
+  contracts **2/2**.
+- Current suite evidence includes CLI **629/629**, Desktop **222/222**, and
+  Claude adapter **12/12**. `git diff --check` passes. No commit, tag,
+  publish, or push was performed.
+
+## 2026-09-24 Claude Agent SDK lifecycle cleanup
+
+- Added bridge-level cleanup for unused one-use authorization bindings and call
+  it from the SDK runner's `finally` block. This closes the stale-preflight
+  lifecycle gap without changing the default CLI backend.
+- Added a regression proving a cleared preflight decision requires a fresh
+  policy decision. Focused Claude adapter tests pass **13/13**.
+
+## 2026-09-24 Next nine Desktop workflow features
+
+- Completed the next bounded Desktop slice: durable per-session review
+  comments, keyboard diff/file navigation, terminal reconnect/gap handling,
+  bounded redacted terminal export/clear, loopback preview lifecycle states,
+  post-terminal workspace refresh, opt-in read-only GitHub capability probing,
+  bounded skills/background-job metadata, and a loopback-only read-only
+  monitoring snapshot.
+- Fixed the reload bootstrap race discovered during browser acceptance so
+  terminal history and metadata-only capabilities are restored after session
+  selection; fixed dark-mode contrast for the shared status-panel background.
+- Browser evidence is recorded in
+  `.planning/2026-09-24-next-nine-features/progress.md` and
+  `output/playwright/desktop-nine-features-final.png`.
+- Verification: Desktop **222/222**, root TypeScript build/typecheck, CLI
+  **629/629**, package smoke, documentation **60/60**, native Desktop **2/2**,
+  and `git diff --check` all passed. No release or git publication action was
+  performed.
+
+## 2026-09-24 Claude Agent SDK lifecycle-cleanup final verification
+
+- Re-ran the full TypeScript release gate after the adapter's final lifecycle
+  cleanup. `.dev-agent/release-gate-report.json` now records `status: passed`.
+- Final evidence: CLI **629/629**, Desktop **222/222**, Claude adapter
+  **13/13**, documentation **60/60**, native Desktop **2/2**, workspace
+  build/typecheck, package smoke, and all selected release/CI contracts passed.
+- `git diff --check` and `node --test tests/documentation-contract.test.mjs`
+  (**60/60**) passed independently. No commit, tag, publish, or push was
+  performed.

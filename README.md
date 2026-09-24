@@ -21,6 +21,7 @@ dev-agent/
 |   |-- acp/              ACP v1 transport and session lifecycle bridge
 |   |-- a2a/              Bounded A2A v1 HTTP/JSON-RPC/SSE adapter
 |   |-- model/            Unified LLM provider interface (OpenAI, Anthropic, Gemini, Ollama)
+|   |-- claude-agent-sdk/ Optional Claude Agent SDK runtime adapter with project-owned tools
 |   |-- tools/            Tool registry and built-in tools
 |   |-- mcp/              MCP client and MCP tool integration
 |   |-- code-intelligence/ TypeScript/AST symbol scanner, code index, and ranked search
@@ -57,6 +58,24 @@ pnpm test
 pnpm package:smoke
 pnpm cli --version
 ```
+
+## Anthropic SDK integrations
+
+The Anthropic Messages provider in `@dev-agent/model` uses the official
+`@anthropic-ai/sdk` client while keeping dev-agent's provider contract, retry
+policy, streaming limits, cancellation, and usage accounting.
+
+The optional `@dev-agent/claude-agent-sdk` package integrates
+`@anthropic-ai/claude-agent-sdk` without replacing the existing `AgentLoop` or
+adding Claude Code's native host tools to the default CLI bundle. It exposes only
+allowlisted tools from the project's `AgentToolRegistry` through an in-process
+`mcp__dev_agent__*` server, routes each call through the existing
+`ApprovalPolicy` and `ToolExecutionContext`, disables native tools, and ignores
+external MCP/settings files by default. Its in-process MCP handler also
+re-checks approval and binds reviewed inputs before running a project tool. See
+[`packages/claude-agent-sdk/README.md`](packages/claude-agent-sdk/README.md) for
+opt-in usage.
+
 
 ## Native macOS Desktop shell
 
@@ -239,6 +258,11 @@ verified CLI tarball. `0.1.7` and `0.1.6` are earlier published versions. See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.
+
+The package smoke keeps its temporary home/config isolated. To reuse a trusted
+pre-populated npm cache and avoid redundant registry downloads, set
+`DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE` to the cache directory before running
+`pnpm package:smoke`.
 
 The published `@agent_cli/cli@0.1.8` includes the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing

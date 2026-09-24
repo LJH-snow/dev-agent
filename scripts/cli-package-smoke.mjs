@@ -64,7 +64,12 @@ async function main() {
     const packDirectory = join(stagingRoot, "pack");
     const installDirectory = join(stagingRoot, "install");
     const homeDirectory = join(stagingRoot, "home");
-    const cacheDirectory = join(stagingRoot, "npm-cache");
+    // Keep npm's user configuration isolated while allowing repeat/offline
+    // verification to reuse a caller-selected, trusted package cache.
+    const requestedCacheDirectory = process.env.DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE?.trim();
+    const cacheDirectory = requestedCacheDirectory
+      ? resolve(requestedCacheDirectory)
+      : join(stagingRoot, "npm-cache");
     const projectDirectory = join(stagingRoot, "external-project");
     const launcherDirectory = join(stagingRoot, "launcher");
     await Promise.all([

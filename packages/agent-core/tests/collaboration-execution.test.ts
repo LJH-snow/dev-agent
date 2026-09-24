@@ -304,7 +304,12 @@ test("matching caller-owned role bindings select worker model, prompt, tools, an
   }).promise;
 
   assert.equal(roleCallCount, 1, "the role's one-turn budget stops before a second model call");
-  assert.equal(result.tasks[0]?.status, "failed");
+  assert.equal(
+    result.tasks[0]?.status,
+    "failed",
+    `one-turn role budget ended as ${result.tasks[0]?.status} after ${roleCallCount} calls ` +
+      `and ${result.tasks[0]?.attempts} attempt(s): ${result.tasks[0]?.error ?? "no error"}`,
+  );
   assert.deepEqual(baseModelCalls, []);
   assert.equal(roleToolRuns, 1);
   assert.equal(outsideRoleToolRuns, 0);

@@ -57,6 +57,12 @@ import {
   TaskWorkspaceError,
 } from "./task-workspaces.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "./task-terminal.js";
+import {
+  loadWorkbenchMetadata,
+  probeGitHubCapability,
+  type GitHubCapabilitySnapshot,
+  type WorkbenchMetadataSnapshot,
+} from "./capabilities.js";
 
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
@@ -123,6 +129,10 @@ export interface DesktopServerOptions {
   readonly createSession?: (sessionId: string, workingDirectory?: string) => DesktopChatSession;
   /** Injects the managed runtime status for tests and custom hosts. */
   readonly managedRuntime?: () => Promise<DesktopManagedRuntimeStatus | undefined>;
+  /** Optional metadata-only GitHub capability probe for tests/custom hosts. */
+  readonly githubCapability?: () => Promise<GitHubCapabilitySnapshot>;
+  /** Optional bounded workbench metadata projection for tests/custom hosts. */
+  readonly workbenchMetadata?: (workingDirectory: string) => Promise<WorkbenchMetadataSnapshot>;
 }
 
 export interface DesktopSessionSummary {
@@ -301,6 +311,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       return;
     }
 
+    if ((url.pathname === "/api/monitoring" || url.pathname.startsWith("/api/capabilities/")) && !isLoopbackTerminalRequest(req)) {
+      res.writeHead(403, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      res.end(JSON.stringify({ error: "metadata endpoints are available only to trusted loopback requests" }));
+      return;
+    }
+
     try {
       if (req.method === "GET" && url.pathname === "/") {
         const index = await resolvePublicFile("index.html");
@@ -316,6 +332,85 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       if (req.method === "GET" && url.pathname === "/health") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ status: "ok", executorMode: defaultSession.executorMode ?? "unknown" }));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/capabilities/github") {
+        const probe = options.githubCapability ?? (() => probeGitHubCapability());
+        try {
+          const snapshot = await probe();
+          const serialized = JSON.stringify(snapshot);
+          if (Buffer.byteLength(serialized, "utf8") > 16 * 1024) {
+            res.writeHead(500, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "capability response is too large" }));
+            return;
+          }
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          res.end(serialized);
+        } catch {
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "github capability probe failed" }));
+        }
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/capabilities/workbench") {
+        const sessionId = normalizeSessionIdForRequest(url.searchParams.get("sessionId") ?? undefined);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        const workingDirectory = taskWorkspaces.workingDirectoryForSession(sessionId) ?? process.cwd();
+        const load = options.workbenchMetadata ?? loadWorkbenchMetadata;
+        try {
+          const snapshot = await load(workingDirectory);
+          const serialized = JSON.stringify({ sessionId, ...snapshot });
+          if (Buffer.byteLength(serialized, "utf8") > 256 * 1024) {
+            res.writeHead(413, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "workbench metadata is too large" }));
+            return;
+          }
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          res.end(serialized);
+        } catch {
+          res.writeHead(500, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "workbench metadata unavailable" }));
+        }
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/monitoring") {
+        const sessionIds = [...new Set([...sessions.keys(), ...inFlight])].slice(0, maxSessionListEntries);
+        const snapshot = {
+          readOnly: true as const,
+          canApprove: false as const,
+          canMutate: false as const,
+          pendingApprovalCount: approvals.size,
+          activeSessionCount: inFlight.size,
+          sessions: sessionIds.map((sessionId) => ({
+            sessionId,
+            active: inFlight.has(sessionId),
+            run: runs.summary(sessionId),
+          })),
+        };
+        const serialized = JSON.stringify(snapshot);
+        if (Buffer.byteLength(serialized, "utf8") > maxRunResponseBytes) {
+          res.writeHead(413, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "monitoring response is too large" }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        res.end(serialized);
         return;
       }
 
