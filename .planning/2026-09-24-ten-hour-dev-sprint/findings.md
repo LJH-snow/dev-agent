@@ -186,3 +186,13 @@ Those remain deferred until a separate trust/install/rollback design exists.
   capability or mutation boundary.
 - Regression evidence: the renamed-session pending-plan workflow passes, and
   the full Desktop suite is green at **233/233**.
+
+## 2026-09-24 — active session recovery finding
+
+- A persisted session could be renamed successfully while the server continued
+  advertising the original `defaultSessionId`. After a page reload, the Desktop
+  picker could therefore select a stale id even though the renamed file was
+  present. Delete could leave the same stale active-id behavior.
+- The server now keeps a bounded active-session pointer, updates it on rename,
+  invalidates it on delete, and derives a safe fallback from the current
+  persisted summaries. Requests that omit `sessionId` follow that pointer.

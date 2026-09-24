@@ -403,6 +403,10 @@ test("renaming a session preserves its pending plan for the new id", async () =>
     });
     assert.equal(renamed.status, 200);
 
+    const sessionList = await fetch(`${base}/api/sessions`);
+    assert.equal(sessionList.status, 200);
+    assert.equal(((await sessionList.json()) as any).activeSessionId, "renamed-plan");
+
     const appliedResponse = await postJson(base, "/api/plans/apply", {
       sessionId: "renamed-plan",
       changeSetId: review.changeSetId,

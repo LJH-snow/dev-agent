@@ -176,3 +176,13 @@
 - Added a regression proving a pending plan survives a session rename and is
   applied under the new id. Desktop verification now passes **233/233** tests,
   including Desktop build and `git diff --check`.
+
+## 2026-09-24 — active session recovery boundary
+
+- Extended session recovery so the server tracks the active session id across
+  rename/delete. `/api/sessions` now returns a valid active id after rename and
+  falls back to an available persisted session after deletion; omitted-session
+  requests follow that active id instead of a stale original default.
+- Added an assertion to the rename recovery regression for the active-session
+  response. Full Desktop verification remains **233/233**, with build and
+  `git diff --check` passing.

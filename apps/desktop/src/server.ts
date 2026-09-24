@@ -271,6 +271,7 @@ const mimeTypes: Record<string, string> = {
 export function createDesktopServer(options: DesktopServerOptions = {}): Server {
   const defaultSession: DesktopChatSession = options.session ?? new ChatSession();
   const defaultSessionId = defaultSession.id ?? "desktop-default";
+  let activeSessionId: string | undefined = defaultSessionId;
   const createSession =
     options.createSession ?? ((sessionId: string, workingDirectory?: string) =>
       new ChatSession({ sessionId, ...(workingDirectory ? { workingDirectory } : {}) }));
@@ -346,14 +347,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     sessionId?: string
   ): string | undefined => {
     if (sessionId === undefined) {
-      return defaultSessionId;
+      return activeSessionId ?? defaultSessionId;
     }
-    const id = normalizeSessionId(sessionId ?? defaultSessionId);
+    const id = normalizeSessionId(sessionId ?? activeSessionId ?? defaultSessionId);
     return id.length > maxSessionIdLength ? undefined : id;
   };
 
   const sessionFor = (sessionId?: string): { id: string; session: DesktopChatSession } | undefined => {
-    const id = normalizeSessionId(sessionId ?? defaultSessionId);
+    const id = normalizeSessionId(sessionId ?? activeSessionId ?? defaultSessionId);
     const existing = sessions.get(id);
     if (existing) {
       return { id, session: existing };
@@ -574,9 +575,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return cost === undefined ? withRun : { ...withRun, cost };
         });
         res.writeHead(200, { "content-type": "application/json" });
+        const activeSummary = activeSessionId === undefined
+          ? undefined
+          : withCost.find((summary) => summary.sessionId === activeSessionId);
+        const fallbackActiveSessionId = activeSummary?.sessionId
+          ?? withCost[0]?.sessionId
+          ?? defaultSessionId;
+        activeSessionId = fallbackActiveSessionId;
         res.end(
           JSON.stringify({
-            activeSessionId: defaultSessionId,
+            activeSessionId: fallbackActiveSessionId,
             sessions: withCost,
           })
         );
@@ -1184,6 +1192,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
         sessions.delete(sessionId);
         clearSessionRuntimeState(sessionId);
+        if (activeSessionId === sessionId) {
+          activeSessionId = undefined;
+        }
 
         inFlight.add(sessionId);
         try {
@@ -1309,6 +1320,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
               // session-scoped ephemeral state before dropping the old id.
               sessions.delete(from);
               moveSessionRuntimeState(from, to);
+              if (activeSessionId === from) {
+                activeSessionId = to;
+              }
               // Materialize the renamed session immediately so queued plan
               // application and other session-scoped mutations can continue
               // without requiring a separate status/chat request first.

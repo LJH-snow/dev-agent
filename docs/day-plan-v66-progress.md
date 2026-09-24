@@ -190,3 +190,11 @@
   发送新消息才能继续 apply。
 - 新增 rename 后继续 apply pending plan 的回归测试；Desktop suite **233/233**、build
   与 `git diff --check` 均通过。
+
+## 2026-09-24 — active session recovery boundary
+
+- 修复 rename/delete 后的 active session stale id：服务端会更新 active-session pointer，
+  `/api/sessions` 在删除后从现存持久化 session 选择安全 fallback，省略 `sessionId` 的
+  请求也不再回到旧 default。
+- 增加 active-session response 回归断言；Desktop **233/233**、build 与
+  `git diff --check` 均通过。
