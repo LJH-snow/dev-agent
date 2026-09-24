@@ -29,6 +29,11 @@ const ANSI_ESCAPE_PATTERN =
 
 export type TaskTerminalState = "running" | "exited" | "stopped" | "failed";
 export type TaskTerminalStream = "stdout" | "stderr" | "input" | "system";
+export type TaskTerminalLifecycleStatus = "started" | "completed" | "stopped" | "failed";
+
+export interface DesktopTaskTerminalManagerOptions {
+  readonly onLifecycle?: (event: { readonly sessionId: string; readonly status: TaskTerminalLifecycleStatus }) => void;
+}
 
 export interface TaskTerminalEvent {
   readonly sequence: number;
@@ -142,6 +147,11 @@ function canonicalWorkingDirectory(workingDirectory: string): string {
 
 export class DesktopTaskTerminalManager {
   private readonly runs = new Map<string, TerminalRun>();
+  private readonly onLifecycle?: DesktopTaskTerminalManagerOptions["onLifecycle"];
+
+  constructor(options: DesktopTaskTerminalManagerOptions = {}) {
+    this.onLifecycle = options.onLifecycle;
+  }
 
   start(sessionId: string, workingDirectory: string, command: string): TaskTerminalSnapshot {
     const commandBytes = Buffer.byteLength(command, "utf8");
@@ -210,6 +220,7 @@ export class DesktopTaskTerminalManager {
     run.lifetimeTimer.unref();
     this.runs.set(id, run);
     this.append(run, "system", `$ ${safeCommand}\n`);
+    this.notifyLifecycle(sessionId, "started");
 
     child.stdout?.on("data", (chunk: Buffer | string) => this.append(run, "stdout", String(chunk)));
     child.stderr?.on("data", (chunk: Buffer | string) => this.append(run, "stderr", String(chunk)));
@@ -218,6 +229,7 @@ export class DesktopTaskTerminalManager {
       run.state = "failed";
       run.finishedAt = new Date().toISOString();
       this.append(run, "system", `\n[process could not start: ${error.code ?? "spawn-failed"}]\n`);
+      this.notifyLifecycle(run.sessionId, "failed");
       this.finalize(run);
     });
     child.on("close", (code) => {
@@ -225,6 +237,7 @@ export class DesktopTaskTerminalManager {
       run.state = run.stopRequested ? "stopped" : code === 0 ? "exited" : "failed";
       run.exitCode = code;
       run.finishedAt = new Date().toISOString();
+      this.notifyLifecycle(run.sessionId, run.state === "stopped" ? "stopped" : run.state === "exited" ? "completed" : "failed");
       this.finalize(run);
     });
     return this.snapshot(run);
@@ -305,6 +318,14 @@ export class DesktopTaskTerminalManager {
       if (run.state === "running") {
         this.requestStop(run);
       }
+    }
+  }
+
+  private notifyLifecycle(sessionId: string, status: TaskTerminalLifecycleStatus): void {
+    try {
+      this.onLifecycle?.({ sessionId, status });
+    } catch {
+      // Metadata observers must never change terminal execution behavior.
     }
   }
 

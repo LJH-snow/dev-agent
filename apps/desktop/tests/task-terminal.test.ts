@@ -51,6 +51,27 @@ test("terminal processes are bound to a session and accept bounded stdin", async
   }
 });
 
+test("terminal lifecycle callback exposes only bounded state metadata", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-lifecycle-"));
+  const lifecycle = [];
+  const manager = new DesktopTaskTerminalManager({
+    onLifecycle: (event) => lifecycle.push(event),
+  });
+  try {
+    const run = manager.start("task-lifecycle", directory, "node -e \"process.stdout.write('done')\"");
+    assert.deepEqual(lifecycle, [{ sessionId: "task-lifecycle", status: "started" }]);
+    await waitFor(() => manager.get("task-lifecycle", run.id).state !== "running");
+    assert.deepEqual(lifecycle, [
+      { sessionId: "task-lifecycle", status: "started" },
+      { sessionId: "task-lifecycle", status: "completed" },
+    ]);
+    assert.doesNotMatch(JSON.stringify(lifecycle), /done|Users|path|command/i);
+  } finally {
+    manager.closeAll();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("terminal refuses missing, non-directory, and symlinked working directories", async () => {
   const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-cwd-"));
   const manager = new DesktopTaskTerminalManager();
@@ -299,6 +320,8 @@ test("terminal and preview panels are wired to session state and safe text rende
   assert.match(controller, /ArrowUp/);
   assert.match(controller, /ArrowDown/);
   assert.match(controller, /followOutput/);
+  assert.match(controller, /recordLifecycle/);
+  assert.match(controller, /emitLifecycle\("preview", "started"\)/);
   assert.match(controller, /updateOutputFollowState/);
   assert.match(controller, /createObjectURL/);
   assert.doesNotMatch(controller, /\.innerHTML\s*=/);

@@ -24,11 +24,12 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - 远程分支已同步：`origin/codex/desktop-cli-workbench`
 - 已有验证：Desktop 222/222、CLI 629/629、Claude Agent SDK adapter 13/13、文档 60/60、
   native Desktop 2/2、TypeScript build/typecheck、CLI package smoke。
-- 本轮新增 evidence：CLI 630/630、Desktop 224/224；workspace build/typecheck、
-  TypeScript release gate、CLI package smoke、preview/documentation/native contracts 和
-  `git diff --check` 均已通过；terminal hardening focused Desktop suite 为
-  **227/227**，本次 read-only capability slice 后 Desktop suite 为
-  **230/230**，Desktop build/typecheck 也已通过。
+- 本轮新增 evidence：CLI 630/630、agent-core 212/212、Desktop 232/232；workspace
+  build/typecheck、TypeScript release gate、CLI package smoke、
+  preview/documentation/native contracts 和 `git diff --check` 均已通过；terminal
+  hardening focused Desktop suite 为 **227/227**，read-only capability slice 后为
+  **230/230**，metadata-only observability 后最终为 **232/232**。Desktop
+  build/typecheck 也已通过。
 - 当前仅有本地未跟踪验收产物：`.playwright-cli/`、`output/`；不纳入本轮提交，除非明确需要。
 
 ## 10 小时排程
@@ -65,6 +66,17 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
 - 不重新设计 provider、审批协议、MCP schema、session schema 或发布版本策略。
 - 不把 `.playwright-cli/`、`output/` 等本地临时产物加入提交。
 
+## 本轮追加：metadata-only observability（2026-09-24）
+
+- AgentRunTrace 现在只展示可信工具 registry 的 capability class、授权结果，
+  以及 terminal/preview 的有界 lifecycle；不会记录 prompt、tool input/output、
+  URL、路径、凭据或 raw error。
+- plan mode 的拒绝会产生 `authorizationResult: deny`，terminal callback 与 preview
+  lifecycle route 都保持 host-owned、enum-only、fail-closed。
+- 已移除未被 UI 使用的重复 Desktop capability trace registry，避免双重 schema。
+- 自动化证据：agent-core **212/212**、Desktop **232/232**、build/typecheck、
+  `git diff --check`；浏览器/PTY 手工验收仍保留为未完成项。
+
 ## 阶段门槛
 
 每个阶段完成后更新：
@@ -91,7 +103,7 @@ CLI 和 Desktop 工作台能力整理到可持续维护的状态。
   focused Desktop **227/227**。
 - [x] read-only capability-panel、Git branch/dirty/remote metadata、显式 opt-in
   GitHub/CI 状态与 malformed-metadata 回归已完成；Desktop **230/230**。
-- [ ] 浏览器/PTY 手工验收与 metadata-only authorization trace 仍待后续 sprint，
-  不在本轮宣称完成。
+- [ ] 浏览器/PTY 手工验收仍待在隔离临时仓库中完成；metadata-only authorization
+  trace 已实现并通过自动化验证，不在本轮宣称完成。
 - [x] focused/runtime verification 已通过；前一阶段的 full release-gate 证据保留有效。
 - [x] 已提交并推送本轮变更；read-only capability commit 为 `a52680f`。

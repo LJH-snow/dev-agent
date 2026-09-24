@@ -72,3 +72,24 @@
 - 已将只读项目能力面板、Git/GitHub bounded metadata、CI 状态与 custom-host normalization 提交为 `a52680f feat: expose read-only project capabilities`。
 - 已推送到 `origin/codex/desktop-cli-workbench`；push 前验证 Desktop **230/230**、build、typecheck、`git diff --check`。
 - 未跟踪的 `.playwright-cli/`、`output/` 与重复计划目录继续排除；浏览器/真实 PTY 验收、authorization trace 仍是后续工作。
+
+
+## 2026-09-24 — metadata-only observability
+
+- `AgentRunTrace` now records only allowlisted tool capability class
+  (`read-only`/`mutating`/`dangerous`/`unknown`) and authorization outcome
+  (`allow`/`deny`/`not-requested`/`unknown`) from trusted runtime metadata;
+  prompt, tool input/output, paths, credentials, and raw errors remain excluded.
+- Bounded terminal/preview lifecycle events (`started`, `loaded`, `completed`,
+  `failed`, `stopped`, `cleared`) are exposed through the existing session trace;
+  terminal callbacks and the preview lifecycle route are fail-closed and
+  metadata-only. Trace retention is capped, and observability failures cannot
+  change AgentLoop or terminal execution behavior.
+- Removed an overlapping, unconsumed Desktop capability-trace registry and
+  duplicate lifecycle endpoint so the shared `AgentRunTrace` is the single
+  trace source. Host-owned repository/GitHub/CI probes remain read-only explicit
+  boundaries rather than executable remote capabilities.
+- Final verification: agent-core **212/212**, Desktop **232/232**, agent-core and
+  Desktop build, Desktop typecheck, and `git diff --check` all pass. Browser/real
+  PTY acceptance remains open; `.playwright-cli/`, `output/`, and the duplicate
+  planning directory stay untracked and excluded.

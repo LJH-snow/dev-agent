@@ -111,3 +111,24 @@ Those remain deferred until a separate trust/install/rollback design exists.
 - 已将只读项目能力面板、Git/GitHub bounded metadata、CI 状态与 custom-host normalization 提交为 `a52680f feat: expose read-only project capabilities`。
 - 已推送到 `origin/codex/desktop-cli-workbench`；push 前验证 Desktop **230/230**、build、typecheck、`git diff --check`。
 - 浏览器/真实 PTY 验收和 authorization/lifecycle trace fields 仍未完成；未跟踪 QA/重复计划目录继续排除。
+
+
+## 2026-09-24 — trace boundary findings
+
+- The shared runtime event stream already carries trusted tool-registry metadata,
+  so capability class must be derived only from `tool.started` or
+  `tool.approval-requested` metadata. Arbitrary event payloads are ignored.
+  Plan-mode denials now emit an explicit metadata-only approval resolution so
+  the trace records `deny` rather than mistaking a policy block for an
+  unrequested tool.
+- Terminal lifecycle is observed at the host-owned terminal manager boundary;
+  preview lifecycle accepts only typed enum state and never accepts or stores a
+  URL. Both paths feed the session's bounded `AgentRunTrace` rather than a
+  second desktop registry.
+- A concurrent untracked `DesktopCapabilityTraceRegistry` implementation was
+  found during review. It duplicated `/trace/lifecycle`, added a second
+  `/capability-trace` endpoint, and was not consumed by the UI. It was removed
+  instead of allowing two divergent trace schemas.
+- Observability callbacks are best-effort: trace recording is wrapped so a
+  telemetry failure cannot alter the AgentLoop result or terminal process
+  lifecycle.

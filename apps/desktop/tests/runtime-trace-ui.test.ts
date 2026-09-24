@@ -41,13 +41,17 @@ test("GET / exposes a bounded Runtime trace panel", async () => {
     assert.match(html, /Runtime trace/);
     assert.match(html, /function resetTracePanel\(\)/);
     assert.match(html, /function validTraceRuns\(payload\)/);
-    assert.match(html, /function renderTraceRuns\(runs, droppedRuns\)/);
+    assert.match(html, /function renderTraceRuns\(runs, droppedRuns, lifecycle = \[\]\)/);
     assert.match(html, /function loadTraceSnapshot\(sessionId\)/);
     assert.match(html, /\/api\/sessions\/" \+ encodeURIComponent\(sessionId\) \+ "\/trace/);
     assert.match(html, /requestId !== traceRequestId/);
     assert.match(html, /sessionId !== currentSessionId/);
     assert.match(html, /prompts, tool inputs, output, paths, and errors are not shown/);
     assert.match(html, /trace\.kind\.tool/);
+    assert.match(html, /capabilityClass/);
+    assert.match(html, /authorizationResult/);
+    assert.match(html, /payload\.lifecycle/);
+    assert.match(html, /trace\/lifecycle/);
 
     assert.match(styles, /\.runtime-trace-panel/);
     assert.match(styles, /\.runtime-trace-item/);

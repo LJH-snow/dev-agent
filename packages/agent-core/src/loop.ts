@@ -481,6 +481,11 @@ export class AgentLoop {
               `[plan mode] blocked ${call.name}: this tool call could change the workspace. ` +
               "Use read-only inspection now; the user must run /apply before changes are allowed.";
             runState.budget?.recordToolOutput(denial);
+            this.emitRuntimeEvent(context, "tool.approval-resolved", {
+              tool: call.name,
+              decision: "deny",
+              reason: "plan mode policy",
+            }, runId);
             this.emitRuntimeEvent(context, "tool.failed", {
               tool: call.name,
               error: denial,

@@ -1212,6 +1212,17 @@
         "trace.spans": "{count} span(s)",
         "trace.droppedRuns": "{count} dropped run(s)",
         "trace.droppedSpans": "{count} dropped span(s)",
+        "trace.capability": "capability: {value}",
+        "trace.authorization": "authorization: {value}",
+        "trace.lifecycle": "{kind}: {status}",
+        "trace.lifecycle.terminal": "Terminal",
+        "trace.lifecycle.preview": "Preview",
+        "trace.lifecycle.started": "started",
+        "trace.lifecycle.loaded": "loaded",
+        "trace.lifecycle.completed": "completed",
+        "trace.lifecycle.failed": "failed",
+        "trace.lifecycle.stopped": "stopped",
+        "trace.lifecycle.cleared": "cleared",
         "trace.status.running": "Running",
         "trace.status.completed": "Completed",
         "trace.status.failed": "Failed",
@@ -3569,8 +3580,35 @@
       return t("trace.kind.model");
     }
 
-    function renderTraceRuns(runs, droppedRuns) {
+    function traceCapabilityLabel(value) {
+      const allowed = ["read-only", "mutating", "dangerous", "unknown"];
+      return allowed.includes(value) ? t("trace.capability", { value }) : "";
+    }
+
+    function traceAuthorizationLabel(value) {
+      const allowed = ["allow", "deny", "not-requested", "unknown"];
+      return allowed.includes(value) ? t("trace.authorization", { value }) : "";
+    }
+
+    function traceLifecycleLabel(event) {
+      const kinds = { terminal: "trace.lifecycle.terminal", preview: "trace.lifecycle.preview" };
+      const statuses = ["started", "loaded", "completed", "failed", "stopped", "cleared"];
+      if (!kinds[event?.kind] || !statuses.includes(event?.status)) return "";
+      return t("trace.lifecycle", {
+        kind: t(kinds[event.kind]),
+        status: t("trace.lifecycle." + event.status),
+      });
+    }
+
+    function renderTraceRuns(runs, droppedRuns, lifecycle = []) {
       runtimeTraceList.innerHTML = "";
+      const lifecycleLabels = lifecycle.map(traceLifecycleLabel).filter(Boolean).slice(-16);
+      if (lifecycleLabels.length > 0) {
+        const lifecycleNode = document.createElement("div");
+        lifecycleNode.className = "runtime-trace-empty";
+        lifecycleNode.textContent = lifecycleLabels.join(" · ");
+        runtimeTraceList.appendChild(lifecycleNode);
+      }
       if (runs.length === 0) {
         const empty = document.createElement("div");
         empty.className = "runtime-trace-empty";
@@ -3601,9 +3639,15 @@
           const label = document.createElement("span");
           label.textContent = traceSpanLabel(span);
           const detail = document.createElement("span");
-          detail.textContent = traceStatusLabel(span.status) + " · " + formatRunDuration(
-            Number.isFinite(span.durationMs) && span.durationMs >= 0 ? span.durationMs : 0
-          );
+          const detailParts = [
+            traceStatusLabel(span.status),
+            formatRunDuration(Number.isFinite(span.durationMs) && span.durationMs >= 0 ? span.durationMs : 0),
+          ];
+          const capability = traceCapabilityLabel(span.capabilityClass);
+          const authorization = traceAuthorizationLabel(span.authorizationResult);
+          if (capability) detailParts.push(capability);
+          if (authorization) detailParts.push(authorization);
+          detail.textContent = detailParts.join(" · ");
           entry.append(label, detail);
           spans.appendChild(entry);
         }
@@ -3621,6 +3665,13 @@
     function validTraceRuns(payload) {
       if (!payload || payload.schemaVersion !== 1 || payload.metadataOnly !== true) return null;
       if (!Array.isArray(payload.runs) || !Number.isSafeInteger(payload.droppedRuns)) return null;
+      if (payload.lifecycle !== undefined && !Array.isArray(payload.lifecycle)) return null;
+      const lifecycle = (Array.isArray(payload.lifecycle) ? payload.lifecycle : []).filter((event) => (
+        event
+        && (event.kind === "terminal" || event.kind === "preview")
+        && ["started", "loaded", "completed", "failed", "stopped", "cleared"].includes(event.status)
+        && typeof event.occurredAt === "string"
+      )).slice(-64);
       const runs = payload.runs.filter((run) => (
         run
         && typeof run.runId === "string"
@@ -3636,7 +3687,7 @@
         ))
       ));
       if (runs.length === 0 && payload.runs.length > 0) return null;
-      return { runs, droppedRuns: payload.droppedRuns };
+      return { runs, droppedRuns: payload.droppedRuns, lifecycle };
     }
 
     async function loadTraceSnapshot(sessionId) {
@@ -3665,7 +3716,7 @@
         if (requestId !== traceRequestId || sessionId !== currentSessionId) return;
         const parsed = validTraceRuns(payload);
         if (!parsed) throw new Error("invalid trace response");
-        renderTraceRuns(parsed.runs, parsed.droppedRuns);
+        renderTraceRuns(parsed.runs, parsed.droppedRuns, parsed.lifecycle);
         setTraceStatus("trace.metadataOnly");
       } catch {
         if (!controller.signal.aborted && requestId === traceRequestId
@@ -5791,6 +5842,17 @@
       },
       onFinished: () => {
         void taskWorkspaceUI?.refresh();
+      },
+      recordLifecycle: (kind, state) => {
+        if (!currentSessionId) return;
+        void fetch(
+          "/api/sessions/" + encodeURIComponent(currentSessionId) + "/trace/lifecycle",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ kind, status: state }),
+          },
+        ).catch(() => undefined);
       },
     });
     workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
