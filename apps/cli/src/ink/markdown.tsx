@@ -1,6 +1,7 @@
 import { Box, Text } from "ink";
 
 import { redactSensitiveText, sanitizeTerminalText } from "../tui-renderer.js";
+import { fitDisplayLine, splitByDisplayWidth } from "../tui-width.js";
 import { useInkTheme } from "./theme.js";
 
 export interface MarkdownBlock {
@@ -162,6 +163,26 @@ export function parseMarkdown(
   return blocks;
 }
 
+/**
+ * Returns the number of terminal rows produced by MarkdownView.
+ *
+ * The rich CLI uses this value for transcript virtualization. Keep the
+ * measurement next to the renderer so fenced-code borders, block spacing, and
+ * terminal-width wrapping cannot drift apart and paint the next paragraph over
+ * the previous block.
+ */
+export function measureMarkdownRows(
+  source: string,
+  width: number,
+  options: MarkdownParseOptions = {},
+): number {
+  const normalizedWidth = Math.max(1, Math.floor(width));
+  return parseMarkdown(source, options).reduce(
+    (total, block, index) => total + (index === 0 ? 0 : 1) + measureMarkdownBlockRows(block, normalizedWidth),
+    0,
+  );
+}
+
 export function MarkdownView({
   text,
   width,
@@ -185,6 +206,7 @@ export function MarkdownView({
           block={block}
           colors={palette}
           width={width}
+          spaced={index > 0}
         />
       ))}
     </Box>
@@ -195,28 +217,35 @@ function MarkdownBlockView({
   block,
   colors,
   width,
+  spaced,
 }: {
   readonly block: MarkdownBlock;
   readonly colors: MarkdownColors;
   readonly width?: number;
+  readonly spaced: boolean;
 }): React.JSX.Element {
+  const marginTop = spaced ? 1 : 0;
   switch (block.kind) {
     case "heading":
       return (
-        <Text color={colors.heading} bold wrap="wrap">
-          {"▌ "}
-          {renderInline(block.text ?? "", colors)}
-        </Text>
+        <Box marginTop={marginTop}>
+          <Text color={colors.heading} bold wrap="wrap">
+            {"▌ "}
+            {renderInline(block.text ?? "", colors)}
+          </Text>
+        </Box>
       );
     case "paragraph":
       return (
-        <Text wrap="wrap">
-          {renderInline(block.text ?? "", colors)}
-        </Text>
+        <Box marginTop={marginTop}>
+          <Text wrap="wrap">
+            {renderInline(block.text ?? "", colors)}
+          </Text>
+        </Box>
       );
     case "list":
       return (
-        <Box flexDirection="column">
+        <Box flexDirection="column" marginTop={marginTop}>
           {(block.items ?? []).map((item, index) => (
             <Text key={`${index}-${item}`} wrap="wrap">
               <Text color={colors.accent}>
@@ -229,36 +258,97 @@ function MarkdownBlockView({
       );
     case "quote":
       return (
-        <Text color={colors.quote} wrap="wrap">
-          {renderInline(
-            (block.text ?? "").split("\n").map((line) => `│ ${line}`).join("\n"),
-            colors,
-          )}
-        </Text>
+        <Box marginTop={marginTop}>
+          <Text color={colors.quote} wrap="wrap">
+            {renderInline(
+              (block.text ?? "").split("\n").map((line) => `│ ${line}`).join("\n"),
+              colors,
+            )}
+          </Text>
+        </Box>
       );
-    case "code":
+    case "code": {
+      const outerWidth = Math.max(20, width ?? 40);
+      const innerWidth = Math.max(1, outerWidth - 4);
+      const header = `${block.language ? `code · ${block.language}` : "code"}${block.closed === false ? " · streaming" : ""}`;
+      const codeWidth = Math.max(1, innerWidth - 2);
       return (
         <Box
           flexDirection="column"
           borderStyle="round"
           borderColor={colors.muted}
           paddingX={1}
-          width={width}
+          marginTop={marginTop}
+          width={outerWidth}
         >
-          <Text color={colors.muted}>
-            {block.language ? `code · ${block.language}` : "code"}
-            {block.closed === false ? " · streaming" : ""}
-          </Text>
-          {(block.lines ?? []).map((line, index) => (
-            <Text key={`${index}-${line}`} color={colors.code} wrap="wrap">
-              {`│ ${line}`}
-            </Text>
-          ))}
+          <Text color={colors.muted} wrap="truncate-end">{fitDisplayLine(header, innerWidth)}</Text>
+          {(block.lines ?? []).flatMap((line, index) =>
+            splitByDisplayWidth(line, codeWidth).map((chunk, chunkIndex) => (
+              <Text
+                key={`${index}-${chunkIndex}-${chunk}`}
+                color={colors.code}
+                wrap="truncate-end"
+              >
+                {fitDisplayLine(`│ ${chunk}`, innerWidth)}
+              </Text>
+            )),
+          )}
         </Box>
       );
+    }
     case "rule":
-      return <Text color={colors.muted}>{"─".repeat(Math.max(1, (width ?? 40) - 4))}</Text>;
+      return (
+        <Box marginTop={marginTop}>
+          <Text color={colors.muted}>
+            {"─".repeat(Math.max(1, (width ?? 40) - 4))}
+          </Text>
+        </Box>
+      );
   }
+}
+
+function measureMarkdownBlockRows(block: MarkdownBlock, width: number): number {
+  switch (block.kind) {
+    case "heading":
+      return wrappedRows(`▌ ${plainInlineText(block.text ?? "")}`, width);
+    case "paragraph":
+      return wrappedRows(block.text ?? "", width);
+    case "list":
+      return (block.items ?? []).reduce(
+        (total, item, index) => total + wrappedRows(
+          `${block.ordered ? `${index + 1}. ` : "• "}${plainInlineText(item)}`,
+          width,
+        ),
+        0,
+      );
+    case "quote":
+      return (block.text ?? "").split("\n").reduce(
+        (total, line) => total + wrappedRows(`│ ${line}`, width),
+        0,
+      );
+    case "code": {
+      const innerWidth = Math.max(1, width - 4);
+      const codeWidth = Math.max(1, innerWidth - 2);
+      const codeRows = (block.lines ?? []).reduce(
+        (total, line) => total + splitByDisplayWidth(line, codeWidth).length,
+        0,
+      );
+      return 2 + 1 + codeRows;
+    }
+    case "rule":
+      return 1;
+  }
+}
+
+function wrappedRows(value: string, width: number): number {
+  return value.split("\n").reduce(
+    (total, line) => total + splitByDisplayWidth(line, width).length,
+    0,
+  );
+}
+
+function plainInlineText(value: string): string {
+  return tokenizeInline(value).map((segment) => segment.text).join("");
 }
 
 function renderInline(value: string, colors: MarkdownColors): React.JSX.Element[] {

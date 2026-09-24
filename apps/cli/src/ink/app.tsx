@@ -29,7 +29,7 @@ import { ThinkingIndicator } from "./thinking-indicator.js";
 import { ThoughtLine } from "./thought-line.js";
 import { RotatingStatus } from "./rotating-status.js";
 import { ToolTimeline } from "./tool-timeline.js";
-import { MarkdownView } from "./markdown.js";
+import { MarkdownView, measureMarkdownRows } from "./markdown.js";
 import { CommandPalette } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
 import { SessionPicker } from "./session-picker.js";
@@ -684,10 +684,13 @@ function TranscriptViewport({
   const ranges = transcriptRanges(entries, columns, summary);
   const firstVisibleRow = viewport.offset;
   const lastVisibleRow = firstVisibleRow + Math.max(1, viewport.visibleRows);
-  const visibleItems = ranges.filter((range) =>
-    range.end > firstVisibleRow && range.start < lastVisibleRow
+  const visibleItems = selectTranscriptItems(ranges, viewport);
+  const renderedRows = visibleItems.reduce(
+    (total, range) => total + (range.end - range.start),
+    0,
   );
-  const viewportHeight = viewport.totalRows > viewport.visibleRows
+  const viewportHeight = viewport.totalRows > viewport.visibleRows &&
+    renderedRows <= viewport.visibleRows
     ? Math.max(1, viewport.visibleRows)
     : undefined;
   const showNavigationHint =
@@ -767,6 +770,53 @@ interface TranscriptRange {
   readonly end: number;
 }
 
+function selectTranscriptItems(
+  ranges: readonly TranscriptRange[],
+  viewport: InkViewportSnapshot,
+): readonly TranscriptRange[] {
+  if (ranges.length === 0) return [];
+  const budget = Math.max(1, viewport.visibleRows);
+
+  if (viewport.followOutput) {
+    const transcriptRangesOnly = ranges.filter((range) => range.item.type === "transcript");
+    const summaryRange = ranges.find((range) => range.item.type === "summary");
+    const selected: TranscriptRange[] = [];
+    let used = 0;
+
+    for (let index = transcriptRangesOnly.length - 1; index >= 0; index -= 1) {
+      const range = transcriptRangesOnly[index]!;
+      const rows = range.end - range.start;
+      if (selected.length > 0 && used + rows > budget) break;
+      selected.unshift(range);
+      used += rows;
+      if (used >= budget) break;
+    }
+
+    if (summaryRange !== undefined) {
+      const summaryRows = summaryRange.end - summaryRange.start;
+      while (selected.length > 1 && used + summaryRows > budget) {
+        const removed = selected.shift();
+        used -= removed === undefined ? 0 : removed.end - removed.start;
+      }
+      if (used + summaryRows <= budget) {
+        selected.push(summaryRange);
+      }
+    }
+    return selected;
+  }
+
+  const firstVisibleRow = viewport.offset;
+  const lastVisibleRow = firstVisibleRow + budget;
+  const intersecting = ranges.filter((range) =>
+    range.end > firstVisibleRow && range.start < lastVisibleRow,
+  );
+  const contained = intersecting.filter((range) =>
+    range.start >= firstVisibleRow && range.end <= lastVisibleRow,
+  );
+  if (contained.length > 0) return contained;
+  return intersecting.length > 0 ? [intersecting[0]!] : [];
+}
+
 function transcriptRanges(
   entries: readonly TuiStateSnapshot["transcript"][number][],
   width: number,
@@ -827,13 +877,19 @@ function estimateTranscriptEntryRows(
   entry: TuiStateSnapshot["transcript"][number],
   width: number,
 ): number {
+  if (entry.role === "assistant") {
+    const markdownWidth = Math.max(24, width - 2);
+    const markdownRows = measureMarkdownRows(entry.text, markdownWidth);
+    return Math.max(1, markdownRows) + 2;
+  }
+
   const contentWidth = Math.max(24, width - 4);
   const textRows = (entry.text.length === 0 ? [""] : entry.text.split("\n"))
     .reduce(
       (total, line) => total + splitByDisplayWidth(line, contentWidth).length,
       0,
     );
-  return Math.max(1, textRows) + (entry.role === "assistant" ? 2 : 1);
+  return Math.max(1, textRows) + 1;
 }
 
 function sameViewportSnapshot(

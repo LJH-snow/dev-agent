@@ -5,6 +5,7 @@ import { renderToString } from "ink";
 
 import {
   MarkdownView,
+  measureMarkdownRows,
   parseMarkdown,
 } from "../dist/ink/markdown.js";
 
@@ -60,4 +61,32 @@ test("markdown view bounds very long streamed answers", () => {
   );
 
   assert.ok(blocks.length <= 8);
+});
+
+
+test("keeps code cards separated from the following paragraph and matches measured rows", () => {
+  const text = [
+    "文件路径： /tmp/hello-world.js",
+    "内容如下：",
+    "",
+    "```javascript",
+    "console.log('hello world');",
+    "```",
+    "需要我帮你运行它，或者继续做其他事情吗？",
+  ].join("\n");
+  const output = renderToString(
+    createElement(MarkdownView, { text, width: 52 }),
+    { columns: 52 },
+  );
+  const lines = output.split("\n");
+  const borderIndex = lines.findIndex((line) => line.includes("╰"));
+  const paragraphIndex = lines.findIndex((line) => line.includes("需要我帮你"));
+
+  assert.ok(borderIndex >= 0);
+  assert.ok(paragraphIndex > borderIndex);
+  assert.equal(
+    lines.some((line) => line.includes("╰") && line.includes("需要我帮你")),
+    false,
+  );
+  assert.equal(lines.length, measureMarkdownRows(text, 52));
 });
