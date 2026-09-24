@@ -180,3 +180,13 @@
   继续验证具体 scroll offset 和 mouse-wheel semantics。
 - 终端滚动/历史与 Desktop 浏览器验收范围已完成；下一阶段转向 session recovery
   与 maintenance audit。
+
+## 2026-09-24 — session recovery / maintenance audit
+
+- 完成 Desktop session rename/delete/reload seam 审计：发现 pending plan、approval
+  allowlist 与 run replay 等内存态没有和持久化 session id 完整绑定。
+- 修复删除/服务器关闭时的 bounded runtime cleanup，并在 rename 时迁移可继续执行的
+  pending plan 与 allowlist；rename 后立即 materialize 新 session，避免必须先刷新或
+  发送新消息才能继续 apply。
+- 新增 rename 后继续 apply pending plan 的回归测试；Desktop suite **233/233**、build
+  与 `git diff --check` 均通过。

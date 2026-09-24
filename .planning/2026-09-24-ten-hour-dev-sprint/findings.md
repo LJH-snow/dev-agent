@@ -171,3 +171,18 @@ Those remain deferred until a separate trust/install/rollback design exists.
 - The fixture path accepted `hello`, rendered a long transcript, received
   PageUp/PageDown bytes, and preserved the no-clear startup behavior. The next
   unresolved area is session recovery/maintenance, not terminal scrolling.
+
+## 2026-09-24 — session recovery / maintenance finding
+
+- Persisted session files were recoverable after a server reload, but the
+  in-memory runtime registries were not lifecycle-coupled to rename/delete.
+  A renamed session could leave its pending plan keyed by the old id, while a
+  deleted session could leave replay/allowlist metadata available to a later
+  same-id recovery.
+- The maintenance fix keeps the session id as the lifecycle boundary: delete
+  clears run, allowlist, and pending-plan state; rename moves session-scoped
+  plan/allowlist state, drops the old replay cursor, and materializes the new
+  session. The fix is intentionally metadata-only and does not broaden any
+  capability or mutation boundary.
+- Regression evidence: the renamed-session pending-plan workflow passes, and
+  the full Desktop suite is green at **233/233**.

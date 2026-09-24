@@ -294,6 +294,44 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     },
   });
   const sessionAllowlist = new Map<string, Set<string>>();
+
+  // Session ids can outlive the in-memory ChatSession (for example after a
+  // rename or a delete). Keep all ephemeral runtime state aligned with the
+  // persisted session lifecycle so a later recovery cannot inherit stale run,
+  // approval, or plan metadata from the old id.
+  const clearSessionRuntimeState = (sessionId: string): void => {
+    runs.delete(sessionId);
+    sessionAllowlist.delete(sessionId);
+    const prefix = `${sessionId}\u0000`;
+    for (const key of pendingPlans.keys()) {
+      if (key.startsWith(prefix)) {
+        pendingPlans.delete(key);
+      }
+    }
+  };
+
+  const moveSessionRuntimeState = (from: string, to: string): void => {
+    const allowlist = sessionAllowlist.get(from);
+    if (allowlist !== undefined) {
+      sessionAllowlist.delete(from);
+      sessionAllowlist.set(to, allowlist);
+    }
+    // A completed plan run may leave an applyable review behind. Move that
+    // review with the session rather than stranding it under the old id.
+    const prefix = `${from}\u0000`;
+    for (const [key, pending] of pendingPlans.entries()) {
+      if (!key.startsWith(prefix)) continue;
+      pendingPlans.delete(key);
+      pendingPlans.set(pendingPlanKey(to, pending.review.changeSetId), {
+        ...pending,
+        sessionId: to,
+      });
+    }
+    // Renames are only allowed once no run is active; discard the old replay
+    // cursor so the new id cannot report a stale run after recovery.
+    runs.delete(from);
+  };
+
   const host = options.host ?? process.env.DEV_AGENT_DESKTOP_HOST ?? "127.0.0.1";
   const port = options.port ?? Number(process.env.DEV_AGENT_DESKTOP_PORT ?? 4317);
   // This token is generated per server instance and is only injected into the
@@ -1145,6 +1183,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           }
         }
         sessions.delete(sessionId);
+        clearSessionRuntimeState(sessionId);
 
         inFlight.add(sessionId);
         try {
@@ -1266,8 +1305,14 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
               }
               await rename(source, memoryPathFor(to));
               // The in-memory session is bound to the old path; drop it so the new
-              // id is created fresh against the renamed file.
+              // id is created fresh against the renamed file. Move any
+              // session-scoped ephemeral state before dropping the old id.
               sessions.delete(from);
+              moveSessionRuntimeState(from, to);
+              // Materialize the renamed session immediately so queued plan
+              // application and other session-scoped mutations can continue
+              // without requiring a separate status/chat request first.
+              sessionFor(to);
             }
 
             res.writeHead(200, { "content-type": "application/json" });
@@ -2058,6 +2103,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
 
   server.once("close", () => {
     terminalManager.closeAll();
+    for (const sessionId of sessions.keys()) {
+      clearSessionRuntimeState(sessionId);
+    }
     void Promise.all(
       [...sessions.values()].map((session) => session.close?.())
     ).catch(() => undefined);

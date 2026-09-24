@@ -164,3 +164,15 @@
   those handlers.
 - The follow-up session-recovery/maintenance audit remains outside this
   acceptance slice and is the next project tranche.
+
+## 2026-09-24 — session recovery / maintenance audit
+
+- Audited Desktop session rename/delete/reload seams and found that ephemeral
+  runtime state could outlive the persisted session id: pending plan reviews,
+  approval allowlists, and run replay state were not aligned with rename/delete.
+- Added bounded session-runtime cleanup on delete/server close and migration on
+  rename. Renamed sessions are materialized immediately so a pending plan can
+  still be applied without a separate reload request.
+- Added a regression proving a pending plan survives a session rename and is
+  applied under the new id. Desktop verification now passes **233/233** tests,
+  including Desktop build and `git diff --check`.
