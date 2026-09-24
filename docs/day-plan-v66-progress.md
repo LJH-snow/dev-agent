@@ -6,7 +6,8 @@
 
 - 排程文档已建立：`docs/day-plan-v66.md`。
 - canonical 持久化工作文件已建立在：`.planning/2026-09-24-ten-hour-dev-sprint/`。
-- 当前分支 `codex/desktop-cli-workbench` 以 `737b5ed` 为本轮基线；本次 hardening 变更已通过门禁，待提交并推送。
+- 当前分支 `codex/desktop-cli-workbench` 以 `737b5ed` 为本轮基线；本次 hardening 已在
+  `95c1d91` 提交并推送到 GitHub。
 - 本轮已修改 CLI/Desktop 源码、测试和计划文档；`.playwright-cli/`、`output/` 与重复计划目录仍为本地未跟踪产物。
 
 ## 证据账本
@@ -19,7 +20,7 @@
 | Desktop 输出滚动 | focused 已完成 | manual follow-latest contract 已覆盖；浏览器手工验收仍待后续 |
 | capability token | 已完成本轮范围 | 生产 launcher、`/api/` mutation guard、served HTML 注入、token tests |
 | 会话恢复/维护审计 | 延后 | 不在本轮已提交范围内 |
-| 全量门禁/推送 | 门禁已完成，推送待完成 | build/typecheck/release gate/diff check 已通过 |
+| 全量门禁/推送 | 本轮已完成 | Desktop 227/227、build/typecheck、diff check；`95c1d91` 已推送 |
 
 ## 操作规则
 
@@ -83,3 +84,11 @@
   authorization trace 仍未完成。
 - `.playwright-cli/`、`output/` 与 `.planning/2026-09-24-ten-hour-development/`
   继续保持未跟踪，不纳入提交。
+
+
+## 2026-09-24 — delivery
+
+- 已将 terminal execution hardening 与 canonical 计划/文档提交为
+  `95c1d91 feat: harden desktop terminal lifecycle`。
+- 已成功推送到 `origin/codex/desktop-cli-workbench`；本地仅保留未跟踪 QA/重复计划目录，
+  未纳入提交。

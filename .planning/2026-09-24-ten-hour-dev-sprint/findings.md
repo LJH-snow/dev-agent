@@ -87,3 +87,12 @@ Those remain deferred until a separate trust/install/rollback design exists.
   read-only project capability panel and metadata-only authorization trace slices.
 - `.playwright-cli/`, `output/`, and the duplicate local planning directory remain
   untracked and are intentionally excluded from the delivery commit.
+
+
+## 2026-09-24 — delivery
+
+- 已完成 staged diff review，并将预期源码、测试与 canonical 计划/文档提交为
+  `95c1d91 feat: harden desktop terminal lifecycle`。
+- 已验证 `origin/codex/desktop-cli-workbench` 指向 `95c1d91274d11e2026519a5330c7004895488c1a`。
+- `.planning/2026-09-24-ten-hour-development/`、`.playwright-cli/` 与 `output/`
+  仍为本地未跟踪目录，未被纳入 GitHub 推送。

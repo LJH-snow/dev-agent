@@ -54,4 +54,6 @@
 - 最新 focused Desktop suite 为 **227/227**；Desktop build/typecheck 和 `git diff --check`
   通过。浏览器/PTY 手工验收和后续 read-only capability panel、Git metadata、
   authorization trace slices 仍明确延后。
-- 下一步是只 stage 预期源码、测试和 canonical 计划/文档，排除本地 QA 产物，commit 并 push。
+- 已只 stage 预期源码、测试和 canonical 计划/文档，排除本地 QA 产物；commit
+  `95c1d91 feat: harden desktop terminal lifecycle` 已推送到
+  `origin/codex/desktop-cli-workbench`。

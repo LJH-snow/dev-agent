@@ -80,7 +80,7 @@ strong tests and browser evidence.
       Earlier CLI/release-gate evidence remains recorded above.
 - [ ] Run browser acceptance against an isolated temporary repository and
       capture fresh evidence without using the real project worktree.
-- [ ] Review the diff, exclude QA artifacts, update progress/findings, and
+- [x] Review the diff, exclude QA artifacts, update progress/findings, and
       commit/push only the intended source, test, and documentation changes.
 
 ## Non-negotiable invariants
