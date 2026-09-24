@@ -159,3 +159,13 @@
   `origin/codex/desktop-cli-workbench`。
 - 修复后 targeted Desktop **39/39** 通过；最新浏览器 trace 显示单一 terminal
   start/completed 与 preview start/loaded。CLI 外部真实 PTY 仍待后续。
+
+
+## 2026-09-24 — CLI PTY smoke acceptance
+
+- 在隔离临时 `HOME` 下构建并启动真实 CLI pseudo-terminal，确认 Ink Signal Loom
+  banner、provider/model metadata、PageUp/PageDown 提示、composer、status footer
+  和 Ctrl-C clean exit 均正常。
+- 捕获内容没有 startup `ESC[2J`、`ESC[3J`、`ESC[H` 清屏序列，说明启动不会清掉
+  terminal scrollback。长 transcript 的交互式 PageUp/PageDown 仍以既有自动化 Ink
+  测试为主要证据，外部 provider-backed PTY 回放仍待后续。

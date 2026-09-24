@@ -132,3 +132,18 @@
   `origin/codex/desktop-cli-workbench`。
 - 修复后 targeted Desktop trace/server/terminal tests **39/39** 通过；浏览器重新验收
   显示单一 `Terminal: started/completed` 与 `Preview: started/loaded`。
+
+
+## 2026-09-24 — CLI PTY smoke acceptance
+
+- Built the CLI and launched `apps/cli/dist/cli-entry.js` inside a real Expect
+  pseudo-terminal with an isolated temporary `HOME`; the provider was pointed
+  at a local fixture endpoint so no external credentials or network service were
+  used.
+- The actual Ink workbench rendered its Signal Loom banner, provider/model
+  metadata, scroll instructions, composer, status line, and clean Ctrl-C exit.
+  The captured launch/exit stream contained no startup clear-screen sequences
+  (`ESC[2J`, `ESC[3J`, or `ESC[H`), preserving terminal scrollback at startup.
+- This is a PTY launch/exit smoke check only. Full interactive transcript
+  scrolling with a provider-backed response remains open because the fixture
+  input submission did not produce a stable response in this shell harness.

@@ -147,3 +147,15 @@ Those remain deferred until a separate trust/install/rollback design exists.
 - Preview iframe events can arrive after a preview is cleared or before an
   active preview exists. `load`/`error` handlers now require `previewActive`
   as well as a visible frame, preventing false `failed` lifecycle records.
+
+
+## 2026-09-24 — CLI PTY smoke finding
+
+- A real pseudo-terminal launch is useful evidence that the shipped CLI path
+  reaches the Ink renderer rather than the non-interactive fallback. The smoke
+  capture showed the Signal Loom banner, `PageUp/PageDown` guidance, composer,
+  and status footer, then exited cleanly on Ctrl-C.
+- No startup `ESC[2J`, `ESC[3J`, or `ESC[H` clear-screen sequence appeared in
+  the capture. This confirms the scrollback-preservation guard at process
+  startup, but it does not prove long-transcript PageUp/PageDown behavior; the
+  existing automated Ink tests remain the stronger evidence for that path.
