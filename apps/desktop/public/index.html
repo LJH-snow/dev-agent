@@ -555,6 +555,17 @@
             <ul id="mcp-health-list" class="mcp-health-list" aria-label="MCP server health" data-i18n-aria-label="mcpHealth.list"></ul>
           </div>
         </section>
+        <section id="parallel-runs-panel" class="desktop-status-panel parallel-runs-panel" aria-labelledby="parallel-runs-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="parallel-runs-title" class="desktop-status-title" data-i18n="parallelRuns.title">Parallel agent runs</div>
+              <div id="parallel-runs-status" class="desktop-status-note" role="status" data-i18n="parallelRuns.loading">Loading parallel runs…</div>
+            </div>
+            <button type="button" id="parallel-runs-refresh" class="desktop-status-refresh" data-i18n="parallelRuns.refresh">Refresh</button>
+          </div>
+          <div id="parallel-runs-summary" class="parallel-runs-summary" role="status"></div>
+          <ul id="parallel-runs-list" class="parallel-runs-list" aria-label="Parallel agent runs" data-i18n-aria-label="parallelRuns.list"></ul>
+        </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
           <div class="desktop-status-header">
             <div>
@@ -860,6 +871,10 @@
     const mcpHealthSummary = document.getElementById("mcp-health-summary");
     const mcpHealthRefreshButton = document.getElementById("mcp-health-refresh");
     const mcpHealthList = document.getElementById("mcp-health-list");
+    const parallelRunsStatus = document.getElementById("parallel-runs-status");
+    const parallelRunsRefreshButton = document.getElementById("parallel-runs-refresh");
+    const parallelRunsSummary = document.getElementById("parallel-runs-summary");
+    const parallelRunsList = document.getElementById("parallel-runs-list");
     const stopButton = document.getElementById("stop");
     const desktopStatusNote = document.getElementById("desktop-status-note");
     const desktopStatusRefreshButton = document.getElementById("desktop-status-refresh");
@@ -929,6 +944,9 @@
     let capabilitiesController = null;
     let mcpHealthRequestId = 0;
     let mcpHealthController = null;
+    let parallelRunsRequestId = 0;
+    let parallelRunsController = null;
+    let parallelRunsTimer = null;
     let runSnapshotSessionId = null;
     let runSnapshot = null;
     let runRecoveryTimer = null;
@@ -1062,6 +1080,32 @@
         "mcpHealth.serverLatency": "{latency} ms",
         "mcpHealth.serverChecked": "Checked {time}",
         "mcpHealth.serverUnchecked": "Not checked yet",
+        "parallelRuns.title": "Parallel agent runs",
+        "parallelRuns.loading": "Loading parallel runs…",
+        "parallelRuns.checking": "Checking agent runs…",
+        "parallelRuns.ready": "{active} active · {running} running · {waiting} waiting · {failed} failed",
+        "parallelRuns.empty": "No agent runs yet.",
+        "parallelRuns.error": "Parallel run status is temporarily unavailable.",
+        "parallelRuns.refresh": "Refresh",
+        "parallelRuns.list": "Parallel agent runs",
+        "parallelRuns.status.idle": "Idle",
+        "parallelRuns.status.running": "Running",
+        "parallelRuns.status.waiting": "Waiting",
+        "parallelRuns.status.done": "Completed",
+        "parallelRuns.status.failed": "Failed",
+        "parallelRuns.status.aborted": "Aborted",
+        "parallelRuns.stage.idle": "Idle",
+        "parallelRuns.stage.model": "Model",
+        "parallelRuns.stage.tool": "Tool",
+        "parallelRuns.stage.approval": "Approval",
+        "parallelRuns.stage.done": "Completed",
+        "parallelRuns.stage.failed": "Failed",
+        "parallelRuns.stage.aborted": "Aborted",
+        "parallelRuns.tool": "{name}",
+        "parallelRuns.duration.seconds": "{count}s",
+        "parallelRuns.duration.minutes": "{count}m",
+        "parallelRuns.duration.hours": "{count}h",
+        "parallelRuns.focus": "Focus",
         "workspace.label": "Workspace",
         "workspace.title": "Task workspaces",
         "workspace.description": "Each task gets its own branch and Git worktree.",
@@ -1602,6 +1646,32 @@
         "mcpHealth.serverLatency": "{latency} 毫秒",
         "mcpHealth.serverChecked": "检查时间 {time}",
         "mcpHealth.serverUnchecked": "尚未检查",
+        "parallelRuns.title": "并行智能体运行",
+        "parallelRuns.loading": "正在加载并行运行…",
+        "parallelRuns.checking": "正在检查智能体运行…",
+        "parallelRuns.ready": "{active} 个活跃 · {running} 个运行中 · {waiting} 个等待中 · {failed} 个失败",
+        "parallelRuns.empty": "暂无智能体运行。",
+        "parallelRuns.error": "并行运行状态暂时不可用。",
+        "parallelRuns.refresh": "刷新",
+        "parallelRuns.list": "并行智能体运行",
+        "parallelRuns.status.idle": "空闲",
+        "parallelRuns.status.running": "运行中",
+        "parallelRuns.status.waiting": "等待中",
+        "parallelRuns.status.done": "已完成",
+        "parallelRuns.status.failed": "失败",
+        "parallelRuns.status.aborted": "已中止",
+        "parallelRuns.stage.idle": "空闲",
+        "parallelRuns.stage.model": "模型",
+        "parallelRuns.stage.tool": "工具",
+        "parallelRuns.stage.approval": "审批",
+        "parallelRuns.stage.done": "已完成",
+        "parallelRuns.stage.failed": "失败",
+        "parallelRuns.stage.aborted": "已中止",
+        "parallelRuns.tool": "{name}",
+        "parallelRuns.duration.seconds": "{count} 秒",
+        "parallelRuns.duration.minutes": "{count} 分钟",
+        "parallelRuns.duration.hours": "{count} 小时",
+        "parallelRuns.focus": "聚焦",
         "workspace.label": "工作区",
         "workspace.title": "任务工作区",
         "workspace.description": "每个任务使用独立 Git 分支和 worktree。",
@@ -3316,6 +3386,105 @@
         entry.textContent = formatter(item);
         node.appendChild(entry);
       }
+    }
+
+    function parallelRunDuration(value) {
+      if (!Number.isSafeInteger(value) || value < 0) return "—";
+      const seconds = Math.max(0, Math.floor(value / 1000));
+      if (seconds < 60) return t("parallelRuns.duration.seconds", { count: seconds });
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return t("parallelRuns.duration.minutes", { count: minutes });
+      return t("parallelRuns.duration.hours", { count: Math.floor(minutes / 60) });
+    }
+
+    function renderParallelRuns(payload) {
+      const total = Number.isSafeInteger(payload?.total) ? Math.max(0, payload.total) : 0;
+      const active = Number.isSafeInteger(payload?.active) ? Math.max(0, payload.active) : 0;
+      const running = Number.isSafeInteger(payload?.running) ? Math.max(0, payload.running) : 0;
+      const waiting = Number.isSafeInteger(payload?.waiting) ? Math.max(0, payload.waiting) : 0;
+      const failed = Number.isSafeInteger(payload?.failed) ? Math.max(0, payload.failed) : 0;
+      const runs = Array.isArray(payload?.runs) ? payload.runs.slice(0, 256) : [];
+      parallelRunsList.replaceChildren();
+      parallelRunsSummary.textContent = total === 0
+        ? t("parallelRuns.empty")
+        : t("parallelRuns.ready", { active, running, waiting, failed });
+      for (const run of runs) {
+        const sessionId = typeof run?.sessionId === "string" ? run.sessionId.slice(0, 96) : "";
+        if (!sessionId) continue;
+        const status = ["idle", "running", "waiting", "done", "failed", "aborted"].includes(run?.status)
+          ? run.status
+          : "idle";
+        const stage = ["idle", "model", "tool", "approval", "done", "failed", "aborted"].includes(run?.stage)
+          ? run.stage
+          : "idle";
+        const item = document.createElement("li");
+        item.className = "parallel-run-card";
+        item.dataset.status = status;
+        item.dataset.stage = stage;
+        if (sessionId === currentSessionId) item.dataset.active = "true";
+
+        const header = document.createElement("div");
+        header.className = "parallel-run-card-header";
+        const focus = document.createElement("button");
+        focus.type = "button";
+        focus.className = "parallel-run-focus";
+        focus.dataset.parallelSessionId = sessionId;
+        focus.title = t("parallelRuns.focus");
+        focus.textContent = sessionId;
+        const statusLabel = document.createElement("span");
+        statusLabel.className = "parallel-run-status";
+        statusLabel.textContent = t("parallelRuns.status." + status);
+        header.append(focus, statusLabel);
+
+        const meta = document.createElement("div");
+        meta.className = "parallel-run-meta";
+        const toolName = typeof run?.tool?.name === "string" ? run.tool.name.slice(0, 128) : "";
+        const detail = toolName ? t("parallelRuns.tool", { name: toolName }) : t("parallelRuns.stage." + stage);
+        meta.textContent = detail + " · " + parallelRunDuration(run?.durationMs);
+
+        item.append(header, meta);
+        parallelRunsList.appendChild(item);
+      }
+    }
+
+    async function loadParallelRuns() {
+      const requestId = ++parallelRunsRequestId;
+      parallelRunsController?.abort();
+      const controller = new AbortController();
+      parallelRunsController = controller;
+      parallelRunsRefreshButton.disabled = true;
+      parallelRunsRefreshButton.setAttribute("aria-busy", "true");
+      parallelRunsStatus.textContent = t("parallelRuns.checking");
+      try {
+        const response = await fetch("/api/parallel-runs", { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error("parallel runs unavailable");
+        const payload = await response.json();
+        if (requestId !== parallelRunsRequestId) return;
+        renderParallelRuns(payload);
+        parallelRunsStatus.textContent = t("parallelRuns.ready", {
+          active: Number.isSafeInteger(payload?.active) ? payload.active : 0,
+          running: Number.isSafeInteger(payload?.running) ? payload.running : 0,
+          waiting: Number.isSafeInteger(payload?.waiting) ? payload.waiting : 0,
+          failed: Number.isSafeInteger(payload?.failed) ? payload.failed : 0,
+        });
+      } catch {
+        if (controller.signal.aborted || requestId !== parallelRunsRequestId) return;
+        parallelRunsList.replaceChildren();
+        parallelRunsSummary.textContent = "";
+        parallelRunsStatus.textContent = t("parallelRuns.error");
+      } finally {
+        if (requestId === parallelRunsRequestId) {
+          parallelRunsController = null;
+          parallelRunsRefreshButton.disabled = false;
+          parallelRunsRefreshButton.setAttribute("aria-busy", "false");
+        }
+      }
+    }
+
+    async function focusParallelRun(sessionId) {
+      if (!sessionId || sessionId === currentSessionId) return;
+      await activateTaskSession(sessionId);
+      void loadParallelRuns();
     }
 
     function mcpHealthErrorLabel(error) {
@@ -6394,6 +6563,12 @@
     });
     workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
     mcpHealthRefreshButton.addEventListener("click", () => void loadMcpHealth(currentSessionId));
+    parallelRunsRefreshButton.addEventListener("click", () => void loadParallelRuns());
+    parallelRunsList.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-parallel-session-id]") : null;
+      const sessionId = target?.getAttribute("data-parallel-session-id");
+      if (sessionId) void focusParallelRun(sessionId);
+    });
     void (async () => {
       await loadSessions();
       await loadSessionView(currentSessionId);
@@ -6401,7 +6576,11 @@
       await taskTerminalUI.refresh();
       if (currentSessionId !== null) void loadWorkbenchCapabilities(currentSessionId);
       if (currentSessionId !== null) void loadMcpHealth(currentSessionId);
+      void loadParallelRuns();
     })();
+    parallelRunsTimer = window.setInterval(() => {
+      if (!document.hidden) void loadParallelRuns();
+    }, 2500);
     composerModeSelect.value = readComposerModePreference();
     applyPanelPreferences();
     syncInspectorToggle();

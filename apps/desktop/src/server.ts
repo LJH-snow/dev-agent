@@ -65,6 +65,11 @@ import {
   type McpHealthSnapshot,
 } from "./mcp-health.js";
 import {
+  createParallelRunsSnapshot,
+  normalizeParallelRunsSnapshot,
+  type ParallelRunInput,
+} from "./parallel-runs.js";
+import {
   loadProjectCapabilityMetadata,
   loadWorkbenchMetadata,
   normalizeGitHubCapabilitySnapshot,
@@ -388,7 +393,8 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     if (
       (url.pathname === "/api/monitoring"
         || url.pathname.startsWith("/api/capabilities/")
-        || url.pathname === "/api/mcp/health")
+        || url.pathname === "/api/mcp/health"
+        || url.pathname === "/api/parallel-runs")
       && !isLoopbackTerminalRequest(req)
     ) {
       res.writeHead(403, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -618,6 +624,28 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           "cache-control": "no-store",
         });
         res.end(JSON.stringify(payload));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/parallel-runs") {
+        const summaries = await listSessions([...sessions.keys()]);
+        const inputs: ParallelRunInput[] = summaries.map((summary) => {
+          const snapshot = runs.snapshot(summary.sessionId);
+          return {
+            sessionId: summary.sessionId,
+            run: runs.summary(summary.sessionId),
+            live: snapshot.live,
+          };
+        });
+        const payload = normalizeParallelRunsSnapshot(createParallelRunsSnapshot(inputs));
+        const serialized = JSON.stringify(payload);
+        if (Buffer.byteLength(serialized, "utf8") > 64 * 1024) {
+          res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "parallel run response is too large", code: "parallel-runs-too-large" }));
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        res.end(serialized);
         return;
       }
 
