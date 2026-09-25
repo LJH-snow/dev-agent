@@ -268,6 +268,8 @@ import {
   resolveModelRoutingConfig,
 } from "./model-routing.js";
 import { SessionModelBudget } from "./model-budget.js";
+import { formatSecurityScan, parseSecurityCommand, scanWorkspace, type SecurityScanResult } from "./security-center.js";
+import { LocalSkillMarketplace } from "./skill-marketplace.js";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -2351,6 +2353,7 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
     const projectMemory = new ProjectMemoryStore({
       filePath: projectMemoryFilePath(workingDirectory, projectState),
     });
+    const skillMarketplace = new LocalSkillMarketplace({ workingDirectory });
     await interactive(loop, context, streaming, questionBox, {
       rich: richUi,
       ink:
@@ -2402,6 +2405,8 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
           signal,
         }),
       projectMemory,
+      skillMarketplace,
+      runSecurityScan: () => scanWorkspace({ workingDirectory, mcpServers: config.mcpServers }),
       runCollaborativePlan: (prompt, activeContext, options) => {
         const roles = createConfiguredSpecialistRoles();
         return runCollaborativePlanWorkflow(prompt, {
@@ -3336,6 +3341,8 @@ interface InteractiveUiOptions {
     signal?: AbortSignal,
   ) => Promise<GitWorkflowResult>;
   readonly projectMemory?: ProjectMemoryStore;
+  readonly skillMarketplace?: LocalSkillMarketplace;
+  readonly runSecurityScan?: () => Promise<SecurityScanResult>;
   readonly consumePlanReview?: () => PlanReview | undefined;
   readonly runCollaborativePlan?: (
     prompt: string,
@@ -3581,6 +3588,29 @@ async function gitWorkflowCommandMessage(
     signal,
   );
   return safeTerminalText(result.message);
+}
+
+async function securityCommandMessage(command: string, ui: InteractiveUiOptions): Promise<string | undefined> {
+  const parsed = parseSecurityCommand(command);
+  if (parsed === undefined || !parsed.handled) return undefined;
+  if (parsed.action === "help") return "Usage: :security [scan] · read-only workspace and MCP audit.";
+  if (parsed.action === "invalid") return "Usage: :security [scan]";
+  if (!ui.runSecurityScan) return "Security Center is unavailable in this session.";
+  try { return safeTerminalText(formatSecurityScan(await ui.runSecurityScan())); }
+  catch (error) { return safeTerminalText(`Security scan failed: ${error instanceof Error ? error.message : String(error)}`); }
+}
+
+async function skillMarketplaceCommandMessage(
+  command: string,
+  ui: InteractiveUiOptions,
+  questionBox: QuestionBox,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
+  if (!ui.skillMarketplace) return undefined;
+  return ui.skillMarketplace.format(command, async (prompt) => {
+    const answer = questionBox.ask ? await questionBox.ask(`${prompt} [y/N] `, signal) : "";
+    return answer.trim().toLowerCase().startsWith("y");
+  });
 }
 
 async function projectMemoryCommandMessage(
@@ -4264,6 +4294,18 @@ async function interactive(
         }
         continue;
       }
+      const securityMessage = await securityCommandMessage(command, ui);
+      if (securityMessage !== undefined) {
+        const printSecurity = (): void => console.log(securityMessage);
+        if (ui.rich) streaming.withComposerHidden(printSecurity); else printSecurity();
+        continue;
+      }
+      const marketplaceMessage = await skillMarketplaceCommandMessage(command, ui, questionBox, abort?.signal);
+      if (marketplaceMessage !== undefined) {
+        const printMarketplace = (): void => console.log(marketplaceMessage);
+        if (ui.rich) streaming.withComposerHidden(printMarketplace); else printMarketplace();
+        continue;
+      }
       const skillMessage = skillCommandMessage(command, ui);
       if (skillMessage !== undefined) {
         const printSkillMessage = (): void => {
@@ -4756,7 +4798,7 @@ async function interactive(
           });
         } else {
           console.log(
-            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :route [auto|manual], :budget [tokens|cost|duration], :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :cleanup ..., exit, quit"
+            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :route [auto|manual], :budget [tokens|cost|duration], :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :security, :marketplace [list|search|install|disable|enable], :cleanup ..., exit, quit"
           );
         }
         continue;
@@ -5669,6 +5711,16 @@ async function interactiveInk(
         ink.controller.setBusy(false);
         syncQueue();
       }
+      return true;
+    }
+    const securityMessage = await securityCommandMessage(command, ui);
+    if (securityMessage !== undefined) {
+      ink.store.addNotice(securityMessage);
+      return true;
+    }
+    const marketplaceMessage = await skillMarketplaceCommandMessage(command, ui, questionBox, activeAbort?.signal);
+    if (marketplaceMessage !== undefined) {
+      ink.store.addNotice(marketplaceMessage);
       return true;
     }
     const skillMessage = skillCommandMessage(command, ui);

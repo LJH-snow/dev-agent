@@ -188,6 +188,23 @@ sessions and is not added to JSON or protocol output. See
 [`docs/trace-observability.md`](../../docs/trace-observability.md) for the
 Desktop endpoint and retention contract.
 
+### Security Center and local Skill Marketplace
+
+The CLI includes two bounded, read-first surfaces:
+
+```text
+:security
+:marketplace
+:marketplace search docs
+:marketplace install docs-helper
+:marketplace disable docs-helper
+:marketplace enable docs-helper
+```
+
+`:security` scans a bounded set of text files for secret-like material, flags sensitive filenames, reviews shell-based MCP entries and secret-like MCP environment keys, and reports symlinks that leave the workspace. It never prints secret values, runs commands, edits files, or performs automatic remediation.
+
+The local marketplace reads `.dev-agent/skill-marketplace.json`. Entries declare a name, version, local source file, and permission labels. Install, disable, and enable require confirmation where they mutate files; remote URLs, path escapes, oversized skill files, malformed entries, and unconfirmed mutations are rejected. Skills are instruction-only and never execute code. Restart the CLI after install/enable so bounded skill discovery reloads them.
+
 ### Adaptive model routing and session budgets
 
 Interactive sessions default to conservative local routing: standalone greetings use `fast`, ordinary requests use `balanced`, and requests that mention debugging, migrations, concurrency, security, refactors, or other multi-step work use `deep`. The decision uses only the current prompt and is not persisted.
