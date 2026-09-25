@@ -89,6 +89,8 @@ export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":pr [--base <branch>] <title>", description: "Create a reviewed GitHub pull request" },
   { command: ":memory [add|search|forget]", description: "Manage confirmed project memory" },
   { command: ":cleanup ...", description: "Prune metadata-only evidence" },
+  { command: ":route [auto|manual]", description: "Automatically route simple and complex prompts" },
+  { command: ":budget", description: "Show or set session token, cost, and time limits" },
   { command: ":quit", description: "Exit the session (also exit / quit)" },
 ];
 

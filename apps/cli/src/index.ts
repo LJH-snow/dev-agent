@@ -262,6 +262,13 @@ import {
   ProjectMemoryStore,
 } from "./project-memory.js";
 import {
+  AdaptiveModelProvider,
+  executeModelRoutingCommand,
+  ModelRoutingController,
+  resolveModelRoutingConfig,
+} from "./model-routing.js";
+import { SessionModelBudget } from "./model-budget.js";
+import {
   createAnthropicProvider,
   createGeminiProvider,
   createOllamaProvider,
@@ -2003,7 +2010,10 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
     }
     let activeModelSelection = modelSelection;
     const speedMode = new ModelSpeedModeController();
-    const provider = createProvider(
+    const modelRoutingConfig = resolveModelRoutingConfig(config.routing);
+    const modelRouting = new ModelRoutingController(speedMode);
+    if (modelRoutingConfig.mode === "manual") modelRouting.setManualMode(speedMode.mode);
+    const baseProvider = createProvider(
       config,
       modelSelection,
       (next) => {
@@ -2011,6 +2021,16 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       },
       speedMode,
     );
+    const adaptiveProvider = new AdaptiveModelProvider({
+      controller: modelRouting,
+      initial: baseProvider,
+      getProvider: (mode, policy, previous) => {
+        if (policy === "auto") speedMode.setMode(mode);
+        return previous;
+      },
+    });
+    const modelBudget = new SessionModelBudget(modelRoutingConfig.budget, config.pricing);
+    const provider = modelBudget.wrap(adaptiveProvider);
     const projectContext = new ProjectContextManager({ workingDirectory });
     await projectContext.refresh();
     const createConfiguredSpecialistRoles = () => resolveSpecialistRoles({
@@ -2022,13 +2042,13 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
         const selectedModel = roleModel ?? (roleProvider === undefined
           ? activeModelSelection.selection.model
           : undefined);
-        return new SpeedModeModelProvider(
+        return modelBudget.wrap(new SpeedModeModelProvider(
           createConcreteModelProvider(config, {
             provider: selectedProvider,
             ...(selectedModel === undefined ? {} : { model: selectedModel }),
           }),
           speedMode,
-        );
+        ));
       },
     });
     if (args.includes("--a2a")) {
@@ -2356,6 +2376,8 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       activeSkill: activeSkillState,
       trace,
       speedMode,
+      modelRouting,
+      modelBudget,
       projectContext,
       benchmark: (prompt) => benchmarkModel(provider, prompt),
       tasks,
@@ -3295,6 +3317,8 @@ interface InteractiveUiOptions {
   readonly activeSkill: ActiveSkillState;
   readonly trace: AgentRunTrace;
   readonly speedMode: ModelSpeedModeController;
+  readonly modelRouting: ModelRoutingController;
+  readonly modelBudget: SessionModelBudget;
   readonly projectContext: ProjectContextManager;
   readonly benchmark: (prompt: string) => Promise<SpeedBenchmarkResult>;
   readonly tasks: AgentTaskScheduler;
@@ -3911,7 +3935,7 @@ async function interactive(
       // in callers, so the banner can be observed before a later listener
       // setup.
       console.log(
-        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, ':autofix [1-3]' to repair the latest validation failure, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
+        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':route' for automatic model routing, ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, ':autofix [1-3]' to repair the latest validation failure, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
       );
       return;
     }
@@ -4732,7 +4756,7 @@ async function interactive(
           });
         } else {
           console.log(
-            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :cleanup ..., exit, quit"
+            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :route [auto|manual], :budget [tokens|cost|duration], :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :cleanup ..., exit, quit"
           );
         }
         continue;
@@ -4774,6 +4798,13 @@ async function interactive(
         continue;
       }
 
+      const routingMessage = executeModelRoutingCommand(command, ui.modelRouting, ui.modelBudget);
+      if (routingMessage !== undefined) {
+        if (ui.rich) streaming.withComposerHidden(() => console.log(safeTerminalText(routingMessage)));
+        else console.log(safeTerminalText(routingMessage));
+        continue;
+      }
+
       const modeCommand = parseSpeedModeCommand(command);
       if (modeCommand) {
         if (modeCommand.kind === "invalid") {
@@ -4781,7 +4812,7 @@ async function interactive(
           if (ui.rich) streaming.withComposerHidden(() => console.log(message));
           else console.log(message);
         } else {
-          if (modeCommand.kind === "set") ui.speedMode.setMode(modeCommand.mode);
+          if (modeCommand.kind === "set") ui.modelRouting.setManualMode(modeCommand.mode);
           const message = `Speed mode: ${ui.speedMode.mode} · ${describeSpeedModeSupport(
             { id: ui.provider as ModelProvider["id"], model: ui.model },
             ui.speedMode.mode,
@@ -5012,6 +5043,10 @@ async function interactive(
         }
       }
 
+      const route = ui.modelRouting.select(prepared.prompt);
+      const routeNotice = `[route] mode=${route.mode} reason=${route.reason}`;
+      if (ui.rich) streaming.withComposerHidden(() => console.log(routeNotice));
+      else console.log(routeNotice);
       const timingContext = { submittedAtMs: performance.now(), queuedAtMs: performance.now() };
       const scheduled = scheduleTask({
         run: ({ signal }) =>
@@ -5899,12 +5934,17 @@ async function interactiveInk(
       );
       return true;
     }
+    const routingMessage = executeModelRoutingCommand(command, ui.modelRouting, ui.modelBudget);
+    if (routingMessage !== undefined) {
+      ink.store.addNotice(safeTerminalText(routingMessage));
+      return true;
+    }
     const modeCommand = parseSpeedModeCommand(command);
     if (modeCommand) {
       if (modeCommand.kind === "invalid") {
         ink.store.addNotice("Usage: :mode fast|balanced|deep");
       } else {
-        if (modeCommand.kind === "set") ui.speedMode.setMode(modeCommand.mode);
+        if (modeCommand.kind === "set") ui.modelRouting.setManualMode(modeCommand.mode);
         ink.store.setSpeedMode(ui.speedMode.mode);
         ink.store.addNotice(`Speed mode: ${ui.speedMode.mode} · ${describeSpeedModeSupport(
           { id: ui.provider as ModelProvider["id"], model: ui.model },
@@ -6060,6 +6100,8 @@ async function interactiveInk(
       if (contextNotice) {
         ink.store.addNotice(contextNotice);
       }
+      const route = ui.modelRouting.select(prepared.prompt);
+      ink.store.addNotice(`[route] mode=${route.mode} reason=${route.reason}`);
       await runInkPrompt(
         prepared.prompt,
         prepared.context === undefined ? {} : { attachedContext: prepared.context },

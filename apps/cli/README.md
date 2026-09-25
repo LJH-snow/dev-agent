@@ -188,6 +188,24 @@ sessions and is not added to JSON or protocol output. See
 [`docs/trace-observability.md`](../../docs/trace-observability.md) for the
 Desktop endpoint and retention contract.
 
+### Adaptive model routing and session budgets
+
+Interactive sessions default to conservative local routing: standalone greetings use `fast`, ordinary requests use `balanced`, and requests that mention debugging, migrations, concurrency, security, refactors, or other multi-step work use `deep`. The decision uses only the current prompt and is not persisted.
+
+```text
+:route              # show the current policy
+:route manual       # keep the current tier for later prompts
+:route auto         # return to automatic routing
+:mode fast|balanced|deep  # choose a tier and switch to manual routing
+:budget             # show session usage and limits
+:budget tokens 20000
+:budget cost 0.50
+:budget duration 120000
+:budget tokens off
+```
+
+Budgets are process-local guardrails. Provider-reported tokens and configured model prices are accounted per request, including fallback calls. If a configured cost limit cannot be verified because the model has no price entry or a provider omits usage, the next request stops rather than reporting an unsafe zero cost. The ledger never stores prompts, responses, tool payloads, credentials, or filesystem paths.
+
 ### Speed modes and latency benchmark
 
 Use `:mode` to inspect the active mode, or select one for subsequent model calls:
