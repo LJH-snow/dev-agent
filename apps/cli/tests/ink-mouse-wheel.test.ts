@@ -37,18 +37,21 @@ test("mouse input parser consumes SGR button and release events", () => {
     consumed: true,
     directions: [],
     clicks: [{ button: 0, x: 38, y: 9, action: "press" }],
+    moves: [],
     remaining: "",
   });
   assert.deepEqual(parser.push("\u001b[<0;38;9m"), {
     consumed: true,
     directions: [],
     clicks: [{ button: 0, x: 38, y: 9, action: "release" }],
+    moves: [],
     remaining: "",
   });
   assert.deepEqual(parser.push("hello"), {
     consumed: false,
     directions: [],
     clicks: [],
+    moves: [],
     remaining: "hello",
   });
 });
@@ -60,12 +63,26 @@ test("mouse input parser reports SGR click coordinates and action", () => {
     consumed: true,
     directions: [],
     clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+    moves: [],
     remaining: "",
   });
   assert.deepEqual(parser.push("[<0;12;17m"), {
     consumed: true,
     directions: [],
     clicks: [{ button: 0, x: 12, y: 17, action: "release" }],
+    moves: [],
+    remaining: "",
+  });
+});
+
+test("mouse input parser reports SGR hover motion separately from clicks", () => {
+  const parser = new MouseInputParser();
+
+  assert.deepEqual(parser.push("\u001b[<35;12;17M"), {
+    consumed: true,
+    directions: [],
+    clicks: [],
+    moves: [{ x: 12, y: 17 }],
     remaining: "",
   });
 });
@@ -78,12 +95,14 @@ test("mouse input parser reports coordinates for Ink-split X10 clicks", () => {
     consumed: true,
     directions: [],
     clicks: [],
+    moves: [],
     remaining: "",
   });
   assert.deepEqual(parser.push(payload), {
     consumed: true,
     directions: [],
     clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+    moves: [],
     remaining: "",
   });
 });
@@ -96,17 +115,19 @@ test("mouse input parser consumes Ink-split X10 packets and preserves following 
     consumed: true,
     directions: [],
     clicks: [],
+    moves: [],
     remaining: "",
   });
   assert.deepEqual(parser.push(`${payload}x`), {
     consumed: true,
     directions: ["up"],
     clicks: [],
+    moves: [],
     remaining: "x",
   });
 });
 
 test("mouse tracking control sequences are symmetric", () => {
-  assert.equal(MOUSE_TRACKING_ENABLE, "\u001b[?1000h\u001b[?1006h");
-  assert.equal(MOUSE_TRACKING_DISABLE, "\u001b[?1006l\u001b[?1000l");
+  assert.equal(MOUSE_TRACKING_ENABLE, "\u001b[?1003h\u001b[?1006h");
+  assert.equal(MOUSE_TRACKING_DISABLE, "\u001b[?1006l\u001b[?1003l");
 });

@@ -12,6 +12,7 @@ import {
   deriveStickyTaskTitle,
   InkCliApp,
   isBackToBottomClick,
+  isNavigationBarHovered,
 } from "../dist/ink/app.js";
 import { InkRuntimeStore } from "../dist/ink/runtime-store.js";
 import {
@@ -1616,10 +1617,18 @@ test("Ink navigates a long transcript with terminal mouse wheel events", async (
 });
 
 test("Back to bottom hit-testing only accepts a primary press on the navigation row", () => {
-  const browsing = { followOutput: false } as const;
+  const browsing = {
+    followOutput: false,
+    hiddenAbove: 4,
+    hiddenBelow: 3,
+    newOutput: 0,
+  } as const;
   const click = { button: 0, x: 12, y: 17, action: "press" } as const;
 
   assert.equal(isBackToBottomClick(click, 24, browsing), true);
+  assert.equal(isNavigationBarHovered({ x: 12, y: 17 }, 24, browsing), true);
+  assert.equal(isNavigationBarHovered({ x: 1, y: 17 }, 24, browsing), false);
+  assert.equal(isNavigationBarHovered({ x: 12, y: 16 }, 24, browsing), false);
   assert.equal(
     isBackToBottomClick({ ...click, y: 16 }, 23, browsing),
     true,
@@ -1638,7 +1647,12 @@ test("Back to bottom hit-testing only accepts a primary press on the navigation 
     false,
   );
   assert.equal(
-    isBackToBottomClick(click, 24, { followOutput: true }),
+    isBackToBottomClick(click, 24, {
+      followOutput: true,
+      hiddenAbove: 0,
+      hiddenBelow: 0,
+      newOutput: 0,
+    }),
     false,
   );
 });
@@ -1673,6 +1687,19 @@ test("Ink clicking Back to bottom returns the transcript to the latest output", 
     await new Promise((resolve) => setTimeout(resolve, 100));
     assert.match(writes.join(""), /Back to bottom/);
     assert.doesNotMatch(writes.join(""), /click-line-40/);
+
+    writes.length = 0;
+    // Button code 35 is an SGR no-button motion report. It should only color
+    // the navigation label while the pointer is over its text bounds.
+    stdin.write("\u001b[<35;12;17M");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const hoverFrame = writes.join("");
+    assert.match(hoverFrame, /Back to bottom/);
+    assert.equal(
+      hoverFrame.includes("[<35;12;17M"),
+      false,
+      "hover motion reports must be consumed instead of entering the composer",
+    );
 
     writes.length = 0;
     // The test terminal is 24 rows high, so the reserved navigation row is

@@ -11,10 +11,18 @@ export interface MouseClick {
   readonly action: MouseClickAction;
 }
 
+export interface MouseMove {
+  /** One-based terminal column. */
+  readonly x: number;
+  /** One-based terminal row. */
+  readonly y: number;
+}
+
 export interface MouseInputParseResult {
   readonly consumed: boolean;
   readonly directions: readonly MouseWheelDirection[];
   readonly clicks: readonly MouseClick[];
+  readonly moves: readonly MouseMove[];
   /** Non-mouse text from the same input event, if any. */
   readonly remaining: string;
 }
@@ -31,6 +39,7 @@ export class MouseInputParser {
   push(input: string): MouseInputParseResult {
     const directions: MouseWheelDirection[] = [];
     const clicks: MouseClick[] = [];
+    const moves: MouseMove[] = [];
     let consumed = false;
     let remaining = "";
     let index = 0;
@@ -64,12 +73,16 @@ export class MouseInputParser {
           x > 0 &&
           y > 0
         ) {
-          clicks.push({
-            button: buttonCode,
-            x,
-            y,
-            action: (buttonCode & 3) === 3 ? "release" : "press",
-          });
+          if ((buttonCode & 32) !== 0) {
+            moves.push({ x, y });
+          } else {
+            clicks.push({
+              button: buttonCode,
+              x,
+              y,
+              action: (buttonCode & 3) === 3 ? "release" : "press",
+            });
+          }
         }
         this.pendingX10Payload = undefined;
         continue;
@@ -91,12 +104,16 @@ export class MouseInputParser {
           x > 0 &&
           y > 0
         ) {
-          clicks.push({
-            button,
-            x,
-            y,
-            action: sgrMatch[4] === "M" ? "press" : "release",
-          });
+          if ((button & 32) !== 0) {
+            moves.push({ x, y });
+          } else {
+            clicks.push({
+              button,
+              x,
+              y,
+              action: sgrMatch[4] === "M" ? "press" : "release",
+            });
+          }
         }
         consumed = true;
         index += sgrMatch[0].length;
@@ -122,12 +139,15 @@ export class MouseInputParser {
       index += character.length;
     }
 
-    return { consumed, directions, clicks, remaining };
+    return { consumed, directions, clicks, moves, remaining };
   }
 }
 
-export const MOUSE_TRACKING_ENABLE = "\u001b[?1000h\u001b[?1006h";
-export const MOUSE_TRACKING_DISABLE = "\u001b[?1006l\u001b[?1000l";
+// 1003 reports pointer movement without requiring a button to be held; 1006
+// keeps coordinates in the SGR format so modern terminals can report rows and
+// columns larger than the legacy X10 byte range.
+export const MOUSE_TRACKING_ENABLE = "\u001b[?1003h\u001b[?1006h";
+export const MOUSE_TRACKING_DISABLE = "\u001b[?1006l\u001b[?1003l";
 
 /**
  * Parses the two mouse protocols commonly emitted by macOS Terminal and
