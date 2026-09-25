@@ -449,6 +449,24 @@
               <button type="button" id="task-workspace-compare" data-i18n="workspace.compare" disabled>Review diff</button>
               <button type="button" id="task-workspace-merge" data-i18n="workspace.merge" disabled>Merge task</button>
               <button type="button" id="task-workspace-cleanup" data-i18n="workspace.cleanup" disabled>Clean up</button>
+            <section id="task-validation-panel" class="task-validation-panel" aria-labelledby="task-validation-title" aria-live="polite" hidden>
+              <div class="task-validation-header">
+                <div>
+                  <h3 id="task-validation-title" data-i18n="taskValidation.title">Validation center</h3>
+                  <div id="task-validation-status" class="task-validation-status" role="status" data-i18n="taskValidation.status.ready">Ready to validate this task worktree.</div>
+                </div>
+                <span id="task-validation-policy" class="task-validation-policy" data-i18n="taskValidation.policy.unknown">Unknown policy</span>
+              </div>
+              <div id="task-validation-summary" class="task-validation-summary" role="status" data-i18n="taskValidation.summary.empty">No task validation has run.</div>
+              <ul id="task-validation-checks" class="task-validation-checks" aria-label="Validation checks" data-i18n-aria-label="taskValidation.checks.label"></ul>
+              <div class="task-validation-actions">
+                <button type="button" id="task-validation-run" data-i18n="taskValidation.run">Run validation</button>
+                <button type="button" id="task-validation-rerun-failed" data-i18n="taskValidation.rerunFailed" disabled>Rerun failed checks</button>
+                <button type="button" id="task-validation-cancel" data-i18n="taskValidation.cancel" disabled>Cancel</button>
+                <button type="button" id="task-validation-refresh" data-i18n="action.refresh">Refresh</button>
+                <button type="button" id="task-validation-feedback" data-i18n="taskValidation.insertFailure" disabled>Insert failure summary</button>
+              </div>
+            </section>
             </div>
             <section id="task-workspace-diff-panel" class="task-workspace-diff-panel" aria-labelledby="task-workspace-diff-title" hidden>
               <div class="task-workspace-diff-heading">
@@ -683,6 +701,7 @@
     } from "/public/chat-queue.js";
     import { filterSessionSummaries } from "/public/session-filter.js";
     import { createTaskWorkspaceUI, formatReviewComments } from "/public/task-workspace-ui.js";
+    import { createTaskValidationUI } from "/public/task-validation-ui.js";
     import { createTaskTerminalUI } from "/public/task-terminal-ui.js";
     import {
       getTurnActivityForEvent,
@@ -914,6 +933,7 @@
     let hasCost = false;
     let currentSessionId = null;
     let taskWorkspaceUI = null;
+    let taskValidationUI = null;
     let taskTerminalUI = null;
     let sessionSummaries = new Map();
     let sessionFilterQuery = "";
@@ -1106,6 +1126,33 @@
         "parallelRuns.duration.minutes": "{count}m",
         "parallelRuns.duration.hours": "{count}h",
         "parallelRuns.focus": "Focus",
+        "taskValidation.title": "Validation center",
+        "taskValidation.status.ready": "Ready to validate this task worktree.",
+        "taskValidation.status.running": "Validation is running…",
+        "taskValidation.status.starting": "Preparing validation…",
+        "taskValidation.status.cancelling": "Cancellation requested…",
+        "taskValidation.status.inserted": "Failure summary inserted into the prompt.",
+        "taskValidation.policy.fast": "fast policy",
+        "taskValidation.policy.default": "default policy",
+        "taskValidation.policy.strict": "strict policy",
+        "taskValidation.policy.unknown": "unknown policy",
+        "taskValidation.summary.empty": "No task validation has run.",
+        "taskValidation.files": "{count} changed file(s)",
+        "taskValidation.run": "Run validation",
+        "taskValidation.rerunFailed": "Rerun failed checks",
+        "taskValidation.cancel": "Cancel",
+        "taskValidation.insertFailure": "Insert failure summary",
+        "taskValidation.checks.label": "Validation checks",
+        "taskValidation.checks.empty": "No validation checks were derived.",
+        "taskValidation.check.unknown": "Unnamed check",
+        "taskValidation.check.pending": "pending",
+        "taskValidation.check.passed": "passed",
+        "taskValidation.check.failed": "failed",
+        "taskValidation.check.skipped": "skipped",
+        "taskValidation.check.blocked": "blocked",
+        "taskValidation.error.generic": "Task validation is unavailable or failed.",
+        "taskValidation.error.truncated": "Refresh the task diff before validating truncated changes.",
+        "taskValidation.error.noFailedChecks": "No failed checks remain to rerun.",
         "workspace.label": "Workspace",
         "workspace.title": "Task workspaces",
         "workspace.description": "Each task gets its own branch and Git worktree.",
@@ -1672,6 +1719,33 @@
         "parallelRuns.duration.minutes": "{count} 分钟",
         "parallelRuns.duration.hours": "{count} 小时",
         "parallelRuns.focus": "聚焦",
+        "taskValidation.title": "验证中心",
+        "taskValidation.status.ready": "可以验证此任务 worktree。",
+        "taskValidation.status.running": "验证正在运行…",
+        "taskValidation.status.starting": "正在准备验证…",
+        "taskValidation.status.cancelling": "已请求取消…",
+        "taskValidation.status.inserted": "失败摘要已插入提示词。",
+        "taskValidation.policy.fast": "快速策略",
+        "taskValidation.policy.default": "默认策略",
+        "taskValidation.policy.strict": "严格策略",
+        "taskValidation.policy.unknown": "未知策略",
+        "taskValidation.summary.empty": "尚未运行任务验证。",
+        "taskValidation.files": "{count} 个变更文件",
+        "taskValidation.run": "运行验证",
+        "taskValidation.rerunFailed": "重跑失败检查",
+        "taskValidation.cancel": "取消",
+        "taskValidation.insertFailure": "插入失败摘要",
+        "taskValidation.checks.label": "验证检查",
+        "taskValidation.checks.empty": "没有推导出可运行的验证检查。",
+        "taskValidation.check.unknown": "未命名检查",
+        "taskValidation.check.pending": "等待中",
+        "taskValidation.check.passed": "通过",
+        "taskValidation.check.failed": "失败",
+        "taskValidation.check.skipped": "已跳过",
+        "taskValidation.check.blocked": "已阻断",
+        "taskValidation.error.generic": "任务验证不可用或运行失败。",
+        "taskValidation.error.truncated": "变更列表已截断，请刷新任务差异后再验证。",
+        "taskValidation.error.noFailedChecks": "没有可重跑的失败检查。",
         "workspace.label": "工作区",
         "workspace.title": "任务工作区",
         "workspace.description": "每个任务使用独立 Git 分支和 worktree。",
@@ -5761,6 +5835,7 @@
       applySessionUsage(sessionSummaries.get(currentSessionId));
       await loadSessionView(currentSessionId);
       void taskWorkspaceUI?.refresh();
+      taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
       if (!runSnapshot?.active) setStatus("session " + currentSessionId);
     });
@@ -5866,6 +5941,7 @@
       resetTracePanel();
       currentSessionId = "session-" + Date.now().toString(36);
       taskWorkspaceUI?.render();
+      taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
       resetRunTimeline(currentSessionId);
       ensureSessionOption(currentSessionId);
@@ -6572,6 +6648,7 @@
       resetCheckpointPanel();
       resetTracePanel();
       currentSessionId = sessionId;
+      taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
       resetRunTimeline(currentSessionId);
       totalTokens = 0;
@@ -6608,6 +6685,22 @@
         input.setSelectionRange(input.value.length, input.value.length);
         input.dispatchEvent(new Event("input", { bubbles: true }));
       },
+    taskValidationUI = createTaskValidationUI({
+      documentRef: document,
+      fetcher: fetch,
+      translate: t,
+      getSessionId: () => currentSessionId,
+      insertFeedback: (feedback) => {
+        const separator = input.value.trim() ? "\n\n" : "";
+        input.value = `${input.value}${separator}${feedback}`;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      onStateChanged: () => {
+        void taskWorkspaceUI?.refresh();
+      },
+    });
     });
     taskTerminalUI = createTaskTerminalUI({
       documentRef: document,
@@ -6623,6 +6716,7 @@
         input.dispatchEvent(new Event("input", { bubbles: true }));
       },
       onFinished: () => {
+        void taskValidationUI?.refresh();
         void taskWorkspaceUI?.refresh();
       },
       recordLifecycle: (kind, state) => {
@@ -6650,8 +6744,11 @@
       await loadSessionView(currentSessionId);
       await taskWorkspaceUI.refresh();
       await taskTerminalUI.refresh();
-      if (currentSessionId !== null) void loadWorkbenchCapabilities(currentSessionId);
-      if (currentSessionId !== null) void loadMcpHealth(currentSessionId);
+      await taskValidationUI.refresh();
+      if (currentSessionId !== null) {
+        void loadWorkbenchCapabilities(currentSessionId);
+        void loadMcpHealth(currentSessionId);
+      }
       void loadParallelRuns();
     })();
     parallelRunsTimer = window.setInterval(() => {

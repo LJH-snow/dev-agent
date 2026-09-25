@@ -26,6 +26,7 @@ import {
   type AgentTraceSnapshot,
   type AgentTraceLifecycleKind,
   type AgentTraceLifecycleStatus,
+  type ValidationPlan,
   type ValidationRecord,
   type ValidationResult,
   type ValidationStatus,
@@ -60,15 +61,12 @@ import {
 } from "./task-workspaces.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "./task-terminal.js";
 import {
-  createMcpHealthSnapshot,
-  normalizeMcpHealthSnapshot,
-  type McpHealthSnapshot,
-} from "./mcp-health.js";
-import {
-  createParallelRunsSnapshot,
-  normalizeParallelRunsSnapshot,
-  type ParallelRunInput,
-} from "./parallel-runs.js";
+  DesktopTaskValidationManager,
+  TaskValidationError,
+  type TaskValidationMode,
+  type TaskValidationPolicy,
+  type TaskValidationSession,
+} from "./task-validation.js";
 import {
   loadProjectCapabilityMetadata,
   loadWorkbenchMetadata,
@@ -80,6 +78,16 @@ import {
   type RepositoryCapabilitySnapshot,
   type WorkbenchMetadataSnapshot,
 } from "./capabilities.js";
+import {
+  createMcpHealthSnapshot,
+  normalizeMcpHealthSnapshot,
+  type McpHealthSnapshot,
+} from "./mcp-health.js";
+import {
+  createParallelRunsSnapshot,
+  normalizeParallelRunsSnapshot,
+  type ParallelRunInput,
+} from "./parallel-runs.js";
 
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
@@ -124,6 +132,16 @@ export interface DesktopChatSession {
   getTraceSnapshot?(): AgentTraceSnapshot;
   /** Records only allowlisted terminal/preview lifecycle metadata. */
   recordTraceLifecycle?(kind: AgentTraceLifecycleKind, status: AgentTraceLifecycleStatus): void;
+  /** Builds a deterministic validation plan for the selected task worktree paths. */
+  prepareTaskValidation?(
+    changedPaths: readonly string[],
+    options?: { readonly validationId?: string },
+  ): Promise<ValidationPlan> | ValidationPlan;
+  /** Runs a previously prepared task validation plan in this session worktree. */
+  runTaskValidation?(
+    plan: ValidationPlan,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<ValidationResult>;
   /** Reruns trusted validation for an applied change set without changing files. */
   rerunValidation?(
     changeSetId: string,
@@ -303,6 +321,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     ...(options.worktreeDirectory === undefined ? {} : { worktreeDirectory: options.worktreeDirectory }),
     ...(options.workspaceStateFile === undefined ? {} : { stateFile: options.workspaceStateFile }),
   });
+  const taskValidationManager = new DesktopTaskValidationManager();
   const terminalManager = new DesktopTaskTerminalManager({
     onLifecycle: ({ sessionId, status }) => {
       sessions.get(sessionId)?.recordTraceLifecycle?.("terminal", status);
@@ -384,7 +403,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://${host}:${port}`);
 
-    if ((url.pathname === "/api/terminal" || url.pathname.startsWith("/api/terminal/")) && !isLoopbackTerminalRequest(req)) {
+    if (
+      (url.pathname === "/api/terminal"
+        || url.pathname.startsWith("/api/terminal/")
+        || url.pathname === "/api/task-validation"
+        || url.pathname.startsWith("/api/task-validation/"))
+      && !isLoopbackTerminalRequest(req)
+    ) {
       res.writeHead(403, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       res.end(JSON.stringify({ error: "terminal endpoints are available only to trusted loopback requests" }));
       return;
@@ -521,7 +546,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           },
           sessions: sessionIds.map((sessionId) => ({
             sessionId,
-            active: inFlight.has(sessionId),
+            active: inFlight.has(sessionId) || taskValidationManager.hasRunning(sessionId),
             run: runs.summary(sessionId),
           })),
         };
@@ -612,7 +637,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
             sessionId,
             executorMode: session.executorMode,
           });
-        const status = withDesktopStatusSession(baseStatus, sessionId, inFlight.has(sessionId));
+        const status = withDesktopStatusSession(baseStatus, sessionId, inFlight.has(sessionId) || taskValidationManager.hasRunning(sessionId));
         const managedRuntime =
           options.managedRuntime === undefined
             ? await resolveDesktopManagedRuntimeStatus()
@@ -717,6 +742,11 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "session limit reached", code: "terminal-session-limit" }));
           return;
         }
+        if (taskValidationManager.hasRunning(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: activeSessionRequestMessage, code: "task-validation-running" }));
+          return;
+        }
         try {
           const workingDirectory = await taskWorkspaces.terminalWorkingDirectory(sessionId);
           const terminal = terminalManager.start(sessionId, workingDirectory, command);
@@ -793,8 +823,158 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         return;
       }
 
+      if (req.method === "GET" && url.pathname === "/api/task-validation") {
+        const sessionId = normalizeSessionIdForRequest(url.searchParams.get("sessionId") ?? undefined);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        if (!taskWorkspaces.isTaskSession(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({
+            error: "Task validation requires an isolated task worktree.",
+            code: "task-validation-requires-workspace",
+          }));
+          return;
+        }
+        const resolved = sessionFor(sessionId);
+        if (!resolved) {
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "session registry limit reached" }));
+          return;
+        }
+        const policy = validationPolicyForSession(resolved.session);
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(taskValidationManager.get(sessionId, policy)));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/task-validation") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsed.ok) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: parsed.error }));
+          return;
+        }
+        const unsupportedFields = Object.keys(parsed.value).filter((key) => key !== "sessionId" && key !== "mode");
+        if (unsupportedFields.length > 0) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "task validation only accepts sessionId and mode" }));
+          return;
+        }
+        const mode = parseTaskValidationMode(parsed.value.mode);
+        if (mode === undefined) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "mode must be all or failed" }));
+          return;
+        }
+        const sessionId = normalizeSessionIdForRequest(
+          typeof parsed.value.sessionId === "string" ? parsed.value.sessionId : undefined,
+        );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        if (!taskWorkspaces.isTaskSession(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            error: "Task validation requires an isolated task worktree.",
+            code: "task-validation-requires-workspace",
+          }));
+          return;
+        }
+        if (taskWorkspaces.isCleanedSession(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            error: "This task worktree was cleaned up; create a new isolated task to continue.",
+            code: "workspace-cleaned",
+          }));
+          return;
+        }
+        if (inFlight.has(sessionId) || terminalManager.hasRunning(sessionId) || taskValidationManager.hasRunning(sessionId)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: activeSessionRequestMessage, code: "task-validation-running" }));
+          return;
+        }
+        const resolved = sessionFor(sessionId);
+        if (!resolved) {
+          res.writeHead(429, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "session registry limit reached" }));
+          return;
+        }
+        if (!resolved.session.prepareTaskValidation || !resolved.session.runTaskValidation) {
+          res.writeHead(501, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "task validation is unavailable", code: "task-validation-unavailable" }));
+          return;
+        }
+        try {
+          const diff = await taskWorkspaces.diff(sessionId);
+          if (diff.filesTruncated) {
+            res.writeHead(413, { "content-type": "application/json" });
+            res.end(JSON.stringify({
+              error: "The changed-file list is truncated; refresh the task diff before validating.",
+              code: "task-validation-files-truncated",
+            }));
+            return;
+          }
+          const taskSession = resolved.session as TaskValidationSession;
+          const snapshot = await taskValidationManager.start(
+            sessionId,
+            taskSession,
+            diff.files.length,
+            diff.files.map((file) => file.path),
+            validationPolicyForSession(resolved.session),
+            mode,
+          );
+          res.writeHead(202, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify(snapshot));
+        } catch (error) {
+          sendTaskValidationError(res, error);
+        }
+        return;
+      }
+
+      if (req.method === "DELETE" && url.pathname.startsWith("/api/task-validation/")) {
+        const rawId = url.pathname.slice("/api/task-validation/".length);
+        if (!rawId || rawId.includes("/")) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "not found" }));
+          return;
+        }
+        let sessionId: string;
+        try {
+          sessionId = normalizeSessionId(decodeURIComponent(rawId));
+        } catch {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        if (sessionId.length > maxSessionIdLength) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        if (!taskWorkspaces.isTaskSession(sessionId)) {
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            error: "Task validation requires an isolated task worktree.",
+            code: "task-validation-requires-workspace",
+          }));
+          return;
+        }
+        const snapshot = taskValidationManager.cancel(sessionId);
+        res.writeHead(202, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify(snapshot));
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/api/workspaces") {
-        const listing = await taskWorkspaces.list(inFlight);
+        const listing = await taskWorkspaces.list(new Set([...inFlight, ...taskValidationManager.runningSessionIds()]));
         res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(listing));
         return;
@@ -880,7 +1060,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
         try {
-          const result = await taskWorkspaces.merge(sessionId, inFlight.has(sessionId) || terminalManager.hasRunning(sessionId));
+          const result = await taskWorkspaces.merge(sessionId, inFlight.has(sessionId) || terminalManager.hasRunning(sessionId) || taskValidationManager.hasRunning(sessionId));
           res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
           res.end(JSON.stringify(result));
         } catch (error) {
@@ -909,7 +1089,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
         try {
-          const result = await taskWorkspaces.cleanup(sessionId, inFlight.has(sessionId) || terminalManager.hasRunning(sessionId));
+          const result = await taskWorkspaces.cleanup(sessionId, inFlight.has(sessionId) || terminalManager.hasRunning(sessionId) || taskValidationManager.hasRunning(sessionId));
           res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
           res.end(JSON.stringify(result));
         } catch (error) {
@@ -1268,6 +1448,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: activeSessionRequestMessage }));
           return;
         }
+        if (taskValidationManager.hasRunning(sessionId)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "stop task validation before deleting this session", code: "task-validation-running" }));
+          return;
+        }
         if (terminalManager.hasRunning(sessionId)) {
           req.resume();
           const stopped = await terminalManager.stopSession(sessionId);
@@ -1278,6 +1464,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           }
         }
         sessions.delete(sessionId);
+        taskValidationManager.clear(sessionId);
         clearSessionRuntimeState(sessionId);
         if (activeSessionId === sessionId) {
           activeSessionId = undefined;
@@ -1677,7 +1864,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "This task worktree was cleaned up; create a new isolated task to continue.", code: "workspace-cleaned" }));
           return;
         }
-        if (inFlight.has(sessionId)) {
+        if (inFlight.has(sessionId) || taskValidationManager.hasRunning(sessionId)) {
           // Check before creating an unknown session so a rename target cannot
           // be registered while its memory file is still being moved.
           req.resume();
@@ -1694,7 +1881,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
         const { id, session } = resolved;
-        if (inFlight.has(id)) {
+        if (inFlight.has(id) || taskValidationManager.hasRunning(id)) {
           // A second run would interleave two histories in the same session.
           req.resume();
           res.writeHead(409, { "content-type": "application/json" });
@@ -1767,7 +1954,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "sessionId is too long" }));
           return;
         }
-        if (inFlight.has(sessionId)) {
+        if (inFlight.has(sessionId) || taskValidationManager.hasRunning(sessionId)) {
           res.writeHead(409, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: activeSessionRequestMessage }));
           return;
@@ -1953,7 +2140,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "sessionId is too long" }));
           return;
         }
-        if (inFlight.has(sessionId)) {
+        if (inFlight.has(sessionId) || taskValidationManager.hasRunning(sessionId)) {
           res.writeHead(409, { "content-type": "application/json" });
           res.end(
             JSON.stringify({ error: activeSessionRequestMessage })
@@ -2203,6 +2390,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   });
 
   server.once("close", () => {
+    taskValidationManager.closeAll();
     terminalManager.closeAll();
     for (const sessionId of sessions.keys()) {
       clearSessionRuntimeState(sessionId);
@@ -2661,6 +2849,24 @@ function waitForApproval(
       signal?.addEventListener("abort", onAbort, { once: true });
     }
   });
+}
+
+function validationPolicyForSession(session: DesktopChatSession): TaskValidationPolicy {
+  const policy = session.getStatus?.().validation.policy;
+  return policy === "fast" || policy === "default" || policy === "strict" ? policy : "unknown";
+}
+
+function parseTaskValidationMode(value: unknown): TaskValidationMode | undefined {
+  if (value === undefined || value === "all") return "all";
+  return value === "failed" ? "failed" : undefined;
+}
+
+function sendTaskValidationError(res: ServerResponse, error: unknown): void {
+  const statusCode = error instanceof TaskValidationError ? error.statusCode : 500;
+  const message = error instanceof TaskValidationError ? error.message : "Task validation request failed.";
+  const code = error instanceof TaskValidationError ? error.code : "task-validation-request-failed";
+  res.writeHead(statusCode, { "content-type": "application/json", "cache-control": "no-store" });
+  res.end(JSON.stringify({ error: message, code }));
 }
 
 function sendTaskWorkspaceError(res: ServerResponse, error: unknown): void {
