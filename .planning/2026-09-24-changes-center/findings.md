@@ -27,3 +27,19 @@
 - Isolated browser evidence used a temporary repository with staged README and
   new-file changes. The UI showed `2 个文件 · +2 · −1`, then rendered split view
   and filtered the file list to `README.md`; no remote operation was performed.
+
+## 2026-09-25 — final split-view findings
+
+- A raw patch contains non-line metadata between file headers and hunks. Treating
+  those rows as context incorrectly duplicated them into both split columns;
+  metadata now renders as one full-width text-only cell.
+- Adjacent delete/add runs are paired by bounded order. When one side has more
+  lines, the missing side is an empty cell; each actual changed entry keeps its
+  original `+line` or `−line` review anchor.
+- The split grid uses a content-sized inner layout inside the bounded diff
+  scroller, so narrow inspector panels remain usable without silently dropping
+  long source lines.
+- Full Desktop runs were affected by the local `~/.dev-agent/config.json`
+  shadcn MCP process and one intermittent workspace-test response race. The
+  relevant task-workspace integration plus UI suite passed **11/11** in an
+  isolated rerun; no server-side task-workspace code changed in this tranche.

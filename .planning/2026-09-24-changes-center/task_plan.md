@@ -27,6 +27,15 @@
 - Existing review comments, merge, cleanup, and stale-session behavior remain green.
 - Browser evidence uses a temporary Git repository, not the real project worktree.
 
+## Final verification note — 2026-09-25
+
+The changed task-workspace surface passed the focused integration/UI suite at
+**11/11**, plus Desktop typecheck/build, syntax checking, and `git diff --check`.
+The full Desktop suite was also exercised; unrelated local MCP configuration and
+one intermittent workspace-test response race prevented treating that run as a
+clean release gate, so the targeted task-workspace suite is the authoritative
+verification for this UI-only tranche.
+
 
 ## 2026-09-24 — implementation closure
 

@@ -20,6 +20,18 @@ function diffLineKind(line) {
   if (line.startsWith("+") && !line.startsWith("+++")) return "add";
   if (line.startsWith("-") && !line.startsWith("---")) return "delete";
   if (line.startsWith("\\")) return "meta";
+  if (
+    line.startsWith("# ") ||
+    line.startsWith("index ") ||
+    line.startsWith("new file mode ") ||
+    line.startsWith("deleted file mode ") ||
+    line.startsWith("old mode ") ||
+    line.startsWith("new mode ") ||
+    line.startsWith("similarity index ") ||
+    line.startsWith("rename from ") ||
+    line.startsWith("rename to ") ||
+    line.startsWith("Binary files ")
+  ) return "meta";
   return "context";
 }
 
@@ -101,6 +113,38 @@ function diffStatusTone(status) {
   if (status.startsWith("D") || status.startsWith("-")) return "D";
   if (status.startsWith("M") || status.startsWith("R") || status.startsWith("C") || status.startsWith("~")) return "M";
   return "M";
+}
+
+/** Pair bounded adjacent additions/deletions into side-by-side rows. */
+export function pairSplitDiffEntries(entries) {
+  const source = Array.isArray(entries) ? entries : [];
+  const rows = [];
+  for (let index = 0; index < source.length;) {
+    const entry = source[index];
+    if (entry?.kind !== "add" && entry?.kind !== "delete") {
+      rows.push({ kind: entry?.kind ?? "context", entry });
+      index += 1;
+      continue;
+    }
+
+    const deletions = [];
+    const additions = [];
+    while (index < source.length && (source[index]?.kind === "add" || source[index]?.kind === "delete")) {
+      const change = source[index];
+      if (change.kind === "delete") deletions.push(change);
+      else additions.push(change);
+      index += 1;
+    }
+    const rowCount = Math.max(deletions.length, additions.length);
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      rows.push({
+        kind: "change",
+        deletion: deletions[rowIndex],
+        addition: additions[rowIndex],
+      });
+    }
+  }
+  return rows;
 }
 
 export function summarizeDiffPayload(payload) {
@@ -433,36 +477,37 @@ export function createTaskWorkspaceUI({
   function renderSplitPatch(workspace, group, patch) {
     const split = documentRef.createElement("div");
     split.className = "task-workspace-split";
-    for (const entry of parseUnifiedDiff(patch)) {
+    const appendCode = (cell, text) => {
+      const code = documentRef.createElement("code");
+      code.textContent = text || " ";
+      cell.appendChild(code);
+    };
+    const appendCell = (row, entry, emptyKind) => {
+      const cell = documentRef.createElement("div");
+      cell.className = "task-workspace-split-cell";
+      cell.dataset.changeKind = entry?.kind ?? emptyKind ?? "context";
+      appendCode(cell, entry?.text ?? "");
+      if (entry?.anchor) appendCommentAction(cell, workspace, group, entry.anchor);
+      row.appendChild(cell);
+    };
+
+    const entries = parseUnifiedDiff(patch);
+    for (const splitEntry of pairSplitDiffEntries(entries)) {
       const row = documentRef.createElement("div");
       row.className = "task-workspace-split-row";
-      row.dataset.kind = entry.kind;
-      const left = documentRef.createElement("div");
-      const right = documentRef.createElement("div");
-      left.className = "task-workspace-split-cell";
-      right.className = "task-workspace-split-cell";
-      const addCode = (cell, text) => {
-        const code = documentRef.createElement("code");
-        code.textContent = text || " ";
-        cell.appendChild(code);
-      };
-      if (["hunk", "file", "header", "meta"].includes(entry.kind)) {
-        addCode(left, entry.raw);
-        row.appendChild(left);
-      } else if (entry.kind === "delete") {
-        addCode(left, entry.text);
-        appendCommentAction(left, workspace, group, entry.anchor);
-        addCode(right, "");
-        row.append(left, right);
-      } else if (entry.kind === "add") {
-        addCode(left, "");
-        addCode(right, entry.text);
-        appendCommentAction(right, workspace, group, entry.anchor);
-        row.append(left, right);
+      row.dataset.kind = splitEntry.kind;
+      if (splitEntry.kind === "change") {
+        appendCell(row, splitEntry.deletion, "empty");
+        appendCell(row, splitEntry.addition, "empty");
+      } else if (["hunk", "file", "header", "meta"].includes(splitEntry.kind)) {
+        const cell = documentRef.createElement("div");
+        cell.className = "task-workspace-split-cell";
+        cell.dataset.changeKind = splitEntry.kind;
+        appendCode(cell, splitEntry.entry?.raw ?? "");
+        row.appendChild(cell);
       } else {
-        addCode(left, entry.text);
-        addCode(right, entry.text);
-        row.append(left, right);
+        appendCell(row, splitEntry.entry);
+        appendCell(row, splitEntry.entry);
       }
       split.appendChild(row);
     }

@@ -55,6 +55,7 @@ test("task worktree actions use the bounded API and confirm merge or cleanup", (
   assert.match(controller, /function renderDiffFiles\(payload\)/);
   assert.match(controller, /filterDiffFiles\(payload\.files, diffSearchValue\)/);
   assert.match(controller, /parseUnifiedDiff/);
+  assert.match(controller, /pairSplitDiffEntries/);
   assert.match(controller, /renderSplitPatch/);
   assert.match(controller, /workspace\.diff\.noMatches/);
   assert.match(controller, /\/api\/workspaces\/\$\{encodeURIComponent\(workspace\.sessionId\)\}\/merge/);
@@ -134,6 +135,7 @@ test("bounded diff helpers parse anchors, summarize files, and filter paths", as
 
   const parsed = module.parseUnifiedDiff(patch);
   assert.equal(parsed.filter((entry) => entry.kind === "add").length, 2);
+  assert.equal(module.parseUnifiedDiff("# unstaged changes\nindex abc")[0].kind, "meta");
   assert.equal(parsed.find((entry) => entry.kind === "delete")?.oldLine, 2);
   assert.equal(parsed.find((entry) => entry.kind === "add")?.anchor, "+2");
 
@@ -158,4 +160,8 @@ test("bounded diff helpers parse anchors, summarize files, and filter paths", as
     { path: "src/App.tsx" },
     { path: "README.md" },
   ], "app"), [{ path: "src/App.tsx" }]);
+
+  const paired = module.pairSplitDiffEntries(parsed);
+  assert.equal(paired.find((row) => row.kind === "change")?.deletion?.anchor, "−2");
+  assert.equal(paired.find((row) => row.kind === "change")?.addition?.anchor, "+2");
 });

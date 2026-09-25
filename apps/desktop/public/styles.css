@@ -3313,7 +3313,8 @@ html[data-theme="light"] {
 .task-workspace-split {
   display: grid;
   gap: 1px;
-  min-width: 620px;
+  width: max-content;
+  min-width: min(620px, 100%);
 }
 
 .task-workspace-split-row {
@@ -3338,11 +3339,11 @@ html[data-theme="light"] {
   font: inherit;
 }
 
-.task-workspace-split-row[data-kind="add"] .task-workspace-split-cell:last-child {
+.task-workspace-split-cell[data-change-kind="add"] {
   background: color-mix(in srgb, #37a675 14%, var(--bg));
 }
 
-.task-workspace-split-row[data-kind="delete"] .task-workspace-split-cell:first-child {
+.task-workspace-split-cell[data-change-kind="delete"] {
   background: color-mix(in srgb, #df6370 14%, var(--bg));
 }
 

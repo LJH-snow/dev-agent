@@ -17,3 +17,18 @@
 - Browser acceptance against a temporary Git fixture confirmed the summary,
   split view, and README-only file filter.
 - Desktop verification: **236/236** tests, build, and `git diff --check`.
+
+## 2026-09-25 — split-view polish and final verification
+
+- Refined split rendering so adjacent deletions/additions pair into true
+  left/right rows instead of duplicating change lines on both sides.
+- Classified Git patch metadata (`# ... changes`, `index`, file-mode lines,
+  rename/binary metadata) as full-width non-code rows.
+- Made the split grid responsive while retaining horizontal overflow for long
+  source lines; added helper assertions for metadata classification and row
+  pairing.
+- Targeted verification passed: **11/11** task-workspace integration and UI
+  tests, Desktop typecheck, Desktop build, `node --check`, and `git diff --check`.
+- Browser acceptance on an isolated temporary Git repository confirmed the
+  three-file summary (`3 file(s) · +6 · −1`), status badges, path-only search,
+  no-match message, Unified/Split state changes, and paired split rows.
