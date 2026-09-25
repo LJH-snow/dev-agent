@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   createAnthropicProvider,
+  createOllamaProvider,
   createOpenAIProvider,
   parseRetryAfter,
 } from "../dist/index.js";
@@ -192,6 +193,34 @@ test("Anthropic SDK errors remain bounded and redact credentials", async () => {
       assert.match(error.message, /\[redacted\]/);
       return true;
     }
+  );
+});
+
+test("network failures preserve the provider and transport cause", async () => {
+  const provider = createOllamaProvider({
+    model: "qwen3:4b-instruct",
+    fetch: async () => {
+      const cause = Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:11434"), {
+        code: "ECONNREFUSED",
+        address: "127.0.0.1",
+        port: 11434,
+      });
+      throw Object.assign(new TypeError("fetch failed"), { cause });
+    },
+    retry: { retries: 0 },
+  });
+
+  await assert.rejects(
+    () => provider.chat([{ role: "user", content: "hi" }]),
+    (error) => {
+      if (!(error instanceof Error)) return false;
+      assert.equal(
+        error.message,
+        "Ollama request failed: connection refused at 127.0.0.1:11434 (ECONNREFUSED)",
+      );
+      assert.equal((error as Error & { cause?: unknown }).cause instanceof TypeError, true);
+      return true;
+    },
   );
 });
 

@@ -368,7 +368,7 @@
           </div>
         </div>
         <div class="conversation-stream">
-          <div id="messages"><div class="empty" data-i18n="conversation.empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
+          <div id="messages"><div class="empty" data-empty-state="true"><span data-i18n="conversation.empty">Ask dev-agent anything. Tools run in your working directory.</span></div></div>
           <button
             type="button"
             id="jump-to-latest"
@@ -470,8 +470,13 @@
               <div id="task-workspace-diff" class="task-workspace-diff" role="region" aria-label="Diff content" data-i18n-aria-label="workspace.diff.content" tabindex="0"></div>
               <section id="task-workspace-comments-panel" class="task-workspace-comments-panel" hidden aria-labelledby="task-workspace-comments-title">
                 <h4 id="task-workspace-comments-title" data-i18n="workspace.comment.title">Review comments</h4>
+                <div id="task-workspace-comments-summary" class="task-workspace-comment-summary" role="status" aria-live="polite"></div>
+                <div class="task-workspace-comment-controls">
+                  <button type="button" id="task-workspace-select-all-comments" class="task-workspace-comment-control" data-i18n="workspace.comment.selectAll" disabled>Select all</button>
+                  <button type="button" id="task-workspace-clear-comment-selection" class="task-workspace-comment-control" data-i18n="workspace.comment.clearSelection" disabled>Clear selection</button>
+                </div>
                 <ul id="task-workspace-comments-list" class="task-workspace-comments-list"></ul>
-                <button type="button" id="task-workspace-insert-comments" class="task-workspace-insert-comments" data-i18n="workspace.comment.insert" disabled>Insert comments into prompt</button>
+                <button type="button" id="task-workspace-insert-comments" class="task-workspace-insert-comments" data-i18n="workspace.comment.insert" disabled>Insert selected comments into prompt</button>
               </section>
             </section>
           </div>
@@ -492,6 +497,13 @@
             <button type="button" id="task-terminal-reconnect" data-i18n="terminal.reconnect" disabled>Reconnect</button>
           </div>
           <pre id="task-terminal-output" class="task-terminal-output" role="log" aria-live="polite" tabindex="0" data-i18n="terminal.output.empty">Terminal output appears here.</pre>
+          <div class="task-terminal-search-row">
+            <label for="task-terminal-search" data-i18n="terminal.search">Search output</label>
+            <input id="task-terminal-search" type="search" maxlength="256" autocomplete="off" spellcheck="false" aria-label="Search terminal output" data-i18n-aria-label="terminal.search" data-i18n-placeholder="terminal.searchPlaceholder" placeholder="Find in output" />
+            <span id="task-terminal-search-status" class="task-terminal-search-status" role="status" aria-live="polite" data-i18n="terminal.search.empty">No search</span>
+            <button type="button" id="task-terminal-search-previous" data-i18n="terminal.search.previous" disabled>Previous</button>
+            <button type="button" id="task-terminal-search-next" data-i18n="terminal.search.next" disabled>Next</button>
+          </div>
           <div class="task-terminal-output-actions">
             <button type="button" id="task-terminal-follow" data-i18n="terminal.followLatest" disabled>Follow latest</button>
             <button type="button" id="task-terminal-clear" data-i18n="terminal.clear" disabled>Clear view</button>
@@ -531,6 +543,16 @@
           <div class="workbench-capabilities-lists">
             <div><h4 data-i18n="capabilities.skills">Skills</h4><ul id="capabilities-skills" class="workbench-capabilities-list"></ul></div>
             <div><h4 data-i18n="capabilities.jobs">Scheduled jobs</h4><ul id="capabilities-jobs" class="workbench-capabilities-list"></ul></div>
+          </div>
+          <div class="mcp-health-panel" aria-labelledby="mcp-health-title">
+            <div class="mcp-health-header">
+              <div>
+                <h4 id="mcp-health-title" data-i18n="mcpHealth.title">MCP tool health</h4>
+                <div id="mcp-health-summary" class="desktop-status-note" role="status" data-i18n="mcpHealth.loading">Loading MCP health…</div>
+              </div>
+              <button type="button" id="mcp-health-refresh" class="desktop-status-refresh" data-i18n="mcpHealth.refresh">Check now</button>
+            </div>
+            <ul id="mcp-health-list" class="mcp-health-list" aria-label="MCP server health" data-i18n-aria-label="mcpHealth.list"></ul>
           </div>
         </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
@@ -575,6 +597,25 @@
               <div id="runtime-trace-status" class="runtime-trace-status" data-i18n="trace.choose" role="status">Choose Trace to inspect bounded run timings.</div>
             </div>
           </div>
+          <div id="runtime-trace-summary" class="runtime-trace-summary" data-i18n-aria-label="trace.summary">
+            <div><span data-i18n="trace.totalRuns">Runs</span><strong id="runtime-trace-summary-runs">0</strong></div>
+            <div><span data-i18n="trace.visibleRuns">Visible</span><strong id="runtime-trace-summary-visible">0</strong></div>
+            <div><span data-i18n="trace.failedRuns">Failed</span><strong id="runtime-trace-summary-failed">0</strong></div>
+            <div><span data-i18n="trace.averageDuration">Average</span><strong id="runtime-trace-summary-average">0s</strong></div>
+          </div>
+          <div class="runtime-trace-failure-summary">
+            <span data-i18n="trace.failureSummaryLabel">Failure categories</span>
+            <strong id="runtime-trace-failure-summary">—</strong>
+          </div>
+          <div class="runtime-trace-filters" role="group" data-i18n-aria-label="trace.filters">
+            <label><span data-i18n="trace.filter.status">Status</span><select id="runtime-trace-status-filter"><option value="all" data-i18n="trace.filter.all">All</option><option value="running" data-i18n="trace.status.running">Running</option><option value="completed" data-i18n="trace.status.completed">Completed</option><option value="failed" data-i18n="trace.status.failed">Failed</option><option value="interrupted" data-i18n="trace.status.interrupted">Interrupted</option></select></label>
+            <label><span data-i18n="trace.filter.stage">Stage</span><select id="runtime-trace-stage-filter"><option value="all" data-i18n="trace.filter.all">All</option><option value="model" data-i18n="trace.kind.model">Model</option><option value="tool" data-i18n="trace.filter.tools">Tools</option></select></label>
+            <label><span data-i18n="trace.filter.tool">Tool</span><select id="runtime-trace-tool-filter"><option value="all" data-i18n="trace.filter.all">All</option></select></label>
+            <label><span data-i18n="trace.filter.from">From</span><input id="runtime-trace-start" type="datetime-local" aria-label="From"></label>
+            <label><span data-i18n="trace.filter.to">To</span><input id="runtime-trace-end" type="datetime-local" aria-label="To"></label>
+            <button type="button" id="runtime-trace-clear-filters" data-i18n="trace.filter.clear">Clear filters</button>
+          </div>
+          <div id="runtime-trace-filter-note" class="runtime-trace-filter-note" role="status"></div>
           <div id="runtime-trace-list" class="runtime-trace-list"></div>
           <button type="button" id="runtime-trace-refresh" class="runtime-trace-refresh" data-i18n="action.refresh">Refresh</button>
         </section>
@@ -715,6 +756,71 @@
     const languageEnButton = document.getElementById("language-en");
     const languageZhButton = document.getElementById("language-zh");
     const evidencePreviewPanel = document.getElementById("evidence-preview");
+
+    function createEmptyState() {
+      const empty = document.createElement("div");
+      empty.className = "empty empty-state";
+      empty.dataset.emptyState = "true";
+
+      const mark = document.createElement("div");
+      mark.className = "empty-state-mark";
+      mark.textContent = "✦";
+      mark.setAttribute("aria-hidden", "true");
+
+      const kicker = document.createElement("span");
+      kicker.className = "empty-state-kicker";
+      setLocalizedNode(kicker, "conversation.emptyKicker");
+
+      const title = document.createElement("h2");
+      setLocalizedNode(title, "conversation.emptyTitle");
+
+      const body = document.createElement("p");
+      body.className = "empty-state-body";
+      setLocalizedNode(body, "conversation.empty");
+
+      const starters = document.createElement("div");
+      starters.className = "empty-starters";
+      starters.setAttribute("role", "list");
+      starters.setAttribute("aria-label", t("conversation.startersLabel"));
+      starters.dataset.i18nAriaLabel = "conversation.startersLabel";
+      const starterDefinitions = [
+        { key: "conversation.starter.review", en: "Inspect this repository and tell me what is unfinished.", zh: "检查这个仓库，并告诉我还有哪些工作未完成。" },
+        { key: "conversation.starter.debug", en: "Find the root cause of the latest failure and propose a safe fix.", zh: "找出最近一次失败的根因，并提出安全的修复方案。" },
+        { key: "conversation.starter.plan", en: "Plan the next product improvement in this project with clear verification steps.", zh: "为这个项目规划下一项产品改进，并列出清晰的验证步骤。" },
+      ];
+      for (const definition of starterDefinitions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "empty-starter";
+        const label = document.createElement("span");
+        label.className = "empty-starter-title";
+        setLocalizedNode(label, definition.key);
+        const meta = document.createElement("span");
+        meta.className = "empty-starter-meta";
+        meta.textContent = "↵";
+        meta.setAttribute("aria-hidden", "true");
+        button.append(label, meta);
+        button.addEventListener("click", () => {
+          input.value = languagePreference === "zh" ? definition.zh : definition.en;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.focus();
+        });
+        starters.appendChild(button);
+      }
+
+      const hint = document.createElement("span");
+      hint.className = "empty-state-hint";
+      setLocalizedNode(hint, "conversation.emptyHint");
+      empty.append(mark, kicker, title, body, starters, hint);
+      return empty;
+    }
+
+    function refreshEmptyState() {
+      const current = messages.querySelector(".empty");
+      if (!current) return;
+      current.replaceWith(createEmptyState());
+    }
+
     const evidencePreviewStatus = document.getElementById("evidence-preview-status");
     const evidencePreviewValidations = document.getElementById("evidence-preview-validations");
     const evidencePreviewChangeSets = document.getElementById("evidence-preview-change-sets");
@@ -723,6 +829,18 @@
     const evidencePreviewRefreshButton = document.getElementById("evidence-preview-refresh");
     const runtimeTracePanel = document.getElementById("runtime-trace-panel");
     const runtimeTraceStatus = document.getElementById("runtime-trace-status");
+    const runtimeTraceSummaryRuns = document.getElementById("runtime-trace-summary-runs");
+    const runtimeTraceSummaryVisible = document.getElementById("runtime-trace-summary-visible");
+    const runtimeTraceSummaryFailed = document.getElementById("runtime-trace-summary-failed");
+    const runtimeTraceSummaryAverage = document.getElementById("runtime-trace-summary-average");
+    const runtimeTraceFailureSummary = document.getElementById("runtime-trace-failure-summary");
+    const runtimeTraceStatusFilter = document.getElementById("runtime-trace-status-filter");
+    const runtimeTraceStageFilter = document.getElementById("runtime-trace-stage-filter");
+    const runtimeTraceToolFilter = document.getElementById("runtime-trace-tool-filter");
+    const runtimeTraceStartFilter = document.getElementById("runtime-trace-start");
+    const runtimeTraceEndFilter = document.getElementById("runtime-trace-end");
+    const runtimeTraceClearFiltersButton = document.getElementById("runtime-trace-clear-filters");
+    const runtimeTraceFilterNote = document.getElementById("runtime-trace-filter-note");
     const runtimeTraceList = document.getElementById("runtime-trace-list");
     const runtimeTraceRefreshButton = document.getElementById("runtime-trace-refresh");
     const workbenchCapabilitiesStatus = document.getElementById("workbench-capabilities-status");
@@ -739,6 +857,9 @@
     const capabilitiesMonitoringState = document.getElementById("capabilities-monitoring-state");
     const capabilitiesSkills = document.getElementById("capabilities-skills");
     const capabilitiesJobs = document.getElementById("capabilities-jobs");
+    const mcpHealthSummary = document.getElementById("mcp-health-summary");
+    const mcpHealthRefreshButton = document.getElementById("mcp-health-refresh");
+    const mcpHealthList = document.getElementById("mcp-health-list");
     const stopButton = document.getElementById("stop");
     const desktopStatusNote = document.getElementById("desktop-status-note");
     const desktopStatusRefreshButton = document.getElementById("desktop-status-refresh");
@@ -794,6 +915,9 @@
     let checkpointController = null;
     let traceRequestId = 0;
     let traceController = null;
+    let traceRuns = [];
+    let traceDroppedRuns = 0;
+    let traceLifecycle = [];
     let desktopStatusRequestId = 0;
     let desktopStatusController = null;
     let desktopStatusPayload = null;
@@ -803,6 +927,8 @@
     let desktopRunController = null;
     let capabilitiesRequestId = 0;
     let capabilitiesController = null;
+    let mcpHealthRequestId = 0;
+    let mcpHealthController = null;
     let runSnapshotSessionId = null;
     let runSnapshot = null;
     let runRecoveryTimer = null;
@@ -917,6 +1043,25 @@
         "capabilities.skills": "Skills",
         "capabilities.jobs": "Scheduled jobs",
         "capabilities.none": "None detected",
+        "mcpHealth.title": "MCP tool health",
+        "mcpHealth.loading": "Loading MCP health…",
+        "mcpHealth.checking": "Checking MCP servers…",
+        "mcpHealth.ready": "{connected}/{configured} servers connected · {degraded} degraded",
+        "mcpHealth.empty": "No MCP servers are configured.",
+        "mcpHealth.error": "MCP health is temporarily unavailable.",
+        "mcpHealth.refresh": "Check now",
+        "mcpHealth.list": "MCP server health",
+        "mcpHealth.state.connected": "Connected",
+        "mcpHealth.state.degraded": "Degraded",
+        "mcpHealth.state.disconnected": "Disconnected",
+        "mcpHealth.error.notConnected": "Not initialized",
+        "mcpHealth.error.connectFailed": "Connection failed",
+        "mcpHealth.error.pingTimeout": "Ping timed out",
+        "mcpHealth.error.pingFailed": "Ping failed",
+        "mcpHealth.serverMeta": "{tools} tools · {resources} resources · {prompts} prompts",
+        "mcpHealth.serverLatency": "{latency} ms",
+        "mcpHealth.serverChecked": "Checked {time}",
+        "mcpHealth.serverUnchecked": "Not checked yet",
         "workspace.label": "Workspace",
         "workspace.title": "Task workspaces",
         "workspace.description": "Each task gets its own branch and Git worktree.",
@@ -975,9 +1120,23 @@
         "workspace.comment.addAt": "Comment on {path} {anchor}",
         "workspace.comment.remove": "Remove",
         "workspace.comment.removeAt": "Remove comment on {path} {anchor}",
-        "workspace.comment.insert": "Insert comments into prompt",
+        "workspace.comment.insert": "Insert selected comments into prompt",
         "workspace.comment.added": "Review comment added.",
         "workspace.comment.limit": "Review comment limit reached for this task.",
+        "workspace.comment.summary": "{total} comment(s) · {selected} selected · {inserted} inserted",
+        "workspace.comment.selectAll": "Select all",
+        "workspace.comment.clearSelection": "Clear selection",
+        "workspace.comment.selectAt": "Select comment on {path} {anchor}",
+        "workspace.comment.openAt": "Open comment on {path} {anchor}",
+        "workspace.comment.status.pending": "Pending",
+        "workspace.comment.status.inserted": "Inserted",
+        "workspace.comment.allSelected": "All review comments selected.",
+        "workspace.comment.selectionCleared": "Review comment selection cleared.",
+        "workspace.comment.noneSelected": "Select at least one review comment.",
+        "workspace.comment.inserted": "Inserted {count} review comment(s) into the prompt.",
+        "workspace.comment.insertFailed": "Could not insert review comments.",
+        "workspace.comment.located": "Located review comment at {path} {anchor}.",
+        "workspace.comment.targetMissing": "The changed line for {path} {anchor} is no longer available.",
         "workspace.error.missingFile": "The selected task file is no longer available.",
         "workspace.confirm.merge": "Merge {branch} into {base}? Only committed changes are included.",
         "workspace.confirm.cleanup": "Remove the worktree for {task}? Uncommitted changes cannot be discarded here.",
@@ -1037,7 +1196,14 @@
         "conversation.label": "Conversation",
         "conversation.agentRun": "Agent run",
         "conversation.liveStream": "Live stream with guarded tools and evidence-aware validation.",
+        "conversation.emptyKicker": "Start with a clear goal",
+        "conversation.emptyTitle": "What are we building today?",
         "conversation.empty": "Ask dev-agent anything. Tools run in your working directory.",
+        "conversation.startersLabel": "Suggested prompts",
+        "conversation.starter.review": "Review this repository",
+        "conversation.starter.debug": "Debug a failure",
+        "conversation.starter.plan": "Plan the next slice",
+        "conversation.emptyHint": "Choose a suggestion to prefill the composer, then edit before sending.",
         "conversation.newOutput": "New output below",
         "reasoning.title": "Model reasoning",
         "turn.queued": "Queued · position {position}",
@@ -1095,6 +1261,14 @@
         "terminal.stop": "Stop",
         "terminal.reconnect": "Reconnect",
         "terminal.followLatest": "Follow latest",
+        "terminal.search": "Search output",
+        "terminal.searchPlaceholder": "Find in output",
+        "terminal.search.empty": "No search",
+        "terminal.search.none": "No matches",
+        "terminal.search.count": "{current} of {total}",
+        "terminal.search.countCapped": "{current} of {total}+",
+        "terminal.search.previous": "Previous",
+        "terminal.search.next": "Next",
         "terminal.clear": "Clear view",
         "terminal.export": "Export output",
         "terminal.status.reconnecting": "Rehydrating terminal output…",
@@ -1409,6 +1583,25 @@
         "capabilities.skills": "技能",
         "capabilities.jobs": "计划任务",
         "capabilities.none": "未检测到",
+        "mcpHealth.title": "MCP 工具健康检查",
+        "mcpHealth.loading": "正在加载 MCP 健康状态…",
+        "mcpHealth.checking": "正在检查 MCP 服务…",
+        "mcpHealth.ready": "{connected}/{configured} 个服务已连接 · {degraded} 个降级",
+        "mcpHealth.empty": "尚未配置 MCP 服务。",
+        "mcpHealth.error": "MCP 健康状态暂时不可用。",
+        "mcpHealth.refresh": "立即检查",
+        "mcpHealth.list": "MCP 服务健康状态",
+        "mcpHealth.state.connected": "已连接",
+        "mcpHealth.state.degraded": "已降级",
+        "mcpHealth.state.disconnected": "未连接",
+        "mcpHealth.error.notConnected": "尚未初始化",
+        "mcpHealth.error.connectFailed": "连接失败",
+        "mcpHealth.error.pingTimeout": "Ping 超时",
+        "mcpHealth.error.pingFailed": "Ping 失败",
+        "mcpHealth.serverMeta": "{tools} 个工具 · {resources} 个资源 · {prompts} 个提示",
+        "mcpHealth.serverLatency": "{latency} 毫秒",
+        "mcpHealth.serverChecked": "检查时间 {time}",
+        "mcpHealth.serverUnchecked": "尚未检查",
         "workspace.label": "工作区",
         "workspace.title": "任务工作区",
         "workspace.description": "每个任务使用独立 Git 分支和 worktree。",
@@ -1467,9 +1660,23 @@
         "workspace.comment.addAt": "批注 {path} {anchor}",
         "workspace.comment.remove": "移除",
         "workspace.comment.removeAt": "移除 {path} {anchor} 的批注",
-        "workspace.comment.insert": "将批注插入提示词",
+        "workspace.comment.insert": "将选中的批注插入提示词",
         "workspace.comment.added": "已添加审查批注。",
         "workspace.comment.limit": "此任务的审查批注已达上限。",
+        "workspace.comment.summary": "{total} 条评论 · 已选 {selected} 条 · 已插入 {inserted} 条",
+        "workspace.comment.selectAll": "全选",
+        "workspace.comment.clearSelection": "清空选择",
+        "workspace.comment.selectAt": "选择 {path} {anchor} 的批注",
+        "workspace.comment.openAt": "打开 {path} {anchor} 的批注位置",
+        "workspace.comment.status.pending": "待处理",
+        "workspace.comment.status.inserted": "已插入",
+        "workspace.comment.allSelected": "已选中全部审查批注。",
+        "workspace.comment.selectionCleared": "已清空审查批注选择。",
+        "workspace.comment.noneSelected": "请至少选择一条审查批注。",
+        "workspace.comment.inserted": "已将 {count} 条审查批注插入提示词。",
+        "workspace.comment.insertFailed": "无法插入审查批注。",
+        "workspace.comment.located": "已定位到 {path} {anchor} 的审查批注。",
+        "workspace.comment.targetMissing": "{path} {anchor} 对应的变更行已不存在。",
         "workspace.error.missingFile": "所选任务文件已不存在。",
         "workspace.confirm.merge": "将 {branch} 合并到 {base}？仅会包含已提交的变更。",
         "workspace.confirm.cleanup": "移除任务 {task} 的 worktree？此操作不会丢弃未提交变更。",
@@ -1529,7 +1736,14 @@
         "conversation.label": "对话",
         "conversation.agentRun": "智能体运行",
         "conversation.liveStream": "带有工具保护和证据感知校验的实时流。",
+        "conversation.emptyKicker": "先从一个清晰目标开始",
+        "conversation.emptyTitle": "今天我们要构建什么？",
         "conversation.empty": "可以向 dev-agent 提问。工具会在你的工作目录中运行。",
+        "conversation.startersLabel": "推荐提示",
+        "conversation.starter.review": "检查这个仓库",
+        "conversation.starter.debug": "定位一个失败",
+        "conversation.starter.plan": "规划下一步",
+        "conversation.emptyHint": "点击建议会预填输入框，你可以编辑后再发送。",
         "conversation.newOutput": "下面有新输出",
         "reasoning.title": "模型思考",
         "turn.queued": "排队中 · 第 {position} 个",
@@ -1587,6 +1801,14 @@
         "terminal.stop": "停止",
         "terminal.reconnect": "重新连接",
         "terminal.followLatest": "跟随最新输出",
+        "terminal.search": "搜索输出",
+        "terminal.searchPlaceholder": "在输出中查找",
+        "terminal.search.empty": "未搜索",
+        "terminal.search.none": "没有匹配",
+        "terminal.search.count": "第 {current} 个，共 {total} 个",
+        "terminal.search.countCapped": "第 {current} 个，共 {total}+ 个",
+        "terminal.search.previous": "上一个",
+        "terminal.search.next": "下一个",
         "terminal.clear": "清除视图",
         "terminal.export": "导出输出",
         "terminal.status.reconnecting": "正在重新载入终端输出…",
@@ -1800,6 +2022,51 @@
       },
     };
 
+    Object.assign(translations.en, {
+      'trace.summary': 'Run summary',
+      'trace.totalRuns': 'Runs',
+      'trace.visibleRuns': 'Visible',
+      'trace.failedRuns': 'Failed',
+      'trace.averageDuration': 'Average',
+      'trace.failureSummaryLabel': 'Failure categories',
+      'trace.failureSummary': 'failed {failed} · interrupted {interrupted} · tool failures {tools} · denied {denied}',
+      'trace.showing': 'Showing {visible} of {total} runs',
+      'trace.noMatches': 'No runs match the current filters.',
+      'trace.filters': 'Run filters',
+      'trace.filter.status': 'Status',
+      'trace.filter.stage': 'Stage',
+      'trace.filter.tool': 'Tool',
+      'trace.filter.from': 'From',
+      'trace.filter.to': 'To',
+      'trace.filter.clear': 'Clear filters',
+      'trace.filter.all': 'All',
+      'trace.filter.tools': 'Tools',
+      'trace.openTerminal': 'Open terminal',
+      'trace.openChanges': 'Open Changes Center',
+    });
+    Object.assign(translations.zh, {
+      'trace.summary': '运行汇总',
+      'trace.totalRuns': '运行数',
+      'trace.visibleRuns': '可见',
+      'trace.failedRuns': '失败',
+      'trace.averageDuration': '平均耗时',
+      'trace.failureSummaryLabel': '失败分类',
+      'trace.failureSummary': '失败 {failed} · 中断 {interrupted} · 工具失败 {tools} · 拒绝 {denied}',
+      'trace.showing': '显示 {visible}/{total} 个运行',
+      'trace.noMatches': '没有运行匹配当前筛选条件。',
+      'trace.filters': '运行筛选',
+      'trace.filter.status': '状态',
+      'trace.filter.stage': '阶段',
+      'trace.filter.tool': '工具',
+      'trace.filter.from': '起始',
+      'trace.filter.to': '结束',
+      'trace.filter.clear': '清除筛选',
+      'trace.filter.all': '全部',
+      'trace.filter.tools': '工具',
+      'trace.openTerminal': '打开终端',
+      'trace.openChanges': '打开 Changes Center',
+    });
+
     const LANGUAGE_STORAGE_KEY = "dev-agent-language";
     const SUPPORTED_LANGUAGES = ["en", "zh"];
     let languagePreference = readLanguagePreference();
@@ -1854,6 +2121,8 @@
       }
     }
 
+    refreshEmptyState();
+
     function applyLanguage(language) {
       languagePreference = SUPPORTED_LANGUAGES.includes(language) ? language : "en";
       document.documentElement.lang = languagePreference === "zh" ? "zh-CN" : "en";
@@ -1892,6 +2161,25 @@
         window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
       } catch {
         // A private browsing context may reject local storage; the live toggle still works.
+      }
+    }
+
+    const COMPOSER_MODE_STORAGE_KEY = "dev-agent-composer-mode";
+
+    function readComposerModePreference() {
+      try {
+        const stored = window.localStorage.getItem(COMPOSER_MODE_STORAGE_KEY);
+        return stored === "plan" ? "plan" : "normal";
+      } catch {
+        return "normal";
+      }
+    }
+
+    function persistComposerModePreference(mode) {
+      try {
+        window.localStorage.setItem(COMPOSER_MODE_STORAGE_KEY, mode === "plan" ? "plan" : "normal");
+      } catch {
+        // A private browsing context may reject local storage; the live setting still works.
       }
     }
 
@@ -3030,6 +3318,94 @@
       }
     }
 
+    function mcpHealthErrorLabel(error) {
+      switch (error) {
+        case "not-connected": return t("mcpHealth.error.notConnected");
+        case "connect-failed": return t("mcpHealth.error.connectFailed");
+        case "ping-timeout": return t("mcpHealth.error.pingTimeout");
+        case "ping-failed": return t("mcpHealth.error.pingFailed");
+        default: return "";
+      }
+    }
+
+    function mcpHealthTime(value) {
+      if (typeof value !== "string" || Number.isNaN(Date.parse(value))) return t("mcpHealth.serverUnchecked");
+      return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+
+    function renderMcpHealth(payload) {
+      const configured = Number.isSafeInteger(payload?.configured) ? Math.max(0, payload.configured) : 0;
+      const connected = Number.isSafeInteger(payload?.connected) ? Math.max(0, payload.connected) : 0;
+      const degraded = Number.isSafeInteger(payload?.degraded) ? Math.max(0, payload.degraded) : 0;
+      const servers = Array.isArray(payload?.servers) ? payload.servers.slice(0, 64) : [];
+      mcpHealthList.replaceChildren();
+      if (configured === 0 || servers.length === 0) {
+        mcpHealthSummary.textContent = t("mcpHealth.empty");
+        return;
+      }
+      mcpHealthSummary.textContent = t("mcpHealth.ready", { configured, connected, degraded });
+      for (const server of servers) {
+        const item = document.createElement("li");
+        const heading = document.createElement("strong");
+        heading.className = "mcp-health-server-name";
+        heading.textContent = String(server?.name ?? "MCP").slice(0, 64);
+        const state = document.createElement("span");
+        state.className = "mcp-health-server-state";
+        const stateValue = server?.state === "connected" || server?.state === "degraded" || server?.state === "disconnected"
+          ? server.state
+          : "disconnected";
+        state.dataset.state = stateValue;
+        state.textContent = t(`mcpHealth.state.${stateValue}`);
+        const meta = document.createElement("span");
+        meta.className = "mcp-health-server-meta";
+        const tools = Number.isSafeInteger(server?.tools) ? Math.max(0, server.tools) : 0;
+        const resources = Number.isSafeInteger(server?.resources) ? Math.max(0, server.resources) : 0;
+        const prompts = Number.isSafeInteger(server?.prompts) ? Math.max(0, server.prompts) : 0;
+        const latency = Number.isSafeInteger(server?.latencyMs) ? Math.max(0, server.latencyMs) : undefined;
+        const detail = [
+          t("mcpHealth.serverMeta", { tools, resources, prompts }),
+          latency === undefined ? t("mcpHealth.serverUnchecked") : t("mcpHealth.serverLatency", { latency }),
+          t("mcpHealth.serverChecked", { time: mcpHealthTime(server?.lastCheckedAt) }),
+        ];
+        const error = mcpHealthErrorLabel(server?.error);
+        if (error) detail.push(error);
+        meta.textContent = detail.join(" · ");
+        item.append(heading, state, meta);
+        mcpHealthList.appendChild(item);
+      }
+    }
+
+    async function loadMcpHealth(sessionId) {
+      if (!sessionId) return;
+      const requestId = ++mcpHealthRequestId;
+      mcpHealthController?.abort();
+      const controller = new AbortController();
+      mcpHealthController = controller;
+      mcpHealthRefreshButton.disabled = true;
+      mcpHealthRefreshButton.setAttribute("aria-busy", "true");
+      mcpHealthSummary.textContent = t("mcpHealth.checking");
+      try {
+        const response = await fetch("/api/mcp/health?sessionId=" + encodeURIComponent(sessionId), {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("MCP health unavailable");
+        const payload = await response.json();
+        if (requestId !== mcpHealthRequestId || sessionId !== currentSessionId) return;
+        renderMcpHealth(payload);
+      } catch {
+        if (controller.signal.aborted || requestId !== mcpHealthRequestId || sessionId !== currentSessionId) return;
+        mcpHealthList.replaceChildren();
+        mcpHealthSummary.textContent = t("mcpHealth.error");
+      } finally {
+        if (requestId === mcpHealthRequestId) {
+          mcpHealthController = null;
+          mcpHealthRefreshButton.disabled = false;
+          mcpHealthRefreshButton.setAttribute("aria-busy", "false");
+        }
+      }
+    }
+
     function githubCiLabel(ci) {
       const reason = ci?.reason;
       if (ci?.state === "ready") {
@@ -3576,12 +3952,22 @@
       traceRequestId += 1;
       traceController?.abort();
       traceController = null;
+      traceRuns = [];
+      traceDroppedRuns = 0;
+      traceLifecycle = [];
       runtimeTracePanel.hidden = true;
       runtimeTracePanel.setAttribute("aria-busy", "false");
       traceActionButton.setAttribute("aria-expanded", "false");
       traceActionButton.disabled = false;
       runtimeTraceRefreshButton.disabled = false;
       runtimeTraceList.innerHTML = "";
+      if (runtimeTraceStatusFilter) runtimeTraceStatusFilter.value = "all";
+      if (runtimeTraceStageFilter) runtimeTraceStageFilter.value = "all";
+      if (runtimeTraceToolFilter) runtimeTraceToolFilter.value = "all";
+      if (runtimeTraceStartFilter) runtimeTraceStartFilter.value = "";
+      if (runtimeTraceEndFilter) runtimeTraceEndFilter.value = "";
+      refreshTraceToolOptions([]);
+      renderTraceSummary([], []);
       setTraceStatus("trace.choose");
     }
 
@@ -3640,63 +4026,151 @@
     }
 
     function renderTraceRuns(runs, droppedRuns, lifecycle = []) {
-      runtimeTraceList.innerHTML = "";
-      const lifecycleLabels = lifecycle.map(traceLifecycleLabel).filter(Boolean).slice(-16);
+      traceRuns = runs.slice(0, 20);
+      traceDroppedRuns = droppedRuns;
+      traceLifecycle = lifecycle.slice(-64);
+      refreshTraceToolOptions(traceRuns);
+      renderFilteredTraceRuns();
+    }
+
+    function createTraceSurfaceButton(labelKey, targetId) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'runtime-trace-link';
+      setLocalizedNode(button, labelKey);
+      button.addEventListener('click', () => {
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const focusTarget = target.querySelector('button, input, select, textarea');
+        if (focusTarget && typeof focusTarget.focus === 'function') focusTarget.focus({ preventScroll: true });
+      });
+      return button;
+    }
+
+    function traceFilterValues() {
+      return {
+        status: runtimeTraceStatusFilter?.value || 'all',
+        stage: runtimeTraceStageFilter?.value || 'all',
+        tool: runtimeTraceToolFilter?.value || 'all',
+        from: runtimeTraceStartFilter?.value || '',
+        to: runtimeTraceEndFilter?.value || '',
+      };
+    }
+
+    function traceSpanMatches(span, filters) {
+      if (filters.stage !== 'all' && span.kind !== filters.stage) return false;
+      if (filters.tool !== 'all') return span.kind === 'tool' && safeTraceLabel(span.name, 'tool', 128) === filters.tool;
+      return true;
+    }
+
+    function traceRunMatches(run, filters) {
+      if (filters.status !== 'all' && run.status !== filters.status) return false;
+      const startedAt = Date.parse(run.startedAt);
+      if (!Number.isFinite(startedAt)) return false;
+      const from = filters.from ? Date.parse(filters.from) : NaN;
+      const to = filters.to ? Date.parse(filters.to) : NaN;
+      if (Number.isFinite(from) && startedAt < from) return false;
+      if (Number.isFinite(to) && startedAt > to) return false;
+      if (filters.stage === 'all' && filters.tool === 'all') return true;
+      return run.spans.some((span) => traceSpanMatches(span, filters));
+    }
+
+    function traceVisibleSpans(run, filters) {
+      if (filters.stage === 'all' && filters.tool === 'all') return run.spans.slice(0, 50);
+      return run.spans.filter((span) => traceSpanMatches(span, filters)).slice(0, 50);
+    }
+
+    function renderTraceSummary(visibleRuns, allRuns = traceRuns) {
+      const durations = visibleRuns.map((run) => Number.isFinite(run.durationMs) && run.durationMs >= 0 ? run.durationMs : null).filter((value) => value !== null);
+      const failedRuns = visibleRuns.filter((run) => run.status === 'failed').length;
+      const interruptedRuns = visibleRuns.filter((run) => run.status === 'interrupted').length;
+      const failedTools = visibleRuns.reduce((count, run) => count + run.spans.filter((span) => span.kind === 'tool' && span.status === 'failed').length, 0);
+      const denied = visibleRuns.reduce((count, run) => count + run.spans.filter((span) => span.authorizationResult === 'deny').length, 0);
+      runtimeTraceSummaryRuns.textContent = String(allRuns.length);
+      runtimeTraceSummaryVisible.textContent = String(visibleRuns.length);
+      runtimeTraceSummaryFailed.textContent = String(failedRuns + interruptedRuns);
+      runtimeTraceSummaryAverage.textContent = formatRunDuration(durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0);
+      runtimeTraceFailureSummary.textContent = t('trace.failureSummary', { failed: failedRuns, interrupted: interruptedRuns, tools: failedTools, denied });
+      runtimeTraceFilterNote.textContent = t('trace.showing', { visible: visibleRuns.length, total: allRuns.length });
+    }
+
+    function refreshTraceToolOptions(runs) {
+      if (!runtimeTraceToolFilter) return;
+      const current = runtimeTraceToolFilter.value || 'all';
+      const names = new Set();
+      for (const run of runs) for (const span of run.spans) if (span.kind === 'tool') names.add(safeTraceLabel(span.name, 'tool', 128));
+      runtimeTraceToolFilter.innerHTML = '';
+      const all = document.createElement('option');
+      all.value = 'all';
+      setLocalizedNode(all, 'trace.filter.all');
+      runtimeTraceToolFilter.appendChild(all);
+      for (const name of [...names].sort()) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        runtimeTraceToolFilter.appendChild(option);
+      }
+      runtimeTraceToolFilter.value = names.has(current) ? current : 'all';
+    }
+
+    function renderFilteredTraceRuns() {
+      const filters = traceFilterValues();
+      const visibleRuns = traceRuns.filter((run) => traceRunMatches(run, filters));
+      renderTraceSummary(visibleRuns);
+      runtimeTraceList.innerHTML = '';
+      const lifecycleLabels = traceLifecycle.map(traceLifecycleLabel).filter(Boolean).slice(-16);
       if (lifecycleLabels.length > 0) {
-        const lifecycleNode = document.createElement("div");
-        lifecycleNode.className = "runtime-trace-empty";
-        lifecycleNode.textContent = lifecycleLabels.join(" · ");
+        const lifecycleNode = document.createElement('div');
+        lifecycleNode.className = 'runtime-trace-empty';
+        lifecycleNode.textContent = lifecycleLabels.join(' · ');
         runtimeTraceList.appendChild(lifecycleNode);
       }
-      if (runs.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "runtime-trace-empty";
-        setLocalizedNode(empty, "trace.empty");
+      if (visibleRuns.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'runtime-trace-empty';
+        setLocalizedNode(empty, traceRuns.length ? 'trace.noMatches' : 'trace.empty');
         runtimeTraceList.appendChild(empty);
       }
-      for (const run of runs) {
-        const item = document.createElement("article");
-        item.className = "runtime-trace-item";
-        item.dataset.status = ["running", "failed", "interrupted"].includes(run.status)
-          ? run.status
-          : "completed";
-
-        const header = document.createElement("div");
-        header.className = "runtime-trace-item-header";
-        const id = document.createElement("strong");
-        id.textContent = safeTraceLabel(run.runId, "run", 24);
-        const meta = document.createElement("span");
+      for (const run of visibleRuns) {
+        const item = document.createElement('article');
+        item.className = 'runtime-trace-item';
+        item.dataset.status = ['running', 'failed', 'interrupted'].includes(run.status) ? run.status : 'completed';
+        const header = document.createElement('div');
+        header.className = 'runtime-trace-item-header';
+        const id = document.createElement('strong');
+        id.textContent = safeTraceLabel(run.runId, 'run', 24);
+        const meta = document.createElement('span');
         meta.textContent = traceRunMeta(run);
         header.append(id, meta);
-
-        const spans = document.createElement("ol");
-        spans.className = "runtime-trace-spans";
-        for (const span of run.spans.slice(0, 50)) {
-          const entry = document.createElement("li");
-          entry.className = "runtime-trace-span";
-          entry.dataset.status = ["running", "failed"].includes(span.status) ? span.status : "completed";
-          const label = document.createElement("span");
+        const actions = document.createElement('div');
+        actions.className = 'runtime-trace-item-actions';
+        actions.append(createTraceSurfaceButton('trace.openTerminal', 'task-terminal-panel'), createTraceSurfaceButton('trace.openChanges', 'task-workspace-panel'));
+        const spans = document.createElement('ol');
+        spans.className = 'runtime-trace-spans';
+        for (const span of traceVisibleSpans(run, filters)) {
+          const entry = document.createElement('li');
+          entry.className = 'runtime-trace-span';
+          entry.dataset.status = ['running', 'failed'].includes(span.status) ? span.status : 'completed';
+          const label = document.createElement('span');
           label.textContent = traceSpanLabel(span);
-          const detail = document.createElement("span");
-          const detailParts = [
-            traceStatusLabel(span.status),
-            formatRunDuration(Number.isFinite(span.durationMs) && span.durationMs >= 0 ? span.durationMs : 0),
-          ];
+          const detail = document.createElement('span');
+          const detailParts = [traceStatusLabel(span.status), formatRunDuration(Number.isFinite(span.durationMs) && span.durationMs >= 0 ? span.durationMs : 0)];
           const capability = traceCapabilityLabel(span.capabilityClass);
           const authorization = traceAuthorizationLabel(span.authorizationResult);
           if (capability) detailParts.push(capability);
           if (authorization) detailParts.push(authorization);
-          detail.textContent = detailParts.join(" · ");
+          detail.textContent = detailParts.join(' · ');
           entry.append(label, detail);
           spans.appendChild(entry);
         }
-        item.append(header, spans);
+        item.append(header, actions, spans);
         runtimeTraceList.appendChild(item);
       }
-      if (Number.isSafeInteger(droppedRuns) && droppedRuns > 0) {
-        const note = document.createElement("div");
-        note.className = "runtime-trace-empty";
-        setLocalizedNode(note, "trace.droppedRuns", { count: droppedRuns });
+      if (Number.isSafeInteger(traceDroppedRuns) && traceDroppedRuns > 0) {
+        const note = document.createElement('div');
+        note.className = 'runtime-trace-empty';
+        setLocalizedNode(note, 'trace.droppedRuns', { count: traceDroppedRuns });
         runtimeTraceList.appendChild(note);
       }
     }
@@ -3966,10 +4440,7 @@
         }
         if (history.length === 0 && validations.length === 0) {
           if (!state?.active && state?.queue.snapshot().queued.length === 0) {
-            const empty = document.createElement("div");
-            empty.className = "empty";
-            setLocalizedNode(empty, "conversation.empty");
-            messages.appendChild(empty);
+            messages.appendChild(createEmptyState());
           }
           renderPendingSessionTurns(sessionId);
           return;
@@ -4500,7 +4971,7 @@
     }
 
     function setMessagesScrollTop(behavior = "auto") {
-      const top = messages.scrollHeight;
+      const top = Math.max(0, messages.scrollHeight - messages.clientHeight);
       if (typeof messages.scrollTo === "function") {
         try {
           messages.scrollTo({ top, left: 0, behavior });
@@ -5074,6 +5545,10 @@
       applyLanguage("zh");
     });
 
+    composerModeSelect.addEventListener("change", () => {
+      persistComposerModePreference(composerModeSelect.value);
+    });
+
     themeToggleButton.addEventListener("click", () => {
       const nextTheme = currentTheme() === "dark" ? "light" : "dark";
       persistThemePreference(nextTheme);
@@ -5122,6 +5597,16 @@
       loadTraceSnapshot(currentSessionId);
     });
 
+    for (const filter of [runtimeTraceStatusFilter, runtimeTraceStageFilter, runtimeTraceToolFilter, runtimeTraceStartFilter, runtimeTraceEndFilter]) filter?.addEventListener("change", renderFilteredTraceRuns);
+    runtimeTraceClearFiltersButton?.addEventListener("click", () => {
+      if (runtimeTraceStatusFilter) runtimeTraceStatusFilter.value = "all";
+      if (runtimeTraceStageFilter) runtimeTraceStageFilter.value = "all";
+      if (runtimeTraceToolFilter) runtimeTraceToolFilter.value = "all";
+      if (runtimeTraceStartFilter) runtimeTraceStartFilter.value = "";
+      if (runtimeTraceEndFilter) runtimeTraceEndFilter.value = "";
+      renderFilteredTraceRuns();
+    });
+
     runtimeTraceRefreshButton.addEventListener("click", () => {
       if (currentSessionId === null) return;
       loadTraceSnapshot(currentSessionId);
@@ -5146,10 +5631,7 @@
       renderSessionMeta(null);
       resetLiveOutputNotice();
       messages.innerHTML = "";
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      setLocalizedNode(empty, "conversation.empty");
-      messages.appendChild(empty);
+      messages.appendChild(createEmptyState());
       getSessionClientState(currentSessionId);
       updateComposerAvailability(currentSessionId);
       resetDesktopStatus("New session will initialize on the first run.");
@@ -5860,6 +6342,7 @@
       updateComposerAvailability(currentSessionId);
       resetDesktopStatus("Isolated task workspace ready.");
       void loadWorkbenchCapabilities(currentSessionId);
+      void loadMcpHealth(currentSessionId);
       setStatus("new isolated task");
       taskWorkspaceUI?.render();
     }
@@ -5910,17 +6393,45 @@
       },
     });
     workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
+    mcpHealthRefreshButton.addEventListener("click", () => void loadMcpHealth(currentSessionId));
     void (async () => {
       await loadSessions();
       await loadSessionView(currentSessionId);
       await taskWorkspaceUI.refresh();
       await taskTerminalUI.refresh();
       if (currentSessionId !== null) void loadWorkbenchCapabilities(currentSessionId);
+      if (currentSessionId !== null) void loadMcpHealth(currentSessionId);
     })();
+    composerModeSelect.value = readComposerModePreference();
     applyPanelPreferences();
     syncInspectorToggle();
     applyLanguage(languagePreference);
+    window.devAgentDesktop = {
+      getLanguagePreference: () => languagePreference,
+      setLanguagePreference: (language) => {
+        if (!SUPPORTED_LANGUAGES.includes(language)) return;
+        persistLanguagePreference(language);
+        applyLanguage(language);
+      },
+      getThemePreference: () => themePreference,
+      setThemePreference: (preference) => {
+        if (!["dark", "light", "system"].includes(preference)) return;
+        persistThemePreference(preference);
+        applyThemePreference(preference);
+      },
+      getComposerMode: () => composerModeSelect.value,
+      setComposerMode: (mode) => {
+        const nextMode = mode === "plan" ? "plan" : "normal";
+        composerModeSelect.value = nextMode;
+        persistComposerModePreference(nextMode);
+      },
+      getInspectorOpen: () => inspectorShell.classList.contains("is-open"),
+      setInspectorOpen,
+      refreshRuntimeStatus: () => desktopStatusRefreshButton.click(),
+      getCurrentSessionId: () => currentSessionId,
+    };
   </script>
   <script type="module" src="/public/spotlight-cards.js"></script>
+  <script type="module" src="/public/settings-ui.js"></script>
 </body>
 </html>

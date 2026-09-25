@@ -8,7 +8,7 @@ import { createElement } from "react";
 import { render, renderToString } from "ink";
 import { RuntimeEventSequence } from "@dev-agent/agent-core";
 
-import { InkCliApp } from "../dist/ink/app.js";
+import { deriveStickyTaskTitle, InkCliApp } from "../dist/ink/app.js";
 import { InkRuntimeStore } from "../dist/ink/runtime-store.js";
 import {
   createInkRenderOutput,
@@ -75,6 +75,20 @@ function renderInkApp(
     },
   );
 }
+
+test("sticky task title is derived from the latest bounded user prompt", () => {
+  const title = deriveStickyTaskTitle([
+    { id: "old", role: "user", text: "first task" },
+    { id: "assistant", role: "assistant", text: "answer" },
+    { id: "latest", role: "user", text: "  下一步\n可以开发什么功能\u0000  " },
+  ]);
+
+  assert.equal(title, "下一步 可以开发什么功能");
+  assert.equal(title?.includes("\n"), false);
+  assert.equal(deriveStickyTaskTitle([
+    { id: "empty", role: "user", text: "\u0000\n  " },
+  ]), undefined);
+});
 
 test("Ink displays run timings and the selected speed mode", async () => {
   const { stdin, stdout, writes } = createInkTerminal();
@@ -1429,7 +1443,13 @@ test("Ink navigates a long transcript with Home and End", async () => {
     stdin.write("\u001b[5~");
     await new Promise((resolve) => setTimeout(resolve, 100));
     const pageUpFrame = writes.join("");
-    assert.match(pageUpFrame, /rows above/);
+    assert.match(pageUpFrame, /Back to bottom/);
+    assert.match(pageUpFrame, /viewport prompt 7/);
+    const navigationIndex = pageUpFrame.indexOf("Back to bottom");
+    const statusIndex = pageUpFrame.indexOf("STATUS /");
+    const composerIndex = pageUpFrame.indexOf("Type your message");
+    assert.ok(navigationIndex >= 0 && navigationIndex < statusIndex);
+    assert.ok(statusIndex >= 0 && statusIndex < composerIndex);
     assert.doesNotMatch(
       pageUpFrame,
       /\[state=done turns=8\]/,
@@ -1441,6 +1461,7 @@ test("Ink navigates a long transcript with Home and End", async () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     const oldestFrame = writes.join("");
     assert.match(oldestFrame, /viewport prompt 0/);
+    assert.match(oldestFrame, /Back to bottom/);
     assert.match(oldestFrame, /rows below/);
     assert.doesNotMatch(oldestFrame, /\[state=done turns=8\]/);
 
@@ -1467,6 +1488,57 @@ test("Ink navigates a long transcript with Home and End", async () => {
     assert.match(newestFrame, /new streamed output/);
     assert.match(newestFrame, /\[usage\] prompt=395 completion=59 total=454/);
     assert.doesNotMatch(newestFrame, /rows below/);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("Ink clips an oversized response while the task header and bottom controls stay fixed", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const store = new InkRuntimeStore();
+  const sequence = new RuntimeEventSequence("viewport-clipping-session");
+  const instance = renderInkApp(stdin, stdout, () => undefined, store);
+
+  try {
+    const runId = "viewport-clipping-run";
+    store.apply(sequence.create(
+      "run.started",
+      { prompt: "sticky clipping task", model: "qwen3:4b-instruct" },
+      { runId },
+    ));
+    store.apply(sequence.create(
+      "assistant.completed",
+      { text: Array.from({ length: 40 }, (_, index) => `scroll-line-${index + 1}`).join("\n") },
+      { runId },
+    ));
+    store.apply(sequence.create(
+      "run.completed",
+      { turns: 1 },
+      { runId },
+    ));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    writes.length = 0;
+
+    stdin.write("\u001b[5~");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const pageUpFrame = writes.join("");
+    assert.match(pageUpFrame, /sticky clipping task/);
+    assert.match(pageUpFrame, /Back to bottom/);
+    assert.match(pageUpFrame, /scroll-line-2[0-9]/);
+    assert.doesNotMatch(pageUpFrame, /scroll-line-1/);
+    assert.doesNotMatch(
+      pageUpFrame,
+      /scroll-line-40/,
+      "the response tail should be below the clipped viewport after PageUp",
+    );
+    const taskIndex = pageUpFrame.indexOf("sticky clipping task");
+    const firstVisibleLineIndex = pageUpFrame.search(/scroll-line-2[0-9]/);
+    const navigationIndex = pageUpFrame.indexOf("Back to bottom");
+    const composerIndex = pageUpFrame.indexOf("Type your message");
+    assert.ok(taskIndex >= 0 && taskIndex < firstVisibleLineIndex);
+    assert.ok(navigationIndex >= 0 && navigationIndex < composerIndex);
   } finally {
     instance.unmount();
     stdin.destroy();

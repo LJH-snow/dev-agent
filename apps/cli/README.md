@@ -537,9 +537,11 @@ the active composer accepts editing input, and each streamed answer remains
 attached to the prompt that produced it.
 When the transcript is longer than the active terminal viewport, use the mouse
 wheel or `PageUp`/`PageDown` to browse turns, `Home` for the oldest content,
-and `End` to return to live output. While browsing, new streamed content stays
-below the current view and is marked as new output; submitting a prompt returns
-to the bottom automatically.
+and `End` to return to live output. While browsing, the latest task prompt is
+kept as a one-line header at the top, and a `↓ Back to bottom · End latest`
+affordance stays directly above the status, composer, and working-directory
+footer. New streamed content stays below the current view and is marked as new
+output; submitting a prompt returns to the bottom automatically.
 
 Rich interactive commands accept either `/` or `:` prefixes:
 `/help`/`:help`, `/clear`/`:clear`, `/model`/`:model`,

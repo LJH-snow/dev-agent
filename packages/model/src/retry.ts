@@ -104,7 +104,18 @@ export async function requestWithRetry(
   options: RetryOptions = {}
 ): Promise<Response> {
   return withRetry(async () => {
-    const response = await perform();
+    let response: Response;
+    try {
+      response = await perform();
+    } catch (error) {
+      if (isAbortError(error) || !isNetworkError(error)) {
+        throw error;
+      }
+      // Node's fetch otherwise collapses useful causes such as ECONNREFUSED
+      // into the unhelpful message "fetch failed". Keep retries intact, but
+      // surface the provider label and the safe transport target.
+      throw describeNetworkRequestError(label, error);
+    }
     if (!response.ok) {
       const rawBody = await readBoundedErrorBody(response, MAX_ERROR_BODY_BYTES);
       const body =
@@ -220,6 +231,56 @@ function retryDelayMs(
   const exponential = config.baseDelayMs * 2 ** (attempt - 1);
   const jitter = 0.5 + config.random() * 0.5;
   return Math.min(config.maxDelayMs, Math.round(exponential * jitter));
+}
+
+function describeNetworkRequestError(label: string, error: unknown): Error {
+  const cause = readErrorField(error, "cause");
+  const code = firstString(readErrorField(cause, "code"), readErrorField(error, "code"));
+  const host = firstString(
+    readErrorField(cause, "address"),
+    readErrorField(cause, "hostname"),
+    readErrorField(error, "address"),
+    readErrorField(error, "hostname"),
+  );
+  const port = firstNumber(readErrorField(cause, "port"), readErrorField(error, "port"));
+  const target = host === undefined
+    ? undefined
+    : port === undefined
+      ? host
+      : `${host}:${port}`;
+  const original = error instanceof Error ? error.message : String(error);
+  let detail = original;
+  if (code === "ECONNREFUSED") {
+    detail = `connection refused${target === undefined ? "" : ` at ${target}`} (${code})`;
+  } else if (code === "ENOTFOUND") {
+    detail = `host not found${target === undefined ? "" : ` at ${target}`} (${code})`;
+  } else if (code === "ETIMEDOUT" || code === "UND_ERR_CONNECT_TIMEOUT") {
+    detail = `connection timed out${target === undefined ? "" : ` at ${target}`} (${code})`;
+  } else if (code !== undefined && !original.includes(code)) {
+    detail = `${original} (${code})`;
+  }
+
+  const wrapped = new Error(`${label} failed: ${detail}`);
+  Object.defineProperty(wrapped, "cause", {
+    configurable: true,
+    enumerable: false,
+    value: error,
+    writable: false,
+  });
+  return wrapped;
+}
+
+function readErrorField(value: unknown, key: string): unknown {
+  if (typeof value !== "object" || value === null) return undefined;
+  return (value as Record<string, unknown>)[key];
+}
+
+function firstString(...values: readonly unknown[]): string | undefined {
+  return values.find((value): value is string => typeof value === "string" && value.length > 0);
+}
+
+function firstNumber(...values: readonly unknown[]): number | undefined {
+  return values.find((value): value is number => typeof value === "number" && Number.isFinite(value));
 }
 
 function isAbortError(error: unknown): boolean {

@@ -4,6 +4,7 @@ const MAX_REVIEW_COMMENT_TEXT = 2000;
 const MAX_REVIEW_COMMENT_PATH = 512;
 const MAX_REVIEW_COMMENT_ANCHOR = 128;
 const MAX_REVIEW_COMMENT_BYTES = 32 * 1024;
+const REVIEW_COMMENT_STATES = new Set(["pending", "inserted"]);
 
 const REVIEW_COMMENT_GROUPS = new Set(["committed", "staged", "unstaged", "untracked", "all"]);
 const DIFF_FILE_LIMIT = 500;
@@ -174,14 +175,34 @@ function normalizedReviewComment(value) {
   const anchor = typeof value.anchor === "string" ? value.anchor.replace(/[\u0000-\u001f\u007f]/g, "�").trim().slice(0, MAX_REVIEW_COMMENT_ANCHOR) : "";
   const text = typeof value.text === "string" ? value.text.replace(/\0/g, "�").trim().slice(0, MAX_REVIEW_COMMENT_TEXT) : "";
   const group = typeof value.group === "string" && REVIEW_COMMENT_GROUPS.has(value.group) ? value.group : "all";
+  const state = typeof value.state === "string" && REVIEW_COMMENT_STATES.has(value.state) ? value.state : "pending";
+  const selected = value.selected === undefined ? true : value.selected === true;
   if (!path || !anchor || !text) return undefined;
-  return { path, anchor, group, text };
+  return { path, anchor, group, text, state, selected };
+}
+
+function normalizedReviewComments(input) {
+  return Array.isArray(input) ? input.map(normalizedReviewComment).filter(Boolean).slice(0, MAX_REVIEW_COMMENTS) : [];
 }
 
 export function formatReviewComments(input) {
-  const comments = Array.isArray(input) ? input.map(normalizedReviewComment).filter(Boolean).slice(0, MAX_REVIEW_COMMENTS) : [];
+  const comments = normalizedReviewComments(input);
   const output = comments.map((comment) => `[Review comment ${comment.path}:${comment.anchor}]\n${comment.text}`).join("\n\n");
   return truncateUtf8(output, MAX_REVIEW_COMMENT_BYTES);
+}
+
+export function selectReviewComments(input) {
+  return normalizedReviewComments(input).filter((comment) => comment.selected);
+}
+
+export function summarizeReviewComments(input) {
+  const comments = normalizedReviewComments(input);
+  return {
+    total: comments.length,
+    selected: comments.filter((comment) => comment.selected).length,
+    pending: comments.filter((comment) => comment.state === "pending").length,
+    inserted: comments.filter((comment) => comment.state === "inserted").length,
+  };
 }
 
 export function readReviewComments(storage, key) {
@@ -199,7 +220,7 @@ export function readReviewComments(storage, key) {
 
 export function writeReviewComments(storage, key, comments) {
   if (!storage || typeof storage.setItem !== "function") return false;
-  const normalized = (Array.isArray(comments) ? comments : []).map(normalizedReviewComment).filter(Boolean).slice(0, MAX_REVIEW_COMMENTS);
+  const normalized = normalizedReviewComments(comments);
   try {
     const raw = JSON.stringify({ version: REVIEW_COMMENT_STORAGE_VERSION, comments: normalized });
     if (new TextEncoder().encode(raw).byteLength > MAX_REVIEW_COMMENT_BYTES) return false;
@@ -278,6 +299,9 @@ export function createTaskWorkspaceUI({
   const diffFiles = documentRef.getElementById("task-workspace-diff-files");
   const diffContent = documentRef.getElementById("task-workspace-diff");
   const commentsPanel = documentRef.getElementById("task-workspace-comments-panel");
+  const commentsSummary = documentRef.getElementById("task-workspace-comments-summary");
+  const selectAllCommentsButton = documentRef.getElementById("task-workspace-select-all-comments");
+  const clearCommentSelectionButton = documentRef.getElementById("task-workspace-clear-comment-selection");
   const commentsList = documentRef.getElementById("task-workspace-comments-list");
   const insertCommentsButton = documentRef.getElementById("task-workspace-insert-comments");
 
@@ -292,6 +316,7 @@ export function createTaskWorkspaceUI({
   let diffViewMode = "unified";
   let diffSearchValue = "";
   let currentDiff;
+  let reviewHighlightTimer;
   const commentsBySession = new Map();
 
   function commentsStorageKey(sessionId) {
@@ -341,6 +366,7 @@ export function createTaskWorkspaceUI({
 
   function clearDiff() {
     diffSequence += 1;
+    clearReviewTargetHighlight();
     diffPanel.hidden = true;
     diffTabs.replaceChildren();
     diffFiles.replaceChildren();
@@ -403,18 +429,78 @@ export function createTaskWorkspaceUI({
     return commentsBySession.get(sessionId);
   }
 
+  function commentStateLabel(comment) {
+    return translate(comment.state === "inserted" ? "workspace.comment.status.inserted" : "workspace.comment.status.pending");
+  }
+
+  function focusCommentButton(index) {
+    const buttons = [...commentsList.querySelectorAll("button.task-workspace-comment-jump")];
+    const target = buttons[index];
+    if (target && typeof target.focus === "function") target.focus();
+  }
+
+  function renderCommentSummary(comments) {
+    const summary = summarizeReviewComments(comments);
+    if (commentsSummary) {
+      commentsSummary.textContent = translate("workspace.comment.summary", summary);
+    }
+    if (selectAllCommentsButton) {
+      selectAllCommentsButton.disabled = summary.total === 0 || summary.selected === summary.total;
+    }
+    if (clearCommentSelectionButton) {
+      clearCommentSelectionButton.disabled = summary.selected === 0;
+    }
+    insertCommentsButton.disabled = summary.selected === 0;
+    return summary;
+  }
+
   function renderComments() {
     commentsList.replaceChildren();
     const workspace = selectedWorkspace();
     const comments = workspace ? commentsFor(workspace.sessionId) : [];
     commentsPanel.hidden = comments.length === 0;
-    insertCommentsButton.disabled = comments.length === 0;
+    const summary = renderCommentSummary(comments);
     if (currentDiff) renderDiffSummary(currentDiff);
     for (const [index, comment] of comments.entries()) {
       const item = documentRef.createElement("li");
-      const copy = documentRef.createElement("span");
-      copy.className = "task-workspace-comment-copy";
+      item.dataset.state = comment.state;
+      item.dataset.selected = String(comment.selected);
+
+      const select = documentRef.createElement("input");
+      select.type = "checkbox";
+      select.className = "task-workspace-comment-select";
+      select.checked = comment.selected;
+      select.setAttribute("aria-label", translate("workspace.comment.selectAt", { path: comment.path, anchor: comment.anchor }));
+      select.addEventListener("change", () => {
+        comment.selected = select.checked;
+        persistComments(workspace.sessionId);
+        renderComments();
+      });
+
+      const copy = documentRef.createElement("button");
+      copy.type = "button";
+      copy.className = "task-workspace-comment-jump";
       copy.textContent = `${comment.path}:${comment.anchor} · ${comment.text}`;
+      copy.setAttribute("aria-label", translate("workspace.comment.openAt", { path: comment.path, anchor: comment.anchor }));
+      copy.addEventListener("keydown", (event) => {
+        if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+        event.preventDefault();
+        const buttons = [...commentsList.querySelectorAll("button.task-workspace-comment-jump")];
+        const currentIndex = buttons.indexOf(copy);
+        const nextIndex = event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? buttons.length - 1
+            : currentIndex + (event.key === "ArrowDown" ? 1 : -1);
+        focusCommentButton((nextIndex + buttons.length) % buttons.length);
+      });
+      copy.addEventListener("click", () => void navigateToComment(comment));
+
+      const state = documentRef.createElement("span");
+      state.className = "task-workspace-comment-state";
+      state.textContent = commentStateLabel(comment);
+      state.setAttribute("aria-label", commentStateLabel(comment));
+
       const remove = documentRef.createElement("button");
       remove.type = "button";
       remove.className = "task-workspace-comment-remove";
@@ -425,8 +511,11 @@ export function createTaskWorkspaceUI({
         persistComments(workspace.sessionId);
         renderComments();
       });
-      item.append(copy, remove);
+      item.append(select, copy, state, remove);
       commentsList.appendChild(item);
+    }
+    if (summary.total === 0) {
+      commentsPanel.hidden = true;
     }
   }
 
@@ -434,7 +523,7 @@ export function createTaskWorkspaceUI({
     const text = requestReviewComment({ path, anchor, group });
     if (typeof text !== "string" || !text.trim()) return;
     const comments = commentsFor(workspace.sessionId);
-    if (comments.length >= 200) {
+    if (comments.length >= MAX_REVIEW_COMMENTS) {
       setStatus("workspace.comment.limit");
       return;
     }
@@ -457,6 +546,51 @@ export function createTaskWorkspaceUI({
     cell.appendChild(comment);
   }
 
+  function clearReviewTargetHighlight() {
+    if (reviewHighlightTimer) {
+      clearTimeout(reviewHighlightTimer);
+      reviewHighlightTimer = undefined;
+    }
+    for (const target of diffContent.querySelectorAll(".is-review-target")) {
+      target.classList.remove("is-review-target");
+    }
+  }
+
+  function focusReviewTarget(comment) {
+    const candidates = [...diffContent.querySelectorAll("[data-review-anchor]")];
+    const exact = candidates.find((candidate) => (
+      candidate.dataset.reviewAnchor === comment.anchor
+      && (comment.group === "all" || candidate.dataset.reviewGroup === comment.group)
+    ));
+    const target = exact ?? candidates.find((candidate) => candidate.dataset.reviewAnchor === comment.anchor);
+    if (!target) {
+      setStatus("workspace.comment.targetMissing", { path: comment.path, anchor: comment.anchor });
+      return false;
+    }
+
+    clearReviewTargetHighlight();
+    target.classList.add("is-review-target");
+    target.setAttribute("tabindex", "-1");
+    try { target.focus({ preventScroll: true }); } catch { /* a focus failure must not break review navigation */ }
+    try { target.scrollIntoView({ block: "center", behavior: "smooth" }); } catch { /* older embedded browsers may not support options */ }
+    setStatus("workspace.comment.located", { path: comment.path, anchor: comment.anchor });
+    reviewHighlightTimer = setTimeout(() => target.classList.remove("is-review-target"), 1800);
+    return true;
+  }
+
+  async function navigateToComment(comment) {
+    const workspace = selectedWorkspace();
+    if (!workspace || !comment) return;
+    selectedFile = comment.path;
+    activeDiffGroup = comment.group;
+    const loaded = await compare(comment.path);
+    if (!loaded || getSessionId() !== workspace.sessionId) {
+      setStatus("workspace.comment.targetMissing", { path: comment.path, anchor: comment.anchor });
+      return;
+    }
+    focusReviewTarget(comment);
+  }
+
   function renderUnifiedPatch(workspace, group, patch) {
     for (const entry of parseUnifiedDiff(patch)) {
       const row = documentRef.createElement("div");
@@ -464,6 +598,10 @@ export function createTaskWorkspaceUI({
       if (entry.kind === "hunk") row.classList.add("is-hunk");
       if (entry.kind === "add") row.classList.add("is-addition");
       if (entry.kind === "delete") row.classList.add("is-deletion");
+      if (entry.anchor) {
+        row.dataset.reviewAnchor = entry.anchor;
+        row.dataset.reviewGroup = group;
+      }
       const code = documentRef.createElement("code");
       code.textContent = entry.raw || " ";
       row.appendChild(code);
@@ -486,6 +624,10 @@ export function createTaskWorkspaceUI({
       const cell = documentRef.createElement("div");
       cell.className = "task-workspace-split-cell";
       cell.dataset.changeKind = entry?.kind ?? emptyKind ?? "context";
+      if (entry?.anchor) {
+        cell.dataset.reviewAnchor = entry.anchor;
+        cell.dataset.reviewGroup = group;
+      }
       appendCode(cell, entry?.text ?? "");
       if (entry?.anchor) appendCommentAction(cell, workspace, group, entry.anchor);
       row.appendChild(cell);
@@ -735,7 +877,7 @@ export function createTaskWorkspaceUI({
 
   async function compare(path = selectedFile) {
     const workspace = selectedWorkspace();
-    if (!workspace) return;
+    if (!workspace) return false;
     selectedFile = path;
     const requestId = ++diffSequence;
     diffPanel.hidden = false;
@@ -748,10 +890,10 @@ export function createTaskWorkspaceUI({
         cache: "no-store",
       });
       const payload = await responsePayload(response);
-      if (requestId !== diffSequence || getSessionId() !== workspace.sessionId) return;
+      if (requestId !== diffSequence || getSessionId() !== workspace.sessionId) return false;
       if (!response.ok) {
         diffContent.textContent = errorText(payload);
-        return;
+        return false;
       }
       currentDiff = payload;
       renderDiff(payload);
@@ -759,9 +901,48 @@ export function createTaskWorkspaceUI({
       if (payload.truncated) setStatus("workspace.diff.truncated");
       else if (payload.filesTruncated) setStatus("workspace.diff.filesTruncated");
       else setStatus("workspace.diff.loaded", { count: (payload.files ?? []).length });
+      return true;
     } catch {
       if (requestId === diffSequence) diffContent.textContent = translate("workspace.error.generic");
+      return false;
     }
+  }
+
+  function setAllCommentsSelected(selected) {
+    const workspace = selectedWorkspace();
+    if (!workspace) return;
+    const comments = commentsFor(workspace.sessionId);
+    for (const comment of comments) comment.selected = selected;
+    persistComments(workspace.sessionId);
+    renderComments();
+    setStatus(selected ? "workspace.comment.allSelected" : "workspace.comment.selectionCleared");
+  }
+
+  function insertSelectedComments() {
+    const workspace = selectedWorkspace();
+    if (!workspace) return;
+    const comments = commentsFor(workspace.sessionId);
+    const selected = comments.filter((comment) => comment.selected);
+    if (selected.length === 0) {
+      setStatus("workspace.comment.noneSelected");
+      return;
+    }
+    try {
+      if (insertReviewComments(selected.slice()) === false) {
+        setStatus("workspace.comment.insertFailed");
+        return;
+      }
+    } catch {
+      setStatus("workspace.comment.insertFailed");
+      return;
+    }
+    for (const comment of selected) {
+      comment.selected = false;
+      comment.state = "inserted";
+    }
+    persistComments(workspace.sessionId);
+    renderComments();
+    setStatus("workspace.comment.inserted", { count: selected.length });
   }
 
   async function merge() {
@@ -829,11 +1010,9 @@ export function createTaskWorkspaceUI({
   diffViewSplit?.addEventListener("click", () => setDiffViewMode("split"));
   mergeButton.addEventListener("click", merge);
   cleanupButton.addEventListener("click", cleanup);
-  insertCommentsButton.addEventListener("click", () => {
-    const workspace = selectedWorkspace();
-    if (!workspace) return;
-    insertReviewComments(commentsFor(workspace.sessionId).slice());
-  });
+  selectAllCommentsButton?.addEventListener("click", () => setAllCommentsSelected(true));
+  clearCommentSelectionButton?.addEventListener("click", () => setAllCommentsSelected(false));
+  insertCommentsButton.addEventListener("click", insertSelectedComments);
 
   render();
   return { refresh, render };

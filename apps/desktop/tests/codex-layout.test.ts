@@ -35,6 +35,8 @@ test("served Desktop HTML exposes the Codex-inspired shell regions", async () =>
     assert.match(html, /id="close-inspector"/);
     assert.match(html, /id="session"/);
     assert.match(html, /id="input"/);
+    assert.match(html, /data-empty-state="true"/);
+    assert.match(html, /conversation.starter.review/);
   } finally {
     await close(server);
   }
@@ -65,6 +67,9 @@ test("Desktop stylesheet defines the focused Codex-like layout contract", async 
     assert.match(styles, /\.inspector-shell\.is-open/);
     assert.match(styles, /\.inspector-shell\.is-collapsed/);
     assert.match(styles, /\*\[hidden\]\s*\{\s*display:\s*none\s*!important;/);
+    assert.match(styles, /\.empty\.empty-state\s*\{/);
+    assert.match(styles, /\.empty-starters\s*\{/);
+    assert.match(styles, /\.empty-starter:hover\s*\{/);
   } finally {
     await close(server);
   }

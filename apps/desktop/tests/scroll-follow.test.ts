@@ -41,11 +41,11 @@ test("desktop message streaming preserves a reader's manual scroll position", as
     );
     assert.match(
       html,
-      /function setMessagesScrollTop\(behavior = "auto"\)[\s\S]{0,420}messages\.scrollTo\(\{ top, left: 0, behavior \}\)/
+      /function setMessagesScrollTop\(behavior = "auto"\)[\s\S]{0,420}const top = Math\.max\(0, messages\.scrollHeight - messages\.clientHeight\);[\s\S]{0,240}messages\.scrollTo\(\{ top, left: 0, behavior \}\)/
     );
     assert.match(
       html,
-      /function setMessagesScrollTop\([\s\S]{0,520}messages\.scrollTop = top;/
+      /function setMessagesScrollTop\([\s\S]{0,560}messages\.scrollTop = top;/
     );
     assert.match(
       html,
@@ -65,6 +65,14 @@ test("desktop message streaming preserves a reader's manual scroll position", as
     );
     assert.match(html, /jumpToLatestButton\.addEventListener\("click"/);
     assert.match(html, /resetLiveOutputNotice\(\)/);
+
+    const stylesResponse = await fetch(`${base}/public/styles.css`);
+    assert.equal(stylesResponse.status, 200);
+    const styles = await stylesResponse.text();
+    assert.match(
+      styles,
+      /#messages\s*\{[\s\S]{0,720}overscroll-behavior:\s*contain;[\s\S]{0,360}scroll-behavior:\s*auto;/
+    );
   } finally {
     await close(server);
   }

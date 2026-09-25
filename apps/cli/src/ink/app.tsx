@@ -7,7 +7,7 @@ import {
 } from "../tui-renderer.js";
 import { renderSignalLoomMark } from "../tui-brand.js";
 import type { TuiStateSnapshot } from "../tui-session.js";
-import { displayWidth, splitByDisplayWidth, truncateToDisplayWidth } from "../tui-width.js";
+import { displayWidth, fitDisplayLine, splitByDisplayWidth, truncateToDisplayWidth } from "../tui-width.js";
 import { InkUiController, type InkUiSnapshot } from "../ink-ui.js";
 import {
   InkRuntimeStore,
@@ -118,11 +118,12 @@ export function InkCliApp({
     12,
     (stdout.rows ?? process.stdout.rows ?? 24) - Math.max(0, terminalRowsOffset),
   );
-  // Leave room for the status line, composer, footer, and transient panels so
-  // Ink's dynamic frame does not reach the terminal's full-screen threshold
-  // when a queue or tool timeline is visible. The navigation affordance is
-  // rendered only while browsing, so live follow mode stays compact.
-  const visibleTranscriptRows = Math.max(4, terminalRows - 14);
+  // Leave room for the status line, composer, footer, transient panels, and
+  // one bottom navigation slot. The navigation slot stays reserved even when
+  // its label is hidden, so entering/leaving history does not make the
+  // transcript jump under the composer. The task header is accounted for
+  // after the current transcript is known below.
+  const baseTranscriptRows = Math.max(4, terminalRows - 15);
   const viewportMouseInput = useRef(new MouseInputParser()).current;
   const composerMouseInput = useRef(new MouseInputParser()).current;
   const [value, setValue] = useState("");
@@ -134,7 +135,7 @@ export function InkCliApp({
   const dismissedPathKey = useRef<string | undefined>(undefined);
   const viewportModel = useRef(new InkViewportModel({
     totalRows: 0,
-    visibleRows: visibleTranscriptRows,
+    visibleRows: baseTranscriptRows,
   })).current;
   const staticItems = useRef<InkStaticItem[]>([
     { kind: "welcome", id: "signal-loom-welcome" },
@@ -189,6 +190,14 @@ export function InkCliApp({
   // panel remains static, while every turn is rendered through this bounded
   // dynamic viewport.
   const transcriptEntries = allTranscriptEntries;
+  const taskTitle = deriveStickyTaskTitle(transcriptEntries);
+  // The sticky task row is part of the dynamic shell, not the transcript
+  // viewport. Reserve one additional row once a task exists so the bottom
+  // controls remain anchored instead of being pushed off-screen.
+  const visibleTranscriptRows = Math.max(
+    4,
+    baseTranscriptRows - (taskTitle === undefined ? 0 : 1),
+  );
   const transcriptRows = estimateTranscriptRows(
     allTranscriptEntries,
     columns,
@@ -199,6 +208,7 @@ export function InkCliApp({
         ...viewport,
         offset: Math.max(0, transcriptRows - visibleTranscriptRows),
         totalRows: transcriptRows,
+        visibleRows: visibleTranscriptRows,
         followOutput: true,
         hiddenAbove: 0,
         hiddenBelow: 0,
@@ -531,6 +541,9 @@ export function InkCliApp({
         )}
       </Static>
       <Box flexDirection="column" width={columns}>
+        {taskTitle !== undefined ? (
+          <StickyTaskHeader title={taskTitle} columns={columns} />
+        ) : null}
         <TranscriptViewport
           snapshot={snapshot}
           entries={transcriptEntries}
@@ -603,6 +616,7 @@ export function InkCliApp({
         ) : null}
       </Box>
       <Box flexDirection="column">
+        <NavigationBar viewport={viewport} />
         <StatusLine snapshot={snapshot} busy={busy} />
         <Composer
           value={value}
@@ -667,6 +681,66 @@ function WelcomePanel(props: {
   );
 }
 
+/**
+ * Returns a one-line, bounded title for the latest user task. The title is a
+ * presentation affordance only; the full prompt remains in the transcript.
+ */
+export function deriveStickyTaskTitle(
+  entries: readonly TuiStateSnapshot["transcript"][number][],
+): string | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.role !== "user") continue;
+    const normalized = entry.text
+      .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (normalized.length === 0) continue;
+    return truncateToDisplayWidth(Array.from(normalized).slice(0, 512).join(""), 512);
+  }
+  return undefined;
+}
+
+function StickyTaskHeader({
+  title,
+  columns,
+}: {
+  readonly title: string;
+  readonly columns: number;
+}): React.JSX.Element {
+  const theme = useInkTheme();
+  const line = fitDisplayLine(` ${title}`, Math.max(1, columns - 2));
+  return (
+    <Box width={columns} paddingX={1} height={1}>
+      <Text color={theme.text} backgroundColor={theme.dim}>{line}</Text>
+    </Box>
+  );
+}
+
+function NavigationBar({
+  viewport,
+}: {
+  readonly viewport: InkViewportSnapshot;
+}): React.JSX.Element {
+  const theme = useInkTheme();
+  const browsing = !viewport.followOutput &&
+    (viewport.hiddenAbove > 0 || viewport.hiddenBelow > 0 || viewport.newOutput > 0);
+  if (!browsing) {
+    return <Box height={1} />;
+  }
+
+  return (
+    <Box paddingX={1} height={1}>
+      <Text color={theme.primary}>
+        ↓ Back to bottom · End latest
+        {viewport.hiddenAbove > 0 ? ` · ${viewport.hiddenAbove} rows above` : ""}
+        {viewport.hiddenBelow > 0 ? ` · ${viewport.hiddenBelow} rows below` : ""}
+        {viewport.newOutput > 0 ? " · new output below" : ""}
+      </Text>
+    </Box>
+  );
+}
+
 function TranscriptViewport({
   snapshot,
   entries,
@@ -685,18 +759,13 @@ function TranscriptViewport({
   const firstVisibleRow = viewport.offset;
   const lastVisibleRow = firstVisibleRow + Math.max(1, viewport.visibleRows);
   const visibleItems = selectTranscriptItems(ranges, viewport);
-  const renderedRows = visibleItems.reduce(
-    (total, range) => total + (range.end - range.start),
-    0,
-  );
-  const viewportHeight = viewport.totalRows > viewport.visibleRows &&
-    renderedRows <= viewport.visibleRows
+  // Always clip an overflowing transcript frame. A single Markdown response
+  // can be larger than the viewport, and the selected range may therefore be
+  // taller than the budget even though the viewport is intentionally showing
+  // only its intersecting rows.
+  const viewportHeight = viewport.totalRows > viewport.visibleRows
     ? Math.max(1, viewport.visibleRows)
     : undefined;
-  const showNavigationHint =
-    !viewport.followOutput &&
-    (viewport.hiddenAbove > 0 || viewport.hiddenBelow > 0 || viewport.newOutput > 0);
-
   return (
     <Box flexDirection="column" width={columns}>
       {snapshot.thought.active || snapshot.thought.summary !== undefined ? (
@@ -708,17 +777,6 @@ function TranscriptViewport({
           steps={snapshot.thought.steps}
         />
       ) : null}
-      {showNavigationHint ? (
-        <Box paddingX={1}>
-          <Text color={theme.muted}>
-            {viewport.hiddenAbove > 0 ? `↑ ${viewport.hiddenAbove} rows above` : ""}
-            {viewport.hiddenAbove > 0 && viewport.hiddenBelow > 0 ? " · " : ""}
-            {viewport.hiddenBelow > 0 ? `↓ ${viewport.hiddenBelow} rows below` : ""}
-            {viewport.newOutput > 0 ? " · new output below" : ""}
-            {" · PageUp/PageDown · End latest"}
-          </Text>
-        </Box>
-      ) : null}
       <Box
         flexDirection="column"
         paddingX={1}
@@ -727,9 +785,20 @@ function TranscriptViewport({
           ? {}
           : { height: viewportHeight, overflow: "hidden" as const })}
       >
-        {visibleItems.map((range) =>
-          range.item.type === "summary" ? (
-            <SummaryPanel key="run-summary" summary={range.item.summary} />
+        {visibleItems.map((range) => {
+          // Preserve the item's global row position inside the clipped
+          // viewport. Without this negative offset, an oversized entry that
+          // intersects the window would always render from its first line,
+          // making PageUp appear to do nothing.
+          const rowOffset = range.start < firstVisibleRow
+            ? firstVisibleRow - range.start
+            : 0;
+          return range.item.type === "summary" ? (
+            <SummaryPanel
+              key="run-summary"
+              summary={range.item.summary}
+              rowOffset={-rowOffset}
+            />
           ) : (
             <TranscriptEntry
               key={range.item.entry.id}
@@ -739,9 +808,10 @@ function TranscriptViewport({
                 range.item.entry.runId === snapshot.activeRunId
               }
               width={columns}
+              rowOffset={-rowOffset}
             />
-          )
-        )}
+          );
+        })}
       </Box>
       {snapshot.error !== undefined ? (
         <Text color={theme.error}>× {snapshot.error}</Text>
@@ -909,14 +979,16 @@ function TranscriptEntry({
   entry,
   activeThinking,
   width,
+  rowOffset = 0,
 }: {
   entry: TuiStateSnapshot["transcript"][number];
   activeThinking: boolean;
   width: number;
+  rowOffset?: number;
 }): React.JSX.Element {
   const theme = useInkTheme();
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column" marginTop={1 + rowOffset}>
       {entry.role === "user" ? (
         <Text color={theme.primary}>› {entry.text}</Text>
       ) : entry.role === "reasoning" ? (
@@ -992,10 +1064,16 @@ function PathCompletionPanel({
   );
 }
 
-function SummaryPanel({ summary }: { summary: InkRunSummary }): React.JSX.Element {
+function SummaryPanel({
+  summary,
+  rowOffset = 0,
+}: {
+  summary: InkRunSummary;
+  rowOffset?: number;
+}): React.JSX.Element {
   const theme = useInkTheme();
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column" marginTop={1 + rowOffset}>
       {summaryPanelLines(summary).map((line, index) => (
         <Text key={index} color={theme.muted}>{line}</Text>
       ))}
