@@ -1623,27 +1623,30 @@ test("Back to bottom hit-testing only accepts a primary press on the navigation 
     hiddenBelow: 3,
     newOutput: 0,
   } as const;
-  const click = { button: 0, x: 12, y: 17, action: "press" } as const;
+  // The fixed shell occupies eight rows, and Ink's guarded render output
+  // leaves one extra virtual row. The visible navigation row is therefore
+  // one row higher than the old hard-coded hit target.
+  const click = { button: 0, x: 40, y: 16, action: "press" } as const;
 
-  assert.equal(isBackToBottomClick(click, 24, browsing), true);
-  assert.equal(isNavigationBarHovered({ x: 12, y: 17 }, 24, browsing), true);
-  assert.equal(isNavigationBarHovered({ x: 1, y: 17 }, 24, browsing), false);
-  assert.equal(isNavigationBarHovered({ x: 12, y: 16 }, 24, browsing), false);
+  assert.equal(isBackToBottomClick(click, 24, browsing, 80), true);
+  assert.equal(isNavigationBarHovered({ x: 40, y: 16 }, 24, browsing, 80), true);
+  assert.equal(isNavigationBarHovered({ x: 2, y: 16 }, 24, browsing, 80), false);
+  assert.equal(isNavigationBarHovered({ x: 40, y: 17 }, 24, browsing, 80), false);
   assert.equal(
-    isBackToBottomClick({ ...click, y: 16 }, 23, browsing),
+    isBackToBottomClick({ ...click, y: 15 }, 23, browsing, 80),
     true,
     "hit testing uses the effective row count supplied by the renderer",
   );
   assert.equal(
-    isBackToBottomClick({ ...click, y: 16 }, 24, browsing),
+    isBackToBottomClick({ ...click, y: 17 }, 24, browsing, 80),
     false,
   );
   assert.equal(
-    isBackToBottomClick({ ...click, action: "release" }, 24, browsing),
+    isBackToBottomClick({ ...click, action: "release" }, 24, browsing, 80),
     false,
   );
   assert.equal(
-    isBackToBottomClick({ ...click, button: 2 }, 24, browsing),
+    isBackToBottomClick({ ...click, button: 2 }, 24, browsing, 80),
     false,
   );
   assert.equal(
@@ -1652,7 +1655,7 @@ test("Back to bottom hit-testing only accepts a primary press on the navigation 
       hiddenAbove: 0,
       hiddenBelow: 0,
       newOutput: 0,
-    }),
+    }, 80),
     false,
   );
 });
@@ -1685,26 +1688,32 @@ test("Ink clicking Back to bottom returns the transcript to the latest output", 
     writes.length = 0;
     stdin.write("\u001b[5~");
     await new Promise((resolve) => setTimeout(resolve, 100));
-    assert.match(writes.join(""), /Back to bottom/);
-    assert.doesNotMatch(writes.join(""), /click-line-40/);
+    const pageUpFrame = writes.join("");
+    assert.match(pageUpFrame, /Back to bottom/);
+    assert.match(
+      pageUpFrame,
+      /\n {10}↓ Back to bottom/,
+      "the navigation action is centered in the terminal instead of pinned to the left edge",
+    );
+    assert.doesNotMatch(pageUpFrame, /click-line-40/);
 
     writes.length = 0;
     // Button code 35 is an SGR no-button motion report. It should only color
     // the navigation label while the pointer is over its text bounds.
-    stdin.write("\u001b[<35;12;17M");
+    stdin.write("\u001b[<35;40;16M");
     await new Promise((resolve) => setTimeout(resolve, 100));
     const hoverFrame = writes.join("");
     assert.match(hoverFrame, /Back to bottom/);
     assert.equal(
-      hoverFrame.includes("[<35;12;17M"),
+      hoverFrame.includes("[<35;40;16M"),
       false,
       "hover motion reports must be consumed instead of entering the composer",
     );
 
     writes.length = 0;
-    // The test terminal is 24 rows high, so the reserved navigation row is
-    // row 17. Send press + release just as a real SGR mouse click does.
-    stdin.write("\u001b[<0;12;17M\u001b[<0;12;17m");
+    // The test terminal is 24 rows high, so the visible navigation row is
+    // row 16. Send press + release just as a real SGR mouse click does.
+    stdin.write("\u001b[<0;40;16M\u001b[<0;40;16m");
     await new Promise((resolve) => setTimeout(resolve, 100));
     const bottomFrame = writes.join("");
     assert.match(bottomFrame, /click-line-40/);
@@ -1712,7 +1721,7 @@ test("Ink clicking Back to bottom returns the transcript to the latest output", 
     assert.doesNotMatch(bottomFrame, /rows below/);
     assert.doesNotMatch(
       bottomFrame,
-      /\[<0;12;17[Mm]/,
+      /\[<0;40;16[Mm]/,
       "the Back to bottom click must not be inserted into the composer",
     );
   } finally {

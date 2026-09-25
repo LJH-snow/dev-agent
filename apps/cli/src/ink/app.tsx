@@ -82,10 +82,11 @@ const NOOP_SUBSCRIBE = (): (() => void) => () => undefined;
 const EMPTY_GET_SNAPSHOT = (): InkUiSnapshot => EMPTY_UI_SNAPSHOT;
 // NavigationBar, StatusLine, Composer, and Footer occupy eight rows in the
 // fixed bottom shell: 1 + (1 margin + 1 line) + (1 margin + 3 border/content)
-// + 1. The navigation row is therefore seven rows above the effective bottom
-// row (the terminalRowsOffset is already reflected in terminalRows).
+// + 1. Ink renders against a one-row guarded output, while mouse coordinates
+// come from the real terminal, so the pointer hit row is one cell above the
+// old bottom-shell calculation.
 const BOTTOM_SHELL_ROWS = 8;
-const NAVIGATION_ROW_FROM_BOTTOM = BOTTOM_SHELL_ROWS - 1;
+const NAVIGATION_ROW_FROM_BOTTOM = BOTTOM_SHELL_ROWS;
 
 export function InkCliApp({
   store,
@@ -183,7 +184,12 @@ export function InkCliApp({
       }
       for (const click of parsed.clicks) {
         rememberMousePosition({ x: click.x, y: click.y });
-        if (!isBackToBottomClick(click, terminalRows, viewportModel.snapshot())) {
+        if (!isBackToBottomClick(
+          click,
+          terminalRows,
+          viewportModel.snapshot(),
+          columns,
+        )) {
           continue;
         }
         setViewport(viewportModel.end());
@@ -196,6 +202,7 @@ export function InkCliApp({
       write(MOUSE_TRACKING_DISABLE);
     };
   }, [
+    columns,
     internal_eventEmitter,
     isRawModeSupported,
     moveViewport,
@@ -232,7 +239,7 @@ export function InkCliApp({
   // from the live answer viewport.
   const stickyTaskTitle = viewport.followOutput ? undefined : taskTitle;
   const navigationHovered = mousePosition !== undefined &&
-    isNavigationBarHovered(mousePosition, terminalRows, viewport);
+    isNavigationBarHovered(mousePosition, terminalRows, viewport, columns);
   const visibleTranscriptRows = Math.max(
     4,
     baseTranscriptRows - (stickyTaskTitle === undefined ? 0 : 1),
@@ -655,7 +662,11 @@ export function InkCliApp({
         ) : null}
       </Box>
       <Box flexDirection="column">
-        <NavigationBar viewport={viewport} hovered={navigationHovered} />
+        <NavigationBar
+          viewport={viewport}
+          hovered={navigationHovered}
+          columns={columns}
+        />
         <StatusLine snapshot={snapshot} busy={busy} />
         <Composer
           value={value}
@@ -779,10 +790,14 @@ function navigationBarText(viewport: NavigationViewport): string {
 function navigationBarBounds(
   viewport: NavigationViewport,
   terminalRows: number,
+  terminalColumns: number,
 ): { readonly row: number; readonly startColumn: number; readonly endColumn: number } | undefined {
   if (!isBrowsingViewport(viewport)) return undefined;
-  const startColumn = 2;
   const labelWidth = displayWidth(navigationBarText(viewport));
+  const startColumn = Math.max(
+    1,
+    Math.floor((Math.max(1, Math.floor(terminalColumns)) - labelWidth) / 2) + 1,
+  );
   return {
     row: Math.max(1, Math.floor(terminalRows) - NAVIGATION_ROW_FROM_BOTTOM),
     startColumn,
@@ -794,8 +809,9 @@ function isPointInsideNavigationBar(
   point: MousePoint,
   viewport: NavigationViewport,
   terminalRows: number,
+  terminalColumns: number,
 ): boolean {
-  const bounds = navigationBarBounds(viewport, terminalRows);
+  const bounds = navigationBarBounds(viewport, terminalRows, terminalColumns);
   return bounds !== undefined &&
     point.y === bounds.row &&
     point.x >= bounds.startColumn &&
@@ -806,27 +822,31 @@ export function isNavigationBarHovered(
   point: MousePoint,
   terminalRows: number,
   viewport: NavigationViewport,
+  terminalColumns: number,
 ): boolean {
-  return isPointInsideNavigationBar(point, viewport, terminalRows);
+  return isPointInsideNavigationBar(point, viewport, terminalRows, terminalColumns);
 }
 
 export function isBackToBottomClick(
   click: MouseClick,
   terminalRows: number,
   viewport: NavigationViewport,
+  terminalColumns: number,
 ): boolean {
   if (viewport.followOutput || click.action !== "press") return false;
   if ((click.button & 64) !== 0 || (click.button & 32) !== 0) return false;
   if ((click.button & 3) !== 0) return false;
-  return isPointInsideNavigationBar(click, viewport, terminalRows);
+  return isPointInsideNavigationBar(click, viewport, terminalRows, terminalColumns);
 }
 
 function NavigationBar({
   viewport,
   hovered,
+  columns,
 }: {
   readonly viewport: InkViewportSnapshot;
   readonly hovered: boolean;
+  readonly columns: number;
 }): React.JSX.Element {
   const theme = useInkTheme();
   if (!isBrowsingViewport(viewport)) {
@@ -835,7 +855,7 @@ function NavigationBar({
 
   const label = navigationBarText(viewport);
   return (
-    <Box paddingX={1} height={1}>
+    <Box width={columns} paddingX={1} height={1} justifyContent="center">
       <Text
         color={hovered ? "#131923" : theme.primary}
         backgroundColor={hovered ? theme.primary : undefined}
