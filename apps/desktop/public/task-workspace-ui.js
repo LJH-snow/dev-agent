@@ -6,6 +6,161 @@ const MAX_REVIEW_COMMENT_ANCHOR = 128;
 const MAX_REVIEW_COMMENT_BYTES = 32 * 1024;
 
 const REVIEW_COMMENT_GROUPS = new Set(["committed", "staged", "unstaged", "untracked", "all"]);
+const DIFF_FILE_LIMIT = 500;
+const DIFF_SEARCH_LIMIT = 256;
+
+function normalizedDiffText(value) {
+  return String(value ?? "").slice(0, 192 * 1024);
+}
+
+function diffLineKind(line) {
+  if (line.startsWith("@@ ")) return "hunk";
+  if (line.startsWith("diff --git ")) return "file";
+  if (line.startsWith("+++ ") || line.startsWith("--- ")) return "header";
+  if (line.startsWith("+") && !line.startsWith("+++")) return "add";
+  if (line.startsWith("-") && !line.startsWith("---")) return "delete";
+  if (line.startsWith("\\")) return "meta";
+  if (
+    line.startsWith("# ") ||
+    line.startsWith("index ") ||
+    line.startsWith("new file mode ") ||
+    line.startsWith("deleted file mode ") ||
+    line.startsWith("old mode ") ||
+    line.startsWith("new mode ") ||
+    line.startsWith("similarity index ") ||
+    line.startsWith("rename from ") ||
+    line.startsWith("rename to ") ||
+    line.startsWith("Binary files ")
+  ) return "meta";
+  return "context";
+}
+
+/** Parses only the bounded unified patch projection returned by the Desktop API. */
+export function parseUnifiedDiff(patch) {
+  const lines = normalizedDiffText(patch).split("\n");
+  const entries = [];
+  let hunkIndex = -1;
+  let oldLine = 0;
+  let newLine = 0;
+  for (const rawLine of lines) {
+    const line = String(rawLine);
+    const kind = diffLineKind(line);
+    if (kind === "hunk") {
+      hunkIndex += 1;
+      const match = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
+      if (match) {
+        oldLine = Number(match[1]);
+        newLine = Number(match[2]);
+      }
+      entries.push({ kind, raw: line, text: line, hunkIndex, oldLine, newLine });
+      continue;
+    }
+    if (kind === "add") {
+      entries.push({
+        kind,
+        raw: line,
+        text: line.slice(1),
+        hunkIndex,
+        newLine,
+        anchor: hunkIndex >= 0 ? `+${newLine}` : undefined,
+      });
+      newLine += 1;
+      continue;
+    }
+    if (kind === "delete") {
+      entries.push({
+        kind,
+        raw: line,
+        text: line.slice(1),
+        hunkIndex,
+        oldLine,
+        anchor: hunkIndex >= 0 ? `−${oldLine}` : undefined,
+      });
+      oldLine += 1;
+      continue;
+    }
+    if (kind === "context") {
+      const text = line.startsWith(" ") ? line.slice(1) : line;
+      entries.push({ kind, raw: line, text, hunkIndex, oldLine, newLine });
+      oldLine += 1;
+      newLine += 1;
+      continue;
+    }
+    entries.push({ kind, raw: line, text: line, hunkIndex });
+  }
+  return entries;
+}
+
+function normalizedDiffSearch(value) {
+  return String(value ?? "").slice(0, DIFF_SEARCH_LIMIT).trim().toLocaleLowerCase();
+}
+
+export function filterDiffFiles(files, query = "") {
+  const normalized = normalizedDiffSearch(query);
+  const source = Array.isArray(files) ? files.slice(0, DIFF_FILE_LIMIT) : [];
+  if (!normalized) return source;
+  return source.filter((file) => typeof file?.path === "string" && file.path.toLocaleLowerCase().includes(normalized));
+}
+
+function normalizedDiffStatus(value) {
+  const raw = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (!raw || raw === "CHANGED" || raw === "COMMITTED") return "M";
+  return raw;
+}
+
+function diffStatusTone(status) {
+  if (status === "??" || status.startsWith("A") || status.startsWith("+")) return "A";
+  if (status.startsWith("D") || status.startsWith("-")) return "D";
+  if (status.startsWith("M") || status.startsWith("R") || status.startsWith("C") || status.startsWith("~")) return "M";
+  return "M";
+}
+
+/** Pair bounded adjacent additions/deletions into side-by-side rows. */
+export function pairSplitDiffEntries(entries) {
+  const source = Array.isArray(entries) ? entries : [];
+  const rows = [];
+  for (let index = 0; index < source.length;) {
+    const entry = source[index];
+    if (entry?.kind !== "add" && entry?.kind !== "delete") {
+      rows.push({ kind: entry?.kind ?? "context", entry });
+      index += 1;
+      continue;
+    }
+
+    const deletions = [];
+    const additions = [];
+    while (index < source.length && (source[index]?.kind === "add" || source[index]?.kind === "delete")) {
+      const change = source[index];
+      if (change.kind === "delete") deletions.push(change);
+      else additions.push(change);
+      index += 1;
+    }
+    const rowCount = Math.max(deletions.length, additions.length);
+    for (let rowIndex = 0; rowIndex < rowCount; rowIndex += 1) {
+      rows.push({
+        kind: "change",
+        deletion: deletions[rowIndex],
+        addition: additions[rowIndex],
+      });
+    }
+  }
+  return rows;
+}
+
+export function summarizeDiffPayload(payload) {
+  const files = Array.isArray(payload?.files) ? payload.files.slice(0, DIFF_FILE_LIMIT) : [];
+  const patch = normalizedDiffText(payload?.diff);
+  const additions = patch.split("\n").reduce((count, line) => count + (diffLineKind(line) === "add" ? 1 : 0), 0);
+  const deletions = patch.split("\n").reduce((count, line) => count + (diffLineKind(line) === "delete" ? 1 : 0), 0);
+  const counts = { added: 0, modified: 0, deleted: 0 };
+  for (const file of files) {
+    const status = normalizedDiffStatus(file?.status);
+    if (status === "??" || status.startsWith("A") || status.startsWith("+")) counts.added += 1;
+    else if (status.startsWith("D") || status.startsWith("-")) counts.deleted += 1;
+    else counts.modified += 1;
+  }
+  return { files: files.length, additions, deletions, ...counts };
+}
 
 function truncateUtf8(value, maxBytes) {
   const bytes = new TextEncoder().encode(value);
@@ -115,6 +270,10 @@ export function createTaskWorkspaceUI({
   const mergeButton = documentRef.getElementById("task-workspace-merge");
   const cleanupButton = documentRef.getElementById("task-workspace-cleanup");
   const diffPanel = documentRef.getElementById("task-workspace-diff-panel");
+  const diffSummary = documentRef.getElementById("task-workspace-diff-summary");
+  const diffViewUnified = documentRef.getElementById("task-workspace-diff-view-unified");
+  const diffViewSplit = documentRef.getElementById("task-workspace-diff-view-split");
+  const diffSearch = documentRef.getElementById("task-workspace-diff-search");
   const diffTabs = documentRef.getElementById("task-workspace-diff-tabs");
   const diffFiles = documentRef.getElementById("task-workspace-diff-files");
   const diffContent = documentRef.getElementById("task-workspace-diff");
@@ -130,6 +289,8 @@ export function createTaskWorkspaceUI({
   let operationInProgress = false;
   let selectedFile;
   let activeDiffGroup = "all";
+  let diffViewMode = "unified";
+  let diffSearchValue = "";
   let currentDiff;
   const commentsBySession = new Map();
 
@@ -151,15 +312,47 @@ export function createTaskWorkspaceUI({
     statusNode.dataset.state = key.includes("error") ? "error" : "info";
   }
 
+  function updateDiffViewControls() {
+    for (const [button, mode] of [[diffViewUnified, "unified"], [diffViewSplit, "split"]]) {
+      if (!button) continue;
+      const selected = diffViewMode === mode;
+      button.setAttribute("aria-selected", String(selected));
+      button.setAttribute("tabindex", selected ? "0" : "-1");
+    }
+  }
+
+  function renderDiffSummary(payload) {
+    if (!diffSummary) return;
+    const workspace = selectedWorkspace();
+    const metrics = summarizeDiffPayload(payload);
+    if (metrics.files === 0) {
+      diffSummary.textContent = translate("workspace.diff.summary.empty");
+      return;
+    }
+    const comments = workspace ? commentsFor(workspace.sessionId).length : 0;
+    diffSummary.textContent = [
+      translate("workspace.diff.summary.files", { count: metrics.files }),
+      translate("workspace.diff.summary.additions", { count: metrics.additions }),
+      translate("workspace.diff.summary.deletions", { count: metrics.deletions }),
+      translate("workspace.diff.summary.comments", { count: comments }),
+      translate("workspace.diff.summary.status", metrics),
+    ].join(" · ");
+  }
+
   function clearDiff() {
     diffSequence += 1;
     diffPanel.hidden = true;
     diffTabs.replaceChildren();
     diffFiles.replaceChildren();
     diffContent.textContent = "";
+    if (diffSummary) diffSummary.textContent = translate("workspace.diff.summary.empty");
     selectedFile = undefined;
     activeDiffGroup = "all";
+    diffViewMode = "unified";
+    diffSearchValue = "";
+    if (diffSearch) diffSearch.value = "";
     currentDiff = undefined;
+    updateDiffViewControls();
   }
 
   function selectedWorkspace() {
@@ -216,6 +409,7 @@ export function createTaskWorkspaceUI({
     const comments = workspace ? commentsFor(workspace.sessionId) : [];
     commentsPanel.hidden = comments.length === 0;
     insertCommentsButton.disabled = comments.length === 0;
+    if (currentDiff) renderDiffSummary(currentDiff);
     for (const [index, comment] of comments.entries()) {
       const item = documentRef.createElement("li");
       const copy = documentRef.createElement("span");
@@ -252,50 +446,81 @@ export function createTaskWorkspaceUI({
     setStatus("workspace.comment.added");
   }
 
+  function appendCommentAction(cell, workspace, group, anchor) {
+    if (!selectedFile || !anchor) return;
+    const comment = documentRef.createElement("button");
+    comment.type = "button";
+    comment.className = "task-workspace-line-action";
+    comment.textContent = translate("workspace.comment.add");
+    comment.setAttribute("aria-label", translate("workspace.comment.addAt", { path: selectedFile, anchor }));
+    comment.addEventListener("click", () => addComment(workspace, selectedFile, anchor, group));
+    cell.appendChild(comment);
+  }
+
+  function renderUnifiedPatch(workspace, group, patch) {
+    for (const entry of parseUnifiedDiff(patch)) {
+      const row = documentRef.createElement("div");
+      row.className = "task-workspace-diff-line";
+      if (entry.kind === "hunk") row.classList.add("is-hunk");
+      if (entry.kind === "add") row.classList.add("is-addition");
+      if (entry.kind === "delete") row.classList.add("is-deletion");
+      const code = documentRef.createElement("code");
+      code.textContent = entry.raw || " ";
+      row.appendChild(code);
+      if ((entry.kind === "add" || entry.kind === "delete") && entry.anchor) {
+        appendCommentAction(row, workspace, group, entry.anchor);
+      }
+      diffContent.appendChild(row);
+    }
+  }
+
+  function renderSplitPatch(workspace, group, patch) {
+    const split = documentRef.createElement("div");
+    split.className = "task-workspace-split";
+    const appendCode = (cell, text) => {
+      const code = documentRef.createElement("code");
+      code.textContent = text || " ";
+      cell.appendChild(code);
+    };
+    const appendCell = (row, entry, emptyKind) => {
+      const cell = documentRef.createElement("div");
+      cell.className = "task-workspace-split-cell";
+      cell.dataset.changeKind = entry?.kind ?? emptyKind ?? "context";
+      appendCode(cell, entry?.text ?? "");
+      if (entry?.anchor) appendCommentAction(cell, workspace, group, entry.anchor);
+      row.appendChild(cell);
+    };
+
+    const entries = parseUnifiedDiff(patch);
+    for (const splitEntry of pairSplitDiffEntries(entries)) {
+      const row = documentRef.createElement("div");
+      row.className = "task-workspace-split-row";
+      row.dataset.kind = splitEntry.kind;
+      if (splitEntry.kind === "change") {
+        appendCell(row, splitEntry.deletion, "empty");
+        appendCell(row, splitEntry.addition, "empty");
+      } else if (["hunk", "file", "header", "meta"].includes(splitEntry.kind)) {
+        const cell = documentRef.createElement("div");
+        cell.className = "task-workspace-split-cell";
+        cell.dataset.changeKind = splitEntry.kind;
+        appendCode(cell, splitEntry.entry?.raw ?? "");
+        row.appendChild(cell);
+      } else {
+        appendCell(row, splitEntry.entry);
+        appendCell(row, splitEntry.entry);
+      }
+      split.appendChild(row);
+    }
+    diffContent.appendChild(split);
+  }
+
   function renderPatch(workspace, group, patch) {
     diffContent.dataset.selectedPath = selectedFile ?? "";
     diffContent.dataset.selectedGroup = group;
+    diffContent.dataset.viewMode = diffViewMode;
     diffContent.replaceChildren();
-    const lines = patch.split("\n");
-    let hunkIndex = -1;
-    let oldLine = 0;
-    let newLine = 0;
-    for (const line of lines) {
-      const row = documentRef.createElement("div");
-      row.className = "task-workspace-diff-line";
-      if (line.startsWith("@@ ")) {
-        hunkIndex += 1;
-        const match = line.match(/^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
-        if (match) {
-          oldLine = Number(match[1]);
-          newLine = Number(match[2]);
-        }
-        row.classList.add("is-hunk");
-      } else if (line.startsWith("+") && !line.startsWith("+++")) {
-        row.classList.add("is-addition");
-      } else if (line.startsWith("-") && !line.startsWith("---")) {
-        row.classList.add("is-deletion");
-      }
-      const code = documentRef.createElement("code");
-      code.textContent = line || " ";
-      row.appendChild(code);
-      const changedLine = line.startsWith("+") && !line.startsWith("+++") || line.startsWith("-") && !line.startsWith("---");
-      if (changedLine && hunkIndex >= 0 && selectedFile) {
-        const anchor = line.startsWith("+") ? `+${newLine}` : `−${oldLine}`;
-        const comment = documentRef.createElement("button");
-        comment.type = "button";
-        comment.className = "task-workspace-line-action";
-        comment.textContent = translate("workspace.comment.add");
-        comment.setAttribute("aria-label", translate("workspace.comment.addAt", { path: selectedFile ?? "", anchor }));
-        comment.addEventListener("click", () => addComment(workspace, selectedFile ?? "", anchor, group));
-        row.appendChild(comment);
-      }
-      diffContent.appendChild(row);
-      if (line.startsWith("@@ ")) continue;
-      if (line.startsWith("+") && !line.startsWith("+++")) newLine += 1;
-      else if (line.startsWith("-") && !line.startsWith("---")) oldLine += 1;
-      else if (line.startsWith(" ")) { oldLine += 1; newLine += 1; }
-    }
+    if (diffViewMode === "split") renderSplitPatch(workspace, group, patch);
+    else renderUnifiedPatch(workspace, group, patch);
   }
 
   function renderDetails() {
@@ -382,15 +607,23 @@ export function createTaskWorkspaceUI({
     }
   }
 
-  function renderDiff(payload) {
+  function renderDiffFiles(payload) {
     diffFiles.replaceChildren();
+    const files = Array.isArray(payload?.files) ? payload.files.slice(0, DIFF_FILE_LIMIT) : [];
     const allFilesButton = documentRef.createElement("button");
     allFilesButton.type = "button";
     allFilesButton.className = "task-workspace-file-filter";
     allFilesButton.dataset.filePath = "";
     allFilesButton.setAttribute("aria-current", selectedFile === undefined ? "true" : "false");
-    allFilesButton.textContent = translate("workspace.diff.allFiles");
     allFilesButton.setAttribute("aria-pressed", String(selectedFile === undefined));
+    allFilesButton.textContent = translate("workspace.diff.allFiles");
+    allFilesButton.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+      event.preventDefault();
+      const buttons = [...diffFiles.querySelectorAll("button.task-workspace-file-filter")];
+      const index = buttons.indexOf(allFilesButton);
+      buttons[index + (event.key === "ArrowDown" ? 1 : -1)]?.focus();
+    });
     allFilesButton.addEventListener("click", () => {
       selectedFile = undefined;
       void compare();
@@ -399,7 +632,14 @@ export function createTaskWorkspaceUI({
     allFilesItem.appendChild(allFilesButton);
     diffFiles.appendChild(allFilesItem);
 
-    for (const file of payload.files ?? []) {
+    const visibleFiles = filterDiffFiles(payload.files, diffSearchValue);
+    if (normalizedDiffSearch(diffSearchValue) && visibleFiles.length === 0 && files.length > 0) {
+      const empty = documentRef.createElement("li");
+      empty.className = "task-workspace-diff-empty";
+      empty.textContent = translate("workspace.diff.noMatches");
+      diffFiles.appendChild(empty);
+    }
+    for (const file of visibleFiles) {
       const item = documentRef.createElement("li");
       const fileButton = documentRef.createElement("button");
       fileButton.type = "button";
@@ -414,11 +654,26 @@ export function createTaskWorkspaceUI({
         const index = buttons.indexOf(fileButton);
         buttons[index + (event.key === "ArrowDown" ? 1 : -1)]?.focus();
       });
+
       const path = documentRef.createElement("span");
+      path.className = "task-workspace-file-path";
       path.textContent = file.path;
-      const state = documentRef.createElement("span");
-      state.textContent = `${file.status} · ${(file.groups ?? []).map((group) => translate(`workspace.diff.${group}`)).join(", ")}`;
-      fileButton.append(path, state);
+      const meta = documentRef.createElement("span");
+      meta.className = "task-workspace-file-meta";
+      const rawStatus = typeof file.status === "string" ? file.status.trim() : "";
+      const status = normalizedDiffStatus(rawStatus);
+      const statusBadge = documentRef.createElement("span");
+      statusBadge.className = "task-workspace-file-status";
+      statusBadge.dataset.status = diffStatusTone(rawStatus || status);
+      statusBadge.textContent = status;
+      statusBadge.setAttribute("aria-label", status);
+      meta.appendChild(statusBadge);
+      const groups = Array.isArray(file.groups)
+        ? file.groups.map((group) => translate(`workspace.diff.${group}`)).filter(Boolean)
+        : [];
+      if (groups.length > 0) meta.appendChild(documentRef.createTextNode(` · ${groups.join(", ")}`));
+      fileButton.append(path, meta);
+      fileButton.setAttribute("aria-label", `${file.path} · ${status}${groups.length > 0 ? ` · ${groups.join(", ")}` : ""}`);
       fileButton.addEventListener("click", () => {
         selectedFile = file.path;
         activeDiffGroup = "all";
@@ -427,7 +682,11 @@ export function createTaskWorkspaceUI({
       item.appendChild(fileButton);
       diffFiles.appendChild(item);
     }
+  }
 
+  function renderDiff(payload) {
+    renderDiffSummary(payload);
+    renderDiffFiles(payload);
     diffTabs.replaceChildren();
     const availableSections = (payload.sections ?? []).filter((section) => section.fileCount > 0 && section.diff);
     const choices = [
@@ -471,6 +730,7 @@ export function createTaskWorkspaceUI({
     const activeChoice = choices.find((choice) => choice.group === activeDiffGroup) ?? choices[0];
     if (activeChoice?.diff) renderPatch(selectedWorkspace(), activeChoice.group, activeChoice.diff);
     else diffContent.textContent = translate("workspace.diff.empty");
+    updateDiffViewControls();
   }
 
   async function compare(path = selectedFile) {
@@ -556,6 +816,17 @@ export function createTaskWorkspaceUI({
   newTaskButton.addEventListener("click", createTask);
   refreshButton.addEventListener("click", refresh);
   compareButton.addEventListener("click", () => void compare());
+  diffSearch?.addEventListener("input", () => {
+    diffSearchValue = diffSearch.value.slice(0, 256);
+    if (currentDiff) renderDiff(currentDiff);
+  });
+  const setDiffViewMode = (mode) => {
+    diffViewMode = mode === "split" ? "split" : "unified";
+    updateDiffViewControls();
+    if (currentDiff) renderDiff(currentDiff);
+  };
+  diffViewUnified?.addEventListener("click", () => setDiffViewMode("unified"));
+  diffViewSplit?.addEventListener("click", () => setDiffViewMode("split"));
   mergeButton.addEventListener("click", merge);
   cleanupButton.addEventListener("click", cleanup);
   insertCommentsButton.addEventListener("click", () => {

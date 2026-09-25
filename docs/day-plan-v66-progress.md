@@ -198,3 +198,35 @@
   请求也不再回到旧 default。
 - 增加 active-session response 回归断言；Desktop **233/233**、build 与
   `git diff --check` 均通过。
+
+## 2026-09-24 — active-session fallback regression
+
+- 增加删除 active session 后从剩余持久化 session 选择 fallback 的端到端回归测试；
+  Desktop suite 已提升至 **234/234**，build 与 `git diff --check` 通过。
+
+
+## 2026-09-24 — Changes Center 1.0
+
+- 完成 task-workspace Changes Center：变更统计、bounded 文件筛选、状态标记，以及
+  Unified/Split 差异视图；保持 textContent 渲染、原有批注锚点和 merge/cleanup 边界。
+- 使用临时 Git fixture 完成浏览器验收，确认统计摘要、分栏视图和 README 文件筛选；
+  未使用真实项目 worktree，也未执行远程 mutation。
+- Desktop **236/236**、build 与 `git diff --check` 均通过。
+
+## 2026-09-24 — conversation streaming auto-follow fix
+
+- 真实浏览器复现发现中间对话面板的 `#messages` 使用 smooth scroll，而流式 token
+  反复直接写入 `scrollTop`，导致最新输出在动画追赶旧目标时仍停留在可视区下方。
+- `apps/desktop/public/index.html` 现在通过 `scrollTo({ behavior: "auto" })` 执行
+  follow-latest，并保留旧浏览器/test DOM 的安全 fallback；用户手动上滚仍保留
+  `New output below`，不会被强制拉回底部。
+- 新 server 的浏览器验收确认大块新 assistant 输出会立即到达最大 scroll offset；
+  Desktop 全量测试 **236/236** 通过，build/typecheck 与 `git diff --check` 通过。
+
+## 2026-09-25 — Changes Center split diff readability follow-up
+
+- 继续完成 Changes Center 的 UI-only 增量：Split diff 将连续删除/新增块配对到两列，
+  保留 `−旧行` / `+新行` review anchors；Git metadata 行使用全宽样式，不再误着色为改动。
+- 收窄 inspector 时，split grid 不再强制 620px 最小宽度；内容仍在有界 diff 容器内安全滚动。
+- `task-workspaces` 与 `task-workspaces-ui` focused 合计 **11/11** 通过，Desktop
+  build/typecheck 和 `git diff --check` 通过；不改动 server mutation/approval/worktree 边界。

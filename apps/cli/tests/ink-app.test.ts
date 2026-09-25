@@ -472,6 +472,77 @@ test("Ink renders streamed assistant answers as Markdown blocks", () => {
   assert.doesNotMatch(output, /\*\*bold\*\*/);
 });
 
+test("Ink keeps a fenced answer and its follow-up paragraph inside the transcript viewport", () => {
+  const store = new InkRuntimeStore();
+  const emittedAt = new Date().toISOString();
+  store.apply({
+    version: 1,
+    sequence: 1,
+    emittedAt,
+    sessionId: "default",
+    runId: "run-fenced-follow-up",
+    type: "run.started",
+    data: { prompt: "show file", model: "qwen3:4b-instruct" },
+  });
+  store.apply({
+    version: 1,
+    sequence: 2,
+    emittedAt,
+    sessionId: "default",
+    runId: "run-fenced-follow-up",
+    type: "assistant.delta",
+    data: {
+      channel: "answer",
+      text: [
+        "文件路径： /tmp/hello-world.js",
+        "内容如下：",
+        "",
+        "```javascript",
+        "console.log('hello world');",
+        "```",
+        "需要我帮你运行它，或者继续做其他事情吗？",
+      ].join("\n"),
+    },
+  });
+  store.setSummary({
+    status: "done",
+    turns: 1,
+    usage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 },
+    queueMs: 0,
+    firstTokenMs: 10,
+    modelMs: 100,
+    toolMs: 0,
+    totalMs: 110,
+  });
+
+  const output = renderToString(
+    createElement(InkCliApp, {
+      store,
+      provider: "ollama",
+      model: "qwen3:4b-instruct",
+      sessionId: "default",
+      workingDirectory: "/Users/Admin/Desktop/dev-agent",
+      executor: "local",
+      commands: [],
+      onSubmit: () => undefined,
+      onCancel: () => undefined,
+      onExit: () => undefined,
+    }),
+    { columns: 100 },
+  );
+  const lines = output.split("\n");
+  const borderIndex = lines.findIndex((line) => line.includes("╰"));
+  const paragraphIndex = lines.findIndex((line) => line.includes("需要我帮你"));
+
+  assert.ok(borderIndex >= 0);
+  assert.ok(paragraphIndex > borderIndex);
+  assert.equal(
+    lines.some((line) => line.includes("╰") && line.includes("需要我帮你")),
+    false,
+  );
+  assert.doesNotMatch(output, /\[usage\]/);
+});
+
 test("Ink advances the thinking marker while a run remains in thinking state", async () => {
   const { stdin, stdout, writes } = createInkTerminal();
   const store = new InkRuntimeStore();

@@ -798,3 +798,33 @@ test("renaming an unknown session to its own name still returns 404", async () =
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("session listing selects a persisted fallback after deleting the active session", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-desktop-active-session-"));
+  const previousDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = dir;
+  await writeFile(join(dir, "desktop-default.json"), "{}");
+  await writeFile(join(dir, "fallback.json"), "{}");
+
+  const server = createDesktopServer({ session: fakeSession("desktop-default") });
+  const base = await start(server);
+  try {
+    const before = await fetch(`${base}/api/sessions`);
+    assert.equal(before.status, 200);
+    assert.equal(((await before.json()) as any).activeSessionId, "desktop-default");
+
+    const deleted = await fetch(`${base}/api/sessions/desktop-default`, { method: "DELETE" });
+    assert.equal(deleted.status, 200);
+
+    const after = await fetch(`${base}/api/sessions`);
+    assert.equal(after.status, 200);
+    const payload: any = await after.json();
+    assert.equal(payload.activeSessionId, "fallback");
+    assert.deepEqual(payload.sessions.map((session) => session.sessionId), ["fallback"]);
+  } finally {
+    await close(server);
+    if (previousDir === undefined) delete process.env.DEV_AGENT_SESSION_DIR;
+    else process.env.DEV_AGENT_SESSION_DIR = previousDir;
+    await rm(dir, { recursive: true, force: true });
+  }
+});

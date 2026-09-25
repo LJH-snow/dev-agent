@@ -186,3 +186,22 @@
 - Added an assertion to the rename recovery regression for the active-session
   response. Full Desktop verification remains **233/233**, with build and
   `git diff --check` passing.
+
+## 2026-09-24 — active-session fallback regression
+
+- Added an end-to-end Desktop regression for deleting the active session while
+  another persisted session remains. `/api/sessions` now demonstrably selects
+  the remaining session as the active fallback instead of returning a deleted
+  id.
+- Full Desktop verification is now **234/234** after the recovery boundary
+  changes; Desktop build and `git diff --check` also pass.
+
+
+## 2026-09-24 — Changes Center 1.0
+
+- Completed the next bounded Desktop UX tranche over task-workspace diffs:
+  summary metrics, capped local file search, status badges, and Unified/Split
+  rendering with existing review-comment anchors.
+- Browser acceptance used an isolated temporary Git fixture and confirmed the
+  summary, split view, and README-only file filter.
+- Desktop suite is green at **236/236**; build and `git diff --check` pass.
