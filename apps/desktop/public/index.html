@@ -544,6 +544,16 @@
             <div><h4 data-i18n="capabilities.skills">Skills</h4><ul id="capabilities-skills" class="workbench-capabilities-list"></ul></div>
             <div><h4 data-i18n="capabilities.jobs">Scheduled jobs</h4><ul id="capabilities-jobs" class="workbench-capabilities-list"></ul></div>
           </div>
+          <div class="mcp-health-panel" aria-labelledby="mcp-health-title">
+            <div class="mcp-health-header">
+              <div>
+                <h4 id="mcp-health-title" data-i18n="mcpHealth.title">MCP tool health</h4>
+                <div id="mcp-health-summary" class="desktop-status-note" role="status" data-i18n="mcpHealth.loading">Loading MCP health…</div>
+              </div>
+              <button type="button" id="mcp-health-refresh" class="desktop-status-refresh" data-i18n="mcpHealth.refresh">Check now</button>
+            </div>
+            <ul id="mcp-health-list" class="mcp-health-list" aria-label="MCP server health" data-i18n-aria-label="mcpHealth.list"></ul>
+          </div>
         </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
           <div class="desktop-status-header">
@@ -847,6 +857,9 @@
     const capabilitiesMonitoringState = document.getElementById("capabilities-monitoring-state");
     const capabilitiesSkills = document.getElementById("capabilities-skills");
     const capabilitiesJobs = document.getElementById("capabilities-jobs");
+    const mcpHealthSummary = document.getElementById("mcp-health-summary");
+    const mcpHealthRefreshButton = document.getElementById("mcp-health-refresh");
+    const mcpHealthList = document.getElementById("mcp-health-list");
     const stopButton = document.getElementById("stop");
     const desktopStatusNote = document.getElementById("desktop-status-note");
     const desktopStatusRefreshButton = document.getElementById("desktop-status-refresh");
@@ -914,6 +927,8 @@
     let desktopRunController = null;
     let capabilitiesRequestId = 0;
     let capabilitiesController = null;
+    let mcpHealthRequestId = 0;
+    let mcpHealthController = null;
     let runSnapshotSessionId = null;
     let runSnapshot = null;
     let runRecoveryTimer = null;
@@ -1028,6 +1043,25 @@
         "capabilities.skills": "Skills",
         "capabilities.jobs": "Scheduled jobs",
         "capabilities.none": "None detected",
+        "mcpHealth.title": "MCP tool health",
+        "mcpHealth.loading": "Loading MCP health…",
+        "mcpHealth.checking": "Checking MCP servers…",
+        "mcpHealth.ready": "{connected}/{configured} servers connected · {degraded} degraded",
+        "mcpHealth.empty": "No MCP servers are configured.",
+        "mcpHealth.error": "MCP health is temporarily unavailable.",
+        "mcpHealth.refresh": "Check now",
+        "mcpHealth.list": "MCP server health",
+        "mcpHealth.state.connected": "Connected",
+        "mcpHealth.state.degraded": "Degraded",
+        "mcpHealth.state.disconnected": "Disconnected",
+        "mcpHealth.error.notConnected": "Not initialized",
+        "mcpHealth.error.connectFailed": "Connection failed",
+        "mcpHealth.error.pingTimeout": "Ping timed out",
+        "mcpHealth.error.pingFailed": "Ping failed",
+        "mcpHealth.serverMeta": "{tools} tools · {resources} resources · {prompts} prompts",
+        "mcpHealth.serverLatency": "{latency} ms",
+        "mcpHealth.serverChecked": "Checked {time}",
+        "mcpHealth.serverUnchecked": "Not checked yet",
         "workspace.label": "Workspace",
         "workspace.title": "Task workspaces",
         "workspace.description": "Each task gets its own branch and Git worktree.",
@@ -1549,6 +1583,25 @@
         "capabilities.skills": "技能",
         "capabilities.jobs": "计划任务",
         "capabilities.none": "未检测到",
+        "mcpHealth.title": "MCP 工具健康检查",
+        "mcpHealth.loading": "正在加载 MCP 健康状态…",
+        "mcpHealth.checking": "正在检查 MCP 服务…",
+        "mcpHealth.ready": "{connected}/{configured} 个服务已连接 · {degraded} 个降级",
+        "mcpHealth.empty": "尚未配置 MCP 服务。",
+        "mcpHealth.error": "MCP 健康状态暂时不可用。",
+        "mcpHealth.refresh": "立即检查",
+        "mcpHealth.list": "MCP 服务健康状态",
+        "mcpHealth.state.connected": "已连接",
+        "mcpHealth.state.degraded": "已降级",
+        "mcpHealth.state.disconnected": "未连接",
+        "mcpHealth.error.notConnected": "尚未初始化",
+        "mcpHealth.error.connectFailed": "连接失败",
+        "mcpHealth.error.pingTimeout": "Ping 超时",
+        "mcpHealth.error.pingFailed": "Ping 失败",
+        "mcpHealth.serverMeta": "{tools} 个工具 · {resources} 个资源 · {prompts} 个提示",
+        "mcpHealth.serverLatency": "{latency} 毫秒",
+        "mcpHealth.serverChecked": "检查时间 {time}",
+        "mcpHealth.serverUnchecked": "尚未检查",
         "workspace.label": "工作区",
         "workspace.title": "任务工作区",
         "workspace.description": "每个任务使用独立 Git 分支和 worktree。",
@@ -3262,6 +3315,94 @@
         const entry = document.createElement("li");
         entry.textContent = formatter(item);
         node.appendChild(entry);
+      }
+    }
+
+    function mcpHealthErrorLabel(error) {
+      switch (error) {
+        case "not-connected": return t("mcpHealth.error.notConnected");
+        case "connect-failed": return t("mcpHealth.error.connectFailed");
+        case "ping-timeout": return t("mcpHealth.error.pingTimeout");
+        case "ping-failed": return t("mcpHealth.error.pingFailed");
+        default: return "";
+      }
+    }
+
+    function mcpHealthTime(value) {
+      if (typeof value !== "string" || Number.isNaN(Date.parse(value))) return t("mcpHealth.serverUnchecked");
+      return new Date(value).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    }
+
+    function renderMcpHealth(payload) {
+      const configured = Number.isSafeInteger(payload?.configured) ? Math.max(0, payload.configured) : 0;
+      const connected = Number.isSafeInteger(payload?.connected) ? Math.max(0, payload.connected) : 0;
+      const degraded = Number.isSafeInteger(payload?.degraded) ? Math.max(0, payload.degraded) : 0;
+      const servers = Array.isArray(payload?.servers) ? payload.servers.slice(0, 64) : [];
+      mcpHealthList.replaceChildren();
+      if (configured === 0 || servers.length === 0) {
+        mcpHealthSummary.textContent = t("mcpHealth.empty");
+        return;
+      }
+      mcpHealthSummary.textContent = t("mcpHealth.ready", { configured, connected, degraded });
+      for (const server of servers) {
+        const item = document.createElement("li");
+        const heading = document.createElement("strong");
+        heading.className = "mcp-health-server-name";
+        heading.textContent = String(server?.name ?? "MCP").slice(0, 64);
+        const state = document.createElement("span");
+        state.className = "mcp-health-server-state";
+        const stateValue = server?.state === "connected" || server?.state === "degraded" || server?.state === "disconnected"
+          ? server.state
+          : "disconnected";
+        state.dataset.state = stateValue;
+        state.textContent = t(`mcpHealth.state.${stateValue}`);
+        const meta = document.createElement("span");
+        meta.className = "mcp-health-server-meta";
+        const tools = Number.isSafeInteger(server?.tools) ? Math.max(0, server.tools) : 0;
+        const resources = Number.isSafeInteger(server?.resources) ? Math.max(0, server.resources) : 0;
+        const prompts = Number.isSafeInteger(server?.prompts) ? Math.max(0, server.prompts) : 0;
+        const latency = Number.isSafeInteger(server?.latencyMs) ? Math.max(0, server.latencyMs) : undefined;
+        const detail = [
+          t("mcpHealth.serverMeta", { tools, resources, prompts }),
+          latency === undefined ? t("mcpHealth.serverUnchecked") : t("mcpHealth.serverLatency", { latency }),
+          t("mcpHealth.serverChecked", { time: mcpHealthTime(server?.lastCheckedAt) }),
+        ];
+        const error = mcpHealthErrorLabel(server?.error);
+        if (error) detail.push(error);
+        meta.textContent = detail.join(" · ");
+        item.append(heading, state, meta);
+        mcpHealthList.appendChild(item);
+      }
+    }
+
+    async function loadMcpHealth(sessionId) {
+      if (!sessionId) return;
+      const requestId = ++mcpHealthRequestId;
+      mcpHealthController?.abort();
+      const controller = new AbortController();
+      mcpHealthController = controller;
+      mcpHealthRefreshButton.disabled = true;
+      mcpHealthRefreshButton.setAttribute("aria-busy", "true");
+      mcpHealthSummary.textContent = t("mcpHealth.checking");
+      try {
+        const response = await fetch("/api/mcp/health?sessionId=" + encodeURIComponent(sessionId), {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error("MCP health unavailable");
+        const payload = await response.json();
+        if (requestId !== mcpHealthRequestId || sessionId !== currentSessionId) return;
+        renderMcpHealth(payload);
+      } catch {
+        if (controller.signal.aborted || requestId !== mcpHealthRequestId || sessionId !== currentSessionId) return;
+        mcpHealthList.replaceChildren();
+        mcpHealthSummary.textContent = t("mcpHealth.error");
+      } finally {
+        if (requestId === mcpHealthRequestId) {
+          mcpHealthController = null;
+          mcpHealthRefreshButton.disabled = false;
+          mcpHealthRefreshButton.setAttribute("aria-busy", "false");
+        }
       }
     }
 
@@ -6201,6 +6342,7 @@
       updateComposerAvailability(currentSessionId);
       resetDesktopStatus("Isolated task workspace ready.");
       void loadWorkbenchCapabilities(currentSessionId);
+      void loadMcpHealth(currentSessionId);
       setStatus("new isolated task");
       taskWorkspaceUI?.render();
     }
@@ -6251,12 +6393,14 @@
       },
     });
     workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
+    mcpHealthRefreshButton.addEventListener("click", () => void loadMcpHealth(currentSessionId));
     void (async () => {
       await loadSessions();
       await loadSessionView(currentSessionId);
       await taskWorkspaceUI.refresh();
       await taskTerminalUI.refresh();
       if (currentSessionId !== null) void loadWorkbenchCapabilities(currentSessionId);
+      if (currentSessionId !== null) void loadMcpHealth(currentSessionId);
     })();
     composerModeSelect.value = readComposerModePreference();
     applyPanelPreferences();

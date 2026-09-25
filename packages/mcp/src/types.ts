@@ -165,7 +165,7 @@ export interface McpClient {
     name: string,
     args?: Readonly<Record<string, string | number | boolean>>
   ): Promise<McpPromptResult>;
-  ping(): Promise<void>;
+  ping(options?: { readonly signal?: AbortSignal }): Promise<void>;
   close(): Promise<void>;
   getServerCapabilities(): McpServerCapabilities | undefined;
   getServerInfo(): McpServerInfo | undefined;

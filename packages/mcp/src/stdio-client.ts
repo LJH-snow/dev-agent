@@ -306,8 +306,8 @@ export class McpStdioClient implements McpClient {
     return result ?? { messages: [] };
   }
 
-  async ping(): Promise<void> {
-    await this.request("ping", {});
+  async ping(options: { readonly signal?: AbortSignal } = {}): Promise<void> {
+    await this.request("ping", {}, options);
   }
 
   async close(): Promise<void> {

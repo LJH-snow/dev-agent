@@ -3659,6 +3659,70 @@ html[data-theme="light"] {
   white-space: nowrap;
 }
 
+.mcp-health-panel {
+  margin-top: 1rem;
+  padding-top: .85rem;
+  border-top: 1px solid var(--border);
+}
+
+.mcp-health-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.mcp-health-header h4 {
+  margin: 0 0 .25rem;
+  color: var(--muted);
+  font-size: .72rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.mcp-health-list {
+  display: grid;
+  gap: .45rem;
+  margin: .75rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mcp-health-list li {
+  display: grid;
+  grid-template-columns: minmax(0, auto) auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: .55rem;
+  min-width: 0;
+  color: var(--fg);
+  font-size: .78rem;
+}
+
+.mcp-health-server-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-health-server-state {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: .68rem;
+  white-space: nowrap;
+}
+
+.mcp-health-server-state[data-state="connected"] { color: #49bd8c; }
+.mcp-health-server-state[data-state="degraded"] { color: #e8b86a; }
+.mcp-health-server-state[data-state="disconnected"] { color: #e47783; }
+
+.mcp-health-server-meta {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (min-width: 1100px) {
   .workbench-capabilities-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3670,6 +3734,9 @@ html[data-theme="light"] {
   .workbench-capabilities-lists {
     grid-template-columns: 1fr;
   }
+
+  .mcp-health-list li { grid-template-columns: minmax(0, 1fr) auto; }
+  .mcp-health-server-meta { grid-column: 1 / -1; }
 }
 
 .runtime-trace-summary {

@@ -60,6 +60,11 @@ import {
 } from "./task-workspaces.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "./task-terminal.js";
 import {
+  createMcpHealthSnapshot,
+  normalizeMcpHealthSnapshot,
+  type McpHealthSnapshot,
+} from "./mcp-health.js";
+import {
   loadProjectCapabilityMetadata,
   loadWorkbenchMetadata,
   normalizeGitHubCapabilitySnapshot,
@@ -78,6 +83,10 @@ export interface DesktopChatSession {
   readonly executorMode?: ExecutorMode;
   /** Returns an allowlisted metadata-only status snapshot for the desktop panel. */
   readonly getStatus?: () => DesktopStatusSnapshot;
+  /** Returns the bounded, metadata-only MCP health snapshot for this session. */
+  readonly getMcpHealthSnapshot?: () => McpHealthSnapshot;
+  /** Pings connected MCP servers with a bounded timeout and returns metadata only. */
+  readonly checkMcpHealth?: () => Promise<McpHealthSnapshot>;
   /** Estimates the USD cost of a usage total with the session's current model. */
   estimateCost?(usage: ChatUsage): number | undefined;
   run(
@@ -376,7 +385,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       return;
     }
 
-    if ((url.pathname === "/api/monitoring" || url.pathname.startsWith("/api/capabilities/")) && !isLoopbackTerminalRequest(req)) {
+    if (
+      (url.pathname === "/api/monitoring"
+        || url.pathname.startsWith("/api/capabilities/")
+        || url.pathname === "/api/mcp/health")
+      && !isLoopbackTerminalRequest(req)
+    ) {
       res.writeHead(403, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       res.end(JSON.stringify({ error: "metadata endpoints are available only to trusted loopback requests" }));
       return;
@@ -509,6 +523,51 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (Buffer.byteLength(serialized, "utf8") > maxRunResponseBytes) {
           res.writeHead(413, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: "monitoring response is too large" }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        res.end(serialized);
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/mcp/health") {
+        const requestedSessionId = url.searchParams.get("sessionId");
+        const sessionId = normalizeSessionIdForRequest(requestedSessionId ?? undefined);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "sessionId is too long" }));
+          return;
+        }
+        let session = sessions.get(sessionId);
+        const taskWorkingDirectory = taskWorkspaces.workingDirectoryForSession(sessionId);
+        if (!session && (existsSync(memoryPathFor(sessionId)) || taskWorkingDirectory !== undefined)) {
+          session = sessionFor(sessionId)?.session;
+        }
+        if (!session) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+
+        let snapshot: McpHealthSnapshot;
+        try {
+          snapshot = normalizeMcpHealthSnapshot(
+            session.checkMcpHealth
+              ? await session.checkMcpHealth()
+              : session.getMcpHealthSnapshot?.() ?? createMcpHealthSnapshot(),
+          );
+        } catch {
+          res.writeHead(503, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "mcp health check unavailable", code: "mcp-health-unavailable" }));
+          return;
+        }
+        const serialized = JSON.stringify(snapshot);
+        if (Buffer.byteLength(serialized, "utf8") > 16 * 1024) {
+          res.writeHead(413, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "mcp health response is too large" }));
           return;
         }
         res.writeHead(200, {

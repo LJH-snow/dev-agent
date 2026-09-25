@@ -77,6 +77,13 @@ import {
   type DesktopStatusSnapshot,
   type DesktopStatusValidationResult,
 } from "./status.js";
+import {
+  createMcpHealthSnapshot,
+  type McpHealthServerInput,
+  type McpHealthSnapshot,
+} from "./mcp-health.js";
+
+const MCP_HEALTH_PING_TIMEOUT_MS = 2_500;
 
 export interface StreamEvent {
   readonly type:
@@ -158,9 +165,12 @@ export class ChatSession {
   private readonly mcpServers: readonly McpClientConfig[];
   private readonly mcpSessions: McpServerSession[] = [];
   private readonly mcpSnapshots = new Map<string, McpSessionSnapshot>();
+  private readonly mcpHealthRecords = new Map<string, McpHealthServerInput>();
   private readonly hooks: AgentHookRegistry;
   private readonly trace: AgentRunTrace;
   private mcpToolsReady?: Promise<void>;
+  private mcpHealthCheck?: Promise<McpHealthSnapshot>;
+  private lastMcpHealthCheckedAt?: string;
   private mcpSystemPromptSupplement = "";
   private context: AgentContext;
   private readonly sessionId: string;
@@ -539,9 +549,30 @@ export class ChatSession {
             },
           },
         });
-        const snapshot = await session.connect();
+        const connectedAt = Date.now();
+        let snapshot: McpSessionSnapshot;
+        try {
+          snapshot = await session.connect();
+        } catch (error) {
+          this.mcpHealthRecords.set(prefix, {
+            name: prefix,
+            state: "degraded",
+            error: "connect-failed",
+            lastCheckedAt: new Date().toISOString(),
+          });
+          throw error;
+        }
         this.mcpSessions.push(session);
         this.mcpSnapshots.set(prefix, snapshot);
+        this.mcpHealthRecords.set(prefix, {
+          name: prefix,
+          state: "connected",
+          tools: snapshot.tools.length,
+          resources: snapshot.resources.length,
+          prompts: snapshot.prompts.length,
+          latencyMs: Date.now() - connectedAt,
+          lastCheckedAt: new Date().toISOString(),
+        });
         this.registerMcpCapabilities(session, prefix, snapshot);
         session.onChange((updated) => {
           if (!this.mcpSessions.includes(session)) {
@@ -549,6 +580,7 @@ export class ChatSession {
           }
           this.unregisterMcpTools(prefix);
           this.mcpSnapshots.set(prefix, updated);
+          this.updateMcpHealthRecord(prefix, updated);
           this.registerMcpCapabilities(session, prefix, updated);
           this.rebuildMcpSystemPrompt();
         });
@@ -558,6 +590,20 @@ export class ChatSession {
       await this.closeMcpSessions();
       throw error;
     }
+  }
+
+  private updateMcpHealthRecord(prefix: string, snapshot: McpSessionSnapshot): void {
+    const previous = this.mcpHealthRecords.get(prefix);
+    this.mcpHealthRecords.set(prefix, {
+      name: prefix,
+      state: previous?.state ?? "connected",
+      tools: snapshot.tools.length,
+      resources: snapshot.resources.length,
+      prompts: snapshot.prompts.length,
+      ...(previous?.latencyMs === undefined ? {} : { latencyMs: previous.latencyMs }),
+      ...(previous?.lastCheckedAt === undefined ? {} : { lastCheckedAt: previous.lastCheckedAt }),
+      ...(previous?.error === undefined ? {} : { error: previous.error }),
+    });
   }
 
   private registerMcpCapabilities(
@@ -705,6 +751,110 @@ export class ChatSession {
   /** Records only allowlisted terminal/preview lifecycle metadata. */
   recordTraceLifecycle(kind: AgentTraceLifecycleKind, status: AgentTraceLifecycleStatus): void {
     this.trace.recordLifecycle(kind, status);
+  }
+
+  /** Returns the bounded, metadata-only MCP health snapshot for this session. */
+  getMcpHealthSnapshot(): McpHealthSnapshot {
+    const prefixes = assignMcpPrefixes(this.mcpServers.map((server) => server.name));
+    const servers = prefixes.map((prefix) => {
+      const session = this.mcpSessions.find((candidate) => candidate.prefix === prefix);
+      const current = this.mcpHealthRecords.get(prefix);
+      const snapshot = this.mcpSnapshots.get(prefix);
+      const counts = {
+        tools: snapshot?.tools.length ?? current?.tools ?? 0,
+        resources: snapshot?.resources.length ?? current?.resources ?? 0,
+        prompts: snapshot?.prompts.length ?? current?.prompts ?? 0,
+      };
+      if (session) {
+        return {
+          name: prefix,
+          state: current?.state ?? "connected",
+          ...counts,
+          ...(current?.latencyMs === undefined ? {} : { latencyMs: current.latencyMs }),
+          ...(current?.lastCheckedAt === undefined ? {} : { lastCheckedAt: current.lastCheckedAt }),
+          ...(current?.error === undefined ? {} : { error: current.error }),
+        } satisfies McpHealthServerInput;
+      }
+      if (current?.error === "connect-failed") {
+        return {
+          name: prefix,
+          state: "degraded",
+          ...counts,
+          error: current.error,
+          ...(current.lastCheckedAt === undefined ? {} : { lastCheckedAt: current.lastCheckedAt }),
+        } satisfies McpHealthServerInput;
+      }
+      return {
+        name: prefix,
+        state: "disconnected",
+        ...counts,
+        error: "not-connected",
+        ...(current?.lastCheckedAt === undefined ? {} : { lastCheckedAt: current.lastCheckedAt }),
+      } satisfies McpHealthServerInput;
+    });
+    return createMcpHealthSnapshot(servers, this.lastMcpHealthCheckedAt);
+  }
+
+  /** Pings each connected MCP server with a bounded timeout and returns metadata only. */
+  async checkMcpHealth(): Promise<McpHealthSnapshot> {
+    if (this.mcpHealthCheck) return this.mcpHealthCheck;
+    const check = this.performMcpHealthCheck();
+    this.mcpHealthCheck = check;
+    try {
+      return await check;
+    } finally {
+      if (this.mcpHealthCheck === check) this.mcpHealthCheck = undefined;
+    }
+  }
+
+  private async performMcpHealthCheck(): Promise<McpHealthSnapshot> {
+    const prefixes = assignMcpPrefixes(this.mcpServers.map((server) => server.name));
+    await Promise.all(prefixes.map(async (prefix) => {
+      const session = this.mcpSessions.find((candidate) => candidate.prefix === prefix);
+      const snapshot = this.mcpSnapshots.get(prefix);
+      const counts = {
+        tools: snapshot?.tools.length ?? 0,
+        resources: snapshot?.resources.length ?? 0,
+        prompts: snapshot?.prompts.length ?? 0,
+      };
+      if (!session) {
+        this.mcpHealthRecords.set(prefix, {
+          name: prefix,
+          state: "disconnected",
+          ...counts,
+          error: "not-connected",
+          lastCheckedAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      const startedAt = Date.now();
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), MCP_HEALTH_PING_TIMEOUT_MS);
+      try {
+        await session.getClient().ping({ signal: controller.signal });
+        this.mcpHealthRecords.set(prefix, {
+          name: prefix,
+          state: "connected",
+          ...counts,
+          latencyMs: Date.now() - startedAt,
+          lastCheckedAt: new Date().toISOString(),
+        });
+      } catch {
+        this.mcpHealthRecords.set(prefix, {
+          name: prefix,
+          state: "degraded",
+          ...counts,
+          error: controller.signal.aborted ? "ping-timeout" : "ping-failed",
+          latencyMs: Date.now() - startedAt,
+          lastCheckedAt: new Date().toISOString(),
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    }));
+    this.lastMcpHealthCheckedAt = new Date().toISOString();
+    return this.getMcpHealthSnapshot();
   }
 
   /** Returns the allowlisted metadata exposed by the desktop status panel. */
