@@ -616,6 +616,47 @@
             <ul id="mcp-health-list" class="mcp-health-list" aria-label="MCP server health" data-i18n-aria-label="mcpHealth.list"></ul>
           </div>
         </section>
+        <section id="github-pr-review-panel" class="desktop-status-panel github-pr-review-panel" aria-labelledby="github-pr-review-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="github-pr-review-title" class="desktop-status-title" data-i18n="githubPrReview.title">GitHub PR review</div>
+              <div id="github-pr-review-status" class="desktop-status-note" role="status" data-i18n="githubPrReview.ready">Read-only pull request review workspace.</div>
+            </div>
+            <span class="github-pr-review-readonly" data-i18n="githubPrReview.readOnly">Read-only</span>
+          </div>
+          <form id="github-pr-review-form" class="github-pr-review-form">
+            <label class="github-pr-review-target">
+              <span class="sr-only" data-i18n="githubPrReview.targetLabel">GitHub pull request</span>
+              <input id="github-pr-review-url" type="text" autocomplete="off" spellcheck="false" maxlength="512" data-i18n-placeholder="githubPrReview.targetPlaceholder" placeholder="https://github.com/owner/repo/pull/123" />
+            </label>
+            <button type="submit" id="github-pr-review-load" data-i18n="githubPrReview.load">Load PR</button>
+            <button type="button" id="github-pr-review-clear" class="github-pr-review-secondary" data-i18n="githubPrReview.clear">Clear</button>
+          </form>
+          <div id="github-pr-review-summary" class="github-pr-review-summary" hidden></div>
+          <div class="github-pr-review-grid">
+            <div class="github-pr-review-column">
+              <h4 data-i18n="githubPrReview.files">Changed files</h4>
+              <ul id="github-pr-review-files" class="github-pr-review-list"></ul>
+              <h4 data-i18n="githubPrReview.reviews">Reviews</h4>
+              <ul id="github-pr-review-reviews" class="github-pr-review-list"></ul>
+              <h4 data-i18n="githubPrReview.comments">Comments</h4>
+              <ul id="github-pr-review-comments" class="github-pr-review-list"></ul>
+            </div>
+            <div class="github-pr-review-column">
+              <h4 data-i18n="githubPrReview.diff">Unified diff</h4>
+              <pre id="github-pr-review-diff" class="github-pr-review-diff" data-i18n="githubPrReview.noDiff">No diff loaded.</pre>
+            </div>
+          </div>
+          <div class="github-pr-review-notes">
+            <label for="github-pr-review-notes" data-i18n="githubPrReview.notes">Local review notes</label>
+            <textarea id="github-pr-review-notes" maxlength="12000" data-i18n-placeholder="githubPrReview.notesPlaceholder" placeholder="Keep private notes for this PR…"></textarea>
+            <div class="github-pr-review-actions">
+              <button type="button" id="github-pr-review-insert" class="github-pr-review-secondary" data-i18n="githubPrReview.insert">Insert review context</button>
+              <button type="button" id="github-pr-review-start" data-i18n="githubPrReview.start">Review with agent</button>
+            </div>
+            <div class="github-pr-review-note" data-i18n="githubPrReview.note">Remote content is bounded and inserted as untrusted reference text. No GitHub review or comment is submitted.</div>
+          </div>
+        </section>
         <section id="parallel-runs-panel" class="desktop-status-panel parallel-runs-panel" aria-labelledby="parallel-runs-title" aria-live="polite">
           <div class="desktop-status-header">
             <div>
@@ -747,6 +788,7 @@
     import { createTaskValidationUI } from "/public/task-validation-ui.js";
     import { createTaskTerminalUI } from "/public/task-terminal-ui.js";
     import { createTaskTemplateUI } from "/public/task-templates.js";
+    import { createGitHubPrReviewUI } from "/public/github-pr-review-ui.js";
     import {
       getTurnActivityForEvent,
       getTurnActivityForState,
@@ -980,6 +1022,7 @@
     let taskValidationUI = null;
     let taskTerminalUI = null;
     let taskTemplateUI = null;
+    let githubPrReviewUI = null;
     let sessionSummaries = new Map();
     let sessionFilterQuery = "";
     let sessionFilterStatus = "all";
@@ -1198,6 +1241,41 @@
         "taskValidation.error.generic": "Task validation is unavailable or failed.",
         "taskValidation.error.truncated": "Refresh the task diff before validating truncated changes.",
         "taskValidation.error.noFailedChecks": "No failed checks remain to rerun.",
+        "githubPrReview.title": "GitHub PR review",
+        "githubPrReview.ready": "Read-only pull request review workspace.",
+        "githubPrReview.readOnly": "Read-only",
+        "githubPrReview.targetLabel": "GitHub pull request",
+        "githubPrReview.targetPlaceholder": "https://github.com/owner/repo/pull/123",
+        "githubPrReview.load": "Load PR",
+        "githubPrReview.clear": "Clear",
+        "githubPrReview.loading": "Loading pull request…",
+        "githubPrReview.loaded": "Loaded {files} changed file(s).",
+        "githubPrReview.invalidTarget": "Enter a valid GitHub pull request URL or owner/repo/number.",
+        "githubPrReview.optIn": "Enable explicit GitHub integration to load pull requests.",
+        "githubPrReview.notAuthenticated": "Authenticate GitHub CLI before loading a pull request.",
+        "githubPrReview.cliUnavailable": "GitHub CLI is unavailable on this machine.",
+        "githubPrReview.notFound": "Pull request was not found or is not accessible.",
+        "githubPrReview.tooLarge": "The pull request response is too large to display safely.",
+        "githubPrReview.malformed": "GitHub returned an invalid pull request response.",
+        "githubPrReview.error": "Pull request could not be loaded.",
+        "githubPrReview.files": "Changed files",
+        "githubPrReview.reviews": "Reviews",
+        "githubPrReview.comments": "Comments",
+        "githubPrReview.diff": "Unified diff",
+        "githubPrReview.notes": "Local review notes",
+        "githubPrReview.notesPlaceholder": "Keep private notes for this pull request…",
+        "githubPrReview.insert": "Insert review context",
+        "githubPrReview.start": "Review with agent",
+        "githubPrReview.reviewInserted": "Review context inserted; Plan mode is ready.",
+        "githubPrReview.inserted": "Review context inserted into the prompt.",
+        "githubPrReview.note": "Remote content is bounded and inserted as untrusted reference text. No GitHub review or comment is submitted.",
+        "githubPrReview.stats": "{files} file(s) · +{additions}/-{deletions}",
+        "githubPrReview.untitled": "Untitled pull request",
+        "githubPrReview.noFiles": "No changed files returned.",
+        "githubPrReview.noReviews": "No review records returned.",
+        "githubPrReview.noComments": "No comments returned.",
+        "githubPrReview.generalComment": "general",
+        "githubPrReview.noDiff": "No diff loaded.",
         "workspace.label": "Workspace",
         "workspace.title": "Task workspaces",
         "workspace.description": "Each task gets its own branch and Git worktree.",
@@ -1830,6 +1908,41 @@
         "taskValidation.error.generic": "任务验证不可用或运行失败。",
         "taskValidation.error.truncated": "变更列表已截断，请刷新任务差异后再验证。",
         "taskValidation.error.noFailedChecks": "没有可重跑的失败检查。",
+        "githubPrReview.title": "GitHub PR 审查",
+        "githubPrReview.ready": "只读的 Pull Request 审查工作区。",
+        "githubPrReview.readOnly": "只读",
+        "githubPrReview.targetLabel": "GitHub Pull Request",
+        "githubPrReview.targetPlaceholder": "https://github.com/owner/repo/pull/123",
+        "githubPrReview.load": "加载 PR",
+        "githubPrReview.clear": "清空",
+        "githubPrReview.loading": "正在加载 Pull Request…",
+        "githubPrReview.loaded": "已加载 {files} 个变更文件。",
+        "githubPrReview.invalidTarget": "请输入有效的 GitHub PR URL 或 owner/repo/编号。",
+        "githubPrReview.optIn": "请先启用 GitHub 显式集成，再加载 Pull Request。",
+        "githubPrReview.notAuthenticated": "请先完成 GitHub CLI 登录。",
+        "githubPrReview.cliUnavailable": "当前机器未找到 GitHub CLI。",
+        "githubPrReview.notFound": "未找到 Pull Request，或当前账号无权访问。",
+        "githubPrReview.tooLarge": "Pull Request 响应过大，无法安全显示。",
+        "githubPrReview.malformed": "GitHub 返回的 Pull Request 响应无效。",
+        "githubPrReview.error": "无法加载 Pull Request。",
+        "githubPrReview.files": "变更文件",
+        "githubPrReview.reviews": "审查记录",
+        "githubPrReview.comments": "评论",
+        "githubPrReview.diff": "统一差异",
+        "githubPrReview.notes": "本地审查笔记",
+        "githubPrReview.notesPlaceholder": "为此 Pull Request 保存私有笔记…",
+        "githubPrReview.insert": "插入审查上下文",
+        "githubPrReview.start": "让 Agent 审查",
+        "githubPrReview.reviewInserted": "已插入审查上下文，当前为计划模式。",
+        "githubPrReview.inserted": "已将审查上下文插入提示词。",
+        "githubPrReview.note": "远程内容有安全边界，并会作为不可信参考文本插入；不会提交 GitHub 审查或评论。",
+        "githubPrReview.stats": "{files} 个文件 · +{additions}/-{deletions}",
+        "githubPrReview.untitled": "未命名 Pull Request",
+        "githubPrReview.noFiles": "没有返回变更文件。",
+        "githubPrReview.noReviews": "没有返回审查记录。",
+        "githubPrReview.noComments": "没有返回评论。",
+        "githubPrReview.generalComment": "全局评论",
+        "githubPrReview.noDiff": "尚未加载差异。",
         "workspace.label": "工作区",
         "workspace.title": "任务工作区",
         "workspace.description": "每个任务使用独立 Git 分支和 worktree。",
@@ -2419,6 +2532,7 @@
       renderSessionRunStatus(sessionSummaries.get(currentSessionId));
       taskWorkspaceUI?.render();
       taskTemplateUI?.refresh();
+      githubPrReviewUI?.render();
       void loadWorkbenchCapabilities(currentSessionId);
       applyThemePreference(themePreference);
       syncInspectorToggle();
@@ -4784,6 +4898,7 @@
         }
         if (currentSessionId === null) {
           currentSessionId = data.activeSessionId ?? "desktop-default";
+      githubPrReviewUI?.sessionChanged();
         }
         renderSessionOptions();
         ensureSessionOption(currentSessionId);
@@ -5953,6 +6068,7 @@
       resetEvidencePreview();
       resetCheckpointPanel();
       currentSessionId = sessionSelect.value;
+      githubPrReviewUI?.sessionChanged();
       taskWorkspaceUI?.render();
       resetRunTimeline(currentSessionId);
       invalidateRunSnapshot();
@@ -6064,6 +6180,7 @@
       resetCheckpointPanel();
       resetTracePanel();
       currentSessionId = "session-" + Date.now().toString(36);
+      githubPrReviewUI?.sessionChanged();
       taskWorkspaceUI?.render();
       taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
@@ -6100,6 +6217,7 @@
       }
       writePersistedQueue(getSessionStorage(), currentSessionId, []);
       currentSessionId = null;
+      githubPrReviewUI?.sessionChanged();
       resetLiveOutputNotice();
       invalidateRunSnapshot();
       resetEvidencePreview();
@@ -6151,6 +6269,7 @@
 
       migrateSessionQueue(currentSessionId, renamed);
       currentSessionId = renamed;
+      githubPrReviewUI?.sessionChanged();
       invalidateRunSnapshot();
       resetEvidencePreview();
       resetCheckpointPanel();
@@ -6776,6 +6895,7 @@
       resetCheckpointPanel();
       resetTracePanel();
       currentSessionId = sessionId;
+      githubPrReviewUI?.sessionChanged();
       taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
       resetRunTimeline(currentSessionId);
@@ -6880,6 +7000,25 @@
       confirmAction: (message) => window.confirm(message),
     });
     taskTemplateUI.render();
+    githubPrReviewUI = createGitHubPrReviewUI({
+      documentRef: document,
+      fetcher: fetch,
+      translate: t,
+      getSessionId: () => currentSessionId,
+      getPrompt: () => input.value,
+      setPrompt: (value) => {
+        input.value = String(value ?? "");
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 160) + "px";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      setMode: (mode) => {
+        const nextMode = mode === "plan" ? "plan" : "normal";
+        composerModeSelect.value = nextMode;
+        persistComposerModePreference(nextMode);
+      },
+      focusPrompt: () => input.focus(),
+    });
     workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
     mcpHealthRefreshButton.addEventListener("click", () => void loadMcpHealth(currentSessionId));
     parallelRunsRefreshButton.addEventListener("click", () => void loadParallelRuns());

@@ -88,6 +88,13 @@ import {
   normalizeParallelRunsSnapshot,
   type ParallelRunInput,
 } from "./parallel-runs.js";
+import {
+  loadGitHubPrReview,
+  normalizeGitHubPrReviewSnapshot,
+  normalizeGitHubPrTarget,
+  type GitHubPrReviewInput,
+  type GitHubPrReviewResult,
+} from "./github-pr-review.js";
 
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
@@ -176,6 +183,8 @@ export interface DesktopServerOptions {
   readonly projectCapability?: (workingDirectory: string) => Promise<RepositoryCapabilitySnapshot>;
   /** Optional bounded workbench metadata projection for tests/custom hosts. */
   readonly workbenchMetadata?: (workingDirectory: string) => Promise<WorkbenchMetadataSnapshot>;
+  /** Optional bounded, read-only GitHub PR review loader for tests/custom hosts. */
+  readonly githubPrReview?: (input: GitHubPrReviewInput, workingDirectory?: string) => Promise<GitHubPrReviewResult>;
   /** Enables the server-scoped capability token for browser-originated mutations. */
   readonly requireCapabilityToken?: boolean;
   /** Optional deterministic capability token for tests or an embedding host. */
@@ -419,6 +428,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       (url.pathname === "/api/monitoring"
         || url.pathname.startsWith("/api/capabilities/")
         || url.pathname === "/api/mcp/health"
+        || url.pathname === "/api/github/pr-review"
         || url.pathname === "/api/parallel-runs")
       && !isLoopbackTerminalRequest(req)
     ) {
@@ -449,6 +459,79 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       if (req.method === "GET" && url.pathname === "/health") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ status: "ok", executorMode: defaultSession.executorMode ?? "unknown" }));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/github/pr-review") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsedResult = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsedResult.ok) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: parsedResult.error, code: "invalid-request" }));
+          return;
+        }
+        const unsupportedFields = Object.keys(parsedResult.value).filter((key) => !["sessionId", "url", "owner", "repo", "number"].includes(key));
+        if (unsupportedFields.length > 0) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "GitHub PR review only accepts a PR URL or owner, repo, and number.", code: "invalid-request" }));
+          return;
+        }
+        const sessionId = normalizeSessionIdForRequest(
+          typeof parsedResult.value.sessionId === "string" ? parsedResult.value.sessionId : undefined,
+        );
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "sessionId is too long", code: "invalid-session" }));
+          return;
+        }
+        const input: GitHubPrReviewInput = {
+          ...(parsedResult.value.url === undefined ? {} : { url: parsedResult.value.url }),
+          ...(parsedResult.value.owner === undefined ? {} : { owner: parsedResult.value.owner }),
+          ...(parsedResult.value.repo === undefined ? {} : { repo: parsedResult.value.repo }),
+          ...(parsedResult.value.number === undefined ? {} : { number: parsedResult.value.number }),
+        };
+        if (!normalizeGitHubPrTarget(input)) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "Enter a GitHub pull request URL or owner, repo, and number.", code: "invalid-target" }));
+          return;
+        }
+        const workingDirectory = taskWorkspaces.workingDirectoryForSession(sessionId) ?? process.cwd();
+        const loader = options.githubPrReview ?? ((request: GitHubPrReviewInput, directory?: string) =>
+          loadGitHubPrReview(request, { workingDirectory: directory }));
+        let result: GitHubPrReviewResult;
+        try {
+          const loaded: unknown = await loader(input, workingDirectory);
+          if (!isRecord(loaded) || typeof loaded.ok !== "boolean") {
+            result = { ok: false, state: "malformed", code: "malformed-response" };
+          } else if (loaded.ok) {
+            result = loaded as GitHubPrReviewResult;
+          } else if (isGitHubPrReviewFailureCode(loaded.code)) {
+            result = loaded as GitHubPrReviewResult;
+          } else {
+            result = { ok: false, state: "malformed", code: "malformed-response" };
+          }
+        } catch {
+          result = { ok: false, state: "unavailable", code: "request-failed" };
+        }
+        if (result.ok) {
+          const snapshot = normalizeGitHubPrReviewSnapshot(result.snapshot);
+          if (!snapshot) {
+            res.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" });
+            res.end(JSON.stringify({ error: "GitHub returned an invalid pull request response.", code: "malformed-response" }));
+            return;
+          }
+          const serialized = JSON.stringify({ sessionId, snapshot });
+          if (Buffer.byteLength(serialized, "utf8") > 768 * 1024) {
+            res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });
+            res.end(JSON.stringify({ error: "GitHub pull request response is too large.", code: "response-too-large" }));
+            return;
+          }
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+          res.end(serialized);
+          return;
+        }
+        sendGitHubPrReviewError(res, result);
         return;
       }
 
@@ -2859,6 +2942,49 @@ function validationPolicyForSession(session: DesktopChatSession): TaskValidation
 function parseTaskValidationMode(value: unknown): TaskValidationMode | undefined {
   if (value === undefined || value === "all") return "all";
   return value === "failed" ? "failed" : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isGitHubPrReviewFailureCode(value: unknown): value is Extract<GitHubPrReviewResult, { ok: false }>["code"] {
+  return value === "opt-in-required"
+    || value === "cli-unavailable"
+    || value === "not-authenticated"
+    || value === "not-found"
+    || value === "malformed-response"
+    || value === "response-too-large"
+    || value === "request-failed"
+    || value === "invalid-target";
+}
+
+function sendGitHubPrReviewError(res: ServerResponse, result: Extract<GitHubPrReviewResult, { ok: false }>): void {
+  const statusCode = result.code === "invalid-target"
+    ? 400
+    : result.code === "opt-in-required"
+      ? 403
+      : result.code === "not-authenticated"
+        ? 401
+        : result.code === "not-found"
+          ? 404
+          : result.code === "response-too-large"
+            ? 413
+            : result.code === "malformed-response"
+              ? 502
+              : 503;
+  const messages: Record<string, string> = {
+    "opt-in-required": "GitHub PR review requires explicit opt-in.",
+    "cli-unavailable": "GitHub CLI is unavailable.",
+    "not-authenticated": "GitHub authentication is required.",
+    "not-found": "GitHub pull request was not found.",
+    "malformed-response": "GitHub returned an invalid pull request response.",
+    "response-too-large": "GitHub pull request response is too large.",
+    "request-failed": "GitHub pull request could not be loaded.",
+    "invalid-target": "Enter a valid GitHub pull request target.",
+  };
+  res.writeHead(statusCode, { "content-type": "application/json", "cache-control": "no-store" });
+  res.end(JSON.stringify({ error: messages[result.code] ?? messages["request-failed"], code: result.code }));
 }
 
 function sendTaskValidationError(res: ServerResponse, error: unknown): void {
