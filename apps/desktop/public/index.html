@@ -368,7 +368,7 @@
           </div>
         </div>
         <div class="conversation-stream">
-          <div id="messages"><div class="empty" data-i18n="conversation.empty">Ask dev-agent anything. Tools run in your working directory.</div></div>
+          <div id="messages"><div class="empty" data-empty-state="true"><span data-i18n="conversation.empty">Ask dev-agent anything. Tools run in your working directory.</span></div></div>
           <button
             type="button"
             id="jump-to-latest"
@@ -470,8 +470,13 @@
               <div id="task-workspace-diff" class="task-workspace-diff" role="region" aria-label="Diff content" data-i18n-aria-label="workspace.diff.content" tabindex="0"></div>
               <section id="task-workspace-comments-panel" class="task-workspace-comments-panel" hidden aria-labelledby="task-workspace-comments-title">
                 <h4 id="task-workspace-comments-title" data-i18n="workspace.comment.title">Review comments</h4>
+                <div id="task-workspace-comments-summary" class="task-workspace-comment-summary" role="status" aria-live="polite"></div>
+                <div class="task-workspace-comment-controls">
+                  <button type="button" id="task-workspace-select-all-comments" class="task-workspace-comment-control" data-i18n="workspace.comment.selectAll" disabled>Select all</button>
+                  <button type="button" id="task-workspace-clear-comment-selection" class="task-workspace-comment-control" data-i18n="workspace.comment.clearSelection" disabled>Clear selection</button>
+                </div>
                 <ul id="task-workspace-comments-list" class="task-workspace-comments-list"></ul>
-                <button type="button" id="task-workspace-insert-comments" class="task-workspace-insert-comments" data-i18n="workspace.comment.insert" disabled>Insert comments into prompt</button>
+                <button type="button" id="task-workspace-insert-comments" class="task-workspace-insert-comments" data-i18n="workspace.comment.insert" disabled>Insert selected comments into prompt</button>
               </section>
             </section>
           </div>
@@ -741,6 +746,71 @@
     const languageEnButton = document.getElementById("language-en");
     const languageZhButton = document.getElementById("language-zh");
     const evidencePreviewPanel = document.getElementById("evidence-preview");
+
+    function createEmptyState() {
+      const empty = document.createElement("div");
+      empty.className = "empty empty-state";
+      empty.dataset.emptyState = "true";
+
+      const mark = document.createElement("div");
+      mark.className = "empty-state-mark";
+      mark.textContent = "✦";
+      mark.setAttribute("aria-hidden", "true");
+
+      const kicker = document.createElement("span");
+      kicker.className = "empty-state-kicker";
+      setLocalizedNode(kicker, "conversation.emptyKicker");
+
+      const title = document.createElement("h2");
+      setLocalizedNode(title, "conversation.emptyTitle");
+
+      const body = document.createElement("p");
+      body.className = "empty-state-body";
+      setLocalizedNode(body, "conversation.empty");
+
+      const starters = document.createElement("div");
+      starters.className = "empty-starters";
+      starters.setAttribute("role", "list");
+      starters.setAttribute("aria-label", t("conversation.startersLabel"));
+      starters.dataset.i18nAriaLabel = "conversation.startersLabel";
+      const starterDefinitions = [
+        { key: "conversation.starter.review", en: "Inspect this repository and tell me what is unfinished.", zh: "检查这个仓库，并告诉我还有哪些工作未完成。" },
+        { key: "conversation.starter.debug", en: "Find the root cause of the latest failure and propose a safe fix.", zh: "找出最近一次失败的根因，并提出安全的修复方案。" },
+        { key: "conversation.starter.plan", en: "Plan the next product improvement in this project with clear verification steps.", zh: "为这个项目规划下一项产品改进，并列出清晰的验证步骤。" },
+      ];
+      for (const definition of starterDefinitions) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "empty-starter";
+        const label = document.createElement("span");
+        label.className = "empty-starter-title";
+        setLocalizedNode(label, definition.key);
+        const meta = document.createElement("span");
+        meta.className = "empty-starter-meta";
+        meta.textContent = "↵";
+        meta.setAttribute("aria-hidden", "true");
+        button.append(label, meta);
+        button.addEventListener("click", () => {
+          input.value = languagePreference === "zh" ? definition.zh : definition.en;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          input.focus();
+        });
+        starters.appendChild(button);
+      }
+
+      const hint = document.createElement("span");
+      hint.className = "empty-state-hint";
+      setLocalizedNode(hint, "conversation.emptyHint");
+      empty.append(mark, kicker, title, body, starters, hint);
+      return empty;
+    }
+
+    function refreshEmptyState() {
+      const current = messages.querySelector(".empty");
+      if (!current) return;
+      current.replaceWith(createEmptyState());
+    }
+
     const evidencePreviewStatus = document.getElementById("evidence-preview-status");
     const evidencePreviewValidations = document.getElementById("evidence-preview-validations");
     const evidencePreviewChangeSets = document.getElementById("evidence-preview-change-sets");
@@ -1016,9 +1086,23 @@
         "workspace.comment.addAt": "Comment on {path} {anchor}",
         "workspace.comment.remove": "Remove",
         "workspace.comment.removeAt": "Remove comment on {path} {anchor}",
-        "workspace.comment.insert": "Insert comments into prompt",
+        "workspace.comment.insert": "Insert selected comments into prompt",
         "workspace.comment.added": "Review comment added.",
         "workspace.comment.limit": "Review comment limit reached for this task.",
+        "workspace.comment.summary": "{total} comment(s) · {selected} selected · {inserted} inserted",
+        "workspace.comment.selectAll": "Select all",
+        "workspace.comment.clearSelection": "Clear selection",
+        "workspace.comment.selectAt": "Select comment on {path} {anchor}",
+        "workspace.comment.openAt": "Open comment on {path} {anchor}",
+        "workspace.comment.status.pending": "Pending",
+        "workspace.comment.status.inserted": "Inserted",
+        "workspace.comment.allSelected": "All review comments selected.",
+        "workspace.comment.selectionCleared": "Review comment selection cleared.",
+        "workspace.comment.noneSelected": "Select at least one review comment.",
+        "workspace.comment.inserted": "Inserted {count} review comment(s) into the prompt.",
+        "workspace.comment.insertFailed": "Could not insert review comments.",
+        "workspace.comment.located": "Located review comment at {path} {anchor}.",
+        "workspace.comment.targetMissing": "The changed line for {path} {anchor} is no longer available.",
         "workspace.error.missingFile": "The selected task file is no longer available.",
         "workspace.confirm.merge": "Merge {branch} into {base}? Only committed changes are included.",
         "workspace.confirm.cleanup": "Remove the worktree for {task}? Uncommitted changes cannot be discarded here.",
@@ -1078,7 +1162,14 @@
         "conversation.label": "Conversation",
         "conversation.agentRun": "Agent run",
         "conversation.liveStream": "Live stream with guarded tools and evidence-aware validation.",
+        "conversation.emptyKicker": "Start with a clear goal",
+        "conversation.emptyTitle": "What are we building today?",
         "conversation.empty": "Ask dev-agent anything. Tools run in your working directory.",
+        "conversation.startersLabel": "Suggested prompts",
+        "conversation.starter.review": "Review this repository",
+        "conversation.starter.debug": "Debug a failure",
+        "conversation.starter.plan": "Plan the next slice",
+        "conversation.emptyHint": "Choose a suggestion to prefill the composer, then edit before sending.",
         "conversation.newOutput": "New output below",
         "reasoning.title": "Model reasoning",
         "turn.queued": "Queued · position {position}",
@@ -1516,9 +1607,23 @@
         "workspace.comment.addAt": "批注 {path} {anchor}",
         "workspace.comment.remove": "移除",
         "workspace.comment.removeAt": "移除 {path} {anchor} 的批注",
-        "workspace.comment.insert": "将批注插入提示词",
+        "workspace.comment.insert": "将选中的批注插入提示词",
         "workspace.comment.added": "已添加审查批注。",
         "workspace.comment.limit": "此任务的审查批注已达上限。",
+        "workspace.comment.summary": "{total} 条评论 · 已选 {selected} 条 · 已插入 {inserted} 条",
+        "workspace.comment.selectAll": "全选",
+        "workspace.comment.clearSelection": "清空选择",
+        "workspace.comment.selectAt": "选择 {path} {anchor} 的批注",
+        "workspace.comment.openAt": "打开 {path} {anchor} 的批注位置",
+        "workspace.comment.status.pending": "待处理",
+        "workspace.comment.status.inserted": "已插入",
+        "workspace.comment.allSelected": "已选中全部审查批注。",
+        "workspace.comment.selectionCleared": "已清空审查批注选择。",
+        "workspace.comment.noneSelected": "请至少选择一条审查批注。",
+        "workspace.comment.inserted": "已将 {count} 条审查批注插入提示词。",
+        "workspace.comment.insertFailed": "无法插入审查批注。",
+        "workspace.comment.located": "已定位到 {path} {anchor} 的审查批注。",
+        "workspace.comment.targetMissing": "{path} {anchor} 对应的变更行已不存在。",
         "workspace.error.missingFile": "所选任务文件已不存在。",
         "workspace.confirm.merge": "将 {branch} 合并到 {base}？仅会包含已提交的变更。",
         "workspace.confirm.cleanup": "移除任务 {task} 的 worktree？此操作不会丢弃未提交变更。",
@@ -1578,7 +1683,14 @@
         "conversation.label": "对话",
         "conversation.agentRun": "智能体运行",
         "conversation.liveStream": "带有工具保护和证据感知校验的实时流。",
+        "conversation.emptyKicker": "先从一个清晰目标开始",
+        "conversation.emptyTitle": "今天我们要构建什么？",
         "conversation.empty": "可以向 dev-agent 提问。工具会在你的工作目录中运行。",
+        "conversation.startersLabel": "推荐提示",
+        "conversation.starter.review": "检查这个仓库",
+        "conversation.starter.debug": "定位一个失败",
+        "conversation.starter.plan": "规划下一步",
+        "conversation.emptyHint": "点击建议会预填输入框，你可以编辑后再发送。",
         "conversation.newOutput": "下面有新输出",
         "reasoning.title": "模型思考",
         "turn.queued": "排队中 · 第 {position} 个",
@@ -1955,6 +2067,8 @@
         node.textContent = t(node.dataset.i18nKey, resolveTranslationValues(values));
       }
     }
+
+    refreshEmptyState();
 
     function applyLanguage(language) {
       languagePreference = SUPPORTED_LANGUAGES.includes(language) ? language : "en";
@@ -4166,10 +4280,7 @@
         }
         if (history.length === 0 && validations.length === 0) {
           if (!state?.active && state?.queue.snapshot().queued.length === 0) {
-            const empty = document.createElement("div");
-            empty.className = "empty";
-            setLocalizedNode(empty, "conversation.empty");
-            messages.appendChild(empty);
+            messages.appendChild(createEmptyState());
           }
           renderPendingSessionTurns(sessionId);
           return;
@@ -5356,10 +5467,7 @@
       renderSessionMeta(null);
       resetLiveOutputNotice();
       messages.innerHTML = "";
-      const empty = document.createElement("div");
-      empty.className = "empty";
-      setLocalizedNode(empty, "conversation.empty");
-      messages.appendChild(empty);
+      messages.appendChild(createEmptyState());
       getSessionClientState(currentSessionId);
       updateComposerAvailability(currentSessionId);
       resetDesktopStatus("New session will initialize on the first run.");
