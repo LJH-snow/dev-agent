@@ -17,6 +17,9 @@ test("Desktop exposes an isolated task action and bilingual worktree inspector c
   assert.match(html, /id="task-workspace-diff-view-split"[^>]*data-view="split"/);
   assert.match(html, /id="task-workspace-diff-search"/);
   assert.match(html, /id="task-workspace-comments-panel"/);
+  assert.match(html, /id="task-workspace-comments-summary"/);
+  assert.match(html, /id="task-workspace-select-all-comments"/);
+  assert.match(html, /id="task-workspace-clear-comment-selection"/);
   assert.match(html, /id="task-workspace-comments-list"/);
   assert.match(html, /id="task-workspace-insert-comments"/);
   assert.match(html, /id="task-workspace-branch"/);
@@ -70,6 +73,14 @@ test("task worktree actions use the bounded API and confirm merge or cleanup", (
   assert.match(controller, /diffViewMode === "split"/);
   assert.match(controller, /diffSearch\?\.addEventListener\("input"/);
   assert.match(controller, /renderDiffSummary\(payload\)/);
+  assert.match(controller, /const MAX_REVIEW_COMMENTS = 64/);
+  assert.match(controller, /data-review-anchor/);
+  assert.match(controller, /async function navigateToComment\(comment\)/);
+  assert.match(controller, /insertSelectedComments/);
+  assert.match(controller, /comment\.selected/);
+  assert.match(controller, /comment\.state = "inserted"/);
+  assert.match(styles, /\.task-workspace-comment-jump/);
+  assert.match(styles, /\.is-review-target/);
 });
 
 test("review comments persist per task session and stay bounded when inserted", async () => {
@@ -87,10 +98,40 @@ test("review comments persist per task session and stay bounded when inserted", 
   const restored = module.readReviewComments(adapter, "task-a");
   assert.equal(restored.length, 2);
   assert.equal(restored[1].group, "all");
+  assert.equal(restored[0].state, "pending");
+  assert.equal(restored[0].selected, true);
   const formatted = module.formatReviewComments(restored);
   assert.match(formatted, /Review comment src\/app\.ts:/);
   assert.doesNotMatch(formatted, /\u0000/);
   assert.ok(formatted.length <= 32 * 1024);
+});
+
+test("review comment selection and insertion state stay bounded and deterministic", async () => {
+  const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+  const comments = [
+    { path: "a.ts", anchor: "+1", group: "unstaged", text: "pending selected" },
+    { path: "b.ts", anchor: "−2", group: "staged", text: "already inserted", state: "inserted", selected: false },
+    { path: "c.ts", anchor: "+3", group: "unknown", text: "invalid state", state: "resolved", selected: "yes" },
+  ];
+  assert.deepEqual(module.summarizeReviewComments(comments), {
+    total: 3,
+    selected: 1,
+    pending: 2,
+    inserted: 1,
+  });
+  assert.deepEqual(module.selectReviewComments(comments).map((comment: { path: string }) => comment.path), ["a.ts"]);
+
+  const storage = new Map<string, string>();
+  const adapter = {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => { storage.set(key, value); },
+  };
+  assert.equal(module.writeReviewComments(adapter, "task-selection", comments), true);
+  const restored = module.readReviewComments(adapter, "task-selection");
+  assert.equal(restored[1].selected, false);
+  assert.equal(restored[1].state, "inserted");
+  assert.equal(restored[2].state, "pending");
+  assert.equal(restored[2].selected, false);
 });
 
 
