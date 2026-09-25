@@ -1,6 +1,30 @@
 
 export const TERMINAL_COMMAND_HISTORY_LIMIT = 64;
 const TERMINAL_COMMAND_MAX_CHARS = 4096;
+export const TERMINAL_SEARCH_QUERY_LIMIT = 256;
+export const TERMINAL_SEARCH_MATCH_LIMIT = 2048;
+
+export function normalizeTerminalSearchQuery(value) {
+  return String(value ?? "").slice(0, TERMINAL_SEARCH_QUERY_LIMIT);
+}
+
+export function findTerminalSearchMatches(text, query, limit = TERMINAL_SEARCH_MATCH_LIMIT) {
+  const source = String(text ?? "");
+  const needle = normalizeTerminalSearchQuery(query);
+  if (!needle) return { matches: [], truncated: false };
+  const safeLimit = Math.max(1, Math.min(TERMINAL_SEARCH_MATCH_LIMIT, Number(limit) || TERMINAL_SEARCH_MATCH_LIMIT));
+  const normalizedSource = source.toLowerCase();
+  const normalizedNeedle = needle.toLowerCase();
+  const matches = [];
+  let cursor = 0;
+  while (matches.length < safeLimit) {
+    const start = normalizedSource.indexOf(normalizedNeedle, cursor);
+    if (start < 0) break;
+    matches.push({ start, end: start + needle.length });
+    cursor = start + Math.max(needle.length, 1);
+  }
+  return { matches, truncated: normalizedSource.indexOf(normalizedNeedle, cursor) >= 0 };
+}
 
 /**
  * Keeps command recall bounded to the current page/session. It deliberately
@@ -89,6 +113,10 @@ export function createTaskTerminalUI({
   const clearButton = documentRef.getElementById("task-terminal-clear");
   const exportButton = documentRef.getElementById("task-terminal-export");
   const output = documentRef.getElementById("task-terminal-output");
+  const searchInput = documentRef.getElementById("task-terminal-search");
+  const searchStatus = documentRef.getElementById("task-terminal-search-status");
+  const searchPreviousButton = documentRef.getElementById("task-terminal-search-previous");
+  const searchNextButton = documentRef.getElementById("task-terminal-search-next");
   const inputForm = documentRef.getElementById("task-terminal-input-form");
   const inputSubmit = inputForm.querySelector('button[type="submit"]');
   const input = documentRef.getElementById("task-terminal-input");
@@ -107,6 +135,10 @@ export function createTaskTerminalUI({
   let busy = false;
   let outputText = "";
   let followOutput = true;
+  let searchQuery = "";
+  let searchMatches = [];
+  let searchMatchesTruncated = false;
+  let searchMatchIndex = -1;
   let previewActive = false;
   const commandHistory = new TerminalCommandHistory();
   const finishedNotified = new Set();
@@ -149,6 +181,73 @@ export function createTaskTerminalUI({
     output.dataset.follow = followOutput ? "true" : "false";
   }
 
+  function renderSearchStatus() {
+    const hasMatches = searchMatches.length > 0;
+    searchPreviousButton.disabled = !hasMatches;
+    searchNextButton.disabled = !hasMatches;
+    if (!searchQuery) {
+      searchStatus.textContent = translate("terminal.search.empty");
+      return;
+    }
+    if (!hasMatches) {
+      searchStatus.textContent = translate("terminal.search.none");
+      return;
+    }
+    searchStatus.textContent = translate(searchMatchesTruncated ? "terminal.search.countCapped" : "terminal.search.count", { current: searchMatchIndex + 1, total: searchMatches.length });
+  }
+
+  function renderOutput({ scrollToMatch = false } = {}) {
+    const previousScrollTop = output.scrollTop;
+    if (!outputText) {
+      output.textContent = translate("terminal.output.empty");
+    } else if (!searchQuery || searchMatches.length === 0) {
+      output.textContent = outputText;
+    } else {
+      const fragment = documentRef.createDocumentFragment();
+      let outputCursor = 0;
+      for (const [index, match] of searchMatches.entries()) {
+        fragment.appendChild(documentRef.createTextNode(outputText.slice(outputCursor, match.start)));
+        const mark = documentRef.createElement("mark");
+        mark.className = "task-terminal-match";
+        mark.dataset.terminalMatch = String(index);
+        if (index === searchMatchIndex) mark.dataset.current = "true";
+        mark.textContent = outputText.slice(match.start, match.end);
+        fragment.appendChild(mark);
+        outputCursor = match.end;
+      }
+      fragment.appendChild(documentRef.createTextNode(outputText.slice(outputCursor)));
+      output.replaceChildren(fragment);
+    }
+    if (scrollToMatch && searchMatchIndex >= 0) {
+      output.querySelector(`[data-terminal-match="${searchMatchIndex}"]`)?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    } else if (followOutput) {
+      output.scrollTop = output.scrollHeight;
+    } else {
+      output.scrollTop = previousScrollTop;
+    }
+    renderSearchStatus();
+  }
+
+  function refreshSearchMatches({ selectFirst = false, scrollToMatch = false } = {}) {
+    const result = findTerminalSearchMatches(outputText, searchQuery);
+    searchMatches = result.matches;
+    searchMatchesTruncated = result.truncated;
+    if (searchMatches.length === 0) searchMatchIndex = -1;
+    else if (selectFirst || searchMatchIndex < 0) searchMatchIndex = 0;
+    else searchMatchIndex = Math.min(searchMatchIndex, searchMatches.length - 1);
+    renderOutput({ scrollToMatch });
+  }
+
+  function navigateSearch(direction) {
+    if (!searchMatches.length) {
+      renderSearchStatus();
+      return;
+    }
+    const offset = direction < 0 ? -1 : 1;
+    searchMatchIndex = (searchMatchIndex + offset + searchMatches.length) % searchMatches.length;
+    renderOutput({ scrollToMatch: true });
+  }
+
   function renderRuns() {
     runList.replaceChildren();
     for (const run of runs) {
@@ -175,10 +274,8 @@ export function createTaskTerminalUI({
     }
     const maxChars = 256 * 1024;
     if (outputText.length > maxChars) outputText = outputText.slice(-maxChars);
-    output.textContent = outputText || translate("terminal.output.empty");
-    if (followOutput) output.scrollTop = output.scrollHeight;
+    refreshSearchMatches({ selectFirst: Boolean(searchQuery && searchMatchIndex < 0) });
     attachButton.disabled = !outputText;
-    renderOutputControls();
   }
 
   function updateOutputFollowState() {
@@ -199,8 +296,13 @@ export function createTaskTerminalUI({
     cursor = 0;
     outputText = "";
     followOutput = true;
+    searchQuery = "";
+    searchMatches = [];
+    searchMatchesTruncated = false;
+    searchMatchIndex = -1;
+    searchInput.value = "";
     output.dataset.gap = "false";
-    output.textContent = translate("terminal.output.empty");
+    refreshSearchMatches();
     if (run) {
       status("terminal.status.selected", { state: translate(`terminal.state.${run.state}`) });
       void pollOutput();
@@ -279,7 +381,7 @@ export function createTaskTerminalUI({
     followOutput = true;
     cursor = Number(run?.lastSequence) || cursor;
     output.dataset.gap = "false";
-    output.textContent = translate("terminal.output.empty");
+    refreshSearchMatches();
     status("terminal.status.bufferCleared");
     renderRuns();
   }
@@ -290,7 +392,7 @@ export function createTaskTerminalUI({
     followOutput = true;
     cursor = 0;
     output.dataset.gap = "false";
-    output.textContent = translate("terminal.output.empty");
+    refreshSearchMatches();
     status("terminal.status.reconnecting");
     void pollOutput();
   }
@@ -434,8 +536,13 @@ export function createTaskTerminalUI({
     cursor = 0;
     outputText = "";
     followOutput = true;
+    searchQuery = "";
+    searchMatches = [];
+    searchMatchesTruncated = false;
+    searchMatchIndex = -1;
+    searchInput.value = "";
     commandHistory.reset();
-    output.textContent = translate("terminal.output.empty");
+    refreshSearchMatches();
     clearPreview();
     previewInput.value = "";
     clearTimeout(pollTimer);
@@ -480,6 +587,19 @@ export function createTaskTerminalUI({
   followButton.addEventListener("click", followLatestOutput);
   clearButton.addEventListener("click", clearOutput);
   exportButton.addEventListener("click", exportOutput);
+  searchInput.addEventListener("input", () => {
+    searchQuery = normalizeTerminalSearchQuery(searchInput.value);
+    if (searchInput.value !== searchQuery) searchInput.value = searchQuery;
+    searchMatchIndex = -1;
+    refreshSearchMatches({ selectFirst: Boolean(searchQuery), scrollToMatch: Boolean(searchQuery) });
+  });
+  searchInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    navigateSearch(event.shiftKey ? -1 : 1);
+  });
+  searchPreviousButton.addEventListener("click", () => navigateSearch(-1));
+  searchNextButton.addEventListener("click", () => navigateSearch(1));
   output.addEventListener("scroll", updateOutputFollowState);
   runList.addEventListener("change", () => {
     setActive(runs.find((run) => run.id === runList.value));

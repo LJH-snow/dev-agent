@@ -492,6 +492,13 @@
             <button type="button" id="task-terminal-reconnect" data-i18n="terminal.reconnect" disabled>Reconnect</button>
           </div>
           <pre id="task-terminal-output" class="task-terminal-output" role="log" aria-live="polite" tabindex="0" data-i18n="terminal.output.empty">Terminal output appears here.</pre>
+          <div class="task-terminal-search-row">
+            <label for="task-terminal-search" data-i18n="terminal.search">Search output</label>
+            <input id="task-terminal-search" type="search" maxlength="256" autocomplete="off" spellcheck="false" aria-label="Search terminal output" data-i18n-aria-label="terminal.search" data-i18n-placeholder="terminal.searchPlaceholder" placeholder="Find in output" />
+            <span id="task-terminal-search-status" class="task-terminal-search-status" role="status" aria-live="polite" data-i18n="terminal.search.empty">No search</span>
+            <button type="button" id="task-terminal-search-previous" data-i18n="terminal.search.previous" disabled>Previous</button>
+            <button type="button" id="task-terminal-search-next" data-i18n="terminal.search.next" disabled>Next</button>
+          </div>
           <div class="task-terminal-output-actions">
             <button type="button" id="task-terminal-follow" data-i18n="terminal.followLatest" disabled>Follow latest</button>
             <button type="button" id="task-terminal-clear" data-i18n="terminal.clear" disabled>Clear view</button>
@@ -1129,6 +1136,14 @@
         "terminal.stop": "Stop",
         "terminal.reconnect": "Reconnect",
         "terminal.followLatest": "Follow latest",
+        "terminal.search": "Search output",
+        "terminal.searchPlaceholder": "Find in output",
+        "terminal.search.empty": "No search",
+        "terminal.search.none": "No matches",
+        "terminal.search.count": "{current} of {total}",
+        "terminal.search.countCapped": "{current} of {total}+",
+        "terminal.search.previous": "Previous",
+        "terminal.search.next": "Next",
         "terminal.clear": "Clear view",
         "terminal.export": "Export output",
         "terminal.status.reconnecting": "Rehydrating terminal output…",
@@ -1621,6 +1636,14 @@
         "terminal.stop": "停止",
         "terminal.reconnect": "重新连接",
         "terminal.followLatest": "跟随最新输出",
+        "terminal.search": "搜索输出",
+        "terminal.searchPlaceholder": "在输出中查找",
+        "terminal.search.empty": "未搜索",
+        "terminal.search.none": "没有匹配",
+        "terminal.search.count": "第 {current} 个，共 {total} 个",
+        "terminal.search.countCapped": "第 {current} 个，共 {total}+ 个",
+        "terminal.search.previous": "上一个",
+        "terminal.search.next": "下一个",
         "terminal.clear": "清除视图",
         "terminal.export": "导出输出",
         "terminal.status.reconnecting": "正在重新载入终端输出…",

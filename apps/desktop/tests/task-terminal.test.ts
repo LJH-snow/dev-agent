@@ -12,7 +12,7 @@ import { createDesktopServer } from "../dist/server.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "../dist/task-terminal.js";
 
 const publicModuleUrl = pathToFileURL(fileURLToPath(new URL("../public/task-terminal-ui.js", import.meta.url))).href;
-const { normalizeLoopbackPreviewUrl, TerminalCommandHistory } = await import(publicModuleUrl);
+const { normalizeLoopbackPreviewUrl, TerminalCommandHistory, normalizeTerminalSearchQuery, findTerminalSearchMatches } = await import(publicModuleUrl);
 
 async function waitFor(
   check: () => boolean,
@@ -199,6 +199,18 @@ test("terminal command history is bounded, deduplicated, and restores the draft"
   assert.equal(history.entries.at(-1)?.length, 4096);
 });
 
+test("terminal output search is literal, case-insensitive, bounded, and navigable", () => {
+  assert.equal(normalizeTerminalSearchQuery("x".repeat(300)).length, 256);
+  assert.deepEqual(findTerminalSearchMatches("Error: one\nerror: two\nERROR: three", "error").matches, [
+    { start: 0, end: 5 },
+    { start: 11, end: 16 },
+    { start: 22, end: 27 },
+  ]);
+  assert.equal(findTerminalSearchMatches("a a a a", "a", 2).matches.length, 2);
+  assert.equal(findTerminalSearchMatches("a a a a", "a", 2).truncated, true);
+  assert.deepEqual(findTerminalSearchMatches("[x] (y) $z", "[x]").matches, [{ start: 0, end: 3 }]);
+});
+
 test("browser preview accepts explicit-port loopback HTTP(S) URLs only", () => {
   assert.equal(normalizeLoopbackPreviewUrl("http://localhost:5173/"), "http://localhost:5173/");
   assert.equal(normalizeLoopbackPreviewUrl("https://127.0.0.1:8443/app"), "https://127.0.0.1:8443/app");
@@ -310,6 +322,10 @@ test("terminal and preview panels are wired to session state and safe text rende
   assert.match(html, /id="task-terminal-follow"/);
   assert.match(html, /id="task-terminal-clear"/);
   assert.match(html, /id="task-terminal-export"/);
+  assert.match(html, /id="task-terminal-search"/);
+  assert.match(html, /id="task-terminal-search-status"/);
+  assert.match(html, /id="task-terminal-search-previous"/);
+  assert.match(html, /id="task-terminal-search-next"/);
   assert.match(html, /id="task-preview-clear"/);
   assert.match(html, /createTaskTerminalUI\(/);
   assert.match(controller, /output\.textContent = outputText/);
@@ -325,10 +341,17 @@ test("terminal and preview panels are wired to session state and safe text rende
   assert.match(controller, /emitLifecycle\("preview", "started"\)/);
   assert.match(controller, /if \(previewActive && !previewFrame.hidden\)/);
   assert.match(controller, /updateOutputFollowState/);
+  assert.match(controller, /normalizeTerminalSearchQuery/);
+  assert.match(controller, /findTerminalSearchMatches/);
+  assert.match(controller, /task-terminal-match/);
+  assert.match(controller, /navigateSearch/);
+  assert.match(controller, /event\.shiftKey \? -1 : 1/);
   assert.match(controller, /createObjectURL/);
   assert.doesNotMatch(controller, /\.innerHTML\s*=/);
   assert.match(html, /await loadSessions\(\);[\s\S]{0,220}await loadSessionView\(currentSessionId\);[\s\S]{0,220}await taskTerminalUI\.refresh\(\)/);
   assert.match(styles, /html\[data-theme="dark"\][\s\S]*--assistant-bg:\s*#1a252b/);
   assert.match(styles, /\.task-terminal-output/);
+  assert.match(styles, /\.task-terminal-search-row/);
+  assert.match(styles, /\.task-terminal-match/);
   assert.match(styles, /\.task-preview-frame/);
 });
