@@ -388,8 +388,51 @@
                 <option value="plan" data-i18n="composer.plan">Plan</option>
               </select>
             </label>
-            <span data-i18n="composer.shortcut">Enter to send · Shift+Enter for a new line</span>
+            <div class="composer-quick-actions" aria-label="Quick actions" data-i18n-aria-label="templates.quickActions">
+              <span class="composer-quick-actions-label" data-i18n="templates.quickActions">Quick actions</span>
+              <button type="button" class="composer-quick-action" data-template-quick="fix-bug" data-i18n="templates.builtin.fixBug.short">Fix bug</button>
+              <button type="button" class="composer-quick-action" data-template-quick="implement-feature" data-i18n="templates.builtin.feature.short">New feature</button>
+              <button type="button" class="composer-quick-action" data-template-quick="run-tests" data-i18n="templates.builtin.tests.short">Run tests</button>
+              <button type="button" id="task-template-toggle" class="composer-quick-action composer-quick-action-primary" aria-expanded="false" aria-controls="task-template-palette" data-i18n="templates.palette.open">Templates</button>
+            </div>
+            <span data-i18n="composer.shortcut">Enter to send · Shift+Enter for a new line · ⌘/Ctrl+K templates</span>
           </div>
+          <section id="task-template-palette" class="task-template-palette" aria-labelledby="task-template-title" hidden>
+            <div class="task-template-palette-header">
+              <div>
+                <strong id="task-template-title" data-i18n="templates.palette.title">Task templates</strong>
+                <span data-i18n="templates.palette.description">Insert a bounded prompt starter or save your own local template.</span>
+              </div>
+              <button type="button" id="task-template-close" class="task-template-close" aria-label="Close templates" data-i18n-aria-label="templates.palette.close">×</button>
+            </div>
+            <label class="task-template-search-label">
+              <span data-i18n="templates.palette.search">Search templates</span>
+              <input id="task-template-search" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="templates.palette.searchPlaceholder" placeholder="Search templates" />
+            </label>
+            <div id="task-template-list" class="task-template-list" role="list" aria-live="polite"></div>
+            <div class="task-template-save">
+              <div class="task-template-save-heading" data-i18n="templates.palette.saveHeading">Save a local template</div>
+              <div class="task-template-save-grid">
+                <label>
+                  <span data-i18n="templates.palette.name">Name</span>
+                  <input id="task-template-name" type="text" maxlength="80" data-i18n-placeholder="templates.palette.namePlaceholder" placeholder="My task" />
+                </label>
+                <label>
+                  <span data-i18n="templates.palette.mode">Mode</span>
+                  <select id="task-template-mode" aria-label="Template mode" data-i18n-aria-label="templates.palette.mode">
+                    <option value="normal" data-i18n="composer.execute">Execute</option>
+                    <option value="plan" data-i18n="composer.plan">Plan</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                <span data-i18n="templates.palette.prompt">Prompt</span>
+                <textarea id="task-template-prompt" rows="3" maxlength="12000" data-i18n-placeholder="templates.palette.promptPlaceholder" placeholder="Describe the reusable task…"></textarea>
+              </label>
+              <button type="button" id="task-template-save" class="task-template-save-button" data-i18n="templates.palette.save">Save template</button>
+            </div>
+            <div id="task-template-status" class="task-template-status" role="status" aria-live="polite"></div>
+          </section>
           <div class="composer-actions">
             <textarea id="input" rows="1" aria-label="Message" data-i18n-aria-label="composer.message" data-i18n-placeholder="composer.placeholder" placeholder="Describe the work you want the agent to coordinate…"></textarea>
             <button type="submit" id="send" data-i18n-title="action.send" data-i18n-aria-label="action.send">
@@ -703,6 +746,7 @@
     import { createTaskWorkspaceUI, formatReviewComments } from "/public/task-workspace-ui.js";
     import { createTaskValidationUI } from "/public/task-validation-ui.js";
     import { createTaskTerminalUI } from "/public/task-terminal-ui.js";
+    import { createTaskTemplateUI } from "/public/task-templates.js";
     import {
       getTurnActivityForEvent,
       getTurnActivityForState,
@@ -935,6 +979,7 @@
     let taskWorkspaceUI = null;
     let taskValidationUI = null;
     let taskTerminalUI = null;
+    let taskTemplateUI = null;
     let sessionSummaries = new Map();
     let sessionFilterQuery = "";
     let sessionFilterStatus = "all";
@@ -1327,7 +1372,46 @@
         "composer.mode": "Mode",
         "composer.execute": "Execute",
         "composer.plan": "Plan",
-        "composer.shortcut": "Enter to send · Shift+Enter for a new line",
+        "composer.shortcut": "Enter to send · Shift+Enter for a new line · ⌘/Ctrl+K templates",
+        "templates.quickActions": "Quick actions",
+        "templates.builtin.fixBug.title": "Fix a bug",
+        "templates.builtin.fixBug.short": "Fix bug",
+        "templates.builtin.fixBug.description": "Investigate, fix, and verify a focused bug report.",
+        "templates.builtin.feature.title": "Implement a feature",
+        "templates.builtin.feature.short": "New feature",
+        "templates.builtin.feature.description": "Plan a bounded feature before making implementation changes.",
+        "templates.builtin.tests.title": "Run tests",
+        "templates.builtin.tests.short": "Run tests",
+        "templates.builtin.tests.description": "Run relevant checks and repair failures with evidence.",
+        "templates.builtin.review.title": "Review changes",
+        "templates.builtin.review.description": "Inspect current changes for correctness, regressions, and missing tests.",
+        "templates.builtin.explain.title": "Explain code",
+        "templates.builtin.explain.description": "Explain execution flow, data boundaries, and failure cases without editing.",
+        "templates.palette.open": "Templates",
+        "templates.palette.title": "Task templates",
+        "templates.palette.description": "Insert a bounded prompt starter or save your own local template.",
+        "templates.palette.close": "Close templates",
+        "templates.palette.search": "Search templates",
+        "templates.palette.searchPlaceholder": "Search templates",
+        "templates.palette.builtIn": "Built-in templates",
+        "templates.palette.custom": "Your local templates",
+        "templates.palette.empty": "No templates match this search.",
+        "templates.palette.use": "Use",
+        "templates.palette.delete": "Delete",
+        "templates.palette.confirmDelete": "Delete the local template “{name}”?",
+        "templates.palette.saveHeading": "Save a local template",
+        "templates.palette.name": "Name",
+        "templates.palette.namePlaceholder": "My task",
+        "templates.palette.mode": "Mode",
+        "templates.palette.prompt": "Prompt",
+        "templates.palette.promptPlaceholder": "Describe the reusable task…",
+        "templates.palette.save": "Save template",
+        "templates.palette.saved": "Saved “{name}”.",
+        "templates.palette.inserted": "Inserted “{name}” into the prompt.",
+        "templates.palette.deleted": "Deleted “{name}”.",
+        "templates.palette.required": "Add a name and prompt before saving.",
+        "templates.palette.limit": "The local template limit has been reached.",
+        "templates.palette.shortcut": "⌘/Ctrl+Shift+{key}",
         "composer.message": "Message",
         "composer.placeholder": "Describe the work you want the agent to coordinate…",
         "inspector.label": "Inspector",
@@ -1920,7 +2004,46 @@
         "composer.mode": "模式",
         "composer.execute": "执行",
         "composer.plan": "计划",
-        "composer.shortcut": "按 Enter 发送 · Shift+Enter 换行",
+        "composer.shortcut": "按 Enter 发送 · Shift+Enter 换行 · ⌘/Ctrl+K 打开模板",
+        "templates.quickActions": "快捷操作",
+        "templates.builtin.fixBug.title": "修复 Bug",
+        "templates.builtin.fixBug.short": "修复 Bug",
+        "templates.builtin.fixBug.description": "调查、修复并验证一个明确的 Bug 报告。",
+        "templates.builtin.feature.title": "实现功能",
+        "templates.builtin.feature.short": "新功能",
+        "templates.builtin.feature.description": "先规划边界清晰的功能，再开始实现改动。",
+        "templates.builtin.tests.title": "运行测试",
+        "templates.builtin.tests.short": "运行测试",
+        "templates.builtin.tests.description": "运行相关检查，带着证据修复失败。",
+        "templates.builtin.review.title": "审查改动",
+        "templates.builtin.review.description": "检查当前改动的正确性、回归风险和缺失测试。",
+        "templates.builtin.explain.title": "解释代码",
+        "templates.builtin.explain.description": "在不修改文件的前提下解释执行流、数据边界和失败场景。",
+        "templates.palette.open": "模板",
+        "templates.palette.title": "任务模板",
+        "templates.palette.description": "插入有边界的提示词起始内容，或保存自己的本地模板。",
+        "templates.palette.close": "关闭模板",
+        "templates.palette.search": "搜索模板",
+        "templates.palette.searchPlaceholder": "搜索模板",
+        "templates.palette.builtIn": "内置模板",
+        "templates.palette.custom": "你的本地模板",
+        "templates.palette.empty": "没有匹配的模板。",
+        "templates.palette.use": "使用",
+        "templates.palette.delete": "删除",
+        "templates.palette.confirmDelete": "删除本地模板“{name}”？",
+        "templates.palette.saveHeading": "保存本地模板",
+        "templates.palette.name": "名称",
+        "templates.palette.namePlaceholder": "我的任务",
+        "templates.palette.mode": "模式",
+        "templates.palette.prompt": "提示词",
+        "templates.palette.promptPlaceholder": "描述可复用的任务…",
+        "templates.palette.save": "保存模板",
+        "templates.palette.saved": "已保存“{name}”。",
+        "templates.palette.inserted": "已将“{name}”插入提示词。",
+        "templates.palette.deleted": "已删除“{name}”。",
+        "templates.palette.required": "保存前请填写名称和提示词。",
+        "templates.palette.limit": "本地模板数量已达到上限。",
+        "templates.palette.shortcut": "⌘/Ctrl+Shift+{key}",
         "composer.message": "消息",
         "composer.placeholder": "描述你希望智能体协调的工作…",
         "inspector.label": "检查器",
@@ -2295,6 +2418,7 @@
       renderSessionMeta(sessionSummaries.get(currentSessionId));
       renderSessionRunStatus(sessionSummaries.get(currentSessionId));
       taskWorkspaceUI?.render();
+      taskTemplateUI?.refresh();
       void loadWorkbenchCapabilities(currentSessionId);
       applyThemePreference(themePreference);
       syncInspectorToggle();
@@ -6070,6 +6194,10 @@
       }
     });
 
+    document.addEventListener("keydown", (event) => {
+      taskTemplateUI?.handleShortcut(event);
+    });
+
     function updateComposerAvailability(sessionId = currentSessionId) {
       const state = getSessionClientState(sessionId);
       if (!state || sessionId === null) {
@@ -6731,6 +6859,27 @@
         ).catch(() => undefined);
       },
     });
+    taskTemplateUI = createTaskTemplateUI({
+      documentRef: document,
+      translate: t,
+      getLanguage: () => languagePreference,
+      getPrompt: () => input.value,
+      setPrompt: (value) => {
+        input.value = String(value ?? "");
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 160) + "px";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      getMode: () => composerModeSelect.value,
+      setMode: (mode) => {
+        const nextMode = mode === "plan" ? "plan" : "normal";
+        composerModeSelect.value = nextMode;
+        persistComposerModePreference(nextMode);
+      },
+      focusPrompt: () => input.focus(),
+      confirmAction: (message) => window.confirm(message),
+    });
+    taskTemplateUI.render();
     workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
     mcpHealthRefreshButton.addEventListener("click", () => void loadMcpHealth(currentSessionId));
     parallelRunsRefreshButton.addEventListener("click", () => void loadParallelRuns());
