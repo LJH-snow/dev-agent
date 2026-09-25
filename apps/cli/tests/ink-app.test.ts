@@ -1495,6 +1495,57 @@ test("Ink navigates a long transcript with Home and End", async () => {
   }
 });
 
+test("Ink clips an oversized response while the task header and bottom controls stay fixed", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const store = new InkRuntimeStore();
+  const sequence = new RuntimeEventSequence("viewport-clipping-session");
+  const instance = renderInkApp(stdin, stdout, () => undefined, store);
+
+  try {
+    const runId = "viewport-clipping-run";
+    store.apply(sequence.create(
+      "run.started",
+      { prompt: "sticky clipping task", model: "qwen3:4b-instruct" },
+      { runId },
+    ));
+    store.apply(sequence.create(
+      "assistant.completed",
+      { text: Array.from({ length: 40 }, (_, index) => `scroll-line-${index + 1}`).join("\n") },
+      { runId },
+    ));
+    store.apply(sequence.create(
+      "run.completed",
+      { turns: 1 },
+      { runId },
+    ));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    writes.length = 0;
+
+    stdin.write("\u001b[5~");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const pageUpFrame = writes.join("");
+    assert.match(pageUpFrame, /sticky clipping task/);
+    assert.match(pageUpFrame, /Back to bottom/);
+    assert.match(pageUpFrame, /scroll-line-2[0-9]/);
+    assert.doesNotMatch(pageUpFrame, /scroll-line-1/);
+    assert.doesNotMatch(
+      pageUpFrame,
+      /scroll-line-40/,
+      "the response tail should be below the clipped viewport after PageUp",
+    );
+    const taskIndex = pageUpFrame.indexOf("sticky clipping task");
+    const firstVisibleLineIndex = pageUpFrame.search(/scroll-line-2[0-9]/);
+    const navigationIndex = pageUpFrame.indexOf("Back to bottom");
+    const composerIndex = pageUpFrame.indexOf("Type your message");
+    assert.ok(taskIndex >= 0 && taskIndex < firstVisibleLineIndex);
+    assert.ok(navigationIndex >= 0 && navigationIndex < composerIndex);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
 test("Ink navigates a long transcript with terminal mouse wheel events", async () => {
   const { stdin, stdout, writes } = createInkTerminal();
   const store = new InkRuntimeStore();

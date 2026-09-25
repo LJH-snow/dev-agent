@@ -759,12 +759,11 @@ function TranscriptViewport({
   const firstVisibleRow = viewport.offset;
   const lastVisibleRow = firstVisibleRow + Math.max(1, viewport.visibleRows);
   const visibleItems = selectTranscriptItems(ranges, viewport);
-  const renderedRows = visibleItems.reduce(
-    (total, range) => total + (range.end - range.start),
-    0,
-  );
-  const viewportHeight = viewport.totalRows > viewport.visibleRows &&
-    renderedRows <= viewport.visibleRows
+  // Always clip an overflowing transcript frame. A single Markdown response
+  // can be larger than the viewport, and the selected range may therefore be
+  // taller than the budget even though the viewport is intentionally showing
+  // only its intersecting rows.
+  const viewportHeight = viewport.totalRows > viewport.visibleRows
     ? Math.max(1, viewport.visibleRows)
     : undefined;
   return (
@@ -786,9 +785,20 @@ function TranscriptViewport({
           ? {}
           : { height: viewportHeight, overflow: "hidden" as const })}
       >
-        {visibleItems.map((range) =>
-          range.item.type === "summary" ? (
-            <SummaryPanel key="run-summary" summary={range.item.summary} />
+        {visibleItems.map((range) => {
+          // Preserve the item's global row position inside the clipped
+          // viewport. Without this negative offset, an oversized entry that
+          // intersects the window would always render from its first line,
+          // making PageUp appear to do nothing.
+          const rowOffset = range.start < firstVisibleRow
+            ? firstVisibleRow - range.start
+            : 0;
+          return range.item.type === "summary" ? (
+            <SummaryPanel
+              key="run-summary"
+              summary={range.item.summary}
+              rowOffset={-rowOffset}
+            />
           ) : (
             <TranscriptEntry
               key={range.item.entry.id}
@@ -798,9 +808,10 @@ function TranscriptViewport({
                 range.item.entry.runId === snapshot.activeRunId
               }
               width={columns}
+              rowOffset={-rowOffset}
             />
-          )
-        )}
+          );
+        })}
       </Box>
       {snapshot.error !== undefined ? (
         <Text color={theme.error}>× {snapshot.error}</Text>
@@ -968,14 +979,16 @@ function TranscriptEntry({
   entry,
   activeThinking,
   width,
+  rowOffset = 0,
 }: {
   entry: TuiStateSnapshot["transcript"][number];
   activeThinking: boolean;
   width: number;
+  rowOffset?: number;
 }): React.JSX.Element {
   const theme = useInkTheme();
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column" marginTop={1 + rowOffset}>
       {entry.role === "user" ? (
         <Text color={theme.primary}>› {entry.text}</Text>
       ) : entry.role === "reasoning" ? (
@@ -1051,10 +1064,16 @@ function PathCompletionPanel({
   );
 }
 
-function SummaryPanel({ summary }: { summary: InkRunSummary }): React.JSX.Element {
+function SummaryPanel({
+  summary,
+  rowOffset = 0,
+}: {
+  summary: InkRunSummary;
+  rowOffset?: number;
+}): React.JSX.Element {
   const theme = useInkTheme();
   return (
-    <Box flexDirection="column" marginTop={1}>
+    <Box flexDirection="column" marginTop={1 + rowOffset}>
       {summaryPanelLines(summary).map((line, index) => (
         <Text key={index} color={theme.muted}>{line}</Text>
       ))}
