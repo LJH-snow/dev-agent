@@ -9,7 +9,7 @@ Add a read-only, bounded GitHub pull-request review workspace to the Desktop wor
 - [x] Add loopback-only POST read route with stable failure classification
 - [x] Add bilingual PR Review panel, local draft notes, session isolation, and prompt insertion
 - [x] Run focused/full tests and browser acceptance
-- [ ] Selectively commit and push without staging unrelated parallel work
+- [x] Selectively commit and push without staging unrelated parallel work
 
 ## Safety and scope
 - Read-only remote integration; no GitHub review/comment mutation.

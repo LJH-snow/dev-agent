@@ -14,7 +14,14 @@
 - Fresh current-worktree Desktop verification passed: 319/319 tests, including
   the PR Review suite, and both Desktop TypeScript projects compiled.
 
-## Next
+## Completed
 
-- Build the selective feature-only commit with an independent Git index, push
-  `codex/desktop-cli-workbench`, then audit the committed snapshot.
+- Built feature-only commit `03ec111` with an independent Git index and pushed
+  it to `origin/codex/desktop-cli-workbench` without including unrelated
+  parallel work.
+- Audited the committed file list and confirmed no CI diagnosis, delivery
+  report, or task-workspace paths were included.
+- Re-ran browser acceptance against the fixture: PR loading, bounded file/
+  review/comment/diff rendering, local notes, prompt insertion, and Plan mode
+  all worked. The only console error remained the pre-existing task-validation
+  `409` fixture response.
