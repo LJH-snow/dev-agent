@@ -80,13 +80,12 @@ const EMPTY_UI_SNAPSHOT: InkUiSnapshot = {
 };
 const NOOP_SUBSCRIBE = (): (() => void) => () => undefined;
 const EMPTY_GET_SNAPSHOT = (): InkUiSnapshot => EMPTY_UI_SNAPSHOT;
-// NavigationBar, StatusLine, Composer, and Footer occupy eight rows in the
-// fixed bottom shell: 1 + (1 margin + 1 line) + (1 margin + 3 border/content)
-// + 1. Ink renders against a one-row guarded output, while mouse coordinates
-// come from the real terminal, so the pointer hit row is one cell above the
-// old bottom-shell calculation.
+// The fixed bottom shell uses eight rows (navigation + status + composer +
+// footer). The guarded inline Ink render leaves two physical rows below the
+// footer, so mouse reports for the painted navigation row use the physical
+// screen row (terminalRows - 9). Verified at multiple sizes by screen tests.
 const BOTTOM_SHELL_ROWS = 8;
-const NAVIGATION_ROW_FROM_BOTTOM = BOTTOM_SHELL_ROWS;
+const NAVIGATION_ROW_FROM_BOTTOM = BOTTOM_SHELL_ROWS + 1;
 
 export function InkCliApp({
   store,

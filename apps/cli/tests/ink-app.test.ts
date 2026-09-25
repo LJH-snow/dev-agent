@@ -1623,22 +1623,21 @@ test("Back to bottom hit-testing only accepts a primary press on the navigation 
     hiddenBelow: 3,
     newOutput: 0,
   } as const;
-  // The fixed shell occupies eight rows, and Ink's guarded render output
-  // leaves one extra virtual row. The visible navigation row is therefore
-  // one row higher than the old hard-coded hit target.
-  const click = { button: 0, x: 40, y: 16, action: "press" } as const;
+  // The painted action is on row 15 in a 24-row terminal, not row 16.
+  // The screen-level regression exercises the real Ink renderer too.
+  const click = { button: 0, x: 40, y: 15, action: "press" } as const;
 
   assert.equal(isBackToBottomClick(click, 24, browsing, 80), true);
-  assert.equal(isNavigationBarHovered({ x: 40, y: 16 }, 24, browsing, 80), true);
-  assert.equal(isNavigationBarHovered({ x: 2, y: 16 }, 24, browsing, 80), false);
-  assert.equal(isNavigationBarHovered({ x: 40, y: 17 }, 24, browsing, 80), false);
+  assert.equal(isNavigationBarHovered({ x: 40, y: 15 }, 24, browsing, 80), true);
+  assert.equal(isNavigationBarHovered({ x: 2, y: 15 }, 24, browsing, 80), false);
+  assert.equal(isNavigationBarHovered({ x: 40, y: 16 }, 24, browsing, 80), false);
   assert.equal(
-    isBackToBottomClick({ ...click, y: 15 }, 23, browsing, 80),
+    isBackToBottomClick({ ...click, y: 14 }, 23, browsing, 80),
     true,
     "hit testing uses the effective row count supplied by the renderer",
   );
   assert.equal(
-    isBackToBottomClick({ ...click, y: 17 }, 24, browsing, 80),
+    isBackToBottomClick({ ...click, y: 16 }, 24, browsing, 80),
     false,
   );
   assert.equal(
@@ -1700,20 +1699,20 @@ test("Ink clicking Back to bottom returns the transcript to the latest output", 
     writes.length = 0;
     // Button code 35 is an SGR no-button motion report. It should only color
     // the navigation label while the pointer is over its text bounds.
-    stdin.write("\u001b[<35;40;16M");
+    stdin.write("\u001b[<35;40;15M");
     await new Promise((resolve) => setTimeout(resolve, 100));
     const hoverFrame = writes.join("");
     assert.match(hoverFrame, /Back to bottom/);
     assert.equal(
-      hoverFrame.includes("[<35;40;16M"),
+      hoverFrame.includes("[<35;40;15M"),
       false,
       "hover motion reports must be consumed instead of entering the composer",
     );
 
     writes.length = 0;
-    // The test terminal is 24 rows high, so the visible navigation row is
-    // row 16. Send press + release just as a real SGR mouse click does.
-    stdin.write("\u001b[<0;40;16M\u001b[<0;40;16m");
+    // The painted action in a 24-row terminal is on row 15.
+    // Send press + release just as a real SGR mouse click does.
+    stdin.write("\u001b[<0;40;15M\u001b[<0;40;15m");
     await new Promise((resolve) => setTimeout(resolve, 100));
     const bottomFrame = writes.join("");
     assert.match(bottomFrame, /click-line-40/);
@@ -1721,7 +1720,7 @@ test("Ink clicking Back to bottom returns the transcript to the latest output", 
     assert.doesNotMatch(bottomFrame, /rows below/);
     assert.doesNotMatch(
       bottomFrame,
-      /\[<0;40;16[Mm]/,
+      /\[<0;40;15[Mm]/,
       "the Back to bottom click must not be inserted into the composer",
     );
   } finally {
