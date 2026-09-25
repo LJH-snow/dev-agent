@@ -80,6 +80,7 @@ export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":collapse", description: "Collapse the latest tool card" },
   { command: ":expand", description: "Expand the latest tool card" },
   { command: ":validate <changeSetId>", description: "Rerun trusted checks" },
+  { command: ":autofix [1-3]", description: "Repair the latest validation failure" },
   { command: ":cleanup ...", description: "Prune metadata-only evidence" },
   { command: ":quit", description: "Exit the session (also exit / quit)" },
 ];

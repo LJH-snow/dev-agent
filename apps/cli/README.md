@@ -549,8 +549,9 @@ Rich interactive commands accept either `/` or `:` prefixes:
 `/search <query>`/`:search <query>`, `/theme [name]`/`:theme [name]`,
 `/export [markdown|json]`/`:export [markdown|json]`, and `:retry` in Ink mode,
 `/sessions [query]`/`:sessions [query]`, `/resume <query>`/`:resume <query>`,
-`/cards`/`:cards`, `/collapse`/`:collapse`, `/expand`/`:expand`, and
-`/quit`/`:quit`;
+`/cards`/`:cards`, `/collapse`/`:collapse`, `/expand`/`:expand`,
+`/validate <changeSetId>`/`:validate <changeSetId>`,
+`/autofix [1-3]`/`:autofix [1-3]`, and `/quit`/`:quit`;
 `exit` and `quit` remain accepted aliases. Tab completes a command or selects a
 workspace path after `@`, Shift+Enter
 inserts a newline, Escape dismisses the palette or exits an idle session when the
@@ -631,6 +632,13 @@ The rich presentation is intentionally disabled for pipes, CI, `--json`,
 `--once`, `--mcp-server`, and other non-TTY paths, which keep the stable
 line-oriented or JSON contracts. Use `:validate <changeSetId>` for a guarded
 validation rerun, or
+`:autofix [1-3]` to repair the latest failed/blocked validation with a bounded
+reviewed agent loop. The default is two attempts; each repair is followed by a
+new automatic validation when the repair creates a change set, otherwise the
+original change set is rerun through the trusted guard. The loop never replays
+the original user prompt, never includes raw tool output or absolute paths in
+the repair prompt, and stops after the requested attempt budget.
+Use
 `:cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]`
 for explicit metadata-only evidence cleanup. Cleanup reports removed validations,
 removed change sets, protected applied guards, remaining counts, and the current

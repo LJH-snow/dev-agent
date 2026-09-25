@@ -246,6 +246,11 @@ import { benchmarkModel, type SpeedBenchmarkResult } from "./speed-benchmark.js"
 import { resolvePromptToolAccess } from "./prompt-tool-policy.js";
 import { parseBenchmarkCommand, parseSpeedModeCommand } from "./speed-mode-command.js";
 import {
+  parseAutoFixCommand,
+  runAutoFixLoop,
+  type AutoFixRepairRun,
+} from "./auto-fix-command.js";
+import {
   createAnthropicProvider,
   createGeminiProvider,
   createOllamaProvider,
@@ -3815,7 +3820,7 @@ async function interactive(
       // in callers, so the banner can be observed before a later listener
       // setup.
       console.log(
-        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
+        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, ':autofix [1-3]' to repair the latest validation failure, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
       );
       return;
     }
@@ -3850,6 +3855,125 @@ async function interactive(
     },
   ): Promise<T> =>
     scheduleInteractiveTask(ui.tasks, ui.taskStatusBridge, options.run);
+
+  const runAutoFixCommand = async (attempts: number): Promise<void> => {
+    let repairContext = current;
+    const autoFixAbort = new AbortController();
+    abort = autoFixAbort;
+    const printMessage = (message: string): void => {
+      const render = (): void => console.log(safeTerminalText(message));
+      if (ui.rich) streaming.withComposerHidden(render);
+      else render();
+    };
+    const recordExplicitValidation = (result: ValidationResult): void => {
+      validations.push(result);
+      if (jsonOutput) {
+        const printJson = async (): Promise<void> => {
+          const changeSets = (await repairContext.memory.changeSets?.()) ?? [];
+          const evidenceSummary = await repairContext.memory.evidenceSummary?.();
+          console.log(
+            JSON.stringify(
+              {
+                validation: result,
+                changeSets: [...changeSets],
+                ...(evidenceSummary === undefined ? {} : { evidenceSummary }),
+              },
+              null,
+              2,
+            ),
+          );
+        };
+        void printJson();
+        return;
+      }
+      const printValidation = (): void => {
+        printValidationResult(result, true, ui.width);
+      };
+      if (ui.rich) streaming.withComposerHidden(printValidation);
+      else printValidationResult(result, false, ui.width);
+    };
+
+    try {
+      const hasRerunValidation =
+        ui.createRerunValidation !== undefined || rerunValidation !== undefined;
+      const result = await runAutoFixLoop({
+        context: repairContext,
+        validations,
+        maxAttempts: attempts,
+        signal: autoFixAbort.signal,
+        loadPersistedValidations: async () =>
+          (await repairContext.memory.validations?.()) ?? [],
+        ...(hasRerunValidation
+          ? {
+              rerunValidation: async (changeSetId: string, signal?: AbortSignal) => {
+                const activeRerunValidation =
+                  ui.createRerunValidation?.(repairContext) ?? rerunValidation;
+                if (!activeRerunValidation) {
+                  throw new Error("trusted validation rerun is unavailable");
+                }
+                return activeRerunValidation(changeSetId, signal);
+              },
+            }
+          : {}),
+        onProgress: printMessage,
+        onValidation: recordExplicitValidation,
+        runRepair: async (repairPrompt): Promise<AutoFixRepairRun> => {
+          const timingContext = {
+            submittedAtMs: performance.now(),
+            queuedAtMs: performance.now(),
+          };
+          const scheduled = scheduleTask({
+            run: ({ signal }) =>
+              runPrompt(
+                loop,
+                repairContext,
+                streaming,
+                repairPrompt,
+                jsonOutput,
+                cost,
+                reviews,
+                validations,
+                signal,
+                {},
+                timingContext,
+              ),
+          });
+          const taskId = ui.tasks.list().at(-1)?.id;
+          activeTaskId = taskId;
+          try {
+            const next = await scheduled;
+            repairContext = next;
+            return next.state.status === "error"
+              ? {
+                  context: next,
+                  error: next.state.lastError ?? "agent repair run failed",
+                }
+              : { context: next };
+          } catch (error) {
+            const cancelled = interrupted || autoFixAbort.signal.aborted ||
+              (taskId !== undefined && ui.tasks.get(taskId)?.status === "cancelled");
+            return {
+              context: repairContext,
+              ...(cancelled
+                ? { cancelled: true }
+                : { error: error instanceof Error ? error.message : String(error) }),
+            };
+          } finally {
+            if (activeTaskId === taskId) activeTaskId = undefined;
+          }
+        },
+      });
+      current = result.context;
+      printMessage(result.message);
+    } catch (error) {
+      if (!interrupted) {
+        printMessage(`Auto-fix failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    } finally {
+      if (abort === autoFixAbort) abort = undefined;
+    }
+  };
+
   const runTeamExecution = async (
     prompt: string,
     attachedContext?: string,
@@ -4142,6 +4266,20 @@ async function interactive(
           streaming.withComposerHidden(printRetryNotice);
         } else {
           printRetryNotice();
+        }
+        continue;
+      }
+
+      const autoFixCommand = parseAutoFixCommand(command);
+      if (autoFixCommand.handled) {
+        const printAutoFixUsage = (): void => {
+          console.log(autoFixCommand.error ?? "Usage: :autofix [1-3]");
+        };
+        if (autoFixCommand.error !== undefined) {
+          if (ui.rich) streaming.withComposerHidden(printAutoFixUsage);
+          else printAutoFixUsage();
+        } else {
+          await runAutoFixCommand(autoFixCommand.attempts ?? 2);
         }
         continue;
       }
@@ -4455,7 +4593,7 @@ async function interactive(
           });
         } else {
           console.log(
-            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :cleanup ..., exit, quit"
+            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :cleanup ..., exit, quit"
           );
         }
         continue;
@@ -4799,6 +4937,8 @@ async function interactiveInk(
   let activeCollaboration: CollaborationExecutionHandle | undefined;
   let activeAbort: AbortController | undefined;
   let activeTaskId: string | undefined;
+  let autoFixRunning = false;
+  let autoFixCancelRequested = false;
   let closed = false;
   let pickerSessions: readonly StoredSession[] | undefined;
   let instance: ReturnType<typeof renderInk> | undefined;
@@ -4918,6 +5058,75 @@ async function interactiveInk(
       return;
     }
     await runInkPrompt(retry.prompt, retry.runOptions, retry.label);
+  };
+
+  const runAutoFixCommand = async (attempts: number): Promise<void> => {
+    let repairContext = current;
+    const autoFixAbort = new AbortController();
+    activeAbort = autoFixAbort;
+    autoFixRunning = true;
+    autoFixCancelRequested = false;
+    try {
+      const hasRerunValidation =
+        ui.createRerunValidation !== undefined || rerunValidation !== undefined;
+      const result = await runAutoFixLoop({
+        context: repairContext,
+        validations,
+        maxAttempts: attempts,
+        signal: autoFixAbort.signal,
+        loadPersistedValidations: async () =>
+          (await repairContext.memory.validations?.()) ?? [],
+        ...(hasRerunValidation
+          ? {
+              rerunValidation: async (changeSetId: string, signal?: AbortSignal) => {
+                const activeRerunValidation =
+                  ui.createRerunValidation?.(repairContext) ?? rerunValidation;
+                if (!activeRerunValidation) {
+                  throw new Error("trusted validation rerun is unavailable");
+                }
+                return activeRerunValidation(changeSetId, signal);
+              },
+            }
+          : {}),
+        onProgress: (message) => ink.store.addNotice(message),
+        onValidation: (validationResult) => {
+          validations.push(validationResult);
+          ink.store.addNotice(
+            `Validation ${validationResult.status}: ${validationResult.summary}`,
+          );
+        },
+        runRepair: async (repairPrompt): Promise<AutoFixRepairRun> => {
+          const next = await runInkPrompt(repairPrompt, {}, "Auto-fix");
+          if (next === undefined) {
+            return {
+              context: repairContext,
+              ...(autoFixCancelRequested
+                ? { cancelled: true }
+                : { error: "agent repair run failed" }),
+            };
+          }
+          repairContext = next;
+          return next.state.status === "error"
+            ? {
+                context: next,
+                error: next.state.lastError ?? "agent repair run failed",
+              }
+            : { context: next };
+        },
+      });
+      current = result.context;
+      updateInkSummary(current);
+      ink.store.addNotice(result.message);
+    } catch (error) {
+      if (!autoFixCancelRequested && !autoFixAbort.signal.aborted) {
+        ink.store.addNotice(
+          `Auto-fix failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    } finally {
+      autoFixRunning = false;
+      if (activeAbort === autoFixAbort) activeAbort = undefined;
+    }
   };
 
   const runTeamExecution = async (
@@ -5050,6 +5259,7 @@ async function interactiveInk(
   };
 
   const cancel = (): void => {
+    if (autoFixRunning) autoFixCancelRequested = true;
     if (activeAbort || activeTaskId !== undefined || activeCollaboration !== undefined) {
       activeCollaboration?.cancel("user interrupted");
       activeAbort?.abort();
@@ -5232,6 +5442,15 @@ async function interactiveInk(
     }
     if (command === ":retry") {
       await retryLast();
+      return true;
+    }
+    const autoFixCommand = parseAutoFixCommand(command);
+    if (autoFixCommand.handled) {
+      if (autoFixCommand.error !== undefined) {
+        ink.store.addNotice(autoFixCommand.error);
+      } else {
+        await runAutoFixCommand(autoFixCommand.attempts ?? 2);
+      }
       return true;
     }
     const skillMessage = skillCommandMessage(command, ui);
