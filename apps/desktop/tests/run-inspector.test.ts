@@ -33,6 +33,17 @@ test("GET / exposes the live Run Inspector timeline contract", async () => {
       "run-inspector-duration",
       "run-timeline",
       "run-timeline-empty",
+      "runtime-trace-summary-runs",
+      "runtime-trace-summary-visible",
+      "runtime-trace-summary-failed",
+      "runtime-trace-summary-average",
+      "runtime-trace-failure-summary",
+      "runtime-trace-status-filter",
+      "runtime-trace-stage-filter",
+      "runtime-trace-tool-filter",
+      "runtime-trace-start",
+      "runtime-trace-end",
+      "runtime-trace-clear-filters",
     ]) {
       assert.match(html, new RegExp(`id="${id}"`));
     }
@@ -54,6 +65,14 @@ test("GET / exposes the live Run Inspector timeline contract", async () => {
     assert.match(html, /parsed\.status === "error"/);
     assert.match(html, /Approval required/);
     assert.match(html, /Metadata-safe/);
+    assert.match(html, /function renderFilteredTraceRuns\(\)/);
+    assert.match(html, /function traceRunMatches\(run, filters\)/);
+    assert.match(html, /function renderTraceSummary\(visibleRuns, allRuns = traceRuns\)/);
+    assert.match(html, /trace.failureSummary/);
+    assert.match(html, /trace.openTerminal/);
+    assert.match(html, /trace.openChanges/);
+    assert.match(html, /task-terminal-panel/);
+    assert.match(html, /task-workspace-panel/);
   } finally {
     await close(server);
   }

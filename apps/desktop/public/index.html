@@ -1834,6 +1834,51 @@
       },
     };
 
+    Object.assign(translations.en, {
+      'trace.summary': 'Run summary',
+      'trace.totalRuns': 'Runs',
+      'trace.visibleRuns': 'Visible',
+      'trace.failedRuns': 'Failed',
+      'trace.averageDuration': 'Average',
+      'trace.failureSummaryLabel': 'Failure categories',
+      'trace.failureSummary': 'failed {failed} · interrupted {interrupted} · tool failures {tools} · denied {denied}',
+      'trace.showing': 'Showing {visible} of {total} runs',
+      'trace.noMatches': 'No runs match the current filters.',
+      'trace.filters': 'Run filters',
+      'trace.filter.status': 'Status',
+      'trace.filter.stage': 'Stage',
+      'trace.filter.tool': 'Tool',
+      'trace.filter.from': 'From',
+      'trace.filter.to': 'To',
+      'trace.filter.clear': 'Clear filters',
+      'trace.filter.all': 'All',
+      'trace.filter.tools': 'Tools',
+      'trace.openTerminal': 'Open terminal',
+      'trace.openChanges': 'Open Changes Center',
+    });
+    Object.assign(translations.zh, {
+      'trace.summary': '运行汇总',
+      'trace.totalRuns': '运行数',
+      'trace.visibleRuns': '可见',
+      'trace.failedRuns': '失败',
+      'trace.averageDuration': '平均耗时',
+      'trace.failureSummaryLabel': '失败分类',
+      'trace.failureSummary': '失败 {failed} · 中断 {interrupted} · 工具失败 {tools} · 拒绝 {denied}',
+      'trace.showing': '显示 {visible}/{total} 个运行',
+      'trace.noMatches': '没有运行匹配当前筛选条件。',
+      'trace.filters': '运行筛选',
+      'trace.filter.status': '状态',
+      'trace.filter.stage': '阶段',
+      'trace.filter.tool': '工具',
+      'trace.filter.from': '起始',
+      'trace.filter.to': '结束',
+      'trace.filter.clear': '清除筛选',
+      'trace.filter.all': '全部',
+      'trace.filter.tools': '工具',
+      'trace.openTerminal': '打开终端',
+      'trace.openChanges': '打开 Changes Center',
+    });
+
     const LANGUAGE_STORAGE_KEY = "dev-agent-language";
     const SUPPORTED_LANGUAGES = ["en", "zh"];
     let languagePreference = readLanguagePreference();
@@ -3610,12 +3655,22 @@
       traceRequestId += 1;
       traceController?.abort();
       traceController = null;
+      traceRuns = [];
+      traceDroppedRuns = 0;
+      traceLifecycle = [];
       runtimeTracePanel.hidden = true;
       runtimeTracePanel.setAttribute("aria-busy", "false");
       traceActionButton.setAttribute("aria-expanded", "false");
       traceActionButton.disabled = false;
       runtimeTraceRefreshButton.disabled = false;
       runtimeTraceList.innerHTML = "";
+      if (runtimeTraceStatusFilter) runtimeTraceStatusFilter.value = "all";
+      if (runtimeTraceStageFilter) runtimeTraceStageFilter.value = "all";
+      if (runtimeTraceToolFilter) runtimeTraceToolFilter.value = "all";
+      if (runtimeTraceStartFilter) runtimeTraceStartFilter.value = "";
+      if (runtimeTraceEndFilter) runtimeTraceEndFilter.value = "";
+      refreshTraceToolOptions([]);
+      renderTraceSummary([], []);
       setTraceStatus("trace.choose");
     }
 
@@ -5242,6 +5297,16 @@
     traceActionButton.addEventListener("click", () => {
       if (currentSessionId === null) return;
       loadTraceSnapshot(currentSessionId);
+    });
+
+    for (const filter of [runtimeTraceStatusFilter, runtimeTraceStageFilter, runtimeTraceToolFilter, runtimeTraceStartFilter, runtimeTraceEndFilter]) filter?.addEventListener("change", renderFilteredTraceRuns);
+    runtimeTraceClearFiltersButton?.addEventListener("click", () => {
+      if (runtimeTraceStatusFilter) runtimeTraceStatusFilter.value = "all";
+      if (runtimeTraceStageFilter) runtimeTraceStageFilter.value = "all";
+      if (runtimeTraceToolFilter) runtimeTraceToolFilter.value = "all";
+      if (runtimeTraceStartFilter) runtimeTraceStartFilter.value = "";
+      if (runtimeTraceEndFilter) runtimeTraceEndFilter.value = "";
+      renderFilteredTraceRuns();
     });
 
     runtimeTraceRefreshButton.addEventListener("click", () => {
