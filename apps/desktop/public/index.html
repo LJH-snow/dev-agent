@@ -2111,6 +2111,25 @@
       }
     }
 
+    const COMPOSER_MODE_STORAGE_KEY = "dev-agent-composer-mode";
+
+    function readComposerModePreference() {
+      try {
+        const stored = window.localStorage.getItem(COMPOSER_MODE_STORAGE_KEY);
+        return stored === "plan" ? "plan" : "normal";
+      } catch {
+        return "normal";
+      }
+    }
+
+    function persistComposerModePreference(mode) {
+      try {
+        window.localStorage.setItem(COMPOSER_MODE_STORAGE_KEY, mode === "plan" ? "plan" : "normal");
+      } catch {
+        // A private browsing context may reject local storage; the live setting still works.
+      }
+    }
+
     const THEME_STORAGE_KEY = "dev-agent-theme";
     let themePreference = readThemePreference();
     const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -5385,6 +5404,10 @@
       applyLanguage("zh");
     });
 
+    composerModeSelect.addEventListener("change", () => {
+      persistComposerModePreference(composerModeSelect.value);
+    });
+
     themeToggleButton.addEventListener("click", () => {
       const nextTheme = currentTheme() === "dark" ? "light" : "dark";
       persistThemePreference(nextTheme);
@@ -6235,10 +6258,36 @@
       await taskTerminalUI.refresh();
       if (currentSessionId !== null) void loadWorkbenchCapabilities(currentSessionId);
     })();
+    composerModeSelect.value = readComposerModePreference();
     applyPanelPreferences();
     syncInspectorToggle();
     applyLanguage(languagePreference);
+    window.devAgentDesktop = {
+      getLanguagePreference: () => languagePreference,
+      setLanguagePreference: (language) => {
+        if (!SUPPORTED_LANGUAGES.includes(language)) return;
+        persistLanguagePreference(language);
+        applyLanguage(language);
+      },
+      getThemePreference: () => themePreference,
+      setThemePreference: (preference) => {
+        if (!["dark", "light", "system"].includes(preference)) return;
+        persistThemePreference(preference);
+        applyThemePreference(preference);
+      },
+      getComposerMode: () => composerModeSelect.value,
+      setComposerMode: (mode) => {
+        const nextMode = mode === "plan" ? "plan" : "normal";
+        composerModeSelect.value = nextMode;
+        persistComposerModePreference(nextMode);
+      },
+      getInspectorOpen: () => inspectorShell.classList.contains("is-open"),
+      setInspectorOpen,
+      refreshRuntimeStatus: () => desktopStatusRefreshButton.click(),
+      getCurrentSessionId: () => currentSessionId,
+    };
   </script>
   <script type="module" src="/public/spotlight-cards.js"></script>
+  <script type="module" src="/public/settings-ui.js"></script>
 </body>
 </html>

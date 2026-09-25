@@ -1,0 +1,45 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+const styles = await readFile(new URL("../public/styles.css", import.meta.url), "utf8");
+const settingsUi = await readFile(new URL("../public/settings-ui.js", import.meta.url), "utf8");
+
+test("Desktop exposes a bilingual full-screen settings workbench contract", () => {
+  assert.match(html, /src="\/public\/settings-ui\.js"/);
+  assert.match(html, /window\.devAgentDesktop/);
+  assert.match(html, /COMPOSER_MODE_STORAGE_KEY/);
+  assert.match(settingsUi, /id = "settings-trigger"/);
+  assert.match(settingsUi, /id = "settings-view"/);
+  assert.match(settingsUi, /id=\"settings-search\"/);
+  assert.match(settingsUi, /data-settings-section/);
+  assert.match(settingsUi, /data-settings-theme/);
+  assert.match(settingsUi, /data-settings-language/);
+  assert.match(settingsUi, /settings-composer-mode/);
+  assert.match(settingsUi, /settings-runtime-provider/);
+  assert.match(settingsUi, /settings-permission-approval/);
+  assert.match(settingsUi, /settings-capability-github/);
+  assert.match(settingsUi, /Escape/);
+  assert.match(settingsUi, /Preferences/);
+  assert.match(settingsUi, /偏好设置/);
+  assert.match(styles, /\.settings-view\s*\{/);
+  assert.match(styles, /\.settings-layout\s*\{/);
+  assert.match(styles, /\.settings-nav-item\s*\{/);
+  assert.match(styles, /\.settings-value-grid\s*\{/);
+  assert.match(styles, /@media \(max-width: 680px\)/);
+});
+
+test("settings controls use the existing desktop state seams instead of inventing provider APIs", () => {
+  assert.match(settingsUi, /getThemePreference/);
+  assert.match(settingsUi, /setThemePreference/);
+  assert.match(settingsUi, /setLanguagePreference/);
+  assert.match(settingsUi, /setComposerMode/);
+  assert.match(settingsUi, /setInspectorOpen/);
+  assert.match(settingsUi, /desktop-status-provider/);
+  assert.match(settingsUi, /desktop-status-model/);
+  assert.match(settingsUi, /desktop-status-approval/);
+  assert.match(settingsUi, /desktop-status-validation/);
+  assert.match(settingsUi, /capabilities-repository/);
+  assert.match(settingsUi, /metadataOnly/);
+});
