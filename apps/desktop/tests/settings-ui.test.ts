@@ -12,14 +12,25 @@ test("Desktop exposes a bilingual full-screen settings workbench contract", () =
   assert.match(html, /COMPOSER_MODE_STORAGE_KEY/);
   assert.match(settingsUi, /id = "settings-trigger"/);
   assert.match(settingsUi, /id = "settings-view"/);
+  assert.match(settingsUi, /id="settings-back"/);
+  assert.match(settingsUi, /back: "返回应用"/);
   assert.match(settingsUi, /id=\"settings-search\"/);
   assert.match(settingsUi, /data-settings-section/);
+  assert.match(settingsUi, /workspaceSettings/);
   assert.match(settingsUi, /data-settings-theme/);
   assert.match(settingsUi, /data-settings-language/);
+  assert.match(settingsUi, /data-settings-density/);
+  assert.match(settingsUi, /data-settings-terminal-position/);
   assert.match(settingsUi, /settings-composer-mode/);
+  assert.match(settingsUi, /settings-session-rail/);
+  assert.match(settingsUi, /settings-auto-follow/);
   assert.match(settingsUi, /settings-runtime-provider/);
+  assert.match(settingsUi, /settings-open-inspector/);
   assert.match(settingsUi, /settings-permission-approval/);
   assert.match(settingsUi, /settings-capability-github/);
+  assert.match(settingsUi, /settings-export-preferences/);
+  assert.match(settingsUi, /settings-import-preferences/);
+  assert.match(settingsUi, /settings-reset-preferences/);
   assert.match(settingsUi, /Escape/);
   assert.match(settingsUi, /Preferences/);
   assert.match(settingsUi, /偏好设置/);
@@ -27,6 +38,9 @@ test("Desktop exposes a bilingual full-screen settings workbench contract", () =
   assert.match(styles, /\.settings-layout\s*\{/);
   assert.match(styles, /\.settings-nav-item\s*\{/);
   assert.match(styles, /\.settings-value-grid\s*\{/);
+  assert.match(styles, /\.settings-action-grid/);
+  assert.match(styles, /\.settings-shortcuts/);
+  assert.match(styles, /data-density/);
   assert.match(styles, /@media \(max-width: 680px\)/);
 });
 
@@ -36,6 +50,12 @@ test("settings controls use the existing desktop state seams instead of inventin
   assert.match(settingsUi, /setLanguagePreference/);
   assert.match(settingsUi, /setComposerMode/);
   assert.match(settingsUi, /setInspectorOpen/);
+  assert.match(settingsUi, /setSessionRailOpen/);
+  assert.match(settingsUi, /setDensityPreference/);
+  assert.match(settingsUi, /setAutoFollowResponses/);
+  assert.match(settingsUi, /setTerminalPosition/);
+  assert.match(settingsUi, /refreshCapabilities/);
+  assert.match(settingsUi, /refreshMcpHealth/);
   assert.match(settingsUi, /desktop-status-provider/);
   assert.match(settingsUi, /desktop-status-model/);
   assert.match(settingsUi, /desktop-status-approval/);

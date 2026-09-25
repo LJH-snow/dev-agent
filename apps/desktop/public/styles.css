@@ -3532,6 +3532,12 @@ html[data-theme="light"] {
   border-top: 1px solid var(--border);
 }
 
+.conversation-workspace > .task-terminal-panel[data-position="main"] {
+  flex: 0 0 auto;
+  margin: 0 24px 16px;
+  padding: 13px 0 0;
+}
+
 .task-terminal-header,
 .task-preview-header {
   display: flex;
@@ -3959,7 +3965,7 @@ body.settings-open {
 .settings-topbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 18px;
   min-height: 64px;
   padding: 0 28px;
@@ -4044,6 +4050,12 @@ body.settings-open {
   padding: 34px 18px 28px;
   border-right: 1px solid var(--border);
   background: var(--bg-raised);
+}
+
+.settings-sidebar .settings-back-button {
+  width: calc(100% - 8px);
+  justify-content: flex-start;
+  margin: 0 4px 26px;
 }
 
 .settings-sidebar-heading {
@@ -4405,6 +4417,33 @@ body.settings-open {
   min-width: 0;
 }
 
+.settings-action-group,
+.settings-action-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.settings-danger-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 7px 10px;
+  border-color: color-mix(in srgb, var(--red) 45%, var(--border));
+  background: color-mix(in srgb, var(--red) 8%, var(--surface));
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.settings-danger-button:hover,
+.settings-danger-button:focus-visible {
+  border-color: var(--red);
+  background: color-mix(in srgb, var(--red) 14%, var(--surface-strong));
+}
+
 .settings-readonly-value {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -4552,6 +4591,48 @@ body.settings-open {
   font-size: 11px;
 }
 
+.settings-shortcuts {
+  display: grid;
+  gap: 8px;
+}
+
+.settings-shortcuts > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  color: var(--muted-strong);
+  font-size: 11px;
+}
+
+.settings-shortcuts > div > span {
+  min-width: 0;
+  flex: 1;
+  text-align: right;
+}
+
+html[data-density="compact"] .session-rail {
+  padding-block: 14px;
+}
+
+html[data-density="compact"] .conversation-context {
+  padding-block: 12px;
+}
+
+html[data-density="compact"] #messages {
+  gap: 4px;
+  padding-block: 14px 18px;
+}
+
+html[data-density="compact"] .composer {
+  padding-block: 8px;
+}
+
+html[data-density="compact"] .settings-card {
+  padding-block: 14px;
+}
+
 .settings-no-results {
   display: grid;
   justify-items: center;
@@ -4605,6 +4686,11 @@ body.settings-open {
   .settings-topbar {
     min-height: 58px;
     padding-inline: 14px;
+  }
+
+  .settings-sidebar .settings-back-button {
+    width: 100%;
+    margin: 0 0 14px;
   }
 
   .settings-layout {

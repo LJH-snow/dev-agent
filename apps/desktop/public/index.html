@@ -2253,6 +2253,82 @@
       }
     }
 
+    const DENSITY_STORAGE_KEY = "dev-agent-density";
+    const AUTO_FOLLOW_STORAGE_KEY = "dev-agent-auto-follow-responses";
+    const TERMINAL_POSITION_STORAGE_KEY = "dev-agent-terminal-position";
+
+    function readBooleanPreference(key, fallback) {
+      try {
+        const stored = window.localStorage.getItem(key);
+        return stored === null ? fallback : stored === "true";
+      } catch {
+        return fallback;
+      }
+    }
+
+    function readDensityPreference() {
+      try {
+        return window.localStorage.getItem(DENSITY_STORAGE_KEY) === "compact" ? "compact" : "comfortable";
+      } catch {
+        return "comfortable";
+      }
+    }
+
+    function readTerminalPositionPreference() {
+      try {
+        return window.localStorage.getItem(TERMINAL_POSITION_STORAGE_KEY) === "main" ? "main" : "inspector";
+      } catch {
+        return "inspector";
+      }
+    }
+
+    let densityPreference = readDensityPreference();
+    let autoFollowResponses = readBooleanPreference(AUTO_FOLLOW_STORAGE_KEY, false);
+    let terminalPosition = readTerminalPositionPreference();
+
+    function applyDensityPreference(preference) {
+      densityPreference = preference === "compact" ? "compact" : "comfortable";
+      document.documentElement.dataset.density = densityPreference;
+    }
+
+    function persistDensityPreference(preference) {
+      try {
+        window.localStorage.setItem(DENSITY_STORAGE_KEY, preference === "compact" ? "compact" : "comfortable");
+      } catch {
+        // A private browsing context may reject local storage; the live setting still works.
+      }
+    }
+
+    function applyTerminalPosition(position) {
+      terminalPosition = position === "main" ? "main" : "inspector";
+      const panel = document.getElementById("task-terminal-panel");
+      const target = terminalPosition === "main"
+        ? document.querySelector(".conversation-workspace")
+        : inspectorShell;
+      if (panel && target && panel.parentElement !== target) target.appendChild(panel);
+      panel?.setAttribute("data-position", terminalPosition);
+    }
+
+    function persistTerminalPosition(position) {
+      try {
+        window.localStorage.setItem(TERMINAL_POSITION_STORAGE_KEY, position === "main" ? "main" : "inspector");
+      } catch {
+        // A private browsing context may reject local storage; the live setting still works.
+      }
+    }
+
+    function setAutoFollowResponses(enabled, { persist = true } = {}) {
+      autoFollowResponses = Boolean(enabled);
+      if (persist) {
+        try {
+          window.localStorage.setItem(AUTO_FOLLOW_STORAGE_KEY, String(autoFollowResponses));
+        } catch {
+          // A private browsing context may reject local storage; the live setting still works.
+        }
+      }
+      if (autoFollowResponses && typeof messages !== "undefined") scrollMessagesToBottom(true);
+    }
+
     const THEME_STORAGE_KEY = "dev-agent-theme";
     let themePreference = readThemePreference();
     const systemThemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -5153,7 +5229,7 @@
     }
 
     function scrollMessagesToBottom(wasAtBottom = isMessagesAtBottom()) {
-      if (wasAtBottom) {
+      if (wasAtBottom || autoFollowResponses) {
         // Streaming must follow immediately even though the stylesheet allows
         // smooth scrolling for ordinary user navigation.
         setMessagesScrollTop();
@@ -6606,7 +6682,25 @@
       },
       getInspectorOpen: () => inspectorShell.classList.contains("is-open"),
       setInspectorOpen,
+      getSessionRailOpen: () => !sessionRail.classList.contains("is-collapsed"),
+      setSessionRailOpen: (open) => setSessionRailCollapsed(!Boolean(open)),
+      getDensityPreference: () => densityPreference,
+      setDensityPreference: (preference) => {
+        const nextDensity = preference === "compact" ? "compact" : "comfortable";
+        applyDensityPreference(nextDensity);
+        persistDensityPreference(nextDensity);
+      },
+      getAutoFollowResponses: () => autoFollowResponses,
+      setAutoFollowResponses,
+      getTerminalPosition: () => terminalPosition,
+      setTerminalPosition: (position) => {
+        const nextPosition = position === "main" ? "main" : "inspector";
+        applyTerminalPosition(nextPosition);
+        persistTerminalPosition(nextPosition);
+      },
       refreshRuntimeStatus: () => desktopStatusRefreshButton.click(),
+      refreshCapabilities: () => workbenchCapabilitiesRefreshButton.click(),
+      refreshMcpHealth: () => mcpHealthRefreshButton.click(),
       getCurrentSessionId: () => currentSessionId,
     };
   </script>

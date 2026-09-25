@@ -4,13 +4,17 @@ const SETTINGS_STORAGE_KEYS = {
   language: "dev-agent-language",
   composerMode: "dev-agent-composer-mode",
   inspectorCollapsed: "dev-agent.inspector-collapsed",
+  sessionRailCollapsed: "dev-agent.session-rail-collapsed",
+  density: "dev-agent-density",
+  autoFollow: "dev-agent-auto-follow-responses",
+  terminalPosition: "dev-agent-terminal-position",
 };
 
 const SETTINGS_TRANSLATIONS = {
   en: {
     trigger: "Settings",
     triggerTitle: "Open settings",
-    back: "Back to workspace",
+    back: "Back to app",
     eyebrow: "Preferences",
     title: "Settings",
     subtitle: "Tune the local workbench without leaving your workspace.",
@@ -19,6 +23,8 @@ const SETTINGS_TRANSLATIONS = {
     noResults: "No settings match this search.",
     general: "General",
     generalDescription: "Choose how new conversations start and keep track of the active session.",
+    workspaceSettings: "Workspace",
+    workspaceSettingsDescription: "Shape the session rail, response follow behavior, and information density.",
     appearance: "Appearance",
     appearanceDescription: "Make the workbench feel right for your screen and language.",
     runtime: "Model & runtime",
@@ -35,6 +41,18 @@ const SETTINGS_TRANSLATIONS = {
     plan: "Plan",
     activeSession: "Active session",
     activeSessionDescription: "The conversation currently attached to this workbench.",
+    sessionRail: "Keep session rail open",
+    sessionRailDescription: "Keep the session list visible while you work on a wide screen.",
+    autoFollow: "Follow new responses",
+    autoFollowDescription: "Keep the latest assistant output in view even after you scroll upward.",
+    density: "Workspace density",
+    densityDescription: "Choose how much information fits into the workbench at once.",
+    comfortable: "Comfortable",
+    compact: "Compact",
+    terminalPosition: "Terminal position",
+    terminalPositionDescription: "Choose where the task terminal opens in the workbench.",
+    inspectorPosition: "Runtime Inspector",
+    mainPosition: "Conversation area",
     inspector: "Keep Runtime Inspector open",
     inspectorDescription: "Show the inspector automatically when the workspace opens on a wide screen.",
     theme: "Theme",
@@ -48,6 +66,9 @@ const SETTINGS_TRANSLATIONS = {
     chinese: "中文",
     metadataOnly: "Metadata only. Keys, secrets, raw errors, and full filesystem paths stay out of this view.",
     refreshRuntime: "Refresh runtime status",
+    openInspector: "Open Runtime Inspector",
+    refreshCapabilities: "Refresh capabilities",
+    refreshIntegrations: "Refresh integrations",
     provider: "Provider",
     model: "Model",
     runtimeValue: "Runtime",
@@ -73,6 +94,24 @@ const SETTINGS_TRANSLATIONS = {
     scopeDescription: "This first settings surface intentionally focuses on local UI preferences and transparent runtime metadata. Account sync, voice, browser automation, and plugin marketplace flows are not enabled here.",
     keyboard: "Keyboard",
     keyboardDescription: "Press Escape to return to the workspace.",
+    keyboardShortcuts: "Keyboard shortcuts",
+    keyboardShortcutsDescription: "Shortcuts already supported by the workbench.",
+    shortcutSettings: "Open settings",
+    shortcutNewSession: "Create a new session",
+    shortcutSend: "Send prompt / new line",
+    shortcutRail: "Toggle session rail",
+    shortcutInspector: "Toggle Runtime Inspector",
+    backup: "Preferences backup",
+    backupDescription: "Export or import safe local UI preferences. Runtime secrets and session data are never included.",
+    exportPreferences: "Export preferences",
+    importPreferences: "Import preferences",
+    resetPreferences: "Reset local preferences",
+    resetDescription: "Restore the desktop shell's local UI preferences to their defaults.",
+    resetConfirm: "Reset local UI preferences and reload the Desktop workbench?",
+    importSuccess: "Preferences imported. Reloading the workbench…",
+    importFailed: "That file is not a valid dev-agent preference export.",
+    importTooLarge: "The preference file is too large.",
+    copied: "Copied",
     version: "Desktop shell",
     local: "Local workbench",
     stateUnavailable: "Unavailable",
@@ -83,7 +122,7 @@ const SETTINGS_TRANSLATIONS = {
   zh: {
     trigger: "设置",
     triggerTitle: "打开设置",
-    back: "返回工作区",
+    back: "返回应用",
     eyebrow: "偏好设置",
     title: "设置",
     subtitle: "无需离开当前工作区，即可调整本地桌面端体验。",
@@ -92,6 +131,8 @@ const SETTINGS_TRANSLATIONS = {
     noResults: "没有匹配此搜索的设置。",
     general: "常规",
     generalDescription: "选择新对话的默认方式，并查看当前会话。",
+    workspaceSettings: "工作区",
+    workspaceSettingsDescription: "调整会话栏、回答跟随方式和工作台信息密度。",
     appearance: "外观",
     appearanceDescription: "根据屏幕和语言偏好调整工作台。",
     runtime: "模型与运行时",
@@ -108,6 +149,18 @@ const SETTINGS_TRANSLATIONS = {
     plan: "计划",
     activeSession: "当前会话",
     activeSessionDescription: "当前工作台正在使用的对话会话。",
+    sessionRail: "保持会话栏打开",
+    sessionRailDescription: "在宽屏下保持左侧会话列表可见。",
+    autoFollow: "跟随新回答",
+    autoFollowDescription: "即使向上滚动，也保持最新的模型输出在视野内。",
+    density: "工作区密度",
+    densityDescription: "选择一次屏幕中显示的信息量。",
+    comfortable: "舒适",
+    compact: "紧凑",
+    terminalPosition: "终端位置",
+    terminalPositionDescription: "选择任务终端在工作台中的打开位置。",
+    inspectorPosition: "运行时检查器",
+    mainPosition: "对话区域",
     inspector: "保持打开运行时检查器",
     inspectorDescription: "在宽屏工作区打开时自动显示右侧检查器。",
     theme: "主题",
@@ -121,6 +174,9 @@ const SETTINGS_TRANSLATIONS = {
     chinese: "中文",
     metadataOnly: "仅显示元数据。密钥、机密、原始错误和完整文件系统路径不会出现在这里。",
     refreshRuntime: "刷新运行时状态",
+    openInspector: "打开运行时检查器",
+    refreshCapabilities: "刷新能力信息",
+    refreshIntegrations: "刷新集成信息",
     provider: "提供方",
     model: "模型",
     runtimeValue: "运行时",
@@ -146,6 +202,24 @@ const SETTINGS_TRANSLATIONS = {
     scopeDescription: "第一版设置页聚焦本地 UI 偏好和透明的运行时元数据。账号同步、语音、浏览器自动化和插件市场流程暂未启用。",
     keyboard: "快捷键",
     keyboardDescription: "按 Escape 返回工作区。",
+    keyboardShortcuts: "键盘快捷键",
+    keyboardShortcutsDescription: "当前工作台已支持的快捷键。",
+    shortcutSettings: "打开设置",
+    shortcutNewSession: "创建新会话",
+    shortcutSend: "发送提示词 / 换行",
+    shortcutRail: "切换会话栏",
+    shortcutInspector: "切换运行时检查器",
+    backup: "偏好设置备份",
+    backupDescription: "导出或导入安全的本地 UI 偏好。运行时密钥和会话数据不会包含在文件中。",
+    exportPreferences: "导出偏好设置",
+    importPreferences: "导入偏好设置",
+    resetPreferences: "重置本地偏好",
+    resetDescription: "将桌面端本地 UI 偏好恢复为默认值。",
+    resetConfirm: "要重置本地 UI 偏好并重新加载 Desktop 工作台吗？",
+    importSuccess: "偏好设置已导入，正在重新加载工作台…",
+    importFailed: "此文件不是有效的 dev-agent 偏好设置导出文件。",
+    importTooLarge: "偏好设置文件过大。",
+    copied: "已复制",
     version: "桌面端壳层",
     local: "本地工作台",
     stateUnavailable: "不可用",
@@ -157,6 +231,7 @@ const SETTINGS_TRANSLATIONS = {
 
 const SECTION_DEFINITIONS = [
   { id: "general", translation: "general", icon: "⌘" },
+  { id: "workspace", translation: "workspaceSettings", icon: "▦" },
   { id: "appearance", translation: "appearance", icon: "✦" },
   { id: "runtime", translation: "runtime", icon: "◈" },
   { id: "permissions", translation: "permissions", icon: "◇" },
@@ -225,6 +300,30 @@ function currentInspectorOpen() {
   const bridge = mainBridge();
   if (typeof bridge.getInspectorOpen === "function") return Boolean(bridge.getInspectorOpen());
   return document.getElementById("runtime-inspector")?.classList.contains("is-open") ?? false;
+}
+
+function currentSessionRailOpen() {
+  const bridge = mainBridge();
+  if (typeof bridge.getSessionRailOpen === "function") return Boolean(bridge.getSessionRailOpen());
+  return readStorage(SETTINGS_STORAGE_KEYS.sessionRailCollapsed, "false") !== "true";
+}
+
+function currentDensityPreference() {
+  const bridge = mainBridge();
+  if (typeof bridge.getDensityPreference === "function") return bridge.getDensityPreference() === "compact" ? "compact" : "comfortable";
+  return readStorage(SETTINGS_STORAGE_KEYS.density, "comfortable") === "compact" ? "compact" : "comfortable";
+}
+
+function currentAutoFollowResponses() {
+  const bridge = mainBridge();
+  if (typeof bridge.getAutoFollowResponses === "function") return Boolean(bridge.getAutoFollowResponses());
+  return readStorage(SETTINGS_STORAGE_KEYS.autoFollow, "false") === "true";
+}
+
+function currentTerminalPosition() {
+  const bridge = mainBridge();
+  if (typeof bridge.getTerminalPosition === "function") return bridge.getTerminalPosition() === "main" ? "main" : "inspector";
+  return readStorage(SETTINGS_STORAGE_KEYS.terminalPosition, "inspector") === "main" ? "main" : "inspector";
 }
 
 function currentSessionId() {
@@ -296,6 +395,10 @@ function renderSettingsView() {
   const languagePreference = currentLanguagePreference();
   const mode = currentComposerMode();
   const inspectorOpen = currentInspectorOpen();
+  const sessionRailOpen = currentSessionRailOpen();
+  const density = currentDensityPreference();
+  const autoFollow = currentAutoFollowResponses();
+  const terminalPosition = currentTerminalPosition();
 
   const navigation = SECTION_DEFINITIONS.map((section) => `<button type="button" class="settings-nav-item" data-settings-section="${escapeHtml(section.id)}" aria-current="${String(section.id === activeSection)}">
     <span class="settings-nav-icon" aria-hidden="true">${escapeHtml(section.icon)}</span>
@@ -321,7 +424,40 @@ function renderSettingsView() {
     ),
   ].join(""));
 
-  const appearance = sectionShell(SECTION_DEFINITIONS[1], [
+  const workspace = sectionShell(SECTION_DEFINITIONS[1], [
+    settingsCard(
+      translate("sessionRail"),
+      translate("sessionRailDescription"),
+      `<label class="settings-toggle-row" for="settings-session-rail" aria-label="${escapeHtml(translate("sessionRail"))}"><span class="settings-toggle-copy"><span id="settings-session-rail-state">${escapeHtml(sessionRailOpen ? translate("stateOpen") : translate("stateClosed"))}</span></span><span class="settings-toggle"><input id="settings-session-rail" type="checkbox"${sessionRailOpen ? " checked" : ""} /><span class="settings-toggle-track" aria-hidden="true"><span></span></span></span></label>`,
+      `${translate("workspaceSettings")} ${translate("sessionRail")}`
+    ),
+    settingsCard(
+      translate("autoFollow"),
+      translate("autoFollowDescription"),
+      `<label class="settings-toggle-row" for="settings-auto-follow" aria-label="${escapeHtml(translate("autoFollow"))}"><span class="settings-toggle-copy"><span id="settings-auto-follow-state">${escapeHtml(autoFollow ? translate("stateOpen") : translate("stateClosed"))}</span></span><span class="settings-toggle"><input id="settings-auto-follow" type="checkbox"${autoFollow ? " checked" : ""} /><span class="settings-toggle-track" aria-hidden="true"><span></span></span></span></label>`,
+      `${translate("workspaceSettings")} ${translate("autoFollow")}`
+    ),
+    settingsCard(
+      translate("density"),
+      translate("densityDescription"),
+      `<div class="settings-choice-group" role="group" aria-label="${escapeHtml(translate("density"))}">
+        <button type="button" class="settings-choice" data-settings-density="comfortable" aria-pressed="${String(density === "comfortable")}"><span aria-hidden="true">◫</span><span>${escapeHtml(translate("comfortable"))}</span></button>
+        <button type="button" class="settings-choice" data-settings-density="compact" aria-pressed="${String(density === "compact")}"><span aria-hidden="true">▤</span><span>${escapeHtml(translate("compact"))}</span></button>
+       </div>`,
+      `${translate("density")} ${translate("comfortable")} ${translate("compact")}`
+    ),
+    settingsCard(
+      translate("terminalPosition"),
+      translate("terminalPositionDescription"),
+      `<div class="settings-choice-group" role="group" aria-label="${escapeHtml(translate("terminalPosition"))}">
+        <button type="button" class="settings-choice" data-settings-terminal-position="inspector" aria-pressed="${String(terminalPosition === "inspector")}"><span aria-hidden="true">◈</span><span>${escapeHtml(translate("inspectorPosition"))}</span></button>
+        <button type="button" class="settings-choice" data-settings-terminal-position="main" aria-pressed="${String(terminalPosition === "main")}"><span aria-hidden="true">▱</span><span>${escapeHtml(translate("mainPosition"))}</span></button>
+       </div>`,
+      `${translate("terminalPosition")} ${translate("inspectorPosition")} ${translate("mainPosition")}`
+    ),
+  ].join(""));
+
+  const appearance = sectionShell(SECTION_DEFINITIONS[2], [
     settingsCard(
       translate("theme"),
       translate("themeDescription"),
@@ -351,7 +487,7 @@ function renderSettingsView() {
     ),
   ].join(""));
 
-  const runtime = sectionShell(SECTION_DEFINITIONS[2], [
+  const runtime = sectionShell(SECTION_DEFINITIONS[3], [
     settingsCard(
       translate("runtime"),
       translate("metadataOnly"),
@@ -362,12 +498,12 @@ function renderSettingsView() {
         ${settingValueCard("settings-runtime-mcp", translate("mcp"), translate("readOnly"))}
         ${settingValueCard("settings-runtime-workspace", translate("workspace"), translate("readOnly"))}
       </div>
-      <div class="settings-inline-actions"><span class="settings-inline-note">${escapeHtml(translate("metadataOnly"))}</span><button type="button" id="settings-runtime-refresh" class="settings-secondary-button">${escapeHtml(translate("refreshRuntime"))}</button></div>`,
+      <div class="settings-inline-actions"><span class="settings-inline-note">${escapeHtml(translate("metadataOnly"))}</span><div class="settings-action-group"><button type="button" id="settings-runtime-refresh" class="settings-secondary-button">${escapeHtml(translate("refreshRuntime"))}</button><button type="button" id="settings-open-inspector" class="settings-secondary-button">${escapeHtml(translate("openInspector"))}</button></div></div>`,
       `${translate("runtime")} ${translate("provider")} ${translate("model")} ${translate("mcp")}`
     ),
   ].join(""));
 
-  const permissions = sectionShell(SECTION_DEFINITIONS[3], [
+  const permissions = sectionShell(SECTION_DEFINITIONS[4], [
     settingsCard(
       translate("approval"),
       translate("permissionApprovalDescription"),
@@ -386,7 +522,7 @@ function renderSettingsView() {
     ),
   ].join(""));
 
-  const integrations = sectionShell(SECTION_DEFINITIONS[4], [
+  const integrations = sectionShell(SECTION_DEFINITIONS[5], [
     settingsCard(
       translate("integrations"),
       translate("capabilityDescription"),
@@ -396,12 +532,13 @@ function renderSettingsView() {
         ${settingValueCard("settings-capability-repository", translate("repository"), translate("readOnly"))}
         ${settingValueCard("settings-capability-remote", translate("remote"), translate("readOnly"))}
         ${settingValueCard("settings-capability-monitoring", translate("monitoring"), translate("readOnly"))}
-      </div>`,
+      </div>
+      <div class="settings-inline-actions"><span class="settings-inline-note">${escapeHtml(translate("metadataOnly"))}</span><div class="settings-action-group"><button type="button" id="settings-capabilities-refresh" class="settings-secondary-button">${escapeHtml(translate("refreshCapabilities"))}</button><button type="button" id="settings-mcp-refresh" class="settings-secondary-button">${escapeHtml(translate("refreshIntegrations"))}</button></div></div>`,
       `${translate("integrations")} ${translate("github")} ${translate("ci")} ${translate("repository")} ${translate("remote")}`
     ),
   ].join(""));
 
-  const about = sectionShell(SECTION_DEFINITIONS[5], [
+  const about = sectionShell(SECTION_DEFINITIONS[6], [
     settingsCard(
       translate("product"),
       translate("productDescription"),
@@ -409,25 +546,39 @@ function renderSettingsView() {
       `${translate("about")} ${translate("product")} ${translate("version")}`
     ),
     settingsCard(
+      translate("keyboardShortcuts"),
+      translate("keyboardShortcutsDescription"),
+      `<div class="settings-shortcuts">
+        <div><kbd>Esc</kbd><span>${escapeHtml(translate("keyboardDescription"))}</span></div>
+        <div><kbd>⌘ / Ctrl + ,</kbd><span>${escapeHtml(translate("shortcutSettings"))}</span></div>
+        <div><kbd>Enter</kbd><span>${escapeHtml(translate("shortcutSend"))}</span></div>
+        <div><kbd>Shift + Enter</kbd><span>${escapeHtml(translate("shortcutSend"))}</span></div>
+        <div><kbd>⌘ / Ctrl + N</kbd><span>${escapeHtml(translate("shortcutNewSession"))}</span></div>
+        <div><kbd>⌘ / Ctrl + B</kbd><span>${escapeHtml(translate("shortcutRail"))}</span></div>
+        <div><kbd>⌘ / Ctrl + I</kbd><span>${escapeHtml(translate("shortcutInspector"))}</span></div>
+      </div>`,
+      `${translate("keyboardShortcuts")} ${translate("shortcutSettings")} ${translate("shortcutNewSession")} ${translate("shortcutSend")}`
+    ),
+    settingsCard(
+      translate("backup"),
+      translate("backupDescription"),
+      `<div class="settings-action-grid"><button type="button" id="settings-export-preferences" class="settings-secondary-button">${escapeHtml(translate("exportPreferences"))}</button><button type="button" id="settings-import-preferences" class="settings-secondary-button">${escapeHtml(translate("importPreferences"))}</button><button type="button" id="settings-reset-preferences" class="settings-danger-button">${escapeHtml(translate("resetPreferences"))}</button></div><input id="settings-import-file" type="file" accept="application/json,.json" hidden /><div id="settings-import-status" class="settings-inline-note" role="status"></div>`,
+      `${translate("backup")} ${translate("exportPreferences")} ${translate("importPreferences")} ${translate("resetPreferences")}`
+    ),
+    settingsCard(
       translate("scope"),
       translate("scopeDescription"),
       `<div class="settings-note"><span class="settings-note-mark" aria-hidden="true">i</span><span>${escapeHtml(translate("scopeDescription"))}</span></div>`,
       `${translate("scope")} ${translate("local")}`
     ),
-    settingsCard(
-      translate("keyboard"),
-      translate("keyboardDescription"),
-      `<kbd>Esc</kbd>`,
-      `${translate("keyboard")} Escape Esc`
-    ),
   ].join(""));
 
   settingsView.innerHTML = `<div class="settings-topbar">
     <div class="settings-topbar-brand"><span class="settings-topbar-mark" aria-hidden="true">✦</span><div><span class="settings-eyebrow">${escapeHtml(translate("eyebrow"))}</span><strong>dev-agent</strong></div></div>
-    <button type="button" id="settings-back" class="settings-back-button"><span aria-hidden="true">←</span><span>${escapeHtml(translate("back"))}</span></button>
   </div>
   <div class="settings-layout">
     <aside class="settings-sidebar" aria-label="${escapeHtml(translate("searchLabel"))}">
+      <button type="button" id="settings-back" class="settings-back-button"><span aria-hidden="true">←</span><span>${escapeHtml(translate("back"))}</span></button>
       <div class="settings-sidebar-heading"><span class="settings-eyebrow">${escapeHtml(translate("eyebrow"))}</span><strong>${escapeHtml(translate("title"))}</strong></div>
       <label class="settings-search-wrap"><span class="settings-search-icon" aria-hidden="true">⌕</span><span class="sr-only">${escapeHtml(translate("searchLabel"))}</span><input id="settings-search" type="search" autocomplete="off" spellcheck="false" placeholder="${escapeHtml(translate("searchPlaceholder"))}" aria-label="${escapeHtml(translate("searchLabel"))}" /></label>
       <nav class="settings-nav" aria-label="${escapeHtml(translate("title"))}">${navigation}</nav>
@@ -435,7 +586,7 @@ function renderSettingsView() {
     <main class="settings-content">
       <div class="settings-content-inner">
         <header class="settings-content-heading"><span class="settings-eyebrow">${escapeHtml(translate("eyebrow"))}</span><h1 id="settings-title">${escapeHtml(translate("title"))}</h1><p>${escapeHtml(translate("subtitle"))}</p></header>
-        <div id="settings-panels" class="settings-panels">${general}${appearance}${runtime}${permissions}${integrations}${about}</div>
+        <div id="settings-panels" class="settings-panels">${general}${workspace}${appearance}${runtime}${permissions}${integrations}${about}</div>
         <div id="settings-no-results" class="settings-no-results" hidden><span aria-hidden="true">⌕</span><strong>${escapeHtml(translate("noResults"))}</strong></div>
       </div>
     </main>
@@ -510,6 +661,100 @@ function applySettingsFilter() {
   if (noResults) noResults.hidden = !query || matchCount > 0;
 }
 
+const SETTINGS_EXPORT_VERSION = 1;
+const SETTINGS_EXPORT_MAX_BYTES = 64 * 1024;
+
+function settingsPreferenceSnapshot() {
+  return {
+    version: SETTINGS_EXPORT_VERSION,
+    exportedAt: new Date().toISOString(),
+    preferences: {
+      theme: currentThemePreference(),
+      language: currentLanguagePreference(),
+      composerMode: currentComposerMode(),
+      inspectorOpen: currentInspectorOpen(),
+      sessionRailOpen: currentSessionRailOpen(),
+      density: currentDensityPreference(),
+      autoFollowResponses: currentAutoFollowResponses(),
+      terminalPosition: currentTerminalPosition(),
+    },
+  };
+}
+
+function normalizedImportedPreferences(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const source = payload.preferences && typeof payload.preferences === "object" ? payload.preferences : payload;
+  const preferences = {};
+  if (source.theme === "dark" || source.theme === "light" || source.theme === "system") preferences.theme = source.theme;
+  if (source.language === "en" || source.language === "zh") preferences.language = source.language;
+  if (source.composerMode === "normal" || source.composerMode === "plan") preferences.composerMode = source.composerMode;
+  if (typeof source.inspectorOpen === "boolean") preferences.inspectorOpen = source.inspectorOpen;
+  if (typeof source.sessionRailOpen === "boolean") preferences.sessionRailOpen = source.sessionRailOpen;
+  if (source.density === "comfortable" || source.density === "compact") preferences.density = source.density;
+  if (typeof source.autoFollowResponses === "boolean") preferences.autoFollowResponses = source.autoFollowResponses;
+  if (source.terminalPosition === "inspector" || source.terminalPosition === "main") preferences.terminalPosition = source.terminalPosition;
+  return Object.keys(preferences).length > 0 ? preferences : null;
+}
+
+function applyImportedPreferences(preferences) {
+  const bridge = mainBridge();
+  if (preferences.theme) {
+    if (typeof bridge.setThemePreference === "function") bridge.setThemePreference(preferences.theme);
+    else writeStorage(SETTINGS_STORAGE_KEYS.theme, preferences.theme);
+  }
+  if (preferences.language) {
+    if (typeof bridge.setLanguagePreference === "function") bridge.setLanguagePreference(preferences.language);
+    else writeStorage(SETTINGS_STORAGE_KEYS.language, preferences.language);
+  }
+  if (preferences.composerMode) {
+    if (typeof bridge.setComposerMode === "function") bridge.setComposerMode(preferences.composerMode);
+    else writeStorage(SETTINGS_STORAGE_KEYS.composerMode, preferences.composerMode);
+  }
+  if (typeof preferences.inspectorOpen === "boolean") {
+    if (typeof bridge.setInspectorOpen === "function") bridge.setInspectorOpen(preferences.inspectorOpen);
+    else writeStorage(SETTINGS_STORAGE_KEYS.inspectorCollapsed, String(!preferences.inspectorOpen));
+  }
+  if (typeof preferences.sessionRailOpen === "boolean") {
+    if (typeof bridge.setSessionRailOpen === "function") bridge.setSessionRailOpen(preferences.sessionRailOpen);
+    else writeStorage(SETTINGS_STORAGE_KEYS.sessionRailCollapsed, String(!preferences.sessionRailOpen));
+  }
+  if (preferences.density) {
+    if (typeof bridge.setDensityPreference === "function") bridge.setDensityPreference(preferences.density);
+    else writeStorage(SETTINGS_STORAGE_KEYS.density, preferences.density);
+  }
+  if (typeof preferences.autoFollowResponses === "boolean") {
+    if (typeof bridge.setAutoFollowResponses === "function") bridge.setAutoFollowResponses(preferences.autoFollowResponses);
+    else writeStorage(SETTINGS_STORAGE_KEYS.autoFollow, String(preferences.autoFollowResponses));
+  }
+  if (preferences.terminalPosition) {
+    if (typeof bridge.setTerminalPosition === "function") bridge.setTerminalPosition(preferences.terminalPosition);
+    else writeStorage(SETTINGS_STORAGE_KEYS.terminalPosition, preferences.terminalPosition);
+  }
+}
+
+function exportSettingsPreferences() {
+  const payload = JSON.stringify(settingsPreferenceSnapshot(), null, 2);
+  const blob = new Blob([payload], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "dev-agent-preferences.json";
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function resetSettingsPreferences() {
+  const bridge = mainBridge();
+  if (typeof bridge.resetLocalPreferences === "function") {
+    bridge.resetLocalPreferences();
+    return;
+  }
+  for (const key of Object.values(SETTINGS_STORAGE_KEYS)) {
+    try { window.localStorage.removeItem(key); } catch { /* optional browser storage */ }
+  }
+  window.location.reload();
+}
+
 function bindSettingsEvents() {
   document.getElementById("settings-back")?.addEventListener("click", closeSettings);
   document.getElementById("settings-search")?.addEventListener("input", applySettingsFilter);
@@ -520,7 +765,7 @@ function bindSettingsEvents() {
       const search = document.getElementById("settings-search");
       if (search) search.value = "";
       renderSettingsView();
-      document.querySelector(`[data-settings-section="${CSS.escape(activeSection)}"]`)?.focus();
+      settingsView.querySelector(`[data-settings-section="${CSS.escape(activeSection)}"]`)?.focus();
     });
   }
   for (const button of settingsView.querySelectorAll("[data-settings-theme]")) {
@@ -546,6 +791,27 @@ function bindSettingsEvents() {
       window.requestAnimationFrame(() => renderSettingsView());
     });
   }
+  for (const button of settingsView.querySelectorAll("[data-settings-density]")) {
+    button.addEventListener("click", () => {
+      const density = button.dataset.settingsDensity === "compact" ? "compact" : "comfortable";
+      const bridge = mainBridge();
+      if (typeof bridge.setDensityPreference === "function") bridge.setDensityPreference(density);
+      else {
+        writeStorage(SETTINGS_STORAGE_KEYS.density, density);
+        document.documentElement.dataset.density = density;
+      }
+      renderSettingsView();
+    });
+  }
+  for (const button of settingsView.querySelectorAll("[data-settings-terminal-position]")) {
+    button.addEventListener("click", () => {
+      const position = button.dataset.settingsTerminalPosition === "main" ? "main" : "inspector";
+      const bridge = mainBridge();
+      if (typeof bridge.setTerminalPosition === "function") bridge.setTerminalPosition(position);
+      else writeStorage(SETTINGS_STORAGE_KEYS.terminalPosition, position);
+      renderSettingsView();
+    });
+  }
   document.getElementById("settings-composer-mode")?.addEventListener("change", (event) => {
     const mode = event.currentTarget.value === "plan" ? "plan" : "normal";
     const bridge = mainBridge();
@@ -555,6 +821,22 @@ function bindSettingsEvents() {
       const select = document.getElementById("composer-mode");
       if (select) select.value = mode;
     }
+  });
+  document.getElementById("settings-session-rail")?.addEventListener("change", (event) => {
+    const open = Boolean(event.currentTarget.checked);
+    const bridge = mainBridge();
+    if (typeof bridge.setSessionRailOpen === "function") bridge.setSessionRailOpen(open);
+    else writeStorage(SETTINGS_STORAGE_KEYS.sessionRailCollapsed, String(!open));
+    const stateNode = document.getElementById("settings-session-rail-state");
+    if (stateNode) stateNode.textContent = translate(open ? "stateOpen" : "stateClosed");
+  });
+  document.getElementById("settings-auto-follow")?.addEventListener("change", (event) => {
+    const enabled = Boolean(event.currentTarget.checked);
+    const bridge = mainBridge();
+    if (typeof bridge.setAutoFollowResponses === "function") bridge.setAutoFollowResponses(enabled);
+    else writeStorage(SETTINGS_STORAGE_KEYS.autoFollow, String(enabled));
+    const stateNode = document.getElementById("settings-auto-follow-state");
+    if (stateNode) stateNode.textContent = translate(enabled ? "stateOpen" : "stateClosed");
   });
   document.getElementById("settings-inspector-open")?.addEventListener("change", (event) => {
     const open = Boolean(event.currentTarget.checked);
@@ -572,6 +854,48 @@ function bindSettingsEvents() {
     const bridge = mainBridge();
     if (typeof bridge.refreshRuntimeStatus === "function") bridge.refreshRuntimeStatus();
     window.setTimeout(refreshRuntimeValues, 120);
+  });
+  document.getElementById("settings-open-inspector")?.addEventListener("click", () => {
+    const bridge = mainBridge();
+    if (typeof bridge.setInspectorOpen === "function") bridge.setInspectorOpen(true);
+    closeSettings();
+  });
+  document.getElementById("settings-capabilities-refresh")?.addEventListener("click", () => {
+    const bridge = mainBridge();
+    if (typeof bridge.refreshCapabilities === "function") bridge.refreshCapabilities();
+    window.setTimeout(refreshRuntimeValues, 160);
+  });
+  document.getElementById("settings-mcp-refresh")?.addEventListener("click", () => {
+    const bridge = mainBridge();
+    if (typeof bridge.refreshMcpHealth === "function") bridge.refreshMcpHealth();
+    window.setTimeout(refreshRuntimeValues, 160);
+  });
+  document.getElementById("settings-export-preferences")?.addEventListener("click", exportSettingsPreferences);
+  document.getElementById("settings-import-preferences")?.addEventListener("click", () => document.getElementById("settings-import-file")?.click());
+  document.getElementById("settings-import-file")?.addEventListener("change", async (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    const status = document.getElementById("settings-import-status");
+    if (!file) return;
+    if (file.size > SETTINGS_EXPORT_MAX_BYTES) {
+      if (status) status.textContent = translate("importTooLarge");
+      input.value = "";
+      return;
+    }
+    try {
+      const preferences = normalizedImportedPreferences(JSON.parse(await file.text()));
+      if (!preferences) throw new Error("invalid preferences");
+      applyImportedPreferences(preferences);
+      if (status) status.textContent = translate("importSuccess");
+      window.setTimeout(() => window.location.reload(), 240);
+    } catch {
+      if (status) status.textContent = translate("importFailed");
+    } finally {
+      input.value = "";
+    }
+  });
+  document.getElementById("settings-reset-preferences")?.addEventListener("click", () => {
+    if (window.confirm(translate("resetConfirm"))) resetSettingsPreferences();
   });
 }
 
@@ -632,6 +956,30 @@ for (const id of [
 }
 
 document.addEventListener("keydown", (event) => {
+  const modifier = event.metaKey || event.ctrlKey;
+  const key = event.key.toLowerCase();
+  const target = event.target instanceof Element ? event.target : null;
+  const editing = target?.matches("input, textarea, select, [contenteditable=\"true\"]");
+  if (!isOpen && modifier && key === ",") {
+    event.preventDefault();
+    openSettings();
+    return;
+  }
+  if (!isOpen && modifier && !editing && key === "n") {
+    event.preventDefault();
+    document.getElementById("new-session")?.click();
+    return;
+  }
+  if (!isOpen && modifier && !editing && key === "b") {
+    event.preventDefault();
+    document.getElementById("toggle-session-rail")?.click();
+    return;
+  }
+  if (!isOpen && modifier && !editing && key === "i") {
+    event.preventDefault();
+    document.getElementById("toggle-inspector")?.click();
+    return;
+  }
   if (!isOpen) return;
   if (event.key === "Escape") {
     event.preventDefault();
