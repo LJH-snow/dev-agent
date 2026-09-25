@@ -74,6 +74,8 @@ export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":rewind <checkpointId>", description: "Rewind conversation history only" },
   { command: ":skills", description: "List available skills" },
   { command: ":skill <name>", description: "Activate a skill or use :skill off" },
+  { command: ":agents", description: "List discovered specialist agents" },
+  { command: ":agent <id>", description: "Inspect a specialist agent definition" },
   { command: ":extensions", description: "List discovered extensions" },
   { command: ":extension <id>", description: "Inspect extension metadata" },
   { command: ":cards", description: "Show the latest tool card" },
@@ -85,6 +87,7 @@ export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":commit [--all] <message>", description: "Review and create a guarded Git commit" },
   { command: ":push [remote] [branch]", description: "Review and push a clean branch" },
   { command: ":pr [--base <branch>] <title>", description: "Create a reviewed GitHub pull request" },
+  { command: ":memory [add|search|forget]", description: "Manage confirmed project memory" },
   { command: ":cleanup ...", description: "Prune metadata-only evidence" },
   { command: ":quit", description: "Exit the session (also exit / quit)" },
 ];

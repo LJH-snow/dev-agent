@@ -46,6 +46,36 @@ Only the explicitly activated skill is added to later model requests. Skill
 instructions are bounded during discovery and remain session-local; activating
 one does not modify files or publish package state.
 
+## Specialist Agent definitions
+
+The CLI can discover bounded Markdown Specialist Agents from:
+
+- `<working-directory>/.dev-agent/agents/<id>/AGENT.md` for project agents;
+- `~/.dev-agent/agents/<id>/AGENT.md` for user agents.
+
+Project definitions shadow user definitions with the same lowercase id. The
+file body is the specialist instruction block. Optional front matter supports
+`name`, `description`, `provider`, `model`, `toolAllowlist`, `maxTurns`,
+`maxTokens`, `maxDurationMs`, and `maxOutputChars`. Front matter is deliberately
+not a general YAML runtime: unknown fields, duplicate tools, invalid selectors,
+and invalid budgets cause that optional definition to be ignored. Files and
+instruction bodies are bounded during discovery.
+
+Use these read-only commands to inspect the definitions:
+
+```text
+:agents
+:agent <id>
+```
+
+The `/agents` and `/agent` aliases are also accepted. Listing and inspection
+show only safe metadata; the instruction body and source path are not printed.
+Discovered definitions augment the built-in `:team` roles. A JSON
+`collaboration.roles` entry with the same id wins over the Markdown definition.
+Before execution, every role still goes through the active tool registry and
+`collaboration.toolAllowlist` intersection. Agent Markdown never executes code,
+starts MCP servers, changes approval policy, or bypasses the Rust sandbox.
+
 ## Extension discovery
 
 The CLI discovers bounded metadata manifests from:
@@ -666,6 +696,27 @@ workspace when `--all` is present. Push and PR commands require a clean worktree
 PR creation additionally requires an authenticated GitHub CLI session and an
 upstream branch. The CLI never adds `--force`, never sends shell command strings
 to a shell, and does not print `gh auth status` output or tokens.
+
+### Confirmed project memory
+
+Project-scoped memory is explicit and separate from the conversation transcript:
+
+```text
+:memory
+:memory add --source "team docs" --confidence high "Run focused tests before the full suite"
+:memory search "focused tests"
+:memory forget memory-1234
+```
+
+The slash aliases are accepted. Listing and searching are read-only. Adding or
+forgetting a record asks for confirmation; each saved record has a bounded note,
+source, confidence (`low`, `medium`, or `high`), creation time, update time, and
+a short opaque id. Notes are redacted for credential-shaped values before they
+are stored or displayed, and the store never saves raw tool output or the full
+conversation prompt. By default the store is kept in the user state directory
+under a project hash; `--project-state` stores it at
+`.dev-agent/project-memory.json`, and `DEV_AGENT_PROJECT_MEMORY_FILE` can select
+a bounded test or deployment location.
 
 `Ctrl-C` cancels the request that is in flight (through the same abort path the
 desktop uses) and exits with status `130`; it also exits immediately when the CLI

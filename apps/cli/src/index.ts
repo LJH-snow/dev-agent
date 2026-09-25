@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { performance } from "node:perf_hooks";
@@ -255,6 +256,11 @@ import {
   isGitWorkflowCommand,
   type GitWorkflowResult,
 } from "./github-workflow-command.js";
+import {
+  executeProjectMemoryCommand,
+  isProjectMemoryCommand,
+  ProjectMemoryStore,
+} from "./project-memory.js";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -2322,6 +2328,9 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
 
     const skillRegistry = await SkillRegistry.load({ workingDirectory });
     const extensionRegistry = await ExtensionRegistry.load({ workingDirectory });
+    const projectMemory = new ProjectMemoryStore({
+      filePath: projectMemoryFilePath(workingDirectory, projectState),
+    });
     await interactive(loop, context, streaming, questionBox, {
       rich: richUi,
       ink:
@@ -2370,6 +2379,7 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
           confirm,
           signal,
         }),
+      projectMemory,
       runCollaborativePlan: (prompt, activeContext, options) => {
         const roles = createConfiguredSpecialistRoles();
         return runCollaborativePlanWorkflow(prompt, {
@@ -2553,6 +2563,20 @@ function memoryFilePath(
     resolveRuntimePath(process.env.DEV_AGENT_MEMORY_FILE, baseDirectory) ??
     join(sessionDir(baseDirectory, projectState), `${sessionId}.json`)
   );
+}
+
+function projectMemoryFilePath(
+  baseDirectory = process.cwd(),
+  projectState = false,
+): string {
+  const configured = resolveRuntimePath(process.env.DEV_AGENT_PROJECT_MEMORY_FILE, baseDirectory);
+  if (configured !== undefined) return configured;
+  if (projectState) return join(baseDirectory, ".dev-agent", "project-memory.json");
+  const projectKey = createHash("sha256")
+    .update(resolve(baseDirectory))
+    .digest("hex")
+    .slice(0, 24);
+  return join(homedir(), ".dev-agent", "project-memory", `${projectKey}.json`);
 }
 
 /** True when the file exists but cannot be read back as a memory file. */
@@ -3287,6 +3311,7 @@ interface InteractiveUiOptions {
     confirm: (prompt: string) => Promise<boolean>,
     signal?: AbortSignal,
   ) => Promise<GitWorkflowResult>;
+  readonly projectMemory?: ProjectMemoryStore;
   readonly consumePlanReview?: () => PlanReview | undefined;
   readonly runCollaborativePlan?: (
     prompt: string,
@@ -3531,6 +3556,27 @@ async function gitWorkflowCommandMessage(
     },
     signal,
   );
+  return safeTerminalText(result.message);
+}
+
+async function projectMemoryCommandMessage(
+  rawCommand: string,
+  ui: InteractiveUiOptions,
+  questionBox: QuestionBox,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!ui.projectMemory) {
+    return "Project memory is unavailable in this session.";
+  }
+  const result = await executeProjectMemoryCommand(rawCommand, {
+    store: ui.projectMemory,
+    confirm: async (prompt) => {
+      const answer = questionBox.ask
+        ? await questionBox.ask(`${prompt} [y/N] `, signal)
+        : "";
+      return answer.trim().toLowerCase().startsWith("y");
+    },
+  });
   return safeTerminalText(result.message);
 }
 
@@ -4170,6 +4216,30 @@ async function interactive(
         }
         continue;
       }
+      if (isProjectMemoryCommand(command)) {
+        const memoryAbort = new AbortController();
+        abort = memoryAbort;
+        try {
+          const memoryMessage = await projectMemoryCommandMessage(
+            command,
+            ui,
+            questionBox,
+            memoryAbort.signal,
+          );
+          const printMemoryMessage = (): void => console.log(memoryMessage);
+          if (ui.rich) streaming.withComposerHidden(printMemoryMessage);
+          else printMemoryMessage();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const printMemoryError = (): void =>
+            console.error(safeTerminalText(`Project memory failed: ${message}`));
+          if (ui.rich) streaming.withComposerHidden(printMemoryError);
+          else printMemoryError();
+        } finally {
+          if (abort === memoryAbort) abort = undefined;
+        }
+        continue;
+      }
       const skillMessage = skillCommandMessage(command, ui);
       if (skillMessage !== undefined) {
         const printSkillMessage = (): void => {
@@ -4662,7 +4732,7 @@ async function interactive(
           });
         } else {
           console.log(
-            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :cleanup ..., exit, quit"
+            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :cleanup ..., exit, quit"
           );
         }
         continue;
@@ -5539,6 +5609,28 @@ async function interactiveInk(
         ink.store.addNotice(safeTerminalText(`GitHub workflow failed: ${message}`));
       } finally {
         if (activeAbort === workflowAbort) activeAbort = undefined;
+        ink.controller.setBusy(false);
+        syncQueue();
+      }
+      return true;
+    }
+    if (isProjectMemoryCommand(command)) {
+      const memoryAbort = new AbortController();
+      activeAbort = memoryAbort;
+      ink.controller.setBusy(true);
+      try {
+        const memoryMessage = await projectMemoryCommandMessage(
+          command,
+          ui,
+          questionBox,
+          memoryAbort.signal,
+        );
+        ink.store.addNotice(memoryMessage);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ink.store.addNotice(safeTerminalText(`Project memory failed: ${message}`));
+      } finally {
+        if (activeAbort === memoryAbort) activeAbort = undefined;
         ink.controller.setBusy(false);
         syncQueue();
       }
