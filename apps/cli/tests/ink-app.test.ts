@@ -8,7 +8,11 @@ import { createElement } from "react";
 import { render, renderToString } from "ink";
 import { RuntimeEventSequence } from "@dev-agent/agent-core";
 
-import { deriveStickyTaskTitle, InkCliApp } from "../dist/ink/app.js";
+import {
+  deriveStickyTaskTitle,
+  InkCliApp,
+  isBackToBottomClick,
+} from "../dist/ink/app.js";
 import { InkRuntimeStore } from "../dist/ink/runtime-store.js";
 import {
   createInkRenderOutput,
@@ -1603,6 +1607,86 @@ test("Ink navigates a long transcript with terminal mouse wheel events", async (
       writes.join("").includes("[<64;12;8M"),
       false,
       "mouse tracking input must not be inserted into the composer",
+    );
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("Back to bottom hit-testing only accepts a primary press on the navigation row", () => {
+  const browsing = { followOutput: false } as const;
+  const click = { button: 0, x: 12, y: 17, action: "press" } as const;
+
+  assert.equal(isBackToBottomClick(click, 24, browsing), true);
+  assert.equal(
+    isBackToBottomClick({ ...click, y: 16 }, 23, browsing),
+    true,
+    "the one-row terminal offset used by the real CLI moves the hit row to 16",
+  );
+  assert.equal(
+    isBackToBottomClick({ ...click, y: 16 }, 24, browsing),
+    false,
+  );
+  assert.equal(
+    isBackToBottomClick({ ...click, action: "release" }, 24, browsing),
+    false,
+  );
+  assert.equal(
+    isBackToBottomClick({ ...click, button: 2 }, 24, browsing),
+    false,
+  );
+  assert.equal(
+    isBackToBottomClick(click, 24, { followOutput: true }),
+    false,
+  );
+});
+
+test("Ink clicking Back to bottom returns the transcript to the latest output", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const store = new InkRuntimeStore();
+  const sequence = new RuntimeEventSequence("mouse-back-to-bottom-session");
+  const instance = renderInkApp(stdin, stdout, () => undefined, store);
+
+  try {
+    const runId = "mouse-back-to-bottom-run";
+    store.apply(sequence.create(
+      "run.started",
+      { prompt: "clickable back to bottom task", model: "qwen3:4b-instruct" },
+      { runId },
+    ));
+    store.apply(sequence.create(
+      "assistant.completed",
+      { text: Array.from({ length: 40 }, (_, index) => `click-line-${index + 1}`).join("\n") },
+      { runId },
+    ));
+    store.apply(sequence.create(
+      "run.completed",
+      { turns: 1 },
+      { runId },
+    ));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    writes.length = 0;
+    stdin.write("\u001b[5~");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.match(writes.join(""), /Back to bottom/);
+    assert.doesNotMatch(writes.join(""), /click-line-40/);
+
+    writes.length = 0;
+    // The test terminal is 24 rows high, so the reserved navigation row is
+    // row 17. Send press + release just as a real SGR mouse click does.
+    stdin.write("\u001b[<0;12;17M\u001b[<0;12;17m");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const bottomFrame = writes.join("");
+    assert.match(bottomFrame, /click-line-40/);
+    assert.doesNotMatch(bottomFrame, /Back to bottom/);
+    assert.doesNotMatch(bottomFrame, /rows below/);
+    assert.doesNotMatch(
+      bottomFrame,
+      /\[<0;12;17[Mm]/,
+      "the Back to bottom click must not be inserted into the composer",
     );
   } finally {
     instance.unmount();

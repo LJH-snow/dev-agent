@@ -22,6 +22,7 @@ import {
   MOUSE_TRACKING_DISABLE,
   MOUSE_TRACKING_ENABLE,
   MouseInputParser,
+  type MouseClick,
   type MouseWheelDirection,
 } from "./mouse-wheel.js";
 import { RetryPanel } from "./retry-panel.js";
@@ -78,6 +79,12 @@ const EMPTY_UI_SNAPSHOT: InkUiSnapshot = {
 };
 const NOOP_SUBSCRIBE = (): (() => void) => () => undefined;
 const EMPTY_GET_SNAPSHOT = (): InkUiSnapshot => EMPTY_UI_SNAPSHOT;
+// NavigationBar, StatusLine, Composer, and Footer occupy eight rows in the
+// fixed bottom shell: 1 + (1 margin + 1 line) + (1 margin + 3 border/content)
+// + 1. The navigation row is therefore seven rows above the effective bottom
+// row (the terminalRowsOffset is already reflected in terminalRows).
+const BOTTOM_SHELL_ROWS = 8;
+const NAVIGATION_ROW_FROM_BOTTOM = BOTTOM_SHELL_ROWS - 1;
 
 export function InkCliApp({
   store,
@@ -162,6 +169,12 @@ export function InkCliApp({
       for (const direction of parsed.directions) {
         moveViewport(direction, "wheel");
       }
+      for (const click of parsed.clicks) {
+        if (!isBackToBottomClick(click, terminalRows, viewportModel.snapshot())) {
+          continue;
+        }
+        setViewport(viewportModel.end());
+      }
     };
     internal_eventEmitter.on("input", handleMouseInput);
     write(MOUSE_TRACKING_ENABLE);
@@ -169,7 +182,15 @@ export function InkCliApp({
       internal_eventEmitter.off("input", handleMouseInput);
       write(MOUSE_TRACKING_DISABLE);
     };
-  }, [internal_eventEmitter, isRawModeSupported, moveViewport, viewportMouseInput, write]);
+  }, [
+    internal_eventEmitter,
+    isRawModeSupported,
+    moveViewport,
+    terminalRows,
+    viewportModel,
+    viewportMouseInput,
+    write,
+  ]);
 
   const suggestions = commandSuggestions(value, commands);
   const busy = inputSnapshot.busy ||
@@ -715,6 +736,18 @@ function StickyTaskHeader({
       <Text color={theme.text} backgroundColor={theme.dim}>{line}</Text>
     </Box>
   );
+}
+
+export function isBackToBottomClick(
+  click: MouseClick,
+  terminalRows: number,
+  viewport: Pick<InkViewportSnapshot, "followOutput">,
+): boolean {
+  if (viewport.followOutput || click.action !== "press") return false;
+  if ((click.button & 64) !== 0 || (click.button & 32) !== 0) return false;
+  if ((click.button & 3) !== 0) return false;
+  const navigationRow = Math.max(1, Math.floor(terminalRows) - NAVIGATION_ROW_FROM_BOTTOM);
+  return click.y === navigationRow;
 }
 
 function NavigationBar({

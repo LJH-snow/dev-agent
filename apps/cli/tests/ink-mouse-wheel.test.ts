@@ -36,17 +36,55 @@ test("mouse input parser consumes SGR button and release events", () => {
   assert.deepEqual(parser.push("[<0;38;9M"), {
     consumed: true,
     directions: [],
+    clicks: [{ button: 0, x: 38, y: 9, action: "press" }],
     remaining: "",
   });
   assert.deepEqual(parser.push("\u001b[<0;38;9m"), {
     consumed: true,
     directions: [],
+    clicks: [{ button: 0, x: 38, y: 9, action: "release" }],
     remaining: "",
   });
   assert.deepEqual(parser.push("hello"), {
     consumed: false,
     directions: [],
+    clicks: [],
     remaining: "hello",
+  });
+});
+
+test("mouse input parser reports SGR click coordinates and action", () => {
+  const parser = new MouseInputParser();
+
+  assert.deepEqual(parser.push("\u001b[<0;12;17M"), {
+    consumed: true,
+    directions: [],
+    clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+    remaining: "",
+  });
+  assert.deepEqual(parser.push("[<0;12;17m"), {
+    consumed: true,
+    directions: [],
+    clicks: [{ button: 0, x: 12, y: 17, action: "release" }],
+    remaining: "",
+  });
+});
+
+test("mouse input parser reports coordinates for Ink-split X10 clicks", () => {
+  const parser = new MouseInputParser();
+  const payload = `${String.fromCharCode(32)}${String.fromCharCode(44)}${String.fromCharCode(49)}`;
+
+  assert.deepEqual(parser.push("[M"), {
+    consumed: true,
+    directions: [],
+    clicks: [],
+    remaining: "",
+  });
+  assert.deepEqual(parser.push(payload), {
+    consumed: true,
+    directions: [],
+    clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+    remaining: "",
   });
 });
 
@@ -57,11 +95,13 @@ test("mouse input parser consumes Ink-split X10 packets and preserves following 
   assert.deepEqual(parser.push("[M"), {
     consumed: true,
     directions: [],
+    clicks: [],
     remaining: "",
   });
   assert.deepEqual(parser.push(`${payload}x`), {
     consumed: true,
     directions: ["up"],
+    clicks: [],
     remaining: "x",
   });
 });

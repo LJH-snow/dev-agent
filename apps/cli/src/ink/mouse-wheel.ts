@@ -1,8 +1,20 @@
 export type MouseWheelDirection = "up" | "down";
+export type MouseClickAction = "press" | "release";
+
+export interface MouseClick {
+  /** The protocol button code, including modifier/motion bits. */
+  readonly button: number;
+  /** One-based terminal column. */
+  readonly x: number;
+  /** One-based terminal row. */
+  readonly y: number;
+  readonly action: MouseClickAction;
+}
 
 export interface MouseInputParseResult {
   readonly consumed: boolean;
   readonly directions: readonly MouseWheelDirection[];
+  readonly clicks: readonly MouseClick[];
   /** Non-mouse text from the same input event, if any. */
   readonly remaining: string;
 }
@@ -18,6 +30,7 @@ export class MouseInputParser {
 
   push(input: string): MouseInputParseResult {
     const directions: MouseWheelDirection[] = [];
+    const clicks: MouseClick[] = [];
     let consumed = false;
     let remaining = "";
     let index = 0;
@@ -36,21 +49,54 @@ export class MouseInputParser {
           break;
         }
 
-        const buttonCode = (Array.from(this.pendingX10Payload)[0]?.charCodeAt(0) ?? 0) - 32;
+        const [buttonByte, xByte, yByte] = Array.from(this.pendingX10Payload).map(
+          (character) => character.charCodeAt(0),
+        );
+        const buttonCode = (buttonByte ?? 0) - 32;
+        const x = (xByte ?? 0) - 32;
+        const y = (yByte ?? 0) - 32;
         if (buttonCode >= 0 && (buttonCode & 64) !== 0) {
           directions.push((buttonCode & 1) === 0 ? "up" : "down");
+        } else if (
+          buttonCode >= 0 &&
+          Number.isSafeInteger(x) &&
+          Number.isSafeInteger(y) &&
+          x > 0 &&
+          y > 0
+        ) {
+          clicks.push({
+            button: buttonCode,
+            x,
+            y,
+            action: (buttonCode & 3) === 3 ? "release" : "press",
+          });
         }
         this.pendingX10Payload = undefined;
         continue;
       }
 
-      const sgrMatch = /^(?:\u001b)?\[<(\d+);\d+;\d+[Mm]/.exec(
+      const sgrMatch = /^(?:\u001b)?\[<(\d+);(\d+);(\d+)([Mm])/.exec(
         input.slice(index),
       );
       if (sgrMatch) {
         const button = Number(sgrMatch[1]);
+        const x = Number(sgrMatch[2]);
+        const y = Number(sgrMatch[3]);
         if (Number.isSafeInteger(button) && (button & 64) !== 0) {
           directions.push((button & 1) === 0 ? "up" : "down");
+        } else if (
+          Number.isSafeInteger(button) &&
+          Number.isSafeInteger(x) &&
+          Number.isSafeInteger(y) &&
+          x > 0 &&
+          y > 0
+        ) {
+          clicks.push({
+            button,
+            x,
+            y,
+            action: sgrMatch[4] === "M" ? "press" : "release",
+          });
         }
         consumed = true;
         index += sgrMatch[0].length;
@@ -76,7 +122,7 @@ export class MouseInputParser {
       index += character.length;
     }
 
-    return { consumed, directions, remaining };
+    return { consumed, directions, clicks, remaining };
   }
 }
 
