@@ -212,12 +212,14 @@ export function InkCliApp({
   // dynamic viewport.
   const transcriptEntries = allTranscriptEntries;
   const taskTitle = deriveStickyTaskTitle(transcriptEntries);
-  // The sticky task row is part of the dynamic shell, not the transcript
-  // viewport. Reserve one additional row once a task exists so the bottom
-  // controls remain anchored instead of being pushed off-screen.
+  // The task title is sticky only while the user is browsing away from live
+  // output. During an active answer (or any normal follow-output state), the
+  // title remains part of the transcript instead of taking a permanent row
+  // from the live answer viewport.
+  const stickyTaskTitle = viewport.followOutput ? undefined : taskTitle;
   const visibleTranscriptRows = Math.max(
     4,
-    baseTranscriptRows - (taskTitle === undefined ? 0 : 1),
+    baseTranscriptRows - (stickyTaskTitle === undefined ? 0 : 1),
   );
   const transcriptRows = estimateTranscriptRows(
     allTranscriptEntries,
@@ -562,8 +564,8 @@ export function InkCliApp({
         )}
       </Static>
       <Box flexDirection="column" width={columns}>
-        {taskTitle !== undefined ? (
-          <StickyTaskHeader title={taskTitle} columns={columns} />
+        {stickyTaskTitle !== undefined ? (
+          <StickyTaskHeader title={stickyTaskTitle} columns={columns} />
         ) : null}
         <TranscriptViewport
           snapshot={snapshot}

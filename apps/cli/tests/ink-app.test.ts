@@ -1623,7 +1623,7 @@ test("Back to bottom hit-testing only accepts a primary press on the navigation 
   assert.equal(
     isBackToBottomClick({ ...click, y: 16 }, 23, browsing),
     true,
-    "the one-row terminal offset used by the real CLI moves the hit row to 16",
+    "hit testing uses the effective row count supplied by the renderer",
   );
   assert.equal(
     isBackToBottomClick({ ...click, y: 16 }, 24, browsing),
@@ -1821,6 +1821,11 @@ test("Ink keeps a submitted prompt in one bounded live frame", async () => {
       (liveFrame.match(/› first prompt/g) ?? []).length,
       1,
       "the submitted prompt should be rendered exactly once beside the active run",
+    );
+    assert.equal(
+      (liveFrame.match(/first prompt/g) ?? []).length,
+      1,
+      "the sticky task header must not duplicate the prompt during live output",
     );
     assert.match(liveFrame, /Working ·/);
   } finally {
