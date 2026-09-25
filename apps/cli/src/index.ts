@@ -251,6 +251,11 @@ import {
   type AutoFixRepairRun,
 } from "./auto-fix-command.js";
 import {
+  executeGitWorkflowCommand,
+  isGitWorkflowCommand,
+  type GitWorkflowResult,
+} from "./github-workflow-command.js";
+import {
   createAnthropicProvider,
   createGeminiProvider,
   createOllamaProvider,
@@ -2352,6 +2357,19 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
         new FileMemoryCheckpointStore(activeContext.memory),
       openSession,
       createRerunValidation,
+      runGitWorkflow: (command, confirm, signal) =>
+        executeGitWorkflowCommand(command, {
+          cwd: workingDirectory,
+          runner: (executable, args, runOptions) =>
+            executor!.run(executable, args, {
+              cwd: runOptions?.cwd ?? workingDirectory,
+              signal: runOptions?.signal,
+              timeoutMs: runOptions?.timeoutMs,
+              maxOutputBytes: runOptions?.maxOutputBytes,
+            }),
+          confirm,
+          signal,
+        }),
       runCollaborativePlan: (prompt, activeContext, options) => {
         const roles = createConfiguredSpecialistRoles();
         return runCollaborativePlanWorkflow(prompt, {
@@ -3264,6 +3282,11 @@ interface InteractiveUiOptions {
   readonly createRerunValidation?: (
     context: AgentContext,
   ) => ValidationRerunner | undefined;
+  readonly runGitWorkflow?: (
+    command: string,
+    confirm: (prompt: string) => Promise<boolean>,
+    signal?: AbortSignal,
+  ) => Promise<GitWorkflowResult>;
   readonly consumePlanReview?: () => PlanReview | undefined;
   readonly runCollaborativePlan?: (
     prompt: string,
@@ -3487,6 +3510,28 @@ function formatCollaborativeExecutionResult(
       : `Conflicts: ${review.conflicts.map((conflict) => safeTerminalText(conflict)).join(", ")}`,
     review.mergeable ? ":team apply to merge the reviewed result." : ":team retry <taskId> or resolve the conflicts.",
   ].join("\n");
+}
+
+async function gitWorkflowCommandMessage(
+  rawCommand: string,
+  ui: InteractiveUiOptions,
+  questionBox: QuestionBox,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!ui.runGitWorkflow) {
+    return "GitHub workflow is unavailable in this session.";
+  }
+  const result = await ui.runGitWorkflow(
+    rawCommand,
+    async (prompt) => {
+      const answer = questionBox.ask
+        ? await questionBox.ask(`${prompt} [y/N] `, signal)
+        : "";
+      return answer.trim().toLowerCase().startsWith("y");
+    },
+    signal,
+  );
+  return safeTerminalText(result.message);
 }
 
 async function backgroundJobCommandMessage(
@@ -4099,6 +4144,30 @@ async function interactive(
         break;
       }
       if (!prompt) {
+        continue;
+      }
+      if (isGitWorkflowCommand(command)) {
+        const workflowAbort = new AbortController();
+        abort = workflowAbort;
+        try {
+          const workflowMessage = await gitWorkflowCommandMessage(
+            command,
+            ui,
+            questionBox,
+            workflowAbort.signal,
+          );
+          const printWorkflowMessage = (): void => console.log(workflowMessage);
+          if (ui.rich) streaming.withComposerHidden(printWorkflowMessage);
+          else printWorkflowMessage();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const printWorkflowError = (): void =>
+            console.error(safeTerminalText(`GitHub workflow failed: ${message}`));
+          if (ui.rich) streaming.withComposerHidden(printWorkflowError);
+          else printWorkflowError();
+        } finally {
+          if (abort === workflowAbort) abort = undefined;
+        }
         continue;
       }
       const skillMessage = skillCommandMessage(command, ui);
@@ -5450,6 +5519,28 @@ async function interactiveInk(
         ink.store.addNotice(autoFixCommand.error);
       } else {
         await runAutoFixCommand(autoFixCommand.attempts ?? 2);
+      }
+      return true;
+    }
+    if (isGitWorkflowCommand(command)) {
+      const workflowAbort = new AbortController();
+      activeAbort = workflowAbort;
+      ink.controller.setBusy(true);
+      try {
+        const workflowMessage = await gitWorkflowCommandMessage(
+          command,
+          ui,
+          questionBox,
+          workflowAbort.signal,
+        );
+        ink.store.addNotice(workflowMessage);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ink.store.addNotice(safeTerminalText(`GitHub workflow failed: ${message}`));
+      } finally {
+        if (activeAbort === workflowAbort) activeAbort = undefined;
+        ink.controller.setBusy(false);
+        syncQueue();
       }
       return true;
     }

@@ -643,6 +643,30 @@ Use
 for explicit metadata-only evidence cleanup. Cleanup reports removed validations,
 removed change sets, protected applied guards, remaining counts, and the current
 retention summary; it never executes a command or touches workspace files.
+
+### Guarded GitHub workflow
+
+Interactive sessions include a small, argument-safe Git workflow for the common
+branch/commit/push/pull-request path:
+
+```text
+:branch
+:branch create feature/parser-fix
+:commit --all "fix parser validation"
+:push origin feature/parser-fix
+:pr --base main "Fix parser validation"
+```
+
+`/branch`, `/commit`, `/push`, and `/pr` aliases are accepted as well. `:branch`
+only reads the current branch, changed-file count, and the `origin` remote.
+Branch creation, commits, pushes, and pull requests always ask for explicit
+confirmation. Commits run `git diff --check`, refuse worktrees containing
+secret-looking files such as `.env` or private keys, and only stage the whole
+workspace when `--all` is present. Push and PR commands require a clean worktree;
+PR creation additionally requires an authenticated GitHub CLI session and an
+upstream branch. The CLI never adds `--force`, never sends shell command strings
+to a shell, and does not print `gh auth status` output or tokens.
+
 `Ctrl-C` cancels the request that is in flight (through the same abort path the
 desktop uses) and exits with status `130`; it also exits immediately when the CLI
 is idle at the prompt.

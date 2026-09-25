@@ -81,6 +81,10 @@ export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":expand", description: "Expand the latest tool card" },
   { command: ":validate <changeSetId>", description: "Rerun trusted checks" },
   { command: ":autofix [1-3]", description: "Repair the latest validation failure" },
+  { command: ":branch [create <name>]", description: "Inspect or create a local Git branch" },
+  { command: ":commit [--all] <message>", description: "Review and create a guarded Git commit" },
+  { command: ":push [remote] [branch]", description: "Review and push a clean branch" },
+  { command: ":pr [--base <branch>] <title>", description: "Create a reviewed GitHub pull request" },
   { command: ":cleanup ...", description: "Prune metadata-only evidence" },
   { command: ":quit", description: "Exit the session (also exit / quit)" },
 ];
