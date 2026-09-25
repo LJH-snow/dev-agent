@@ -693,8 +693,13 @@ button:focus-visible, select:focus-visible, textarea:focus-visible {
   flex-direction: column;
   gap: 14px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 22px clamp(18px, 4vw, 54px) 30px;
-  scroll-behavior: smooth;
+  /* Streaming updates must land at the latest line immediately. A smooth
+     scroll here makes every token animate behind the composer and can leave
+     the viewport visually stuck while the response grows. Explicit jump
+     actions can still opt into smooth scrolling when needed. */
+  scroll-behavior: auto;
 }
 
 .jump-to-latest {

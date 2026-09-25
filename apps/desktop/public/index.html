@@ -575,6 +575,25 @@
               <div id="runtime-trace-status" class="runtime-trace-status" data-i18n="trace.choose" role="status">Choose Trace to inspect bounded run timings.</div>
             </div>
           </div>
+          <div id="runtime-trace-summary" class="runtime-trace-summary" data-i18n-aria-label="trace.summary">
+            <div><span data-i18n="trace.totalRuns">Runs</span><strong id="runtime-trace-summary-runs">0</strong></div>
+            <div><span data-i18n="trace.visibleRuns">Visible</span><strong id="runtime-trace-summary-visible">0</strong></div>
+            <div><span data-i18n="trace.failedRuns">Failed</span><strong id="runtime-trace-summary-failed">0</strong></div>
+            <div><span data-i18n="trace.averageDuration">Average</span><strong id="runtime-trace-summary-average">0s</strong></div>
+          </div>
+          <div class="runtime-trace-failure-summary">
+            <span data-i18n="trace.failureSummaryLabel">Failure categories</span>
+            <strong id="runtime-trace-failure-summary">—</strong>
+          </div>
+          <div class="runtime-trace-filters" role="group" data-i18n-aria-label="trace.filters">
+            <label><span data-i18n="trace.filter.status">Status</span><select id="runtime-trace-status-filter"><option value="all" data-i18n="trace.filter.all">All</option><option value="running" data-i18n="trace.status.running">Running</option><option value="completed" data-i18n="trace.status.completed">Completed</option><option value="failed" data-i18n="trace.status.failed">Failed</option><option value="interrupted" data-i18n="trace.status.interrupted">Interrupted</option></select></label>
+            <label><span data-i18n="trace.filter.stage">Stage</span><select id="runtime-trace-stage-filter"><option value="all" data-i18n="trace.filter.all">All</option><option value="model" data-i18n="trace.kind.model">Model</option><option value="tool" data-i18n="trace.filter.tools">Tools</option></select></label>
+            <label><span data-i18n="trace.filter.tool">Tool</span><select id="runtime-trace-tool-filter"><option value="all" data-i18n="trace.filter.all">All</option></select></label>
+            <label><span data-i18n="trace.filter.from">From</span><input id="runtime-trace-start" type="datetime-local" aria-label="From"></label>
+            <label><span data-i18n="trace.filter.to">To</span><input id="runtime-trace-end" type="datetime-local" aria-label="To"></label>
+            <button type="button" id="runtime-trace-clear-filters" data-i18n="trace.filter.clear">Clear filters</button>
+          </div>
+          <div id="runtime-trace-filter-note" class="runtime-trace-filter-note" role="status"></div>
           <div id="runtime-trace-list" class="runtime-trace-list"></div>
           <button type="button" id="runtime-trace-refresh" class="runtime-trace-refresh" data-i18n="action.refresh">Refresh</button>
         </section>
@@ -723,6 +742,18 @@
     const evidencePreviewRefreshButton = document.getElementById("evidence-preview-refresh");
     const runtimeTracePanel = document.getElementById("runtime-trace-panel");
     const runtimeTraceStatus = document.getElementById("runtime-trace-status");
+    const runtimeTraceSummaryRuns = document.getElementById("runtime-trace-summary-runs");
+    const runtimeTraceSummaryVisible = document.getElementById("runtime-trace-summary-visible");
+    const runtimeTraceSummaryFailed = document.getElementById("runtime-trace-summary-failed");
+    const runtimeTraceSummaryAverage = document.getElementById("runtime-trace-summary-average");
+    const runtimeTraceFailureSummary = document.getElementById("runtime-trace-failure-summary");
+    const runtimeTraceStatusFilter = document.getElementById("runtime-trace-status-filter");
+    const runtimeTraceStageFilter = document.getElementById("runtime-trace-stage-filter");
+    const runtimeTraceToolFilter = document.getElementById("runtime-trace-tool-filter");
+    const runtimeTraceStartFilter = document.getElementById("runtime-trace-start");
+    const runtimeTraceEndFilter = document.getElementById("runtime-trace-end");
+    const runtimeTraceClearFiltersButton = document.getElementById("runtime-trace-clear-filters");
+    const runtimeTraceFilterNote = document.getElementById("runtime-trace-filter-note");
     const runtimeTraceList = document.getElementById("runtime-trace-list");
     const runtimeTraceRefreshButton = document.getElementById("runtime-trace-refresh");
     const workbenchCapabilitiesStatus = document.getElementById("workbench-capabilities-status");
@@ -794,6 +825,9 @@
     let checkpointController = null;
     let traceRequestId = 0;
     let traceController = null;
+    let traceRuns = [];
+    let traceDroppedRuns = 0;
+    let traceLifecycle = [];
     let desktopStatusRequestId = 0;
     let desktopStatusController = null;
     let desktopStatusPayload = null;
@@ -3640,63 +3674,151 @@
     }
 
     function renderTraceRuns(runs, droppedRuns, lifecycle = []) {
-      runtimeTraceList.innerHTML = "";
-      const lifecycleLabels = lifecycle.map(traceLifecycleLabel).filter(Boolean).slice(-16);
+      traceRuns = runs.slice(0, 20);
+      traceDroppedRuns = droppedRuns;
+      traceLifecycle = lifecycle.slice(-64);
+      refreshTraceToolOptions(traceRuns);
+      renderFilteredTraceRuns();
+    }
+
+    function createTraceSurfaceButton(labelKey, targetId) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'runtime-trace-link';
+      setLocalizedNode(button, labelKey);
+      button.addEventListener('click', () => {
+        const target = document.getElementById(targetId);
+        if (!target) return;
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const focusTarget = target.querySelector('button, input, select, textarea');
+        if (focusTarget && typeof focusTarget.focus === 'function') focusTarget.focus({ preventScroll: true });
+      });
+      return button;
+    }
+
+    function traceFilterValues() {
+      return {
+        status: runtimeTraceStatusFilter?.value || 'all',
+        stage: runtimeTraceStageFilter?.value || 'all',
+        tool: runtimeTraceToolFilter?.value || 'all',
+        from: runtimeTraceStartFilter?.value || '',
+        to: runtimeTraceEndFilter?.value || '',
+      };
+    }
+
+    function traceSpanMatches(span, filters) {
+      if (filters.stage !== 'all' && span.kind !== filters.stage) return false;
+      if (filters.tool !== 'all') return span.kind === 'tool' && safeTraceLabel(span.name, 'tool', 128) === filters.tool;
+      return true;
+    }
+
+    function traceRunMatches(run, filters) {
+      if (filters.status !== 'all' && run.status !== filters.status) return false;
+      const startedAt = Date.parse(run.startedAt);
+      if (!Number.isFinite(startedAt)) return false;
+      const from = filters.from ? Date.parse(filters.from) : NaN;
+      const to = filters.to ? Date.parse(filters.to) : NaN;
+      if (Number.isFinite(from) && startedAt < from) return false;
+      if (Number.isFinite(to) && startedAt > to) return false;
+      if (filters.stage === 'all' && filters.tool === 'all') return true;
+      return run.spans.some((span) => traceSpanMatches(span, filters));
+    }
+
+    function traceVisibleSpans(run, filters) {
+      if (filters.stage === 'all' && filters.tool === 'all') return run.spans.slice(0, 50);
+      return run.spans.filter((span) => traceSpanMatches(span, filters)).slice(0, 50);
+    }
+
+    function renderTraceSummary(visibleRuns, allRuns = traceRuns) {
+      const durations = visibleRuns.map((run) => Number.isFinite(run.durationMs) && run.durationMs >= 0 ? run.durationMs : null).filter((value) => value !== null);
+      const failedRuns = visibleRuns.filter((run) => run.status === 'failed').length;
+      const interruptedRuns = visibleRuns.filter((run) => run.status === 'interrupted').length;
+      const failedTools = visibleRuns.reduce((count, run) => count + run.spans.filter((span) => span.kind === 'tool' && span.status === 'failed').length, 0);
+      const denied = visibleRuns.reduce((count, run) => count + run.spans.filter((span) => span.authorizationResult === 'deny').length, 0);
+      runtimeTraceSummaryRuns.textContent = String(allRuns.length);
+      runtimeTraceSummaryVisible.textContent = String(visibleRuns.length);
+      runtimeTraceSummaryFailed.textContent = String(failedRuns + interruptedRuns);
+      runtimeTraceSummaryAverage.textContent = formatRunDuration(durations.length ? durations.reduce((sum, value) => sum + value, 0) / durations.length : 0);
+      runtimeTraceFailureSummary.textContent = t('trace.failureSummary', { failed: failedRuns, interrupted: interruptedRuns, tools: failedTools, denied });
+      runtimeTraceFilterNote.textContent = t('trace.showing', { visible: visibleRuns.length, total: allRuns.length });
+    }
+
+    function refreshTraceToolOptions(runs) {
+      if (!runtimeTraceToolFilter) return;
+      const current = runtimeTraceToolFilter.value || 'all';
+      const names = new Set();
+      for (const run of runs) for (const span of run.spans) if (span.kind === 'tool') names.add(safeTraceLabel(span.name, 'tool', 128));
+      runtimeTraceToolFilter.innerHTML = '';
+      const all = document.createElement('option');
+      all.value = 'all';
+      setLocalizedNode(all, 'trace.filter.all');
+      runtimeTraceToolFilter.appendChild(all);
+      for (const name of [...names].sort()) {
+        const option = document.createElement('option');
+        option.value = name;
+        option.textContent = name;
+        runtimeTraceToolFilter.appendChild(option);
+      }
+      runtimeTraceToolFilter.value = names.has(current) ? current : 'all';
+    }
+
+    function renderFilteredTraceRuns() {
+      const filters = traceFilterValues();
+      const visibleRuns = traceRuns.filter((run) => traceRunMatches(run, filters));
+      renderTraceSummary(visibleRuns);
+      runtimeTraceList.innerHTML = '';
+      const lifecycleLabels = traceLifecycle.map(traceLifecycleLabel).filter(Boolean).slice(-16);
       if (lifecycleLabels.length > 0) {
-        const lifecycleNode = document.createElement("div");
-        lifecycleNode.className = "runtime-trace-empty";
-        lifecycleNode.textContent = lifecycleLabels.join(" · ");
+        const lifecycleNode = document.createElement('div');
+        lifecycleNode.className = 'runtime-trace-empty';
+        lifecycleNode.textContent = lifecycleLabels.join(' · ');
         runtimeTraceList.appendChild(lifecycleNode);
       }
-      if (runs.length === 0) {
-        const empty = document.createElement("div");
-        empty.className = "runtime-trace-empty";
-        setLocalizedNode(empty, "trace.empty");
+      if (visibleRuns.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'runtime-trace-empty';
+        setLocalizedNode(empty, traceRuns.length ? 'trace.noMatches' : 'trace.empty');
         runtimeTraceList.appendChild(empty);
       }
-      for (const run of runs) {
-        const item = document.createElement("article");
-        item.className = "runtime-trace-item";
-        item.dataset.status = ["running", "failed", "interrupted"].includes(run.status)
-          ? run.status
-          : "completed";
-
-        const header = document.createElement("div");
-        header.className = "runtime-trace-item-header";
-        const id = document.createElement("strong");
-        id.textContent = safeTraceLabel(run.runId, "run", 24);
-        const meta = document.createElement("span");
+      for (const run of visibleRuns) {
+        const item = document.createElement('article');
+        item.className = 'runtime-trace-item';
+        item.dataset.status = ['running', 'failed', 'interrupted'].includes(run.status) ? run.status : 'completed';
+        const header = document.createElement('div');
+        header.className = 'runtime-trace-item-header';
+        const id = document.createElement('strong');
+        id.textContent = safeTraceLabel(run.runId, 'run', 24);
+        const meta = document.createElement('span');
         meta.textContent = traceRunMeta(run);
         header.append(id, meta);
-
-        const spans = document.createElement("ol");
-        spans.className = "runtime-trace-spans";
-        for (const span of run.spans.slice(0, 50)) {
-          const entry = document.createElement("li");
-          entry.className = "runtime-trace-span";
-          entry.dataset.status = ["running", "failed"].includes(span.status) ? span.status : "completed";
-          const label = document.createElement("span");
+        const actions = document.createElement('div');
+        actions.className = 'runtime-trace-item-actions';
+        actions.append(createTraceSurfaceButton('trace.openTerminal', 'task-terminal-panel'), createTraceSurfaceButton('trace.openChanges', 'task-workspace-panel'));
+        const spans = document.createElement('ol');
+        spans.className = 'runtime-trace-spans';
+        for (const span of traceVisibleSpans(run, filters)) {
+          const entry = document.createElement('li');
+          entry.className = 'runtime-trace-span';
+          entry.dataset.status = ['running', 'failed'].includes(span.status) ? span.status : 'completed';
+          const label = document.createElement('span');
           label.textContent = traceSpanLabel(span);
-          const detail = document.createElement("span");
-          const detailParts = [
-            traceStatusLabel(span.status),
-            formatRunDuration(Number.isFinite(span.durationMs) && span.durationMs >= 0 ? span.durationMs : 0),
-          ];
+          const detail = document.createElement('span');
+          const detailParts = [traceStatusLabel(span.status), formatRunDuration(Number.isFinite(span.durationMs) && span.durationMs >= 0 ? span.durationMs : 0)];
           const capability = traceCapabilityLabel(span.capabilityClass);
           const authorization = traceAuthorizationLabel(span.authorizationResult);
           if (capability) detailParts.push(capability);
           if (authorization) detailParts.push(authorization);
-          detail.textContent = detailParts.join(" · ");
+          detail.textContent = detailParts.join(' · ');
           entry.append(label, detail);
           spans.appendChild(entry);
         }
-        item.append(header, spans);
+        item.append(header, actions, spans);
         runtimeTraceList.appendChild(item);
       }
-      if (Number.isSafeInteger(droppedRuns) && droppedRuns > 0) {
-        const note = document.createElement("div");
-        note.className = "runtime-trace-empty";
-        setLocalizedNode(note, "trace.droppedRuns", { count: droppedRuns });
+      if (Number.isSafeInteger(traceDroppedRuns) && traceDroppedRuns > 0) {
+        const note = document.createElement('div');
+        note.className = 'runtime-trace-empty';
+        setLocalizedNode(note, 'trace.droppedRuns', { count: traceDroppedRuns });
         runtimeTraceList.appendChild(note);
       }
     }
@@ -4500,7 +4622,7 @@
     }
 
     function setMessagesScrollTop(behavior = "auto") {
-      const top = messages.scrollHeight;
+      const top = Math.max(0, messages.scrollHeight - messages.clientHeight);
       if (typeof messages.scrollTo === "function") {
         try {
           messages.scrollTo({ top, left: 0, behavior });
