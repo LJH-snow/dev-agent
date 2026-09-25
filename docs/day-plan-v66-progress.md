@@ -222,3 +222,11 @@
   `New output below`，不会被强制拉回底部。
 - 新 server 的浏览器验收确认大块新 assistant 输出会立即到达最大 scroll offset；
   Desktop 全量测试 **236/236** 通过，build/typecheck 与 `git diff --check` 通过。
+
+## 2026-09-25 — Changes Center split diff readability follow-up
+
+- 继续完成 Changes Center 的 UI-only 增量：Split diff 将连续删除/新增块配对到两列，
+  保留 `−旧行` / `+新行` review anchors；Git metadata 行使用全宽样式，不再误着色为改动。
+- 收窄 inspector 时，split grid 不再强制 620px 最小宽度；内容仍在有界 diff 容器内安全滚动。
+- `task-workspaces` 与 `task-workspaces-ui` focused 合计 **11/11** 通过，Desktop
+  build/typecheck 和 `git diff --check` 通过；不改动 server mutation/approval/worktree 边界。

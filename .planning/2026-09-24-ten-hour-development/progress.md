@@ -54,3 +54,17 @@
 - `@dev-agent/claude-agent-sdk` adapter 测试 **13/13** 通过：工具 allowlist、审批绑定、updatedInput、取消、结果上限和 query 清理均有证据。
 - `@dev-agent/model` 测试 **94/94** 通过：Anthropic SDK provider、streaming、usage/cache、retry、错误脱敏和 output budget 均通过。
 - 本轮没有改变 adapter 的可选性质，也没有把 Claude Agent SDK 接入默认 CLI AgentLoop。
+
+## 2026-09-25 — Changes Center split readability follow-up
+
+- Continued the project with a bounded UI-only improvement: Split diff view now
+  pairs adjacent additions/deletions, preserves line anchors, classifies Git
+  metadata rows, and avoids forcing a 620px minimum on narrow inspector panels.
+- Current focused task-workspace/worktree evidence: **11/11 passed**; build,
+  typecheck, and `git diff --check` passed. The pre-existing full Desktop
+  baseline remains **236/236**; a later full-suite run encountered unrelated
+  environment-level MCP timeout flakiness, while the affected chat tests pass
+  when run in isolation.
+- The source/test changes are intentionally limited to the existing bounded
+  Changes Center renderer; no endpoint, approval, worktree, or remote mutation
+  behavior changed.
