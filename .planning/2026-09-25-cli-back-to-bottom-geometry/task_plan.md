@@ -8,7 +8,7 @@ Match the requested Codex-style behavior: center the Back-to-bottom navigation l
 - [x] Add failing hit-test expectations for the centered visible row and centered columns.
 - [x] Move the visual label to the center and align hover/click coordinates with the real guarded PTY layout.
 - [x] Verify hover on the visible row, no hover one row below, and click-to-end in a guarded real-CLI layout.
-- [ ] Commit and push only the scoped CLI source, test, and this plan files.
+- [x] Commit and push only the scoped CLI source, test, and this plan files.
 
 ## Constraints
 - Preserve unrelated Desktop, GitHub workflow, auto-fix, and planning changes.
