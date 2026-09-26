@@ -33,6 +33,15 @@ export type {
   WorkbenchMetadataSnapshot,
 } from "./capabilities.js";
 export type { DesktopStatusOptions, DesktopStatusSnapshot } from "./status.js";
+export { DesktopTaskValidationManager, TaskValidationError } from "./task-validation.js";
+export type {
+  TaskValidationCheckSnapshot,
+  TaskValidationPolicy,
+  TaskValidationMode,
+  TaskValidationSession,
+  TaskValidationSnapshot,
+  TaskValidationState,
+} from "./task-validation.js";
 
 async function main(): Promise<void> {
   const launch = await startDesktopEntry();

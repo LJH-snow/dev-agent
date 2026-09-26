@@ -48,6 +48,7 @@ const TOP_LEVEL_FIELDS = new Set([
   "validation",
   "validationPolicy",
   "pricing",
+  "routing",
   "approvalMode",
   "theme",
   "approval",
@@ -125,6 +126,7 @@ export function validateConfigValue(value: unknown): ConfigValidationResult {
   validateTheme(config, diagnostics);
   validateApproval(config, diagnostics);
   validatePricing(config, diagnostics);
+  validateRouting(config, diagnostics);
   validateCollaboration(config, diagnostics);
   validateMcpServers(config, diagnostics);
 
@@ -256,6 +258,40 @@ function validateBudget(config: Record<string, unknown>, diagnostics: ConfigDiag
       addDiagnostic(diagnostics, `budget.${key}`, "unknown_field", "Unknown budget field.");
     } else {
       validateNonNegativeIntegerField(value, key, diagnostics, "budget.");
+    }
+  }
+}
+
+function validateRouting(config: Record<string, unknown>, diagnostics: ConfigDiagnostic[]): void {
+  if (!hasOwn(config, "routing")) return;
+  const routing = config.routing;
+  if (!isPlainRecord(routing)) {
+    addDiagnostic(diagnostics, "routing", "invalid_type", "routing must be an object.");
+    return;
+  }
+  if (hasOwn(routing, "mode") && routing.mode !== "auto" && routing.mode !== "manual") {
+    addDiagnostic(diagnostics, "routing.mode", "invalid_enum", "routing.mode must be auto or manual.");
+  }
+  if (hasOwn(routing, "profiles")) {
+    const profiles = routing.profiles;
+    if (!isPlainRecord(profiles)) addDiagnostic(diagnostics, "routing.profiles", "invalid_type", "routing.profiles must be an object.");
+    else {
+      for (const key of Object.keys(profiles)) {
+        if (!["fast", "balanced", "deep"].includes(key)) addDiagnostic(diagnostics, `routing.profiles.${key}`, "unknown_field", "Unknown routing profile.");
+        else if (typeof profiles[key] !== "string" || profiles[key].trim() === "") addDiagnostic(diagnostics, `routing.profiles.${key}`, "invalid_string", "Routing profile must be a non-empty string.");
+      }
+    }
+  }
+  if (hasOwn(routing, "budget")) {
+    const budget = routing.budget;
+    if (!isPlainRecord(budget)) addDiagnostic(diagnostics, "routing.budget", "invalid_type", "routing.budget must be an object.");
+    else {
+      for (const key of Object.keys(budget)) {
+        if (!["maxTokens", "maxDurationMs", "maxCostUsd"].includes(key)) addDiagnostic(diagnostics, `routing.budget.${key}`, "unknown_field", "Unknown routing budget field.");
+        else if (key === "maxCostUsd") {
+          if (typeof budget[key] !== "number" || !Number.isFinite(budget[key]) || budget[key] < 0) addDiagnostic(diagnostics, `routing.budget.${key}`, "invalid_number", "Routing cost budget must be non-negative.");
+        } else validateNonNegativeIntegerField(budget, key, diagnostics, "routing.budget.");
+      }
     }
   }
 }

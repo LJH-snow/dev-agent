@@ -8,7 +8,12 @@ import { createElement } from "react";
 import { render, renderToString } from "ink";
 import { RuntimeEventSequence } from "@dev-agent/agent-core";
 
-import { deriveStickyTaskTitle, InkCliApp } from "../dist/ink/app.js";
+import {
+  deriveStickyTaskTitle,
+  InkCliApp,
+  isBackToBottomClick,
+  isNavigationBarHovered,
+} from "../dist/ink/app.js";
 import { InkRuntimeStore } from "../dist/ink/runtime-store.js";
 import {
   createInkRenderOutput,
@@ -1611,6 +1616,120 @@ test("Ink navigates a long transcript with terminal mouse wheel events", async (
   }
 });
 
+test("Back to bottom hit-testing only accepts a primary press on the navigation row", () => {
+  const browsing = {
+    followOutput: false,
+    hiddenAbove: 4,
+    hiddenBelow: 3,
+    newOutput: 0,
+  } as const;
+  // The painted action is on row 15 in a 24-row terminal, not row 16.
+  // The screen-level regression exercises the real Ink renderer too.
+  const click = { button: 0, x: 40, y: 15, action: "press" } as const;
+
+  assert.equal(isBackToBottomClick(click, 24, browsing, 80), true);
+  assert.equal(isNavigationBarHovered({ x: 40, y: 15 }, 24, browsing, 80), true);
+  assert.equal(isNavigationBarHovered({ x: 2, y: 15 }, 24, browsing, 80), false);
+  assert.equal(isNavigationBarHovered({ x: 40, y: 16 }, 24, browsing, 80), false);
+  assert.equal(
+    isBackToBottomClick({ ...click, y: 14 }, 23, browsing, 80),
+    true,
+    "hit testing uses the effective row count supplied by the renderer",
+  );
+  assert.equal(
+    isBackToBottomClick({ ...click, y: 16 }, 24, browsing, 80),
+    false,
+  );
+  assert.equal(
+    isBackToBottomClick({ ...click, action: "release" }, 24, browsing, 80),
+    false,
+  );
+  assert.equal(
+    isBackToBottomClick({ ...click, button: 2 }, 24, browsing, 80),
+    false,
+  );
+  assert.equal(
+    isBackToBottomClick(click, 24, {
+      followOutput: true,
+      hiddenAbove: 0,
+      hiddenBelow: 0,
+      newOutput: 0,
+    }, 80),
+    false,
+  );
+});
+
+test("Ink clicking Back to bottom returns the transcript to the latest output", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const store = new InkRuntimeStore();
+  const sequence = new RuntimeEventSequence("mouse-back-to-bottom-session");
+  const instance = renderInkApp(stdin, stdout, () => undefined, store);
+
+  try {
+    const runId = "mouse-back-to-bottom-run";
+    store.apply(sequence.create(
+      "run.started",
+      { prompt: "clickable back to bottom task", model: "qwen3:4b-instruct" },
+      { runId },
+    ));
+    store.apply(sequence.create(
+      "assistant.completed",
+      { text: Array.from({ length: 40 }, (_, index) => `click-line-${index + 1}`).join("\n") },
+      { runId },
+    ));
+    store.apply(sequence.create(
+      "run.completed",
+      { turns: 1 },
+      { runId },
+    ));
+    await new Promise((resolve) => setTimeout(resolve, 80));
+
+    writes.length = 0;
+    stdin.write("\u001b[5~");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const pageUpFrame = writes.join("");
+    assert.match(pageUpFrame, /Back to bottom/);
+    assert.match(
+      pageUpFrame,
+      /\n {10}↓ Back to bottom/,
+      "the navigation action is centered in the terminal instead of pinned to the left edge",
+    );
+    assert.doesNotMatch(pageUpFrame, /click-line-40/);
+
+    writes.length = 0;
+    // Button code 35 is an SGR no-button motion report. It should only color
+    // the navigation label while the pointer is over its text bounds.
+    stdin.write("\u001b[<35;40;15M");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const hoverFrame = writes.join("");
+    assert.match(hoverFrame, /Back to bottom/);
+    assert.equal(
+      hoverFrame.includes("[<35;40;15M"),
+      false,
+      "hover motion reports must be consumed instead of entering the composer",
+    );
+
+    writes.length = 0;
+    // The painted action in a 24-row terminal is on row 15.
+    // Send press + release just as a real SGR mouse click does.
+    stdin.write("\u001b[<0;40;15M\u001b[<0;40;15m");
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const bottomFrame = writes.join("");
+    assert.match(bottomFrame, /click-line-40/);
+    assert.doesNotMatch(bottomFrame, /Back to bottom/);
+    assert.doesNotMatch(bottomFrame, /rows below/);
+    assert.doesNotMatch(
+      bottomFrame,
+      /\[<0;40;15[Mm]/,
+      "the Back to bottom click must not be inserted into the composer",
+    );
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
 test("Ink ignores terminal mouse clicks instead of inserting them into the composer", async () => {
   const { stdin, stdout, writes } = createInkTerminal();
   const submitted: string[] = [];
@@ -1737,6 +1856,11 @@ test("Ink keeps a submitted prompt in one bounded live frame", async () => {
       (liveFrame.match(/› first prompt/g) ?? []).length,
       1,
       "the submitted prompt should be rendered exactly once beside the active run",
+    );
+    assert.equal(
+      (liveFrame.match(/first prompt/g) ?? []).length,
+      1,
+      "the sticky task header must not duplicate the prompt during live output",
     );
     assert.match(liveFrame, /Working ·/);
   } finally {

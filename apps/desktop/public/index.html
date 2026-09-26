@@ -388,8 +388,51 @@
                 <option value="plan" data-i18n="composer.plan">Plan</option>
               </select>
             </label>
-            <span data-i18n="composer.shortcut">Enter to send · Shift+Enter for a new line</span>
+            <div class="composer-quick-actions" aria-label="Quick actions" data-i18n-aria-label="templates.quickActions">
+              <span class="composer-quick-actions-label" data-i18n="templates.quickActions">Quick actions</span>
+              <button type="button" class="composer-quick-action" data-template-quick="fix-bug" data-i18n="templates.builtin.fixBug.short">Fix bug</button>
+              <button type="button" class="composer-quick-action" data-template-quick="implement-feature" data-i18n="templates.builtin.feature.short">New feature</button>
+              <button type="button" class="composer-quick-action" data-template-quick="run-tests" data-i18n="templates.builtin.tests.short">Run tests</button>
+              <button type="button" id="task-template-toggle" class="composer-quick-action composer-quick-action-primary" aria-expanded="false" aria-controls="task-template-palette" data-i18n="templates.palette.open">Templates</button>
+            </div>
+            <span data-i18n="composer.shortcut">Enter to send · Shift+Enter for a new line · ⌘/Ctrl+K templates</span>
           </div>
+          <section id="task-template-palette" class="task-template-palette" aria-labelledby="task-template-title" hidden>
+            <div class="task-template-palette-header">
+              <div>
+                <strong id="task-template-title" data-i18n="templates.palette.title">Task templates</strong>
+                <span data-i18n="templates.palette.description">Insert a bounded prompt starter or save your own local template.</span>
+              </div>
+              <button type="button" id="task-template-close" class="task-template-close" aria-label="Close templates" data-i18n-aria-label="templates.palette.close">×</button>
+            </div>
+            <label class="task-template-search-label">
+              <span data-i18n="templates.palette.search">Search templates</span>
+              <input id="task-template-search" type="search" autocomplete="off" spellcheck="false" data-i18n-placeholder="templates.palette.searchPlaceholder" placeholder="Search templates" />
+            </label>
+            <div id="task-template-list" class="task-template-list" role="list" aria-live="polite"></div>
+            <div class="task-template-save">
+              <div class="task-template-save-heading" data-i18n="templates.palette.saveHeading">Save a local template</div>
+              <div class="task-template-save-grid">
+                <label>
+                  <span data-i18n="templates.palette.name">Name</span>
+                  <input id="task-template-name" type="text" maxlength="80" data-i18n-placeholder="templates.palette.namePlaceholder" placeholder="My task" />
+                </label>
+                <label>
+                  <span data-i18n="templates.palette.mode">Mode</span>
+                  <select id="task-template-mode" aria-label="Template mode" data-i18n-aria-label="templates.palette.mode">
+                    <option value="normal" data-i18n="composer.execute">Execute</option>
+                    <option value="plan" data-i18n="composer.plan">Plan</option>
+                  </select>
+                </label>
+              </div>
+              <label>
+                <span data-i18n="templates.palette.prompt">Prompt</span>
+                <textarea id="task-template-prompt" rows="3" maxlength="12000" data-i18n-placeholder="templates.palette.promptPlaceholder" placeholder="Describe the reusable task…"></textarea>
+              </label>
+              <button type="button" id="task-template-save" class="task-template-save-button" data-i18n="templates.palette.save">Save template</button>
+            </div>
+            <div id="task-template-status" class="task-template-status" role="status" aria-live="polite"></div>
+          </section>
           <div class="composer-actions">
             <textarea id="input" rows="1" aria-label="Message" data-i18n-aria-label="composer.message" data-i18n-placeholder="composer.placeholder" placeholder="Describe the work you want the agent to coordinate…"></textarea>
             <button type="submit" id="send" data-i18n-title="action.send" data-i18n-aria-label="action.send">
@@ -449,6 +492,24 @@
               <button type="button" id="task-workspace-compare" data-i18n="workspace.compare" disabled>Review diff</button>
               <button type="button" id="task-workspace-merge" data-i18n="workspace.merge" disabled>Merge task</button>
               <button type="button" id="task-workspace-cleanup" data-i18n="workspace.cleanup" disabled>Clean up</button>
+            <section id="task-validation-panel" class="task-validation-panel" aria-labelledby="task-validation-title" aria-live="polite" hidden>
+              <div class="task-validation-header">
+                <div>
+                  <h3 id="task-validation-title" data-i18n="taskValidation.title">Validation center</h3>
+                  <div id="task-validation-status" class="task-validation-status" role="status" data-i18n="taskValidation.status.ready">Ready to validate this task worktree.</div>
+                </div>
+                <span id="task-validation-policy" class="task-validation-policy" data-i18n="taskValidation.policy.unknown">Unknown policy</span>
+              </div>
+              <div id="task-validation-summary" class="task-validation-summary" role="status" data-i18n="taskValidation.summary.empty">No task validation has run.</div>
+              <ul id="task-validation-checks" class="task-validation-checks" aria-label="Validation checks" data-i18n-aria-label="taskValidation.checks.label"></ul>
+              <div class="task-validation-actions">
+                <button type="button" id="task-validation-run" data-i18n="taskValidation.run">Run validation</button>
+                <button type="button" id="task-validation-rerun-failed" data-i18n="taskValidation.rerunFailed" disabled>Rerun failed checks</button>
+                <button type="button" id="task-validation-cancel" data-i18n="taskValidation.cancel" disabled>Cancel</button>
+                <button type="button" id="task-validation-refresh" data-i18n="action.refresh">Refresh</button>
+                <button type="button" id="task-validation-feedback" data-i18n="taskValidation.insertFailure" disabled>Insert failure summary</button>
+              </div>
+            </section>
             </div>
             <section id="task-workspace-diff-panel" class="task-workspace-diff-panel" aria-labelledby="task-workspace-diff-title" hidden>
               <div class="task-workspace-diff-heading">
@@ -554,6 +615,58 @@
             </div>
             <ul id="mcp-health-list" class="mcp-health-list" aria-label="MCP server health" data-i18n-aria-label="mcpHealth.list"></ul>
           </div>
+        </section>
+        <section id="github-pr-review-panel" class="desktop-status-panel github-pr-review-panel" aria-labelledby="github-pr-review-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="github-pr-review-title" class="desktop-status-title" data-i18n="githubPrReview.title">GitHub PR review</div>
+              <div id="github-pr-review-status" class="desktop-status-note" role="status" data-i18n="githubPrReview.ready">Read-only pull request review workspace.</div>
+            </div>
+            <span class="github-pr-review-readonly" data-i18n="githubPrReview.readOnly">Read-only</span>
+          </div>
+          <form id="github-pr-review-form" class="github-pr-review-form">
+            <label class="github-pr-review-target">
+              <span class="sr-only" data-i18n="githubPrReview.targetLabel">GitHub pull request</span>
+              <input id="github-pr-review-url" type="text" autocomplete="off" spellcheck="false" maxlength="512" data-i18n-placeholder="githubPrReview.targetPlaceholder" placeholder="https://github.com/owner/repo/pull/123" />
+            </label>
+            <button type="submit" id="github-pr-review-load" data-i18n="githubPrReview.load">Load PR</button>
+            <button type="button" id="github-pr-review-clear" class="github-pr-review-secondary" data-i18n="githubPrReview.clear">Clear</button>
+          </form>
+          <div id="github-pr-review-summary" class="github-pr-review-summary" hidden></div>
+          <div class="github-pr-review-grid">
+            <div class="github-pr-review-column">
+              <h4 data-i18n="githubPrReview.files">Changed files</h4>
+              <ul id="github-pr-review-files" class="github-pr-review-list"></ul>
+              <h4 data-i18n="githubPrReview.reviews">Reviews</h4>
+              <ul id="github-pr-review-reviews" class="github-pr-review-list"></ul>
+              <h4 data-i18n="githubPrReview.comments">Comments</h4>
+              <ul id="github-pr-review-comments" class="github-pr-review-list"></ul>
+            </div>
+            <div class="github-pr-review-column">
+              <h4 data-i18n="githubPrReview.diff">Unified diff</h4>
+              <pre id="github-pr-review-diff" class="github-pr-review-diff" data-i18n="githubPrReview.noDiff">No diff loaded.</pre>
+            </div>
+          </div>
+          <div class="github-pr-review-notes">
+            <label for="github-pr-review-notes" data-i18n="githubPrReview.notes">Local review notes</label>
+            <textarea id="github-pr-review-notes" maxlength="12000" data-i18n-placeholder="githubPrReview.notesPlaceholder" placeholder="Keep private notes for this PR…"></textarea>
+            <div class="github-pr-review-actions">
+              <button type="button" id="github-pr-review-insert" class="github-pr-review-secondary" data-i18n="githubPrReview.insert">Insert review context</button>
+              <button type="button" id="github-pr-review-start" data-i18n="githubPrReview.start">Review with agent</button>
+            </div>
+            <div class="github-pr-review-note" data-i18n="githubPrReview.note">Remote content is bounded and inserted as untrusted reference text. No GitHub review or comment is submitted.</div>
+          </div>
+        </section>
+        <section id="parallel-runs-panel" class="desktop-status-panel parallel-runs-panel" aria-labelledby="parallel-runs-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="parallel-runs-title" class="desktop-status-title" data-i18n="parallelRuns.title">Parallel agent runs</div>
+              <div id="parallel-runs-status" class="desktop-status-note" role="status" data-i18n="parallelRuns.loading">Loading parallel runs…</div>
+            </div>
+            <button type="button" id="parallel-runs-refresh" class="desktop-status-refresh" data-i18n="parallelRuns.refresh">Refresh</button>
+          </div>
+          <div id="parallel-runs-summary" class="parallel-runs-summary" role="status"></div>
+          <ul id="parallel-runs-list" class="parallel-runs-list" aria-label="Parallel agent runs" data-i18n-aria-label="parallelRuns.list"></ul>
         </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
           <div class="desktop-status-header">
@@ -672,7 +785,10 @@
     } from "/public/chat-queue.js";
     import { filterSessionSummaries } from "/public/session-filter.js";
     import { createTaskWorkspaceUI, formatReviewComments } from "/public/task-workspace-ui.js";
+    import { createTaskValidationUI } from "/public/task-validation-ui.js";
     import { createTaskTerminalUI } from "/public/task-terminal-ui.js";
+    import { createTaskTemplateUI } from "/public/task-templates.js";
+    import { createGitHubPrReviewUI } from "/public/github-pr-review-ui.js";
     import {
       getTurnActivityForEvent,
       getTurnActivityForState,
@@ -860,6 +976,10 @@
     const mcpHealthSummary = document.getElementById("mcp-health-summary");
     const mcpHealthRefreshButton = document.getElementById("mcp-health-refresh");
     const mcpHealthList = document.getElementById("mcp-health-list");
+    const parallelRunsStatus = document.getElementById("parallel-runs-status");
+    const parallelRunsRefreshButton = document.getElementById("parallel-runs-refresh");
+    const parallelRunsSummary = document.getElementById("parallel-runs-summary");
+    const parallelRunsList = document.getElementById("parallel-runs-list");
     const stopButton = document.getElementById("stop");
     const desktopStatusNote = document.getElementById("desktop-status-note");
     const desktopStatusRefreshButton = document.getElementById("desktop-status-refresh");
@@ -899,7 +1019,10 @@
     let hasCost = false;
     let currentSessionId = null;
     let taskWorkspaceUI = null;
+    let taskValidationUI = null;
     let taskTerminalUI = null;
+    let taskTemplateUI = null;
+    let githubPrReviewUI = null;
     let sessionSummaries = new Map();
     let sessionFilterQuery = "";
     let sessionFilterStatus = "all";
@@ -929,6 +1052,9 @@
     let capabilitiesController = null;
     let mcpHealthRequestId = 0;
     let mcpHealthController = null;
+    let parallelRunsRequestId = 0;
+    let parallelRunsController = null;
+    let parallelRunsTimer = null;
     let runSnapshotSessionId = null;
     let runSnapshot = null;
     let runRecoveryTimer = null;
@@ -1062,6 +1188,94 @@
         "mcpHealth.serverLatency": "{latency} ms",
         "mcpHealth.serverChecked": "Checked {time}",
         "mcpHealth.serverUnchecked": "Not checked yet",
+        "parallelRuns.title": "Parallel agent runs",
+        "parallelRuns.loading": "Loading parallel runs…",
+        "parallelRuns.checking": "Checking agent runs…",
+        "parallelRuns.ready": "{active} active · {running} running · {waiting} waiting · {failed} failed",
+        "parallelRuns.empty": "No agent runs yet.",
+        "parallelRuns.error": "Parallel run status is temporarily unavailable.",
+        "parallelRuns.refresh": "Refresh",
+        "parallelRuns.list": "Parallel agent runs",
+        "parallelRuns.status.idle": "Idle",
+        "parallelRuns.status.running": "Running",
+        "parallelRuns.status.waiting": "Waiting",
+        "parallelRuns.status.done": "Completed",
+        "parallelRuns.status.failed": "Failed",
+        "parallelRuns.status.aborted": "Aborted",
+        "parallelRuns.stage.idle": "Idle",
+        "parallelRuns.stage.model": "Model",
+        "parallelRuns.stage.tool": "Tool",
+        "parallelRuns.stage.approval": "Approval",
+        "parallelRuns.stage.done": "Completed",
+        "parallelRuns.stage.failed": "Failed",
+        "parallelRuns.stage.aborted": "Aborted",
+        "parallelRuns.tool": "{name}",
+        "parallelRuns.duration.seconds": "{count}s",
+        "parallelRuns.duration.minutes": "{count}m",
+        "parallelRuns.duration.hours": "{count}h",
+        "parallelRuns.focus": "Focus",
+        "taskValidation.title": "Validation center",
+        "taskValidation.status.ready": "Ready to validate this task worktree.",
+        "taskValidation.status.running": "Validation is running…",
+        "taskValidation.status.starting": "Preparing validation…",
+        "taskValidation.status.cancelling": "Cancellation requested…",
+        "taskValidation.status.inserted": "Failure summary inserted into the prompt.",
+        "taskValidation.policy.fast": "fast policy",
+        "taskValidation.policy.default": "default policy",
+        "taskValidation.policy.strict": "strict policy",
+        "taskValidation.policy.unknown": "unknown policy",
+        "taskValidation.summary.empty": "No task validation has run.",
+        "taskValidation.files": "{count} changed file(s)",
+        "taskValidation.run": "Run validation",
+        "taskValidation.rerunFailed": "Rerun failed checks",
+        "taskValidation.cancel": "Cancel",
+        "taskValidation.insertFailure": "Insert failure summary",
+        "taskValidation.checks.label": "Validation checks",
+        "taskValidation.checks.empty": "No validation checks were derived.",
+        "taskValidation.check.unknown": "Unnamed check",
+        "taskValidation.check.pending": "pending",
+        "taskValidation.check.passed": "passed",
+        "taskValidation.check.failed": "failed",
+        "taskValidation.check.skipped": "skipped",
+        "taskValidation.check.blocked": "blocked",
+        "taskValidation.error.generic": "Task validation is unavailable or failed.",
+        "taskValidation.error.truncated": "Refresh the task diff before validating truncated changes.",
+        "taskValidation.error.noFailedChecks": "No failed checks remain to rerun.",
+        "githubPrReview.title": "GitHub PR review",
+        "githubPrReview.ready": "Read-only pull request review workspace.",
+        "githubPrReview.readOnly": "Read-only",
+        "githubPrReview.targetLabel": "GitHub pull request",
+        "githubPrReview.targetPlaceholder": "https://github.com/owner/repo/pull/123",
+        "githubPrReview.load": "Load PR",
+        "githubPrReview.clear": "Clear",
+        "githubPrReview.loading": "Loading pull request…",
+        "githubPrReview.loaded": "Loaded {files} changed file(s).",
+        "githubPrReview.invalidTarget": "Enter a valid GitHub pull request URL or owner/repo/number.",
+        "githubPrReview.optIn": "Enable explicit GitHub integration to load pull requests.",
+        "githubPrReview.notAuthenticated": "Authenticate GitHub CLI before loading a pull request.",
+        "githubPrReview.cliUnavailable": "GitHub CLI is unavailable on this machine.",
+        "githubPrReview.notFound": "Pull request was not found or is not accessible.",
+        "githubPrReview.tooLarge": "The pull request response is too large to display safely.",
+        "githubPrReview.malformed": "GitHub returned an invalid pull request response.",
+        "githubPrReview.error": "Pull request could not be loaded.",
+        "githubPrReview.files": "Changed files",
+        "githubPrReview.reviews": "Reviews",
+        "githubPrReview.comments": "Comments",
+        "githubPrReview.diff": "Unified diff",
+        "githubPrReview.notes": "Local review notes",
+        "githubPrReview.notesPlaceholder": "Keep private notes for this pull request…",
+        "githubPrReview.insert": "Insert review context",
+        "githubPrReview.start": "Review with agent",
+        "githubPrReview.reviewInserted": "Review context inserted; Plan mode is ready.",
+        "githubPrReview.inserted": "Review context inserted into the prompt.",
+        "githubPrReview.note": "Remote content is bounded and inserted as untrusted reference text. No GitHub review or comment is submitted.",
+        "githubPrReview.stats": "{files} file(s) · +{additions}/-{deletions}",
+        "githubPrReview.untitled": "Untitled pull request",
+        "githubPrReview.noFiles": "No changed files returned.",
+        "githubPrReview.noReviews": "No review records returned.",
+        "githubPrReview.noComments": "No comments returned.",
+        "githubPrReview.generalComment": "general",
+        "githubPrReview.noDiff": "No diff loaded.",
         "workspace.label": "Workspace",
         "workspace.title": "Task workspaces",
         "workspace.description": "Each task gets its own branch and Git worktree.",
@@ -1236,7 +1450,46 @@
         "composer.mode": "Mode",
         "composer.execute": "Execute",
         "composer.plan": "Plan",
-        "composer.shortcut": "Enter to send · Shift+Enter for a new line",
+        "composer.shortcut": "Enter to send · Shift+Enter for a new line · ⌘/Ctrl+K templates",
+        "templates.quickActions": "Quick actions",
+        "templates.builtin.fixBug.title": "Fix a bug",
+        "templates.builtin.fixBug.short": "Fix bug",
+        "templates.builtin.fixBug.description": "Investigate, fix, and verify a focused bug report.",
+        "templates.builtin.feature.title": "Implement a feature",
+        "templates.builtin.feature.short": "New feature",
+        "templates.builtin.feature.description": "Plan a bounded feature before making implementation changes.",
+        "templates.builtin.tests.title": "Run tests",
+        "templates.builtin.tests.short": "Run tests",
+        "templates.builtin.tests.description": "Run relevant checks and repair failures with evidence.",
+        "templates.builtin.review.title": "Review changes",
+        "templates.builtin.review.description": "Inspect current changes for correctness, regressions, and missing tests.",
+        "templates.builtin.explain.title": "Explain code",
+        "templates.builtin.explain.description": "Explain execution flow, data boundaries, and failure cases without editing.",
+        "templates.palette.open": "Templates",
+        "templates.palette.title": "Task templates",
+        "templates.palette.description": "Insert a bounded prompt starter or save your own local template.",
+        "templates.palette.close": "Close templates",
+        "templates.palette.search": "Search templates",
+        "templates.palette.searchPlaceholder": "Search templates",
+        "templates.palette.builtIn": "Built-in templates",
+        "templates.palette.custom": "Your local templates",
+        "templates.palette.empty": "No templates match this search.",
+        "templates.palette.use": "Use",
+        "templates.palette.delete": "Delete",
+        "templates.palette.confirmDelete": "Delete the local template “{name}”?",
+        "templates.palette.saveHeading": "Save a local template",
+        "templates.palette.name": "Name",
+        "templates.palette.namePlaceholder": "My task",
+        "templates.palette.mode": "Mode",
+        "templates.palette.prompt": "Prompt",
+        "templates.palette.promptPlaceholder": "Describe the reusable task…",
+        "templates.palette.save": "Save template",
+        "templates.palette.saved": "Saved “{name}”.",
+        "templates.palette.inserted": "Inserted “{name}” into the prompt.",
+        "templates.palette.deleted": "Deleted “{name}”.",
+        "templates.palette.required": "Add a name and prompt before saving.",
+        "templates.palette.limit": "The local template limit has been reached.",
+        "templates.palette.shortcut": "⌘/Ctrl+Shift+{key}",
         "composer.message": "Message",
         "composer.placeholder": "Describe the work you want the agent to coordinate…",
         "inspector.label": "Inspector",
@@ -1602,6 +1855,94 @@
         "mcpHealth.serverLatency": "{latency} 毫秒",
         "mcpHealth.serverChecked": "检查时间 {time}",
         "mcpHealth.serverUnchecked": "尚未检查",
+        "parallelRuns.title": "并行智能体运行",
+        "parallelRuns.loading": "正在加载并行运行…",
+        "parallelRuns.checking": "正在检查智能体运行…",
+        "parallelRuns.ready": "{active} 个活跃 · {running} 个运行中 · {waiting} 个等待中 · {failed} 个失败",
+        "parallelRuns.empty": "暂无智能体运行。",
+        "parallelRuns.error": "并行运行状态暂时不可用。",
+        "parallelRuns.refresh": "刷新",
+        "parallelRuns.list": "并行智能体运行",
+        "parallelRuns.status.idle": "空闲",
+        "parallelRuns.status.running": "运行中",
+        "parallelRuns.status.waiting": "等待中",
+        "parallelRuns.status.done": "已完成",
+        "parallelRuns.status.failed": "失败",
+        "parallelRuns.status.aborted": "已中止",
+        "parallelRuns.stage.idle": "空闲",
+        "parallelRuns.stage.model": "模型",
+        "parallelRuns.stage.tool": "工具",
+        "parallelRuns.stage.approval": "审批",
+        "parallelRuns.stage.done": "已完成",
+        "parallelRuns.stage.failed": "失败",
+        "parallelRuns.stage.aborted": "已中止",
+        "parallelRuns.tool": "{name}",
+        "parallelRuns.duration.seconds": "{count} 秒",
+        "parallelRuns.duration.minutes": "{count} 分钟",
+        "parallelRuns.duration.hours": "{count} 小时",
+        "parallelRuns.focus": "聚焦",
+        "taskValidation.title": "验证中心",
+        "taskValidation.status.ready": "可以验证此任务 worktree。",
+        "taskValidation.status.running": "验证正在运行…",
+        "taskValidation.status.starting": "正在准备验证…",
+        "taskValidation.status.cancelling": "已请求取消…",
+        "taskValidation.status.inserted": "失败摘要已插入提示词。",
+        "taskValidation.policy.fast": "快速策略",
+        "taskValidation.policy.default": "默认策略",
+        "taskValidation.policy.strict": "严格策略",
+        "taskValidation.policy.unknown": "未知策略",
+        "taskValidation.summary.empty": "尚未运行任务验证。",
+        "taskValidation.files": "{count} 个变更文件",
+        "taskValidation.run": "运行验证",
+        "taskValidation.rerunFailed": "重跑失败检查",
+        "taskValidation.cancel": "取消",
+        "taskValidation.insertFailure": "插入失败摘要",
+        "taskValidation.checks.label": "验证检查",
+        "taskValidation.checks.empty": "没有推导出可运行的验证检查。",
+        "taskValidation.check.unknown": "未命名检查",
+        "taskValidation.check.pending": "等待中",
+        "taskValidation.check.passed": "通过",
+        "taskValidation.check.failed": "失败",
+        "taskValidation.check.skipped": "已跳过",
+        "taskValidation.check.blocked": "已阻断",
+        "taskValidation.error.generic": "任务验证不可用或运行失败。",
+        "taskValidation.error.truncated": "变更列表已截断，请刷新任务差异后再验证。",
+        "taskValidation.error.noFailedChecks": "没有可重跑的失败检查。",
+        "githubPrReview.title": "GitHub PR 审查",
+        "githubPrReview.ready": "只读的 Pull Request 审查工作区。",
+        "githubPrReview.readOnly": "只读",
+        "githubPrReview.targetLabel": "GitHub Pull Request",
+        "githubPrReview.targetPlaceholder": "https://github.com/owner/repo/pull/123",
+        "githubPrReview.load": "加载 PR",
+        "githubPrReview.clear": "清空",
+        "githubPrReview.loading": "正在加载 Pull Request…",
+        "githubPrReview.loaded": "已加载 {files} 个变更文件。",
+        "githubPrReview.invalidTarget": "请输入有效的 GitHub PR URL 或 owner/repo/编号。",
+        "githubPrReview.optIn": "请先启用 GitHub 显式集成，再加载 Pull Request。",
+        "githubPrReview.notAuthenticated": "请先完成 GitHub CLI 登录。",
+        "githubPrReview.cliUnavailable": "当前机器未找到 GitHub CLI。",
+        "githubPrReview.notFound": "未找到 Pull Request，或当前账号无权访问。",
+        "githubPrReview.tooLarge": "Pull Request 响应过大，无法安全显示。",
+        "githubPrReview.malformed": "GitHub 返回的 Pull Request 响应无效。",
+        "githubPrReview.error": "无法加载 Pull Request。",
+        "githubPrReview.files": "变更文件",
+        "githubPrReview.reviews": "审查记录",
+        "githubPrReview.comments": "评论",
+        "githubPrReview.diff": "统一差异",
+        "githubPrReview.notes": "本地审查笔记",
+        "githubPrReview.notesPlaceholder": "为此 Pull Request 保存私有笔记…",
+        "githubPrReview.insert": "插入审查上下文",
+        "githubPrReview.start": "让 Agent 审查",
+        "githubPrReview.reviewInserted": "已插入审查上下文，当前为计划模式。",
+        "githubPrReview.inserted": "已将审查上下文插入提示词。",
+        "githubPrReview.note": "远程内容有安全边界，并会作为不可信参考文本插入；不会提交 GitHub 审查或评论。",
+        "githubPrReview.stats": "{files} 个文件 · +{additions}/-{deletions}",
+        "githubPrReview.untitled": "未命名 Pull Request",
+        "githubPrReview.noFiles": "没有返回变更文件。",
+        "githubPrReview.noReviews": "没有返回审查记录。",
+        "githubPrReview.noComments": "没有返回评论。",
+        "githubPrReview.generalComment": "全局评论",
+        "githubPrReview.noDiff": "尚未加载差异。",
         "workspace.label": "工作区",
         "workspace.title": "任务工作区",
         "workspace.description": "每个任务使用独立 Git 分支和 worktree。",
@@ -1776,7 +2117,46 @@
         "composer.mode": "模式",
         "composer.execute": "执行",
         "composer.plan": "计划",
-        "composer.shortcut": "按 Enter 发送 · Shift+Enter 换行",
+        "composer.shortcut": "按 Enter 发送 · Shift+Enter 换行 · ⌘/Ctrl+K 打开模板",
+        "templates.quickActions": "快捷操作",
+        "templates.builtin.fixBug.title": "修复 Bug",
+        "templates.builtin.fixBug.short": "修复 Bug",
+        "templates.builtin.fixBug.description": "调查、修复并验证一个明确的 Bug 报告。",
+        "templates.builtin.feature.title": "实现功能",
+        "templates.builtin.feature.short": "新功能",
+        "templates.builtin.feature.description": "先规划边界清晰的功能，再开始实现改动。",
+        "templates.builtin.tests.title": "运行测试",
+        "templates.builtin.tests.short": "运行测试",
+        "templates.builtin.tests.description": "运行相关检查，带着证据修复失败。",
+        "templates.builtin.review.title": "审查改动",
+        "templates.builtin.review.description": "检查当前改动的正确性、回归风险和缺失测试。",
+        "templates.builtin.explain.title": "解释代码",
+        "templates.builtin.explain.description": "在不修改文件的前提下解释执行流、数据边界和失败场景。",
+        "templates.palette.open": "模板",
+        "templates.palette.title": "任务模板",
+        "templates.palette.description": "插入有边界的提示词起始内容，或保存自己的本地模板。",
+        "templates.palette.close": "关闭模板",
+        "templates.palette.search": "搜索模板",
+        "templates.palette.searchPlaceholder": "搜索模板",
+        "templates.palette.builtIn": "内置模板",
+        "templates.palette.custom": "你的本地模板",
+        "templates.palette.empty": "没有匹配的模板。",
+        "templates.palette.use": "使用",
+        "templates.palette.delete": "删除",
+        "templates.palette.confirmDelete": "删除本地模板“{name}”？",
+        "templates.palette.saveHeading": "保存本地模板",
+        "templates.palette.name": "名称",
+        "templates.palette.namePlaceholder": "我的任务",
+        "templates.palette.mode": "模式",
+        "templates.palette.prompt": "提示词",
+        "templates.palette.promptPlaceholder": "描述可复用的任务…",
+        "templates.palette.save": "保存模板",
+        "templates.palette.saved": "已保存“{name}”。",
+        "templates.palette.inserted": "已将“{name}”插入提示词。",
+        "templates.palette.deleted": "已删除“{name}”。",
+        "templates.palette.required": "保存前请填写名称和提示词。",
+        "templates.palette.limit": "本地模板数量已达到上限。",
+        "templates.palette.shortcut": "⌘/Ctrl+Shift+{key}",
         "composer.message": "消息",
         "composer.placeholder": "描述你希望智能体协调的工作…",
         "inspector.label": "检查器",
@@ -2151,6 +2531,8 @@
       renderSessionMeta(sessionSummaries.get(currentSessionId));
       renderSessionRunStatus(sessionSummaries.get(currentSessionId));
       taskWorkspaceUI?.render();
+      taskTemplateUI?.refresh();
+      githubPrReviewUI?.render();
       void loadWorkbenchCapabilities(currentSessionId);
       applyThemePreference(themePreference);
       syncInspectorToggle();
@@ -2181,6 +2563,82 @@
       } catch {
         // A private browsing context may reject local storage; the live setting still works.
       }
+    }
+
+    const DENSITY_STORAGE_KEY = "dev-agent-density";
+    const AUTO_FOLLOW_STORAGE_KEY = "dev-agent-auto-follow-responses";
+    const TERMINAL_POSITION_STORAGE_KEY = "dev-agent-terminal-position";
+
+    function readBooleanPreference(key, fallback) {
+      try {
+        const stored = window.localStorage.getItem(key);
+        return stored === null ? fallback : stored === "true";
+      } catch {
+        return fallback;
+      }
+    }
+
+    function readDensityPreference() {
+      try {
+        return window.localStorage.getItem(DENSITY_STORAGE_KEY) === "compact" ? "compact" : "comfortable";
+      } catch {
+        return "comfortable";
+      }
+    }
+
+    function readTerminalPositionPreference() {
+      try {
+        return window.localStorage.getItem(TERMINAL_POSITION_STORAGE_KEY) === "main" ? "main" : "inspector";
+      } catch {
+        return "inspector";
+      }
+    }
+
+    let densityPreference = readDensityPreference();
+    let autoFollowResponses = readBooleanPreference(AUTO_FOLLOW_STORAGE_KEY, false);
+    let terminalPosition = readTerminalPositionPreference();
+
+    function applyDensityPreference(preference) {
+      densityPreference = preference === "compact" ? "compact" : "comfortable";
+      document.documentElement.dataset.density = densityPreference;
+    }
+
+    function persistDensityPreference(preference) {
+      try {
+        window.localStorage.setItem(DENSITY_STORAGE_KEY, preference === "compact" ? "compact" : "comfortable");
+      } catch {
+        // A private browsing context may reject local storage; the live setting still works.
+      }
+    }
+
+    function applyTerminalPosition(position) {
+      terminalPosition = position === "main" ? "main" : "inspector";
+      const panel = document.getElementById("task-terminal-panel");
+      const target = terminalPosition === "main"
+        ? document.querySelector(".conversation-workspace")
+        : inspectorShell;
+      if (panel && target && panel.parentElement !== target) target.appendChild(panel);
+      panel?.setAttribute("data-position", terminalPosition);
+    }
+
+    function persistTerminalPosition(position) {
+      try {
+        window.localStorage.setItem(TERMINAL_POSITION_STORAGE_KEY, position === "main" ? "main" : "inspector");
+      } catch {
+        // A private browsing context may reject local storage; the live setting still works.
+      }
+    }
+
+    function setAutoFollowResponses(enabled, { persist = true } = {}) {
+      autoFollowResponses = Boolean(enabled);
+      if (persist) {
+        try {
+          window.localStorage.setItem(AUTO_FOLLOW_STORAGE_KEY, String(autoFollowResponses));
+        } catch {
+          // A private browsing context may reject local storage; the live setting still works.
+        }
+      }
+      if (autoFollowResponses && typeof messages !== "undefined") scrollMessagesToBottom(true);
     }
 
     const THEME_STORAGE_KEY = "dev-agent-theme";
@@ -3318,6 +3776,105 @@
       }
     }
 
+    function parallelRunDuration(value) {
+      if (!Number.isSafeInteger(value) || value < 0) return "—";
+      const seconds = Math.max(0, Math.floor(value / 1000));
+      if (seconds < 60) return t("parallelRuns.duration.seconds", { count: seconds });
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return t("parallelRuns.duration.minutes", { count: minutes });
+      return t("parallelRuns.duration.hours", { count: Math.floor(minutes / 60) });
+    }
+
+    function renderParallelRuns(payload) {
+      const total = Number.isSafeInteger(payload?.total) ? Math.max(0, payload.total) : 0;
+      const active = Number.isSafeInteger(payload?.active) ? Math.max(0, payload.active) : 0;
+      const running = Number.isSafeInteger(payload?.running) ? Math.max(0, payload.running) : 0;
+      const waiting = Number.isSafeInteger(payload?.waiting) ? Math.max(0, payload.waiting) : 0;
+      const failed = Number.isSafeInteger(payload?.failed) ? Math.max(0, payload.failed) : 0;
+      const runs = Array.isArray(payload?.runs) ? payload.runs.slice(0, 256) : [];
+      parallelRunsList.replaceChildren();
+      parallelRunsSummary.textContent = total === 0
+        ? t("parallelRuns.empty")
+        : t("parallelRuns.ready", { active, running, waiting, failed });
+      for (const run of runs) {
+        const sessionId = typeof run?.sessionId === "string" ? run.sessionId.slice(0, 96) : "";
+        if (!sessionId) continue;
+        const status = ["idle", "running", "waiting", "done", "failed", "aborted"].includes(run?.status)
+          ? run.status
+          : "idle";
+        const stage = ["idle", "model", "tool", "approval", "done", "failed", "aborted"].includes(run?.stage)
+          ? run.stage
+          : "idle";
+        const item = document.createElement("li");
+        item.className = "parallel-run-card";
+        item.dataset.status = status;
+        item.dataset.stage = stage;
+        if (sessionId === currentSessionId) item.dataset.active = "true";
+
+        const header = document.createElement("div");
+        header.className = "parallel-run-card-header";
+        const focus = document.createElement("button");
+        focus.type = "button";
+        focus.className = "parallel-run-focus";
+        focus.dataset.parallelSessionId = sessionId;
+        focus.title = t("parallelRuns.focus");
+        focus.textContent = sessionId;
+        const statusLabel = document.createElement("span");
+        statusLabel.className = "parallel-run-status";
+        statusLabel.textContent = t("parallelRuns.status." + status);
+        header.append(focus, statusLabel);
+
+        const meta = document.createElement("div");
+        meta.className = "parallel-run-meta";
+        const toolName = typeof run?.tool?.name === "string" ? run.tool.name.slice(0, 128) : "";
+        const detail = toolName ? t("parallelRuns.tool", { name: toolName }) : t("parallelRuns.stage." + stage);
+        meta.textContent = detail + " · " + parallelRunDuration(run?.durationMs);
+
+        item.append(header, meta);
+        parallelRunsList.appendChild(item);
+      }
+    }
+
+    async function loadParallelRuns() {
+      const requestId = ++parallelRunsRequestId;
+      parallelRunsController?.abort();
+      const controller = new AbortController();
+      parallelRunsController = controller;
+      parallelRunsRefreshButton.disabled = true;
+      parallelRunsRefreshButton.setAttribute("aria-busy", "true");
+      parallelRunsStatus.textContent = t("parallelRuns.checking");
+      try {
+        const response = await fetch("/api/parallel-runs", { cache: "no-store", signal: controller.signal });
+        if (!response.ok) throw new Error("parallel runs unavailable");
+        const payload = await response.json();
+        if (requestId !== parallelRunsRequestId) return;
+        renderParallelRuns(payload);
+        parallelRunsStatus.textContent = t("parallelRuns.ready", {
+          active: Number.isSafeInteger(payload?.active) ? payload.active : 0,
+          running: Number.isSafeInteger(payload?.running) ? payload.running : 0,
+          waiting: Number.isSafeInteger(payload?.waiting) ? payload.waiting : 0,
+          failed: Number.isSafeInteger(payload?.failed) ? payload.failed : 0,
+        });
+      } catch {
+        if (controller.signal.aborted || requestId !== parallelRunsRequestId) return;
+        parallelRunsList.replaceChildren();
+        parallelRunsSummary.textContent = "";
+        parallelRunsStatus.textContent = t("parallelRuns.error");
+      } finally {
+        if (requestId === parallelRunsRequestId) {
+          parallelRunsController = null;
+          parallelRunsRefreshButton.disabled = false;
+          parallelRunsRefreshButton.setAttribute("aria-busy", "false");
+        }
+      }
+    }
+
+    async function focusParallelRun(sessionId) {
+      if (!sessionId || sessionId === currentSessionId) return;
+      await activateTaskSession(sessionId);
+      void loadParallelRuns();
+    }
+
     function mcpHealthErrorLabel(error) {
       switch (error) {
         case "not-connected": return t("mcpHealth.error.notConnected");
@@ -4341,6 +4898,7 @@
         }
         if (currentSessionId === null) {
           currentSessionId = data.activeSessionId ?? "desktop-default";
+      githubPrReviewUI?.sessionChanged();
         }
         renderSessionOptions();
         ensureSessionOption(currentSessionId);
@@ -4984,7 +5542,7 @@
     }
 
     function scrollMessagesToBottom(wasAtBottom = isMessagesAtBottom()) {
-      if (wasAtBottom) {
+      if (wasAtBottom || autoFollowResponses) {
         // Streaming must follow immediately even though the stylesheet allows
         // smooth scrolling for ordinary user navigation.
         setMessagesScrollTop();
@@ -5510,12 +6068,14 @@
       resetEvidencePreview();
       resetCheckpointPanel();
       currentSessionId = sessionSelect.value;
+      githubPrReviewUI?.sessionChanged();
       taskWorkspaceUI?.render();
       resetRunTimeline(currentSessionId);
       invalidateRunSnapshot();
       applySessionUsage(sessionSummaries.get(currentSessionId));
       await loadSessionView(currentSessionId);
       void taskWorkspaceUI?.refresh();
+      taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
       if (!runSnapshot?.active) setStatus("session " + currentSessionId);
     });
@@ -5620,7 +6180,9 @@
       resetCheckpointPanel();
       resetTracePanel();
       currentSessionId = "session-" + Date.now().toString(36);
+      githubPrReviewUI?.sessionChanged();
       taskWorkspaceUI?.render();
+      taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
       resetRunTimeline(currentSessionId);
       ensureSessionOption(currentSessionId);
@@ -5655,6 +6217,7 @@
       }
       writePersistedQueue(getSessionStorage(), currentSessionId, []);
       currentSessionId = null;
+      githubPrReviewUI?.sessionChanged();
       resetLiveOutputNotice();
       invalidateRunSnapshot();
       resetEvidencePreview();
@@ -5706,6 +6269,7 @@
 
       migrateSessionQueue(currentSessionId, renamed);
       currentSessionId = renamed;
+      githubPrReviewUI?.sessionChanged();
       invalidateRunSnapshot();
       resetEvidencePreview();
       resetCheckpointPanel();
@@ -5747,6 +6311,10 @@
         e.preventDefault();
         form.requestSubmit();
       }
+    });
+
+    document.addEventListener("keydown", (event) => {
+      taskTemplateUI?.handleShortcut(event);
     });
 
     function updateComposerAvailability(sessionId = currentSessionId) {
@@ -6327,6 +6895,8 @@
       resetCheckpointPanel();
       resetTracePanel();
       currentSessionId = sessionId;
+      githubPrReviewUI?.sessionChanged();
+      taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
       resetRunTimeline(currentSessionId);
       totalTokens = 0;
@@ -6363,6 +6933,22 @@
         input.setSelectionRange(input.value.length, input.value.length);
         input.dispatchEvent(new Event("input", { bubbles: true }));
       },
+    taskValidationUI = createTaskValidationUI({
+      documentRef: document,
+      fetcher: fetch,
+      translate: t,
+      getSessionId: () => currentSessionId,
+      insertFeedback: (feedback) => {
+        const separator = input.value.trim() ? "\n\n" : "";
+        input.value = `${input.value}${separator}${feedback}`;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      onStateChanged: () => {
+        void taskWorkspaceUI?.refresh();
+      },
+    });
     });
     taskTerminalUI = createTaskTerminalUI({
       documentRef: document,
@@ -6378,6 +6964,7 @@
         input.dispatchEvent(new Event("input", { bubbles: true }));
       },
       onFinished: () => {
+        void taskValidationUI?.refresh();
         void taskWorkspaceUI?.refresh();
       },
       recordLifecycle: (kind, state) => {
@@ -6392,16 +6979,69 @@
         ).catch(() => undefined);
       },
     });
+    taskTemplateUI = createTaskTemplateUI({
+      documentRef: document,
+      translate: t,
+      getLanguage: () => languagePreference,
+      getPrompt: () => input.value,
+      setPrompt: (value) => {
+        input.value = String(value ?? "");
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 160) + "px";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      getMode: () => composerModeSelect.value,
+      setMode: (mode) => {
+        const nextMode = mode === "plan" ? "plan" : "normal";
+        composerModeSelect.value = nextMode;
+        persistComposerModePreference(nextMode);
+      },
+      focusPrompt: () => input.focus(),
+      confirmAction: (message) => window.confirm(message),
+    });
+    taskTemplateUI.render();
+    githubPrReviewUI = createGitHubPrReviewUI({
+      documentRef: document,
+      fetcher: fetch,
+      translate: t,
+      getSessionId: () => currentSessionId,
+      getPrompt: () => input.value,
+      setPrompt: (value) => {
+        input.value = String(value ?? "");
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 160) + "px";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      setMode: (mode) => {
+        const nextMode = mode === "plan" ? "plan" : "normal";
+        composerModeSelect.value = nextMode;
+        persistComposerModePreference(nextMode);
+      },
+      focusPrompt: () => input.focus(),
+    });
     workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
     mcpHealthRefreshButton.addEventListener("click", () => void loadMcpHealth(currentSessionId));
+    parallelRunsRefreshButton.addEventListener("click", () => void loadParallelRuns());
+    parallelRunsList.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-parallel-session-id]") : null;
+      const sessionId = target?.getAttribute("data-parallel-session-id");
+      if (sessionId) void focusParallelRun(sessionId);
+    });
     void (async () => {
       await loadSessions();
       await loadSessionView(currentSessionId);
       await taskWorkspaceUI.refresh();
       await taskTerminalUI.refresh();
-      if (currentSessionId !== null) void loadWorkbenchCapabilities(currentSessionId);
-      if (currentSessionId !== null) void loadMcpHealth(currentSessionId);
+      await taskValidationUI.refresh();
+      if (currentSessionId !== null) {
+        void loadWorkbenchCapabilities(currentSessionId);
+        void loadMcpHealth(currentSessionId);
+      }
+      void loadParallelRuns();
     })();
+    parallelRunsTimer = window.setInterval(() => {
+      if (!document.hidden) void loadParallelRuns();
+    }, 2500);
     composerModeSelect.value = readComposerModePreference();
     applyPanelPreferences();
     syncInspectorToggle();
@@ -6427,7 +7067,25 @@
       },
       getInspectorOpen: () => inspectorShell.classList.contains("is-open"),
       setInspectorOpen,
+      getSessionRailOpen: () => !sessionRail.classList.contains("is-collapsed"),
+      setSessionRailOpen: (open) => setSessionRailCollapsed(!Boolean(open)),
+      getDensityPreference: () => densityPreference,
+      setDensityPreference: (preference) => {
+        const nextDensity = preference === "compact" ? "compact" : "comfortable";
+        applyDensityPreference(nextDensity);
+        persistDensityPreference(nextDensity);
+      },
+      getAutoFollowResponses: () => autoFollowResponses,
+      setAutoFollowResponses,
+      getTerminalPosition: () => terminalPosition,
+      setTerminalPosition: (position) => {
+        const nextPosition = position === "main" ? "main" : "inspector";
+        applyTerminalPosition(nextPosition);
+        persistTerminalPosition(nextPosition);
+      },
       refreshRuntimeStatus: () => desktopStatusRefreshButton.click(),
+      refreshCapabilities: () => workbenchCapabilitiesRefreshButton.click(),
+      refreshMcpHealth: () => mcpHealthRefreshButton.click(),
       getCurrentSessionId: () => currentSessionId,
     };
   </script>

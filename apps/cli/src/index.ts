@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { createHash } from "node:crypto";
 import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { performance } from "node:perf_hooks";
@@ -245,6 +246,28 @@ import { clearIndex, getIndexStatus } from "@dev-agent/code-intelligence";
 import { benchmarkModel, type SpeedBenchmarkResult } from "./speed-benchmark.js";
 import { resolvePromptToolAccess } from "./prompt-tool-policy.js";
 import { parseBenchmarkCommand, parseSpeedModeCommand } from "./speed-mode-command.js";
+import {
+  parseAutoFixCommand,
+  runAutoFixLoop,
+  type AutoFixRepairRun,
+} from "./auto-fix-command.js";
+import {
+  executeGitWorkflowCommand,
+  isGitWorkflowCommand,
+  type GitWorkflowResult,
+} from "./github-workflow-command.js";
+import {
+  executeProjectMemoryCommand,
+  isProjectMemoryCommand,
+  ProjectMemoryStore,
+} from "./project-memory.js";
+import {
+  AdaptiveModelProvider,
+  executeModelRoutingCommand,
+  ModelRoutingController,
+  resolveModelRoutingConfig,
+} from "./model-routing.js";
+import { SessionModelBudget } from "./model-budget.js";
 import {
   createAnthropicProvider,
   createGeminiProvider,
@@ -1987,7 +2010,10 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
     }
     let activeModelSelection = modelSelection;
     const speedMode = new ModelSpeedModeController();
-    const provider = createProvider(
+    const modelRoutingConfig = resolveModelRoutingConfig(config.routing);
+    const modelRouting = new ModelRoutingController(speedMode);
+    if (modelRoutingConfig.mode === "manual") modelRouting.setManualMode(speedMode.mode);
+    const baseProvider = createProvider(
       config,
       modelSelection,
       (next) => {
@@ -1995,6 +2021,16 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       },
       speedMode,
     );
+    const adaptiveProvider = new AdaptiveModelProvider({
+      controller: modelRouting,
+      initial: baseProvider,
+      getProvider: (mode, policy, previous) => {
+        if (policy === "auto") speedMode.setMode(mode);
+        return previous;
+      },
+    });
+    const modelBudget = new SessionModelBudget(modelRoutingConfig.budget, config.pricing);
+    const provider = modelBudget.wrap(adaptiveProvider);
     const projectContext = new ProjectContextManager({ workingDirectory });
     await projectContext.refresh();
     const createConfiguredSpecialistRoles = () => resolveSpecialistRoles({
@@ -2006,13 +2042,13 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
         const selectedModel = roleModel ?? (roleProvider === undefined
           ? activeModelSelection.selection.model
           : undefined);
-        return new SpeedModeModelProvider(
+        return modelBudget.wrap(new SpeedModeModelProvider(
           createConcreteModelProvider(config, {
             provider: selectedProvider,
             ...(selectedModel === undefined ? {} : { model: selectedModel }),
           }),
           speedMode,
-        );
+        ));
       },
     });
     if (args.includes("--a2a")) {
@@ -2312,6 +2348,9 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
 
     const skillRegistry = await SkillRegistry.load({ workingDirectory });
     const extensionRegistry = await ExtensionRegistry.load({ workingDirectory });
+    const projectMemory = new ProjectMemoryStore({
+      filePath: projectMemoryFilePath(workingDirectory, projectState),
+    });
     await interactive(loop, context, streaming, questionBox, {
       rich: richUi,
       ink:
@@ -2337,6 +2376,8 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       activeSkill: activeSkillState,
       trace,
       speedMode,
+      modelRouting,
+      modelBudget,
       projectContext,
       benchmark: (prompt) => benchmarkModel(provider, prompt),
       tasks,
@@ -2347,6 +2388,20 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
         new FileMemoryCheckpointStore(activeContext.memory),
       openSession,
       createRerunValidation,
+      runGitWorkflow: (command, confirm, signal) =>
+        executeGitWorkflowCommand(command, {
+          cwd: workingDirectory,
+          runner: (executable, args, runOptions) =>
+            executor!.run(executable, args, {
+              cwd: runOptions?.cwd ?? workingDirectory,
+              signal: runOptions?.signal,
+              timeoutMs: runOptions?.timeoutMs,
+              maxOutputBytes: runOptions?.maxOutputBytes,
+            }),
+          confirm,
+          signal,
+        }),
+      projectMemory,
       runCollaborativePlan: (prompt, activeContext, options) => {
         const roles = createConfiguredSpecialistRoles();
         return runCollaborativePlanWorkflow(prompt, {
@@ -2530,6 +2585,20 @@ function memoryFilePath(
     resolveRuntimePath(process.env.DEV_AGENT_MEMORY_FILE, baseDirectory) ??
     join(sessionDir(baseDirectory, projectState), `${sessionId}.json`)
   );
+}
+
+function projectMemoryFilePath(
+  baseDirectory = process.cwd(),
+  projectState = false,
+): string {
+  const configured = resolveRuntimePath(process.env.DEV_AGENT_PROJECT_MEMORY_FILE, baseDirectory);
+  if (configured !== undefined) return configured;
+  if (projectState) return join(baseDirectory, ".dev-agent", "project-memory.json");
+  const projectKey = createHash("sha256")
+    .update(resolve(baseDirectory))
+    .digest("hex")
+    .slice(0, 24);
+  return join(homedir(), ".dev-agent", "project-memory", `${projectKey}.json`);
 }
 
 /** True when the file exists but cannot be read back as a memory file. */
@@ -3248,6 +3317,8 @@ interface InteractiveUiOptions {
   readonly activeSkill: ActiveSkillState;
   readonly trace: AgentRunTrace;
   readonly speedMode: ModelSpeedModeController;
+  readonly modelRouting: ModelRoutingController;
+  readonly modelBudget: SessionModelBudget;
   readonly projectContext: ProjectContextManager;
   readonly benchmark: (prompt: string) => Promise<SpeedBenchmarkResult>;
   readonly tasks: AgentTaskScheduler;
@@ -3259,6 +3330,12 @@ interface InteractiveUiOptions {
   readonly createRerunValidation?: (
     context: AgentContext,
   ) => ValidationRerunner | undefined;
+  readonly runGitWorkflow?: (
+    command: string,
+    confirm: (prompt: string) => Promise<boolean>,
+    signal?: AbortSignal,
+  ) => Promise<GitWorkflowResult>;
+  readonly projectMemory?: ProjectMemoryStore;
   readonly consumePlanReview?: () => PlanReview | undefined;
   readonly runCollaborativePlan?: (
     prompt: string,
@@ -3482,6 +3559,49 @@ function formatCollaborativeExecutionResult(
       : `Conflicts: ${review.conflicts.map((conflict) => safeTerminalText(conflict)).join(", ")}`,
     review.mergeable ? ":team apply to merge the reviewed result." : ":team retry <taskId> or resolve the conflicts.",
   ].join("\n");
+}
+
+async function gitWorkflowCommandMessage(
+  rawCommand: string,
+  ui: InteractiveUiOptions,
+  questionBox: QuestionBox,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!ui.runGitWorkflow) {
+    return "GitHub workflow is unavailable in this session.";
+  }
+  const result = await ui.runGitWorkflow(
+    rawCommand,
+    async (prompt) => {
+      const answer = questionBox.ask
+        ? await questionBox.ask(`${prompt} [y/N] `, signal)
+        : "";
+      return answer.trim().toLowerCase().startsWith("y");
+    },
+    signal,
+  );
+  return safeTerminalText(result.message);
+}
+
+async function projectMemoryCommandMessage(
+  rawCommand: string,
+  ui: InteractiveUiOptions,
+  questionBox: QuestionBox,
+  signal?: AbortSignal,
+): Promise<string> {
+  if (!ui.projectMemory) {
+    return "Project memory is unavailable in this session.";
+  }
+  const result = await executeProjectMemoryCommand(rawCommand, {
+    store: ui.projectMemory,
+    confirm: async (prompt) => {
+      const answer = questionBox.ask
+        ? await questionBox.ask(`${prompt} [y/N] `, signal)
+        : "";
+      return answer.trim().toLowerCase().startsWith("y");
+    },
+  });
+  return safeTerminalText(result.message);
 }
 
 async function backgroundJobCommandMessage(
@@ -3815,7 +3935,7 @@ async function interactive(
       // in callers, so the banner can be observed before a later listener
       // setup.
       console.log(
-        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
+        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':route' for automatic model routing, ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, ':autofix [1-3]' to repair the latest validation failure, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
       );
       return;
     }
@@ -3850,6 +3970,125 @@ async function interactive(
     },
   ): Promise<T> =>
     scheduleInteractiveTask(ui.tasks, ui.taskStatusBridge, options.run);
+
+  const runAutoFixCommand = async (attempts: number): Promise<void> => {
+    let repairContext = current;
+    const autoFixAbort = new AbortController();
+    abort = autoFixAbort;
+    const printMessage = (message: string): void => {
+      const render = (): void => console.log(safeTerminalText(message));
+      if (ui.rich) streaming.withComposerHidden(render);
+      else render();
+    };
+    const recordExplicitValidation = (result: ValidationResult): void => {
+      validations.push(result);
+      if (jsonOutput) {
+        const printJson = async (): Promise<void> => {
+          const changeSets = (await repairContext.memory.changeSets?.()) ?? [];
+          const evidenceSummary = await repairContext.memory.evidenceSummary?.();
+          console.log(
+            JSON.stringify(
+              {
+                validation: result,
+                changeSets: [...changeSets],
+                ...(evidenceSummary === undefined ? {} : { evidenceSummary }),
+              },
+              null,
+              2,
+            ),
+          );
+        };
+        void printJson();
+        return;
+      }
+      const printValidation = (): void => {
+        printValidationResult(result, true, ui.width);
+      };
+      if (ui.rich) streaming.withComposerHidden(printValidation);
+      else printValidationResult(result, false, ui.width);
+    };
+
+    try {
+      const hasRerunValidation =
+        ui.createRerunValidation !== undefined || rerunValidation !== undefined;
+      const result = await runAutoFixLoop({
+        context: repairContext,
+        validations,
+        maxAttempts: attempts,
+        signal: autoFixAbort.signal,
+        loadPersistedValidations: async () =>
+          (await repairContext.memory.validations?.()) ?? [],
+        ...(hasRerunValidation
+          ? {
+              rerunValidation: async (changeSetId: string, signal?: AbortSignal) => {
+                const activeRerunValidation =
+                  ui.createRerunValidation?.(repairContext) ?? rerunValidation;
+                if (!activeRerunValidation) {
+                  throw new Error("trusted validation rerun is unavailable");
+                }
+                return activeRerunValidation(changeSetId, signal);
+              },
+            }
+          : {}),
+        onProgress: printMessage,
+        onValidation: recordExplicitValidation,
+        runRepair: async (repairPrompt): Promise<AutoFixRepairRun> => {
+          const timingContext = {
+            submittedAtMs: performance.now(),
+            queuedAtMs: performance.now(),
+          };
+          const scheduled = scheduleTask({
+            run: ({ signal }) =>
+              runPrompt(
+                loop,
+                repairContext,
+                streaming,
+                repairPrompt,
+                jsonOutput,
+                cost,
+                reviews,
+                validations,
+                signal,
+                {},
+                timingContext,
+              ),
+          });
+          const taskId = ui.tasks.list().at(-1)?.id;
+          activeTaskId = taskId;
+          try {
+            const next = await scheduled;
+            repairContext = next;
+            return next.state.status === "error"
+              ? {
+                  context: next,
+                  error: next.state.lastError ?? "agent repair run failed",
+                }
+              : { context: next };
+          } catch (error) {
+            const cancelled = interrupted || autoFixAbort.signal.aborted ||
+              (taskId !== undefined && ui.tasks.get(taskId)?.status === "cancelled");
+            return {
+              context: repairContext,
+              ...(cancelled
+                ? { cancelled: true }
+                : { error: error instanceof Error ? error.message : String(error) }),
+            };
+          } finally {
+            if (activeTaskId === taskId) activeTaskId = undefined;
+          }
+        },
+      });
+      current = result.context;
+      printMessage(result.message);
+    } catch (error) {
+      if (!interrupted) {
+        printMessage(`Auto-fix failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    } finally {
+      if (abort === autoFixAbort) abort = undefined;
+    }
+  };
+
   const runTeamExecution = async (
     prompt: string,
     attachedContext?: string,
@@ -3975,6 +4214,54 @@ async function interactive(
         break;
       }
       if (!prompt) {
+        continue;
+      }
+      if (isGitWorkflowCommand(command)) {
+        const workflowAbort = new AbortController();
+        abort = workflowAbort;
+        try {
+          const workflowMessage = await gitWorkflowCommandMessage(
+            command,
+            ui,
+            questionBox,
+            workflowAbort.signal,
+          );
+          const printWorkflowMessage = (): void => console.log(workflowMessage);
+          if (ui.rich) streaming.withComposerHidden(printWorkflowMessage);
+          else printWorkflowMessage();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const printWorkflowError = (): void =>
+            console.error(safeTerminalText(`GitHub workflow failed: ${message}`));
+          if (ui.rich) streaming.withComposerHidden(printWorkflowError);
+          else printWorkflowError();
+        } finally {
+          if (abort === workflowAbort) abort = undefined;
+        }
+        continue;
+      }
+      if (isProjectMemoryCommand(command)) {
+        const memoryAbort = new AbortController();
+        abort = memoryAbort;
+        try {
+          const memoryMessage = await projectMemoryCommandMessage(
+            command,
+            ui,
+            questionBox,
+            memoryAbort.signal,
+          );
+          const printMemoryMessage = (): void => console.log(memoryMessage);
+          if (ui.rich) streaming.withComposerHidden(printMemoryMessage);
+          else printMemoryMessage();
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          const printMemoryError = (): void =>
+            console.error(safeTerminalText(`Project memory failed: ${message}`));
+          if (ui.rich) streaming.withComposerHidden(printMemoryError);
+          else printMemoryError();
+        } finally {
+          if (abort === memoryAbort) abort = undefined;
+        }
         continue;
       }
       const skillMessage = skillCommandMessage(command, ui);
@@ -4142,6 +4429,20 @@ async function interactive(
           streaming.withComposerHidden(printRetryNotice);
         } else {
           printRetryNotice();
+        }
+        continue;
+      }
+
+      const autoFixCommand = parseAutoFixCommand(command);
+      if (autoFixCommand.handled) {
+        const printAutoFixUsage = (): void => {
+          console.log(autoFixCommand.error ?? "Usage: :autofix [1-3]");
+        };
+        if (autoFixCommand.error !== undefined) {
+          if (ui.rich) streaming.withComposerHidden(printAutoFixUsage);
+          else printAutoFixUsage();
+        } else {
+          await runAutoFixCommand(autoFixCommand.attempts ?? 2);
         }
         continue;
       }
@@ -4455,7 +4756,7 @@ async function interactive(
           });
         } else {
           console.log(
-            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :cleanup ..., exit, quit"
+            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :route [auto|manual], :budget [tokens|cost|duration], :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :cleanup ..., exit, quit"
           );
         }
         continue;
@@ -4497,6 +4798,13 @@ async function interactive(
         continue;
       }
 
+      const routingMessage = executeModelRoutingCommand(command, ui.modelRouting, ui.modelBudget);
+      if (routingMessage !== undefined) {
+        if (ui.rich) streaming.withComposerHidden(() => console.log(safeTerminalText(routingMessage)));
+        else console.log(safeTerminalText(routingMessage));
+        continue;
+      }
+
       const modeCommand = parseSpeedModeCommand(command);
       if (modeCommand) {
         if (modeCommand.kind === "invalid") {
@@ -4504,7 +4812,7 @@ async function interactive(
           if (ui.rich) streaming.withComposerHidden(() => console.log(message));
           else console.log(message);
         } else {
-          if (modeCommand.kind === "set") ui.speedMode.setMode(modeCommand.mode);
+          if (modeCommand.kind === "set") ui.modelRouting.setManualMode(modeCommand.mode);
           const message = `Speed mode: ${ui.speedMode.mode} · ${describeSpeedModeSupport(
             { id: ui.provider as ModelProvider["id"], model: ui.model },
             ui.speedMode.mode,
@@ -4735,6 +5043,10 @@ async function interactive(
         }
       }
 
+      const route = ui.modelRouting.select(prepared.prompt);
+      const routeNotice = `[route] mode=${route.mode} reason=${route.reason}`;
+      if (ui.rich) streaming.withComposerHidden(() => console.log(routeNotice));
+      else console.log(routeNotice);
       const timingContext = { submittedAtMs: performance.now(), queuedAtMs: performance.now() };
       const scheduled = scheduleTask({
         run: ({ signal }) =>
@@ -4799,6 +5111,8 @@ async function interactiveInk(
   let activeCollaboration: CollaborationExecutionHandle | undefined;
   let activeAbort: AbortController | undefined;
   let activeTaskId: string | undefined;
+  let autoFixRunning = false;
+  let autoFixCancelRequested = false;
   let closed = false;
   let pickerSessions: readonly StoredSession[] | undefined;
   let instance: ReturnType<typeof renderInk> | undefined;
@@ -4918,6 +5232,75 @@ async function interactiveInk(
       return;
     }
     await runInkPrompt(retry.prompt, retry.runOptions, retry.label);
+  };
+
+  const runAutoFixCommand = async (attempts: number): Promise<void> => {
+    let repairContext = current;
+    const autoFixAbort = new AbortController();
+    activeAbort = autoFixAbort;
+    autoFixRunning = true;
+    autoFixCancelRequested = false;
+    try {
+      const hasRerunValidation =
+        ui.createRerunValidation !== undefined || rerunValidation !== undefined;
+      const result = await runAutoFixLoop({
+        context: repairContext,
+        validations,
+        maxAttempts: attempts,
+        signal: autoFixAbort.signal,
+        loadPersistedValidations: async () =>
+          (await repairContext.memory.validations?.()) ?? [],
+        ...(hasRerunValidation
+          ? {
+              rerunValidation: async (changeSetId: string, signal?: AbortSignal) => {
+                const activeRerunValidation =
+                  ui.createRerunValidation?.(repairContext) ?? rerunValidation;
+                if (!activeRerunValidation) {
+                  throw new Error("trusted validation rerun is unavailable");
+                }
+                return activeRerunValidation(changeSetId, signal);
+              },
+            }
+          : {}),
+        onProgress: (message) => ink.store.addNotice(message),
+        onValidation: (validationResult) => {
+          validations.push(validationResult);
+          ink.store.addNotice(
+            `Validation ${validationResult.status}: ${validationResult.summary}`,
+          );
+        },
+        runRepair: async (repairPrompt): Promise<AutoFixRepairRun> => {
+          const next = await runInkPrompt(repairPrompt, {}, "Auto-fix");
+          if (next === undefined) {
+            return {
+              context: repairContext,
+              ...(autoFixCancelRequested
+                ? { cancelled: true }
+                : { error: "agent repair run failed" }),
+            };
+          }
+          repairContext = next;
+          return next.state.status === "error"
+            ? {
+                context: next,
+                error: next.state.lastError ?? "agent repair run failed",
+              }
+            : { context: next };
+        },
+      });
+      current = result.context;
+      updateInkSummary(current);
+      ink.store.addNotice(result.message);
+    } catch (error) {
+      if (!autoFixCancelRequested && !autoFixAbort.signal.aborted) {
+        ink.store.addNotice(
+          `Auto-fix failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    } finally {
+      autoFixRunning = false;
+      if (activeAbort === autoFixAbort) activeAbort = undefined;
+    }
   };
 
   const runTeamExecution = async (
@@ -5050,6 +5433,7 @@ async function interactiveInk(
   };
 
   const cancel = (): void => {
+    if (autoFixRunning) autoFixCancelRequested = true;
     if (activeAbort || activeTaskId !== undefined || activeCollaboration !== undefined) {
       activeCollaboration?.cancel("user interrupted");
       activeAbort?.abort();
@@ -5232,6 +5616,59 @@ async function interactiveInk(
     }
     if (command === ":retry") {
       await retryLast();
+      return true;
+    }
+    const autoFixCommand = parseAutoFixCommand(command);
+    if (autoFixCommand.handled) {
+      if (autoFixCommand.error !== undefined) {
+        ink.store.addNotice(autoFixCommand.error);
+      } else {
+        await runAutoFixCommand(autoFixCommand.attempts ?? 2);
+      }
+      return true;
+    }
+    if (isGitWorkflowCommand(command)) {
+      const workflowAbort = new AbortController();
+      activeAbort = workflowAbort;
+      ink.controller.setBusy(true);
+      try {
+        const workflowMessage = await gitWorkflowCommandMessage(
+          command,
+          ui,
+          questionBox,
+          workflowAbort.signal,
+        );
+        ink.store.addNotice(workflowMessage);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ink.store.addNotice(safeTerminalText(`GitHub workflow failed: ${message}`));
+      } finally {
+        if (activeAbort === workflowAbort) activeAbort = undefined;
+        ink.controller.setBusy(false);
+        syncQueue();
+      }
+      return true;
+    }
+    if (isProjectMemoryCommand(command)) {
+      const memoryAbort = new AbortController();
+      activeAbort = memoryAbort;
+      ink.controller.setBusy(true);
+      try {
+        const memoryMessage = await projectMemoryCommandMessage(
+          command,
+          ui,
+          questionBox,
+          memoryAbort.signal,
+        );
+        ink.store.addNotice(memoryMessage);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        ink.store.addNotice(safeTerminalText(`Project memory failed: ${message}`));
+      } finally {
+        if (activeAbort === memoryAbort) activeAbort = undefined;
+        ink.controller.setBusy(false);
+        syncQueue();
+      }
       return true;
     }
     const skillMessage = skillCommandMessage(command, ui);
@@ -5497,12 +5934,17 @@ async function interactiveInk(
       );
       return true;
     }
+    const routingMessage = executeModelRoutingCommand(command, ui.modelRouting, ui.modelBudget);
+    if (routingMessage !== undefined) {
+      ink.store.addNotice(safeTerminalText(routingMessage));
+      return true;
+    }
     const modeCommand = parseSpeedModeCommand(command);
     if (modeCommand) {
       if (modeCommand.kind === "invalid") {
         ink.store.addNotice("Usage: :mode fast|balanced|deep");
       } else {
-        if (modeCommand.kind === "set") ui.speedMode.setMode(modeCommand.mode);
+        if (modeCommand.kind === "set") ui.modelRouting.setManualMode(modeCommand.mode);
         ink.store.setSpeedMode(ui.speedMode.mode);
         ink.store.addNotice(`Speed mode: ${ui.speedMode.mode} · ${describeSpeedModeSupport(
           { id: ui.provider as ModelProvider["id"], model: ui.model },
@@ -5658,6 +6100,8 @@ async function interactiveInk(
       if (contextNotice) {
         ink.store.addNotice(contextNotice);
       }
+      const route = ui.modelRouting.select(prepared.prompt);
+      ink.store.addNotice(`[route] mode=${route.mode} reason=${route.reason}`);
       await runInkPrompt(
         prepared.prompt,
         prepared.context === undefined ? {} : { attachedContext: prepared.context },

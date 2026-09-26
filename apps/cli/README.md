@@ -46,6 +46,36 @@ Only the explicitly activated skill is added to later model requests. Skill
 instructions are bounded during discovery and remain session-local; activating
 one does not modify files or publish package state.
 
+## Specialist Agent definitions
+
+The CLI can discover bounded Markdown Specialist Agents from:
+
+- `<working-directory>/.dev-agent/agents/<id>/AGENT.md` for project agents;
+- `~/.dev-agent/agents/<id>/AGENT.md` for user agents.
+
+Project definitions shadow user definitions with the same lowercase id. The
+file body is the specialist instruction block. Optional front matter supports
+`name`, `description`, `provider`, `model`, `toolAllowlist`, `maxTurns`,
+`maxTokens`, `maxDurationMs`, and `maxOutputChars`. Front matter is deliberately
+not a general YAML runtime: unknown fields, duplicate tools, invalid selectors,
+and invalid budgets cause that optional definition to be ignored. Files and
+instruction bodies are bounded during discovery.
+
+Use these read-only commands to inspect the definitions:
+
+```text
+:agents
+:agent <id>
+```
+
+The `/agents` and `/agent` aliases are also accepted. Listing and inspection
+show only safe metadata; the instruction body and source path are not printed.
+Discovered definitions augment the built-in `:team` roles. A JSON
+`collaboration.roles` entry with the same id wins over the Markdown definition.
+Before execution, every role still goes through the active tool registry and
+`collaboration.toolAllowlist` intersection. Agent Markdown never executes code,
+starts MCP servers, changes approval policy, or bypasses the Rust sandbox.
+
 ## Extension discovery
 
 The CLI discovers bounded metadata manifests from:
@@ -157,6 +187,24 @@ paths, environment values, or credentials. It is available in interactive
 sessions and is not added to JSON or protocol output. See
 [`docs/trace-observability.md`](../../docs/trace-observability.md) for the
 Desktop endpoint and retention contract.
+
+### Adaptive model routing and session budgets
+
+Interactive sessions default to conservative local routing: standalone greetings use `fast`, ordinary requests use `balanced`, and requests that mention debugging, migrations, concurrency, security, refactors, or other multi-step work use `deep`. The decision uses only the current prompt and is not persisted.
+
+```text
+:route              # show the current policy
+:route manual       # keep the current tier for later prompts
+:route auto         # return to automatic routing
+:mode fast|balanced|deep  # choose a tier and switch to manual routing
+:budget             # show session usage and limits
+:budget tokens 20000
+:budget cost 0.50
+:budget duration 120000
+:budget tokens off
+```
+
+Budgets are process-local guardrails. Provider-reported tokens and configured model prices are accounted per request, including fallback calls. If a configured cost limit cannot be verified because the model has no price entry or a provider omits usage, the next request stops rather than reporting an unsafe zero cost. The ledger never stores prompts, responses, tool payloads, credentials, or filesystem paths.
 
 ### Speed modes and latency benchmark
 
@@ -549,8 +597,9 @@ Rich interactive commands accept either `/` or `:` prefixes:
 `/search <query>`/`:search <query>`, `/theme [name]`/`:theme [name]`,
 `/export [markdown|json]`/`:export [markdown|json]`, and `:retry` in Ink mode,
 `/sessions [query]`/`:sessions [query]`, `/resume <query>`/`:resume <query>`,
-`/cards`/`:cards`, `/collapse`/`:collapse`, `/expand`/`:expand`, and
-`/quit`/`:quit`;
+`/cards`/`:cards`, `/collapse`/`:collapse`, `/expand`/`:expand`,
+`/validate <changeSetId>`/`:validate <changeSetId>`,
+`/autofix [1-3]`/`:autofix [1-3]`, and `/quit`/`:quit`;
 `exit` and `quit` remain accepted aliases. Tab completes a command or selects a
 workspace path after `@`, Shift+Enter
 inserts a newline, Escape dismisses the palette or exits an idle session when the
@@ -631,10 +680,62 @@ The rich presentation is intentionally disabled for pipes, CI, `--json`,
 `--once`, `--mcp-server`, and other non-TTY paths, which keep the stable
 line-oriented or JSON contracts. Use `:validate <changeSetId>` for a guarded
 validation rerun, or
+`:autofix [1-3]` to repair the latest failed/blocked validation with a bounded
+reviewed agent loop. The default is two attempts; each repair is followed by a
+new automatic validation when the repair creates a change set, otherwise the
+original change set is rerun through the trusted guard. The loop never replays
+the original user prompt, never includes raw tool output or absolute paths in
+the repair prompt, and stops after the requested attempt budget.
+Use
 `:cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]`
 for explicit metadata-only evidence cleanup. Cleanup reports removed validations,
 removed change sets, protected applied guards, remaining counts, and the current
 retention summary; it never executes a command or touches workspace files.
+
+### Guarded GitHub workflow
+
+Interactive sessions include a small, argument-safe Git workflow for the common
+branch/commit/push/pull-request path:
+
+```text
+:branch
+:branch create feature/parser-fix
+:commit --all "fix parser validation"
+:push origin feature/parser-fix
+:pr --base main "Fix parser validation"
+```
+
+`/branch`, `/commit`, `/push`, and `/pr` aliases are accepted as well. `:branch`
+only reads the current branch, changed-file count, and the `origin` remote.
+Branch creation, commits, pushes, and pull requests always ask for explicit
+confirmation. Commits run `git diff --check`, refuse worktrees containing
+secret-looking files such as `.env` or private keys, and only stage the whole
+workspace when `--all` is present. Push and PR commands require a clean worktree;
+PR creation additionally requires an authenticated GitHub CLI session and an
+upstream branch. The CLI never adds `--force`, never sends shell command strings
+to a shell, and does not print `gh auth status` output or tokens.
+
+### Confirmed project memory
+
+Project-scoped memory is explicit and separate from the conversation transcript:
+
+```text
+:memory
+:memory add --source "team docs" --confidence high "Run focused tests before the full suite"
+:memory search "focused tests"
+:memory forget memory-1234
+```
+
+The slash aliases are accepted. Listing and searching are read-only. Adding or
+forgetting a record asks for confirmation; each saved record has a bounded note,
+source, confidence (`low`, `medium`, or `high`), creation time, update time, and
+a short opaque id. Notes are redacted for credential-shaped values before they
+are stored or displayed, and the store never saves raw tool output or the full
+conversation prompt. By default the store is kept in the user state directory
+under a project hash; `--project-state` stores it at
+`.dev-agent/project-memory.json`, and `DEV_AGENT_PROJECT_MEMORY_FILE` can select
+a bounded test or deployment location.
+
 `Ctrl-C` cancels the request that is in flight (through the same abort path the
 desktop uses) and exits with status `130`; it also exits immediately when the CLI
 is idle at the prompt.

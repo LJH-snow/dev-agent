@@ -24,6 +24,7 @@ import {
   type EvidenceSummary,
   runValidationAttempt,
   type ValidationAdapter,
+  type ValidationPlan,
   type ValidationResult,
   type ApprovalRequest,
   type ChangeSetReview,
@@ -435,7 +436,31 @@ export class ChatSession {
     return this.memory.evidenceSummary();
   }
 
-  /** Reruns trusted checks for an applied change set without changing files. */
+  /** Builds a deterministic validation plan for the selected task worktree paths. */
+  async prepareTaskValidation(
+    changedPaths: readonly string[],
+    options: { readonly validationId?: string } = {},
+  ): Promise<ValidationPlan> {
+    const review = createTaskValidationReview(this.sessionId, changedPaths);
+    return await this.validation.prepare(review, this.context, {
+      validationId: options.validationId ?? createValidationAttemptId(review.changeSetId),
+    });
+  }
+
+  /** Runs a previously prepared task validation plan through this session's executor. */
+  async runTaskValidation(
+    plan: ValidationPlan,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<ValidationResult> {
+    const expectedChangeSetId = taskValidationChangeSetId(this.sessionId);
+    if (plan.changeSetId !== expectedChangeSetId) {
+      throw new Error("task validation plan does not belong to this session");
+    }
+    const result = await this.validation.run(plan, { signal: options.signal });
+    this.lastValidationResult = result.status;
+    return result;
+  }
+
   async rerunValidation(
     changeSetId: string,
     options: { readonly signal?: AbortSignal } = {}
@@ -877,6 +902,43 @@ export class ChatSession {
   estimateCost(usage: ChatUsage): number | undefined {
     return estimateUsageCost(usage, this.model.model, this.pricing);
   }
+}
+
+function taskValidationChangeSetId(sessionId: string): string {
+  return `task:${sessionId}`;
+}
+
+function createTaskValidationReview(
+  sessionId: string,
+  changedPaths: readonly string[],
+): ChangeSetReview {
+  const seen = new Set<string>();
+  const files: Array<ChangeSetReview["files"][number]> = [];
+  for (const rawPath of changedPaths.slice(0, 512)) {
+    if (typeof rawPath !== "string" || rawPath.length === 0 || rawPath.length > 4096 || rawPath.includes("\0")) {
+      continue;
+    }
+    if (seen.has(rawPath)) continue;
+    seen.add(rawPath);
+    files.push({
+      path: rawPath,
+      kind: "file",
+      beforeHash: "task-base",
+      afterHash: "task-working-tree",
+      diff: "",
+      additions: 0,
+      deletions: 0,
+      beforeExists: true,
+      afterExists: true,
+    });
+  }
+  return {
+    changeSetId: taskValidationChangeSetId(sessionId),
+    files,
+    additions: 0,
+    deletions: 0,
+    createdAt: new Date().toISOString(),
+  };
 }
 
 function isPostimageConflict(message: string): boolean {

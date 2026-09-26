@@ -57,6 +57,11 @@ export interface CliConfig extends ProviderManagementConfig {
   readonly validationPolicy?: ValidationPolicy;
   /** USD-per-million-token prices keyed by model-name prefix. */
   readonly pricing?: PriceTable;
+  readonly routing?: {
+    readonly mode?: "auto" | "manual";
+    readonly profiles?: Partial<Record<"fast" | "balanced" | "deep", string>>;
+    readonly budget?: { readonly maxTokens?: number; readonly maxCostUsd?: number; readonly maxDurationMs?: number };
+  };
   readonly approvalMode?: ApprovalMode;
   readonly theme?: InkThemeName;
   readonly approval?: {

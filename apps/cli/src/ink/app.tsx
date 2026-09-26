@@ -22,6 +22,8 @@ import {
   MOUSE_TRACKING_DISABLE,
   MOUSE_TRACKING_ENABLE,
   MouseInputParser,
+  type MouseClick,
+  type MouseMove,
   type MouseWheelDirection,
 } from "./mouse-wheel.js";
 import { RetryPanel } from "./retry-panel.js";
@@ -78,6 +80,12 @@ const EMPTY_UI_SNAPSHOT: InkUiSnapshot = {
 };
 const NOOP_SUBSCRIBE = (): (() => void) => () => undefined;
 const EMPTY_GET_SNAPSHOT = (): InkUiSnapshot => EMPTY_UI_SNAPSHOT;
+// The fixed bottom shell uses eight rows (navigation + status + composer +
+// footer). The guarded inline Ink render leaves two physical rows below the
+// footer, so mouse reports for the painted navigation row use the physical
+// screen row (terminalRows - 9). Verified at multiple sizes by screen tests.
+const BOTTOM_SHELL_ROWS = 8;
+const NAVIGATION_ROW_FROM_BOTTOM = BOTTOM_SHELL_ROWS + 1;
 
 export function InkCliApp({
   store,
@@ -128,6 +136,8 @@ export function InkCliApp({
   const composerMouseInput = useRef(new MouseInputParser()).current;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
+  const [mousePosition, setMousePosition] = useState<MouseMove | undefined>(undefined);
+  const lastMousePosition = useRef<MouseMove | undefined>(undefined);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pathCompletion, setPathCompletion] = useState<PathCompletionResult | undefined>(undefined);
@@ -143,6 +153,12 @@ export function InkCliApp({
   const [viewport, setViewport] = useState<InkViewportSnapshot>(() =>
     viewportModel.snapshot(),
   );
+  const rememberMousePosition = useCallback((position: MouseMove): void => {
+    const previous = lastMousePosition.current;
+    if (previous?.x === position.x && previous.y === position.y) return;
+    lastMousePosition.current = position;
+    setMousePosition(position);
+  }, []);
   const moveViewport = useCallback((
     direction: MouseWheelDirection,
     mode: "page" | "wheel" = "page",
@@ -162,6 +178,21 @@ export function InkCliApp({
       for (const direction of parsed.directions) {
         moveViewport(direction, "wheel");
       }
+      for (const move of parsed.moves) {
+        rememberMousePosition(move);
+      }
+      for (const click of parsed.clicks) {
+        rememberMousePosition({ x: click.x, y: click.y });
+        if (!isBackToBottomClick(
+          click,
+          terminalRows,
+          viewportModel.snapshot(),
+          columns,
+        )) {
+          continue;
+        }
+        setViewport(viewportModel.end());
+      }
     };
     internal_eventEmitter.on("input", handleMouseInput);
     write(MOUSE_TRACKING_ENABLE);
@@ -169,7 +200,17 @@ export function InkCliApp({
       internal_eventEmitter.off("input", handleMouseInput);
       write(MOUSE_TRACKING_DISABLE);
     };
-  }, [internal_eventEmitter, isRawModeSupported, moveViewport, viewportMouseInput, write]);
+  }, [
+    columns,
+    internal_eventEmitter,
+    isRawModeSupported,
+    moveViewport,
+    rememberMousePosition,
+    terminalRows,
+    viewportModel,
+    viewportMouseInput,
+    write,
+  ]);
 
   const suggestions = commandSuggestions(value, commands);
   const busy = inputSnapshot.busy ||
@@ -191,12 +232,16 @@ export function InkCliApp({
   // dynamic viewport.
   const transcriptEntries = allTranscriptEntries;
   const taskTitle = deriveStickyTaskTitle(transcriptEntries);
-  // The sticky task row is part of the dynamic shell, not the transcript
-  // viewport. Reserve one additional row once a task exists so the bottom
-  // controls remain anchored instead of being pushed off-screen.
+  // The task title is sticky only while the user is browsing away from live
+  // output. During an active answer (or any normal follow-output state), the
+  // title remains part of the transcript instead of taking a permanent row
+  // from the live answer viewport.
+  const stickyTaskTitle = viewport.followOutput ? undefined : taskTitle;
+  const navigationHovered = mousePosition !== undefined &&
+    isNavigationBarHovered(mousePosition, terminalRows, viewport, columns);
   const visibleTranscriptRows = Math.max(
     4,
-    baseTranscriptRows - (taskTitle === undefined ? 0 : 1),
+    baseTranscriptRows - (stickyTaskTitle === undefined ? 0 : 1),
   );
   const transcriptRows = estimateTranscriptRows(
     allTranscriptEntries,
@@ -541,8 +586,8 @@ export function InkCliApp({
         )}
       </Static>
       <Box flexDirection="column" width={columns}>
-        {taskTitle !== undefined ? (
-          <StickyTaskHeader title={taskTitle} columns={columns} />
+        {stickyTaskTitle !== undefined ? (
+          <StickyTaskHeader title={stickyTaskTitle} columns={columns} />
         ) : null}
         <TranscriptViewport
           snapshot={snapshot}
@@ -616,7 +661,11 @@ export function InkCliApp({
         ) : null}
       </Box>
       <Box flexDirection="column">
-        <NavigationBar viewport={viewport} />
+        <NavigationBar
+          viewport={viewport}
+          hovered={navigationHovered}
+          columns={columns}
+        />
         <StatusLine snapshot={snapshot} busy={busy} />
         <Composer
           value={value}
@@ -717,25 +766,100 @@ function StickyTaskHeader({
   );
 }
 
+type MousePoint = Pick<MouseMove, "x" | "y">;
+type NavigationViewport = Pick<
+  InkViewportSnapshot,
+  "followOutput" | "hiddenAbove" | "hiddenBelow" | "newOutput"
+>;
+
+function isBrowsingViewport(viewport: NavigationViewport): boolean {
+  return !viewport.followOutput &&
+    (viewport.hiddenAbove > 0 || viewport.hiddenBelow > 0 || viewport.newOutput > 0);
+}
+
+function navigationBarText(viewport: NavigationViewport): string {
+  return [
+    "↓ Back to bottom · End latest",
+    viewport.hiddenAbove > 0 ? `${viewport.hiddenAbove} rows above` : "",
+    viewport.hiddenBelow > 0 ? `${viewport.hiddenBelow} rows below` : "",
+    viewport.newOutput > 0 ? "new output below" : "",
+  ].filter((part) => part.length > 0).join(" · ");
+}
+
+function navigationBarBounds(
+  viewport: NavigationViewport,
+  terminalRows: number,
+  terminalColumns: number,
+): { readonly row: number; readonly startColumn: number; readonly endColumn: number } | undefined {
+  if (!isBrowsingViewport(viewport)) return undefined;
+  const labelWidth = displayWidth(navigationBarText(viewport));
+  const startColumn = Math.max(
+    1,
+    Math.floor((Math.max(1, Math.floor(terminalColumns)) - labelWidth) / 2) + 1,
+  );
+  return {
+    row: Math.max(1, Math.floor(terminalRows) - NAVIGATION_ROW_FROM_BOTTOM),
+    startColumn,
+    endColumn: startColumn + Math.max(1, labelWidth) - 1,
+  };
+}
+
+function isPointInsideNavigationBar(
+  point: MousePoint,
+  viewport: NavigationViewport,
+  terminalRows: number,
+  terminalColumns: number,
+): boolean {
+  const bounds = navigationBarBounds(viewport, terminalRows, terminalColumns);
+  return bounds !== undefined &&
+    point.y === bounds.row &&
+    point.x >= bounds.startColumn &&
+    point.x <= bounds.endColumn;
+}
+
+export function isNavigationBarHovered(
+  point: MousePoint,
+  terminalRows: number,
+  viewport: NavigationViewport,
+  terminalColumns: number,
+): boolean {
+  return isPointInsideNavigationBar(point, viewport, terminalRows, terminalColumns);
+}
+
+export function isBackToBottomClick(
+  click: MouseClick,
+  terminalRows: number,
+  viewport: NavigationViewport,
+  terminalColumns: number,
+): boolean {
+  if (viewport.followOutput || click.action !== "press") return false;
+  if ((click.button & 64) !== 0 || (click.button & 32) !== 0) return false;
+  if ((click.button & 3) !== 0) return false;
+  return isPointInsideNavigationBar(click, viewport, terminalRows, terminalColumns);
+}
+
 function NavigationBar({
   viewport,
+  hovered,
+  columns,
 }: {
   readonly viewport: InkViewportSnapshot;
+  readonly hovered: boolean;
+  readonly columns: number;
 }): React.JSX.Element {
   const theme = useInkTheme();
-  const browsing = !viewport.followOutput &&
-    (viewport.hiddenAbove > 0 || viewport.hiddenBelow > 0 || viewport.newOutput > 0);
-  if (!browsing) {
+  if (!isBrowsingViewport(viewport)) {
     return <Box height={1} />;
   }
 
+  const label = navigationBarText(viewport);
   return (
-    <Box paddingX={1} height={1}>
-      <Text color={theme.primary}>
-        ↓ Back to bottom · End latest
-        {viewport.hiddenAbove > 0 ? ` · ${viewport.hiddenAbove} rows above` : ""}
-        {viewport.hiddenBelow > 0 ? ` · ${viewport.hiddenBelow} rows below` : ""}
-        {viewport.newOutput > 0 ? " · new output below" : ""}
+    <Box width={columns} paddingX={1} height={1} justifyContent="center">
+      <Text
+        color={hovered ? "#131923" : theme.primary}
+        backgroundColor={hovered ? theme.primary : undefined}
+      >
+        {label}
       </Text>
     </Box>
   );
