@@ -288,6 +288,7 @@ export function createTaskWorkspaceUI({
   const stateNode = documentRef.getElementById("task-workspace-state");
   const changesNode = documentRef.getElementById("task-workspace-changes");
   const compareButton = documentRef.getElementById("task-workspace-compare");
+  const deliveryButton = documentRef.getElementById("task-workspace-delivery");
   const mergeButton = documentRef.getElementById("task-workspace-merge");
   const cleanupButton = documentRef.getElementById("task-workspace-cleanup");
   const diffPanel = documentRef.getElementById("task-workspace-diff-panel");
@@ -669,6 +670,7 @@ export function createTaskWorkspaceUI({
     const workspace = selectedWorkspace();
     detailsNode.hidden = !workspace;
     compareButton.disabled = !workspace || ["cleaned", "missing"].includes(workspace.state) || operationInProgress;
+    if (deliveryButton) deliveryButton.disabled = !workspace || operationInProgress;
     mergeButton.disabled = !workspace || workspace.dirty || ["running", "cleaned", "missing", "merged"].includes(workspace.state) || operationInProgress;
     cleanupButton.disabled = !workspace || workspace.dirty || ["running", "cleaned", "missing"].includes(workspace.state) || operationInProgress;
     if (!workspace) {
@@ -996,6 +998,12 @@ export function createTaskWorkspaceUI({
 
   newTaskButton.addEventListener("click", createTask);
   refreshButton.addEventListener("click", refresh);
+  deliveryButton?.addEventListener("click", () => {
+    const workspace = selectedWorkspace();
+    if (!workspace) return;
+    globalThis.location.href = `/api/sessions/${encodeURIComponent(workspace.sessionId)}/delivery-report`;
+  });
+
   compareButton.addEventListener("click", () => void compare());
   diffSearch?.addEventListener("input", () => {
     diffSearchValue = diffSearch.value.slice(0, 256);

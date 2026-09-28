@@ -22,3 +22,4 @@
 
 - Browser acceptance on `http://127.0.0.1:4319/` verified opening the palette, using the Fix bug template, saving a `Browser QA` custom template, and applying the New feature template with `Ctrl+Shift+2` (mode switched to Plan and the palette closed).
 - The only browser console entry was a pre-existing `409` from the concurrent Task Validation Center request; no template resource or runtime error occurred.
+- Committed as `d5930e2` and pushed to `origin/codex/desktop-cli-workbench` using a separate Git index; unrelated CLI/settings/Task Validation/Playwright changes were not staged.

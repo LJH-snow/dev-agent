@@ -24,14 +24,18 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   assistant, tool, approval, validation, usage, and terminal events through the
   shared `@dev-agent/runtime-events` contract. Sink failures are isolated from
   the run, and sequence numbers let consumers ignore replayed frames.
-- **Checkpoints, Skills, Hooks, and Extensions**: `FileMemory` can persist bounded
-  checkpoint records and safely rewind conversation entries to a validated
-  anchor. Rewind never rolls back workspace files or changes applied
-  change-set evidence; later checkpoints are discarded because they no longer
-  describe the current history. The bounded Skills and Hooks registries provide
-  explicit extension points around sessions, model calls, and tools. The
-  metadata-only `ExtensionRegistry` discovers project/user manifests with
-  project precedence; it does not execute extension code or start MCP servers.
+- **Checkpoints, Skills, Agent definitions, Hooks, and Extensions**: `FileMemory`
+  can persist bounded checkpoint records and safely rewind conversation entries
+  to a validated anchor. Rewind never rolls back workspace files or changes
+  applied change-set evidence; later checkpoints are discarded because they no
+  longer describe the current history. The bounded Skills and
+  `AgentDefinitionRegistry` discover Markdown instructions from project/user
+  directories with project precedence. Agent definitions can provide trusted
+  role instructions, model selectors, tool subsets, and budgets, but discovery
+  never executes code or starts MCP servers. Explicit JSON role configuration
+  wins duplicate ids. The metadata-only `ExtensionRegistry` discovers
+  project/user manifests with project precedence; it does not execute extension
+  code or start MCP servers.
 - **Run observability**: `AgentRunTrace` observes lifecycle Hooks and retains a
   bounded metadata-only trace of model/tool spans. CLI `:trace` and the Desktop
   trace endpoint expose the same local snapshot without storing prompt/output
@@ -62,13 +66,18 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   creating any workspace. The review is bounded to 8 tasks and rejects oversized
   prompts; cancellation, interruption, invalid selections, or declined
   confirmation fail closed before worker/workspace creation. This is a tool
-  visibility limit, separate from approval and sandbox policy. MCP sessions are
-  currently registered once by the CLI at the project root and their tool
-  wrappers are shared with workers: per-task tool scopes do not create separate
-  MCP processes, rebind MCP roots to a task worktree, or sandbox server-side
-  effects. Configured MCP child processes and their external resources remain
-  governed by their own configuration. Agent Core keeps the review-before-merge
-  boundary and never merges changes itself.
+  visibility limit, separate from approval and sandbox policy. The CLI makes MCP
+  lifecycle explicit: `disabled` removes MCP tools from collaboration (the
+  default), `shared` reuses project-root sessions with a review warning, and
+  `worker` creates and disposes a fresh session per task rooted at that task's
+  worktree. Worker-scoped MCP roots and cwd are context signals, not server-side
+  filesystem or remote-resource enforcement. Dependency edges also carry a
+  bounded handoff projection: downstream workers receive only direct completed
+  dependency summaries, diff/validation metadata, and no workspace paths, raw
+  errors, tool inputs, or private memory. The handoff is labeled untrusted
+  evidence and never grants capabilities. Independent tasks remain context
+  isolated, and failed dependencies never leak partial output. Agent Core keeps
+  the review-before-merge boundary and never merges changes itself.
 - **Summarization**: with `contextBudget.summarize` the entries dropped by the
   budget are replaced by a model-written `[summary]` digest, which grows
   incrementally as more history is trimmed; a failed summary falls back to the
@@ -310,6 +319,17 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - **Interrupts**: a client disconnect aborts the run (the stream closes with
   `done { "status": "aborted" }`), and a second concurrent chat is rejected with
   409 so two runs never share one conversation state.
+- **GitHub delivery loop** (opt-in via `DEV_AGENT_DESKTOP_GITHUB=1`, loopback-only,
+  read-only): `github-pr-list.ts` loads bounded open-PR snapshots with per-PR
+  check rollups from one `gh pr list` call; the Delivery loop panel jumps from a
+  row into the PR review and CI diagnosis panels. `ci-repair` records
+  per-process lineage (PR, failed head, task session, branch) when a confirmed
+  isolated repair task is created, and `github-repair-verify.ts` compares a
+  fresh read-only diagnosis of the current head against that recorded failing
+  snapshot (`repaired | improved | unresolved | inconclusive`) for the panel's
+  **Verify repair** action and the delivery report's Remote CI verification
+  section. Verification never pushes, comments, reruns workflows, or mutates
+  GitHub; the user performs every remote mutation.
 - Reuses `@dev-agent/agent-core`, `@dev-agent/model`, `@dev-agent/tools`, `@dev-agent/mcp`, `@dev-agent/executor`.
 
 ### `runtime/rust`

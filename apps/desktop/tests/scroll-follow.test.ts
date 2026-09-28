@@ -53,7 +53,7 @@ test("desktop message streaming preserves a reader's manual scroll position", as
     );
     assert.match(
       html,
-      /function scrollMessagesToBottom\(wasAtBottom = isMessagesAtBottom\(\)\) \{[\s\S]{0,260}markLiveOutputPending\(\);/
+      /function scrollMessagesToBottom\(wasAtBottom = isMessagesAtBottom\(\)\) \{[\s\S]{0,520}markLiveOutputPending\(\);/
     );
     assert.match(
       html,

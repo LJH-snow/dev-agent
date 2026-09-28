@@ -118,28 +118,58 @@ fingerprint. Agent Core recomputes and validates the fingerprint, complete slot
 coverage, registered tool names, and global ceiling before workspace creation.
 Both global and per-task scopes only narrow tool visibility; approval and
 sandbox policy remain independent. Planner IDs, roles, titles, and instructions
-never determine allowed tool names.
+never determine allowed tool names. Dependency edges now also carry a bounded
+information handoff: a downstream task receives only direct completed-worker
+evidence (summary, diff totals, and validation summary), explicitly labeled as
+untrusted and excluded from authorization. Independent tasks do not receive one
+another's output, and failed attempts are never handed downstream.
 
-**MCP lifecycle boundary:** these reviewed scopes restrict which MCP tool
-wrappers a worker can see and invoke, but they do not isolate MCP server
-processes. The CLI starts configured MCP sessions once at the project root;
-workers reuse those wrappers, and MCP calls do not receive a worker worktree
-path. A cwd-sensitive server may therefore act on the main project, while a
-remote MCP server may intentionally address shared external state. MCP process
-cwd, advertised roots, and per-task tool allowlists are not server-side
-filesystem or remote-resource enforcement. This is a concrete difference from
-Gemini's documented per-subagent MCP configuration, but duplicating arbitrary
-MCP processes is not automatically equivalent to isolating their resources.
-Treat worker-scoped MCP startup as a separate design decision requiring explicit
-server-selection semantics, resource/concurrency limits, and lifecycle tests.
+**MCP lifecycle boundary:** the CLI now makes the trade-off explicit through
+`collaboration.mcpScope`. `disabled` (the default) removes MCP tools from
+collaboration; `shared` preserves the project-root session and shows a warning
+before execution; `worker` creates a fresh MCP session after each task's reviewed
+scope is known, roots it at that task's worktree, and disposes it with the task
+lease. This closes the prior accidental reuse of main-session MCP closures while
+keeping process creation and configuration in the CLI rather than Agent Core.
+Worker cwd, advertised roots, and per-task tool scopes remain context and
+visibility controls, not server-side filesystem or remote-resource enforcement.
+The design therefore borrows the useful lifecycle separation suggested by
+Gemini's per-subagent model without claiming that a duplicated MCP process
+automatically isolates all of its effects.
 
-**Fit:** the mandatory task-capability review is implemented without copying
-upstream implementation details. Preserve the explicit user review,
-caller-owned plan binding, global ceiling, and separate approval/sandbox
-boundaries. Do not describe tool visibility as MCP process or resource
-isolation.
+**Fit:** the mandatory task-capability review and explicit MCP scope policy are
+implemented without copying upstream implementation details. Preserve explicit
+user review, caller-owned plan binding, global ceiling, separate
+approval/sandbox boundaries, and bounded worker-session lifecycle.
 
-### 4. Keep extension trust boundaries intentional
+### 4. Make specialist definitions discoverable without making them executable
+
+dev-agent now has a bounded `AgentDefinitionRegistry` for project/user
+`AGENT.md` definitions. Gemini CLI's [subagent guide](https://geminicli.com/docs/core/subagents/)
+describes reusable project/user Markdown definitions with restricted tools and
+isolated context; dev-agent borrows that design principle, not its exact file
+format or runtime. Roles' instructions and model/tool preferences are now
+inspectable configuration rather than only hard-coded prompt text. Project definitions shadow
+user definitions, explicit JSON `collaboration.roles` wins duplicate ids, and
+discovery skips definitions with unsupported providers or tools absent from
+the active registry before role merging. The remaining role tool names still
+pass through the existing caller-owned ceiling and active registry checks.
+
+The registry intentionally stops at bounded declarative metadata and
+instruction text. Project Markdown is still model-facing input and should be
+reviewed before use; it is not an authorization source. The registry does
+not execute Markdown, load arbitrary JavaScript, start MCP servers, or
+turn a planner-provided role label into an authorization grant. Project Agent
+metadata also cannot silently cross the active model-provider boundary: a
+project definition that requests a different provider has both its provider
+and model selectors ignored and inherits the caller session selection; a
+matching provider may retain its explicit model. This protects a local-model
+session from project-controlled prompt exfiltration while preserving the
+trusted JSON role escape hatch. The CLI exposes the decision through
+`:agent <id>`. This keeps the useful discovery/composition property while
+preserving the existing approval, plan-mode, sandbox, and worktree boundaries.
+
+### 5. Keep extension trust boundaries intentional
 
 dev-agent Skills are bounded Markdown instructions that require explicit
 activation. The extension registry is metadata-only: it does not execute
@@ -164,10 +194,10 @@ rollback model.
    `collaboration.reviewTaskToolScopes` flag is ignored. Keep approval and
    sandbox policy separate from tool visibility; the review does not isolate
    shared MCP processes.
-3. **Evaluate policy-rule evolution only against concrete requirements.** Keep
+4. **Evaluate policy-rule evolution only against concrete requirements.** Keep
    `createApprovalPolicy()` as the shared decision boundary; do not introduce
    priority tiers, workspace policy, or administrator semantics speculatively.
-4. **Defer executable extension loading.** Continue metadata-only discovery
+5. **Defer executable extension loading.** Continue metadata-only discovery
    until a separate trust/permissions design is approved.
 
 ## Sources

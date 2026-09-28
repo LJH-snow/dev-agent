@@ -8,7 +8,7 @@ Give the Desktop composer reusable, bilingual task templates and keyboard-driven
 - [x] Add bounded built-in/custom template store and browser UI module
 - [x] Add quick-action buttons, template palette, and keyboard shortcuts
 - [x] Add focused tests and browser/static verification
-- [ ] Commit and push without staging unrelated parallel work
+- [x] Commit and push without staging unrelated parallel work
 
 ## Safety and scope
 - Templates are client-local; no new server, shell, network, credential, or MCP capability.

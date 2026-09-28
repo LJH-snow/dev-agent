@@ -67,7 +67,7 @@ const PRICE_FIELDS = new Set([
   "cacheCreationInputPerMillion",
 ]);
 const MCP_FIELDS = new Set(["name", "command", "args", "env", "timeoutMs", "enabled"]);
-const COLLABORATION_FIELDS = new Set(["toolAllowlist", "reviewTaskToolScopes", "roles"]);
+const COLLABORATION_FIELDS = new Set(["toolAllowlist", "reviewTaskToolScopes", "mcpScope", "roles"]);
 const MAX_COLLABORATION_TOOL_ALLOWLIST = 256;
 
 /**
@@ -736,6 +736,17 @@ function validateCollaborationValue(
     if (!COLLABORATION_FIELDS.has(key)) {
       addDiagnostic(diagnostics, `${path}.${key}`, "unknown_field", "Unknown collaboration field.");
     }
+  }
+
+  if (hasOwn(value, "mcpScope") &&
+      (typeof value.mcpScope !== "string" ||
+        !["disabled", "shared", "worker"].includes(value.mcpScope))) {
+    addDiagnostic(
+      diagnostics,
+      `${path}.mcpScope`,
+      "invalid_mcp_scope",
+      `${path}.mcpScope must be one of: disabled, shared, worker.`,
+    );
   }
 
   if (

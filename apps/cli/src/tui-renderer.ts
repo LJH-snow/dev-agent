@@ -90,6 +90,8 @@ export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":memory [add|search|forget]", description: "Manage confirmed project memory" },
   { command: ":cleanup ...", description: "Prune metadata-only evidence" },
   { command: ":route [auto|manual]", description: "Automatically route simple and complex prompts" },
+  { command: ":security", description: "Run a read-only workspace and MCP security audit" },
+  { command: ":marketplace", description: "Inspect safe local skill packages" },
   { command: ":budget", description: "Show or set session token, cost, and time limits" },
   { command: ":quit", description: "Exit the session (also exit / quit)" },
 ];

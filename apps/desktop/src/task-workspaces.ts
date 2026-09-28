@@ -270,7 +270,13 @@ export class DesktopTaskWorkspaceManager {
     return { available: true, repository: basename(repositoryRoot), workspaces };
   }
 
-  async create(): Promise<TaskWorkspaceSummary> {
+  /** Read the exact commit currently checked out in the managed project. */
+  async currentCommit(): Promise<string> {
+    const repositoryRoot = await this.ensureRepository();
+    return runGit(["rev-parse", "HEAD^{commit}"], repositoryRoot);
+  }
+
+  async create(expectedBaseCommit?: string): Promise<TaskWorkspaceSummary> {
     return this.withMutation(async () => {
       const repositoryRoot = await this.ensureRepository();
       const existing = [...this.records.values()].filter((record) => record.repositoryRoot === repositoryRoot && !record.cleanedAt);
@@ -282,6 +288,9 @@ export class DesktopTaskWorkspaceManager {
       const branch = `dev-agent/${sessionId}`;
       const baseBranch = await this.currentBranch(repositoryRoot);
       const baseCommit = await runGit(["rev-parse", "HEAD^{commit}"], repositoryRoot);
+      if (expectedBaseCommit !== undefined && (!/^[a-f0-9]{40}$/iu.test(expectedBaseCommit) || baseCommit.toLowerCase() !== expectedBaseCommit.toLowerCase())) {
+        throw new TaskWorkspaceError("The local checkout no longer matches the confirmed commit.", 409, "local-head-mismatch");
+      }
       await mkdir(this.worktreeDirectory, { recursive: true, mode: 0o700 });
       const worktreeDirectoryInfo = lstatSync(this.worktreeDirectory);
       if (!worktreeDirectoryInfo.isDirectory() || worktreeDirectoryInfo.isSymbolicLink()) {

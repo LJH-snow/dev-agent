@@ -50,6 +50,8 @@ export class CollaborationScopeReviewCancelledError extends Error {
 export async function reviewCollaborationTaskToolScopes(options: {
   readonly tasks: readonly CollaborationTask[];
   readonly availableToolNames: readonly string[];
+  /** Explicit warning shown when the selected tools use shared MCP sessions. */
+  readonly sharedMcpWarning?: string;
   readonly ask: ScopeReviewAsk;
   readonly signal?: AbortSignal;
 }): Promise<CollaborationScopeReviewResult> {
@@ -73,6 +75,7 @@ export async function reviewCollaborationTaskToolScopes(options: {
     tasks,
     tasks.map(() => toolNames),
     planFingerprint,
+    options.sharedMcpWarning,
   );
   const initialPromptChars = choicePrompts.reduce((total, prompt) => total + prompt.length, 0);
   // An invalid answer can cause up to four additional prompts for that task.
@@ -121,7 +124,7 @@ export async function reviewCollaborationTaskToolScopes(options: {
 
   const confirmation = await askWithAbort(
     options.ask,
-    formatScopeConfirmation(tasks, scopesByTaskIndex, planFingerprint),
+    formatScopeConfirmation(tasks, scopesByTaskIndex, planFingerprint, options.sharedMcpWarning),
     options.signal,
     "confirmation",
   );
@@ -246,6 +249,7 @@ function formatScopeConfirmation(
   tasks: readonly CollaborationTask[],
   scopesByTaskIndex: readonly (readonly string[])[],
   planFingerprint: string,
+  sharedMcpWarning?: string,
 ): string {
   const slotById = new Map(tasks.map((task, index) => [task.id, index + 1]));
   const rows = tasks.map((task, index) => {
@@ -270,6 +274,7 @@ function formatScopeConfirmation(
     `Plan fingerprint: ${planFingerprint}`,
     "Task IDs are display labels only. Tool scopes are bound to the ordered numbered slots and this exact plan fingerprint.",
     dependencyNote,
+    ...(sharedMcpWarning === undefined ? [] : [`WARNING: ${safeLine(sharedMcpWarning)}`]),
     ...rows,
     "Confirm this exact ordered plan and every tool scope, then start workers? [y/N] (No creates no task workspaces): ",
   ].join("\n");

@@ -206,3 +206,18 @@ test("abort while waiting for scope input rejects instead of releasing a grant",
   controller.abort();
   await assert.rejects(review);
 });
+
+test("shared MCP scope is visible in the final review prompt", async () => {
+  const prompts: string[] = [];
+  const review = await reviewCollaborationTaskToolScopes({
+    tasks: [tasks[0]!],
+    availableToolNames: ["mcp:search"],
+    sharedMcpWarning: "Shared MCP tools are not rooted in task worktrees.",
+    ask: async (prompt) => {
+      prompts.push(prompt);
+      return prompt.includes("TEAM PLAN + TOOL SCOPE REVIEW") ? "yes" : "all";
+    },
+  });
+  assert.equal(review.status, "confirmed");
+  assert.match(prompts.at(-1) ?? "", /Shared MCP tools are not rooted in task worktrees\./u);
+});

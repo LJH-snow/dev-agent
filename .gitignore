@@ -17,3 +17,6 @@ apps/macos/**/.build/
 apps/macos/**/DerivedData/
 .codex/native-build/
 .codex/native-test/
+
+output/
+.playwright-cli/
