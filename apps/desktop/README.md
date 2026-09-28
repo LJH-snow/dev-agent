@@ -137,6 +137,14 @@ are accepted, and validation command fields are deliberately not configurable.
   read-only re-check of remote CI compared against the recorded failing head
   (`repaired | improved | unresolved | inconclusive`). It never pushes,
   comments, reruns workflows, or mutates GitHub state.
+- `public/scheduled-tasks-ui.js` — "Scheduled tasks" panel over a bounded local
+  scheduler (`src/scheduled-tasks.ts`): persisted definitions on an
+  `interval` (≥15 min) or `daily HH:MM` cadence, a one-minute unref'd tick, and
+  a bounded per-schedule run history. The only built-in job kind is the
+  read-only `ci-watch` watcher, which reuses the delivery-loop loaders to
+  summarize open-PR CI state into a digest record. Schedules are session-free
+  (task center rows stay session-scoped); overdue schedules catch up exactly
+  once after downtime; the tick timer never keeps the process alive.
 
 ## API
 
@@ -235,6 +243,11 @@ ID returns `400` before the approval lookup.
 - `POST /api/github/pr-list` — body `{ "url": "owner/repo or a GitHub repository/PR URL" }` or `{ "owner": "...", "repo": "..." }`. Opt-in and loopback-only; runs one `gh pr list` with `statusCheckRollup` and returns at most 25 open PRs with bounded titles, authors, branches, and per-PR check rollups (`passing | failing | pending | unknown | none`). Read-only; no per-PR fan-out.
 - `GET /api/github/repair-lineage?sessionId=<task session>` — returns the recorded repair lineage for a task session (`prUrl`, `failedSha`, `branch`, `createdAt`, and the last verification if one ran); `404 no-lineage` when the session has none.
 - `POST /api/github/repair-verify` — body `{ "sessionId": "<task session>" }`. Opt-in and loopback-only. Re-runs the read-only CI diagnosis at the PR's current head and compares it, via a pure before/after check-state diff, against the failing snapshot recorded when the repair task was created. Returns a verdict (`repaired | improved | unresolved | inconclusive`) with per-check before/after rows. It never reruns CI, pushes, or comments; the user still pushes the repaired branch and the verdict reflects whatever GitHub currently reports.
+- `GET /api/schedules` / `GET /api/schedules/<id>/runs` — loopback-only snapshots of the schedule registry (≤64 definitions with next-run and last-run metadata) and of one schedule's bounded run history (≤20 records, ≤8KB each).
+- `POST /api/schedules` — create a schedule; body `{ "title", "job": "ci-watch", "repo": "owner/repo", "kind": "interval" | "daily", "intervalMinutes"?: 15-10080, "timeOfDay"?: "HH:MM" }`. Capability-token gated; cadence validation is strict and there is no cron DSL.
+- `POST /api/schedules/<id>` — partial update (`title`, `repo`, `intervalMinutes`, `timeOfDay`, `enabled`); switching cadence recomputes the next run from now. Capability-token gated.
+- `POST /api/schedules/<id>/run` — manual, out-of-band run of one schedule regardless of `nextRunAt`; `409 already-running` while a previous run of the same schedule is still executing. Capability-token gated.
+- `DELETE /api/schedules/<id>` — remove a schedule and its run history. Capability-token gated.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
   accepts the same `changeSetId`, `validationId`, and `status` filters, applies

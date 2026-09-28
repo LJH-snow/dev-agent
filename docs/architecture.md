@@ -330,6 +330,15 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   **Verify repair** action and the delivery report's Remote CI verification
   section. Verification never pushes, comments, reruns workflows, or mutates
   GitHub; the user performs every remote mutation.
+- **Scheduled background tasks** (`scheduled-tasks.ts`): a bounded local
+  scheduler with persisted definitions on `interval` (≥15 min) or `daily
+  HH:MM` cadences, driven by one unref'd 60-second tick that never keeps the
+  process alive; overdue schedules catch up exactly once after downtime. The
+  built-in `ci-watch` job is a read-only watcher that reuses the delivery-loop
+  loaders with the GitHub opt-in gate, recording a bounded digest (open PRs,
+  failing PRs, per-PR verdicts) into per-schedule run history. Schedule
+  create/update/delete/run-now routes are capability-token gated and
+  loopback-only; no schedule can push, comment, rerun CI, or start an agent.
 - Reuses `@dev-agent/agent-core`, `@dev-agent/model`, `@dev-agent/tools`, `@dev-agent/mcp`, `@dev-agent/executor`.
 
 ### `runtime/rust`

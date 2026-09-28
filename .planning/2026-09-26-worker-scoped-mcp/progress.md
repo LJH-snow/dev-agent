@@ -28,3 +28,21 @@
   and `docs/superpowers/plans/2026-09-26-collaboration-task-handoffs.md`.
 - Added RED/GREEN Agent Core coverage for direct handoffs, independent-task
   isolation, and bounded summaries; implementation is now in progress.
+
+## 2026-09-28 — closure of the handoff continuation
+
+- The bounded handoff projection landed in
+  `packages/agent-core/src/collaboration-execution.ts` (provider-neutral,
+  no workspace paths or raw errors, per-handoff and aggregate prompt limits)
+  and is injected as the untrusted `DEPENDENCY HANDOFFS` prompt section before
+  each downstream worker run. Shipped with the desktop/CLI workbench commit
+  `6e607a7` (feat: add agent registry, collaboration MCP, task center, and CI
+  diagnosis).
+- Task 4 of `docs/superpowers/plans/2026-09-26-collaboration-task-handoffs.md`
+  is complete: `docs/architecture.md` (bounded handoff projection, untrusted
+  labeling) and `docs/gemini-cli-architecture-alignment.md` (information
+  handoff) document the flow boundary.
+- Fresh verification on September 28, 2026: agent-core typecheck clean and the
+  full agent-core suite passed 222/222 (includes the direct handoff and
+  independent-task isolation regression tests); scoped `git diff --check`
+  passed with no whitespace errors.

@@ -621,6 +621,29 @@
             <ul id="mcp-health-list" class="mcp-health-list" aria-label="MCP server health" data-i18n-aria-label="mcpHealth.list"></ul>
           </div>
         </section>
+        <section id="scheduled-tasks-panel" class="desktop-status-panel scheduled-tasks-panel" aria-labelledby="scheduled-tasks-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="scheduled-tasks-title" class="desktop-status-title" data-i18n="scheduledTasks.title">Scheduled tasks</div>
+              <div id="scheduled-tasks-status" class="desktop-status-note" role="status" data-i18n="scheduledTasks.ready">Bounded local watchers. Read-only jobs.</div>
+            </div>
+            <button type="button" id="scheduled-tasks-refresh" class="desktop-status-refresh" data-i18n="scheduledTasks.refresh">Refresh</button>
+          </div>
+          <form id="scheduled-tasks-form" class="github-pr-review-form scheduled-tasks-form">
+            <input id="scheduled-tasks-title" type="text" autocomplete="off" spellcheck="false" maxlength="120" data-i18n-placeholder="scheduledTasks.titlePlaceholder" placeholder="Morning CI watch" />
+            <input id="scheduled-tasks-repo" type="text" autocomplete="off" spellcheck="false" maxlength="512" data-i18n-placeholder="scheduledTasks.repoPlaceholder" placeholder="owner/repo" />
+            <select id="scheduled-tasks-kind">
+              <option value="interval" data-i18n="scheduledTasks.cadence.everyKind">Every N minutes</option>
+              <option value="daily" data-i18n="scheduledTasks.cadence.dailyKind">Daily at</option>
+            </select>
+            <input id="scheduled-tasks-interval" type="number" min="15" max="10080" step="1" value="60" />
+            <input id="scheduled-tasks-time" type="text" maxlength="5" value="09:00" />
+            <button type="submit" id="scheduled-tasks-create" data-i18n="scheduledTasks.create">Add schedule</button>
+          </form>
+          <ul id="scheduled-tasks-definitions" class="scheduled-tasks-list"></ul>
+          <div id="scheduled-tasks-history" class="scheduled-tasks-history"></div>
+          <p class="github-pr-review-note" data-i18n="scheduledTasks.note">Watchers run read-only checks on a cadence and never push, comment, or run agents. GitHub integration must be enabled.</p>
+        </section>
         <section id="github-delivery-loop-panel" class="desktop-status-panel github-delivery-loop-panel" aria-labelledby="github-delivery-loop-title" aria-live="polite">
           <div class="desktop-status-header">
             <div>
@@ -849,6 +872,7 @@
     import { createGitHubPrReviewUI } from "/public/github-pr-review-ui.js";
     import { createGitHubCiDiagnosisUI } from "/public/github-ci-diagnosis-ui.js";
     import { createGitHubDeliveryLoopUI } from "/public/github-delivery-loop-ui.js";
+    import { createScheduledTasksUI } from "/public/scheduled-tasks-ui.js";
     import {
       getTurnActivityForEvent,
       getTurnActivityForState,
@@ -1091,6 +1115,7 @@
     let githubPrReviewUI = null;
     let githubCiDiagnosisUI = null;
     let githubDeliveryLoopUI = null;
+    let scheduledTasksUI = null;
     let sessionSummaries = new Map();
     let sessionFilterQuery = "";
     let sessionFilterStatus = "all";
@@ -1391,6 +1416,49 @@
         "githubDeliveryLoop.state.failed": "failed",
         "githubDeliveryLoop.state.pending": "pending",
         "githubDeliveryLoop.state.unknown": "unknown",
+        "scheduledTasks.title": "Scheduled tasks",
+        "scheduledTasks.ready": "Bounded local watchers. Read-only jobs.",
+        "scheduledTasks.refresh": "Refresh",
+        "scheduledTasks.loading": "Loading schedules…",
+        "scheduledTasks.loaded": "Schedules are up to date.",
+        "scheduledTasks.error": "Unable to load scheduled tasks.",
+        "scheduledTasks.empty": "No scheduled tasks yet.",
+        "scheduledTasks.emptyIdle": "No scheduled tasks loaded yet.",
+        "scheduledTasks.titlePlaceholder": "Morning CI watch",
+        "scheduledTasks.repoPlaceholder": "owner/repo",
+        "scheduledTasks.cadence.everyKind": "Every N minutes",
+        "scheduledTasks.cadence.dailyKind": "Daily at",
+        "scheduledTasks.cadence.every": "every",
+        "scheduledTasks.cadence.daily": "daily at",
+        "scheduledTasks.cadence.minutes": "min",
+        "scheduledTasks.create": "Add schedule",
+        "scheduledTasks.creating": "Creating schedule…",
+        "scheduledTasks.created": "Schedule created.",
+        "scheduledTasks.updating": "Updating schedule…",
+        "scheduledTasks.updated": "Schedule updated.",
+        "scheduledTasks.deleting": "Removing schedule…",
+        "scheduledTasks.deleted": "Schedule removed.",
+        "scheduledTasks.invalidInput": "Enter a title, an owner/repo, and a cadence (interval ≥ 15 min).",
+        "scheduledTasks.limit": "Schedule limit reached; remove one before adding another.",
+        "scheduledTasks.runNow": "Run now",
+        "scheduledTasks.runStarted": "Run requested…",
+        "scheduledTasks.runFailed": "Run could not be started.",
+        "scheduledTasks.enable": "Enable",
+        "scheduledTasks.disable": "Disable",
+        "scheduledTasks.delete": "Remove",
+        "scheduledTasks.history": "History",
+        "scheduledTasks.historyEmpty": "No runs recorded.",
+        "scheduledTasks.lastRun": "last",
+        "scheduledTasks.next": "next",
+        "scheduledTasks.ok": "ok",
+        "scheduledTasks.failed": "failed",
+        "scheduledTasks.never": "never",
+        "scheduledTasks.running": "running…",
+        "scheduledTasks.disabled": "disabled",
+        "scheduledTasks.untitled": "Untitled schedule",
+        "scheduledTasks.trigger.schedule": "scheduled",
+        "scheduledTasks.trigger.manual": "manual",
+        "scheduledTasks.note": "Watchers run read-only checks on a cadence and never push, comment, or run agents. GitHub integration must be enabled.",
         "workspace.label": "Workspace",
         "taskValidation.title": "Validation center",
         "taskValidation.status.ready": "Ready to validate this task worktree.",
@@ -2150,6 +2218,49 @@
         "githubDeliveryLoop.state.failed": "失败",
         "githubDeliveryLoop.state.pending": "进行中",
         "githubDeliveryLoop.state.unknown": "未知",
+        "scheduledTasks.title": "定时任务",
+        "scheduledTasks.ready": "有界本地观察器，仅只读任务。",
+        "scheduledTasks.refresh": "刷新",
+        "scheduledTasks.loading": "正在加载定时任务…",
+        "scheduledTasks.loaded": "定时任务已更新。",
+        "scheduledTasks.error": "无法加载定时任务。",
+        "scheduledTasks.empty": "还没有定时任务。",
+        "scheduledTasks.emptyIdle": "尚未加载定时任务。",
+        "scheduledTasks.titlePlaceholder": "每日 CI 巡检",
+        "scheduledTasks.repoPlaceholder": "owner/repo",
+        "scheduledTasks.cadence.everyKind": "每 N 分钟",
+        "scheduledTasks.cadence.dailyKind": "每天",
+        "scheduledTasks.cadence.every": "每",
+        "scheduledTasks.cadence.daily": "每天",
+        "scheduledTasks.cadence.minutes": "分钟",
+        "scheduledTasks.create": "添加定时任务",
+        "scheduledTasks.creating": "正在创建…",
+        "scheduledTasks.created": "定时任务已创建。",
+        "scheduledTasks.updating": "正在更新…",
+        "scheduledTasks.updated": "定时任务已更新。",
+        "scheduledTasks.deleting": "正在移除…",
+        "scheduledTasks.deleted": "定时任务已移除。",
+        "scheduledTasks.invalidInput": "请填写标题、owner/repo 和节奏（间隔 ≥ 15 分钟）。",
+        "scheduledTasks.limit": "已达到数量上限，请先移除一个再添加。",
+        "scheduledTasks.runNow": "立即运行",
+        "scheduledTasks.runStarted": "已请求运行…",
+        "scheduledTasks.runFailed": "无法启动运行。",
+        "scheduledTasks.enable": "启用",
+        "scheduledTasks.disable": "停用",
+        "scheduledTasks.delete": "移除",
+        "scheduledTasks.history": "历史",
+        "scheduledTasks.historyEmpty": "暂无运行记录。",
+        "scheduledTasks.lastRun": "上次",
+        "scheduledTasks.next": "下次",
+        "scheduledTasks.ok": "成功",
+        "scheduledTasks.failed": "失败",
+        "scheduledTasks.never": "未运行",
+        "scheduledTasks.running": "运行中…",
+        "scheduledTasks.disabled": "已停用",
+        "scheduledTasks.untitled": "未命名任务",
+        "scheduledTasks.trigger.schedule": "定时",
+        "scheduledTasks.trigger.manual": "手动",
+        "scheduledTasks.note": "观察器按节奏执行只读检查，不会推送、评论或运行 agent。需要启用 GitHub 集成。",
         "workspace.label": "工作区",
         "taskValidation.title": "验证中心",
         "taskValidation.status.ready": "可以验证此任务 worktree。",
@@ -2787,6 +2898,7 @@
       githubPrReviewUI?.render();
       githubCiDiagnosisUI?.render();
       githubDeliveryLoopUI?.render();
+      scheduledTasksUI?.render();
       renderComposerDraftStatus();
       renderLiveOutputNotice();
       void loadWorkbenchCapabilities(currentSessionId);
@@ -7498,6 +7610,10 @@
       },
     });
     void githubDeliveryLoopUI?.refreshLineage();
+    scheduledTasksUI = createScheduledTasksUI({
+      documentRef: document, fetcher: fetch, translate: t,
+    });
+    void scheduledTasksUI?.refresh();
     taskTerminalUI = createTaskTerminalUI({
       documentRef: document,
       fetcher: fetch,
