@@ -4,7 +4,7 @@
 Enable the Ink 6.8 built-in capabilities the CLI does not use yet, in priority order — composer input experience (paste/IME/kitty keyboard), screen-reader support, shared-clock render performance, and alternate-screen full-screen modes — without new runtime dependencies and with each phase independently shippable.
 
 ## Current Phase
-Phase 1
+Phase 2
 
 ## Phases
 
@@ -12,12 +12,13 @@ Phase 1
 - [x] Inventory current Ink usage and unused capabilities (see findings.md)
 - **Status:** complete
 
-### Phase 1: Composer input experience
-- [ ] `apps/cli/src/ink/app.tsx` composer: adopt `usePaste` so bracketed-pasted logs/code arrive as one bounded string (single insert + truncation notice) instead of per-keystroke processing
-- [ ] Adopt `useCursor` for proper cursor handling and IME-safe composition (CJK input correctness)
-- [ ] Enable kitty keyboard protocol handling (`key.eventType`) to distinguish Shift+Enter (newline) from Enter (submit) where the terminal supports it, with graceful fallback
-- [ ] CLI tests: paste inserts bounded single block; newline/submit matrix; no regression for existing key routing in `useInput` (app.tsx:350)
-- **Status:** pending
+### Phase 1: Composer input experience (complete; recalibrated to real ink 6.8 APIs)
+- [x] Paste blocks: `usePaste` does not exist in ink 6.8 and `useInput` already delivers pastes as one multi-char chunk. Composer now treats chunks with ≥2 line breaks as a bounded paste block (cap `MAX_PASTE_CHARS=8000` + truncation notice); a single trailing break still submits so expect-style drivers and one-line pastes keep the old behavior (this boundary broke 4 PTY tests until fixed — see progress.md)
+- [x] Stale-closure fix: under `maxFps: 15`, handler closures could apply edits against a stale draft and drop pasted content; composer state is now ref-backed (`composerRef` + `applyComposer`) with all branches (arrows/backspace/history/tab/submit) reading the ref
+- [x] Kitty keyboard protocol: render option `kittyKeyboard: { mode: "auto", flags: ["disambiguateEscapeCodes"] }` (auto probes, falls back silently); Shift+Enter (`CSI 13;2u` → `key.return && key.shift`) inserts a newline; non-press events filtered so keys register once
+- [x] IME cursor: `useCursor` + `measureElement` position the terminal cursor at the caret, gated behind `DEV_AGENT_IME_CURSOR=1` (off by default; absolute-row contract verified manually)
+- [x] CLI tests: tests/ink-composer-input.test.ts 6/6 (paste block, script-driver parity, two-line block, truncation, shift+enter, release filter); interactive PTY suite 19/19 after the boundary fix
+- **Status:** complete
 
 ### Phase 2: Screen-reader support (closes deferred a11y debt)
 - [ ] Gate enhanced announcements on `isScreenReaderEnabled()`; document `INK_SCREEN_READER=1`
@@ -26,18 +27,15 @@ Phase 1
 - [ ] Update docs/CHANGELOG.md deferred "screen-reader announcements" entry; CLI tests for the gated announcements
 - **Status:** pending
 
-### Phase 3: Render performance
-- [ ] Migrate ad-hoc timers (`rotating-status.tsx`, `thought-line.tsx`) to `useAnimation` shared clock (one frame loop, fewer renders while streaming)
-- [ ] Evaluate `incrementalRendering` flag under token streaming; keep `maxFps: 15` (index.ts:5667) unless measurements say otherwise
-- [ ] Optionally wire `onRender` metrics behind an env flag to catch render jank
-- [ ] Tests: component tests for status components using the shared clock; before/after render-count assertions
+### Phase 3: Render performance (recalibrated: no `useAnimation` in ink 6.8; `incrementalRendering` already rejected in index.ts for PTY cursor bugs)
+- [ ] Audit `rotating-status.tsx`/`thought-line.tsx` timers; if all share one interval already, document and close
+- [ ] Wire `onRender` (RenderMetrics) behind an env flag to catch render jank during streaming
+- [ ] Re-evaluate `incrementalRendering` only if upstream fixes the cursor-row diff bug
 - **Status:** pending
 
-### Phase 4: Alternate-screen full-screen modes
-- [ ] Run `session-picker` and `command-palette` inside `alternateScreen` so scrollback is preserved on exit; restore transcript cleanly
-- [ ] Handle resize and early-exit paths; ensure errors never strand the terminal in alt screen
-- [ ] CLI tests + manual acceptance on iTerm/Terminal.app
-- **Status:** pending
+### Phase 4: Alternate-screen full-screen modes (blocked: no `alternateScreen` API in ink 6.8)
+- [ ] Blocked on upstream; revisit when ink ships an alternate-screen API, or evaluate a bounded custom implementation
+- **Status:** blocked
 
 ### Phase 5: Deferred backlog (not scheduled)
 - [ ] `suspendTerminal`-backed `:editor` command (compose long prompts in $EDITOR)

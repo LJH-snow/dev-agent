@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore, useState } from "react";
-import { Box, Static, Text, useInput, useStdin, useStdout } from "ink";
+import { Box, Static, Text, measureElement, useCursor, useInput, useStdin, useStdout, type DOMElement } from "ink";
 
 import {
   DEFAULT_COMMAND_HINTS,
@@ -86,6 +86,14 @@ const EMPTY_GET_SNAPSHOT = (): InkUiSnapshot => EMPTY_UI_SNAPSHOT;
 // screen row (terminalRows - 9). Verified at multiple sizes by screen tests.
 const BOTTOM_SHELL_ROWS = 8;
 const NAVIGATION_ROW_FROM_BOTTOM = BOTTOM_SHELL_ROWS + 1;
+// Pasted blocks land in the composer capped at this many characters so a
+// runaway clipboard cannot stall the frame loop; anything beyond is dropped
+// and surfaced as a one-line notice above the composer.
+export const MAX_PASTE_CHARS = 8_000;
+// Opt-in IME cursor placement: positions the terminal cursor at the caret so
+// CJK composition windows open in the right place. Off by default because the
+// absolute row depends on the terminal honoring the frame-height contract.
+const IME_CURSOR_ENABLED = process.env.DEV_AGENT_IME_CURSOR === "1";
 
 export function InkCliApp({
   store,
@@ -136,6 +144,16 @@ export function InkCliApp({
   const composerMouseInput = useRef(new MouseInputParser()).current;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
+  const [pasteTruncated, setPasteTruncated] = useState(false);
+  // Composer text lives in a ref alongside the render state: input events can
+  // arrive between throttled frames (maxFps), and a handler reading render
+  // state would apply edits against a stale draft and silently drop content.
+  const composerRef = useRef({ value: "", cursor: 0 });
+  const applyComposer = useCallback((nextValue: string, nextCursor: number) => {
+    composerRef.current = { value: nextValue, cursor: nextCursor };
+    setValue(nextValue);
+    setCursor(nextCursor);
+  }, []);
   const [mousePosition, setMousePosition] = useState<MouseMove | undefined>(undefined);
   const lastMousePosition = useRef<MouseMove | undefined>(undefined);
   const [history, setHistory] = useState<string[]>([]);
@@ -301,8 +319,8 @@ export function InkCliApp({
   ]);
 
   const submitPrompt = (submitted: string): void => {
-    setValue("");
-    setCursor(0);
+    applyComposer("", 0);
+    setPasteTruncated(false);
     setHistoryIndex(-1);
     dismissedPathKey.current = undefined;
     setPathCompletion(undefined);
@@ -324,24 +342,33 @@ export function InkCliApp({
 
   const insertText = (text: string): void => {
     if (text.length === 0) return;
-    const chars = Array.from(value);
-    chars.splice(cursor, 0, text);
-    setValue(chars.join(""));
-    setCursor(cursor + Array.from(text).length);
+    const chars = Array.from(composerRef.current.value);
+    const insertion = Array.from(text);
+    const room = MAX_PASTE_CHARS - chars.length;
+    if (room <= 0) {
+      setPasteTruncated(true);
+      return;
+    }
+    const capped = insertion.slice(0, room);
+    if (capped.length < insertion.length) setPasteTruncated(true);
+    chars.splice(composerRef.current.cursor, 0, capped.join(""));
+    applyComposer(chars.join(""), composerRef.current.cursor + capped.length);
   };
 
   const choosePathSuggestion = (index: number): void => {
     const suggestion = pathCompletion?.suggestions[index];
     if (!suggestion || pathCompletion === undefined) return;
-    const chars = Array.from(value);
+    const chars = Array.from(composerRef.current.value);
     const replacement = `@${suggestion.path}`;
     chars.splice(
       pathCompletion.tokenStart,
       pathCompletion.tokenEnd - pathCompletion.tokenStart,
       replacement,
     );
-    setValue(chars.join(""));
-    setCursor(pathCompletion.tokenStart + Array.from(replacement).length);
+    applyComposer(
+      chars.join(""),
+      pathCompletion.tokenStart + Array.from(replacement).length,
+    );
     setPathCompletion(undefined);
     setPathCompletionIndex(0);
     dismissedPathKey.current = undefined;
@@ -353,18 +380,23 @@ export function InkCliApp({
       if (mouseInput.remaining.length === 0) return;
       input = mouseInput.remaining;
     }
+    // When the kitty keyboard protocol is active, Ink also delivers key-release
+    // events with the same fields as presses; acting on them would register
+    // every key twice, so only press events reach the composer.
+    if (key.eventType !== undefined && key.eventType !== "press") return;
     if (key.ctrl && (input === "c" || input === "\u0003")) {
       onCancel();
       return;
     }
     // Some terminals expose Home/End as raw escape sequences without Ink's
     // parsed key flags. Handle those sequences before the generic Escape path.
+    const draft = composerRef.current;
     const rawHome = input === "\u001b[H" || input === "\u001b[1~";
     const rawEnd = input === "\u001b[F" || input === "\u001b[4~";
     if (
       snapshot.sessionPicker === undefined &&
       activeInputPrompt === undefined &&
-      value.length === 0 &&
+      draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
       (rawHome || rawEnd)
@@ -433,7 +465,7 @@ export function InkCliApp({
     if (
       snapshot.sessionPicker === undefined &&
       activeInputPrompt === undefined &&
-      value.length === 0 &&
+      draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
       key.home
@@ -445,7 +477,7 @@ export function InkCliApp({
     if (
       snapshot.sessionPicker === undefined &&
       activeInputPrompt === undefined &&
-      value.length === 0 &&
+      draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
       key.end
@@ -458,10 +490,28 @@ export function InkCliApp({
       snapshot.retry !== undefined &&
       !busy &&
       activeInputPrompt === undefined &&
-      value.length === 0 &&
+      draft.value.length === 0 &&
       input.toLowerCase() === "r"
     ) {
       onRetry?.();
+      return;
+    }
+    // Shift+Enter (kitty keyboard protocol) inserts a newline instead of
+    // submitting; plain Enter still submits exactly as before.
+    if (key.return && key.shift) {
+      insertText("\n");
+      return;
+    }
+    // A chunk with MULTIPLE line breaks is a paste: insert it as one bounded
+    // block instead of submitting at the first line break, which used to drop
+    // everything after it. Ink does not expose bracketed-paste markers, so a
+    // single trailing break still submits — "text\r" from expect-style drivers
+    // and one-line pastes keep the old submit behavior.
+    if ((input.match(/[\r\n]/gu)?.length ?? 0) >= 2) {
+      const withoutTrailingBreak = input.replace(/[\r\n]+$/u, "");
+      const normalized = Array.from(withoutTrailingBreak.replace(/\r\n?/gu, "\n"));
+      setPasteTruncated(normalized.length > MAX_PASTE_CHARS);
+      insertText(normalized.slice(0, MAX_PASTE_CHARS).join(""));
       return;
     }
     // Some PTYs normalize carriage return to line feed while Ink is in raw
@@ -472,8 +522,8 @@ export function InkCliApp({
       const textBeforeSubmit = lineBreak >= 0
         ? input.slice(0, lineBreak)
         : "";
-      const chars = Array.from(value);
-      chars.splice(cursor, 0, textBeforeSubmit);
+      const chars = Array.from(draft.value);
+      chars.splice(draft.cursor, 0, textBeforeSubmit);
       submitPrompt(chars.join(""));
       return;
     }
@@ -483,8 +533,7 @@ export function InkCliApp({
     }
     if (key.tab && suggestions.length > 0) {
       const suggestion = suggestions[0]?.command ?? "";
-      setValue(suggestion);
-      setCursor(suggestion.length);
+      applyComposer(suggestion, Array.from(suggestion).length);
       return;
     }
     if (pathCompletion?.suggestions.length && key.upArrow) {
@@ -506,8 +555,7 @@ export function InkCliApp({
         : Math.max(0, historyIndex - 1);
       const next = history[nextIndex] ?? "";
       setHistoryIndex(nextIndex);
-      setValue(next);
-      setCursor(next.length);
+      applyComposer(next, Array.from(next).length);
       return;
     }
     if (key.downArrow) {
@@ -515,30 +563,28 @@ export function InkCliApp({
       const nextIndex = historyIndex + 1;
       if (nextIndex >= history.length) {
         setHistoryIndex(-1);
-        setValue("");
-        setCursor(0);
+        applyComposer("", 0);
         return;
       }
       const next = history[nextIndex] ?? "";
       setHistoryIndex(nextIndex);
-      setValue(next);
-      setCursor(next.length);
+      applyComposer(next, Array.from(next).length);
       return;
     }
     if (key.leftArrow) {
-      setCursor((position) => Math.max(0, position - 1));
+      applyComposer(draft.value, Math.max(0, draft.cursor - 1));
       return;
     }
     if (key.rightArrow) {
-      setCursor((position) => Math.min(Array.from(value).length, position + 1));
+      applyComposer(draft.value, Math.min(Array.from(draft.value).length, draft.cursor + 1));
       return;
     }
     if (key.home) {
-      setCursor(0);
+      applyComposer(draft.value, 0);
       return;
     }
     if (key.end) {
-      setCursor(Array.from(value).length);
+      applyComposer(draft.value, Array.from(draft.value).length);
       return;
     }
     // macOS Terminal sends the Delete key as DEL (0x7f), which Ink exposes
@@ -546,16 +592,14 @@ export function InkCliApp({
     // character before the caret; otherwise deleting at the end is a no-op
     // because the old `key.delete` branch tried to delete forward.
     if (key.backspace || key.delete) {
-      const chars = Array.from(value);
-      if (cursor === 0) return;
-      chars.splice(cursor - 1, 1);
-      setValue(chars.join(""));
-      setCursor(cursor - 1);
+      const chars = Array.from(draft.value);
+      if (draft.cursor === 0) return;
+      chars.splice(draft.cursor - 1, 1);
+      applyComposer(chars.join(""), draft.cursor - 1);
       return;
     }
     if (input === "\u000c") {
-      setValue("");
-      setCursor(0);
+      applyComposer("", 0);
       return;
     }
     if (input.length > 0 && !key.ctrl && !key.meta && !key.escape) {
@@ -673,6 +717,9 @@ export function InkCliApp({
           placeholder={promptLabel}
           width={columns - 2}
           approval={activeInputPrompt !== undefined}
+          notice={pasteTruncated ? `Pasted content truncated to ${MAX_PASTE_CHARS} characters` : undefined}
+          imeCursor={IME_CURSOR_ENABLED}
+          terminalRows={terminalRows}
         />
         <Footer
           workingDirectory={workingDirectory}
@@ -1267,14 +1314,55 @@ function Composer({
   placeholder,
   width,
   approval,
+  notice,
+  imeCursor = false,
+  terminalRows,
 }: {
   value: string;
   cursor: number;
   placeholder: string;
   width: number;
   approval: boolean;
+  notice?: string;
+  imeCursor?: boolean;
+  terminalRows?: number;
 }): React.JSX.Element {
   const theme = useInkTheme();
+  const { setCursorPosition } = useCursor();
+  const boxRef = useRef<DOMElement | null>(null);
+  const [boxHeight, setBoxHeight] = useState(0);
+  // measureElement reports the rendered height of the bordered composer box,
+  // which grows with wrapped content; keep it current on every commit.
+  useEffect(() => {
+    const node = boxRef.current;
+    if (!node) return;
+    try {
+      const measured = measureElement(node);
+      if (measured.height > 0 && measured.height !== boxHeight) setBoxHeight(measured.height);
+    } catch {
+      // The node is not attached yet; the next commit measures it.
+    }
+  });
+  useEffect(() => {
+    if (!imeCursor || boxHeight <= 0 || terminalRows === undefined) {
+      setCursorPosition(undefined);
+      return;
+    }
+    const chars = Array.from(value);
+    const linesBeforeCaret = chars.slice(0, cursor).join("").split("\n");
+    const caretLine = linesBeforeCaret.length - 1;
+    const caretCol = displayWidth(linesBeforeCaret[linesBeforeCaret.length - 1] ?? "");
+    // Layout contract: the footer occupies the last frame row and the
+    // composer sits directly above it, so the caret row works out to
+    // (frame bottom - composer height - marginTop) + top border + caret line.
+    const y = terminalRows - boxHeight - 1 + caretLine;
+    const x = 3 + caretCol;
+    if (y < 0 || y >= terminalRows) {
+      setCursorPosition(undefined);
+      return;
+    }
+    setCursorPosition({ x, y });
+  }, [imeCursor, boxHeight, value, cursor, terminalRows, setCursorPosition]);
   const chars = Array.from(value);
   const before = chars.slice(0, cursor).join("");
   const cursorAtEnd = chars[cursor] === undefined;
@@ -1282,31 +1370,37 @@ function Composer({
   const after = chars.slice(cursor + (chars[cursor] === undefined ? 0 : 1)).join("");
 
   return (
-    <Box
-      borderStyle="round"
-      borderColor={theme.composer}
-      paddingX={1}
-      marginTop={1}
-      width={Math.max(20, width)}
-      aria-role="textbox"
-      aria-state={{ busy: approval }}
-    >
-      <Text color={theme.prompt}>› </Text>
-      {value.length === 0 ? (
-        <><Text color={theme.composer}>█</Text><Text color={theme.muted}>{placeholder}</Text></>
-      ) : (
-        <>
-          <Text>{before}</Text>
-          <Text
-            backgroundColor={cursorAtEnd ? undefined : "#eef4ff"}
-            color={cursorAtEnd ? theme.composer : "#131923"}
-          >
-            {active}
-          </Text>
-          <Text>{after}</Text>
-        </>
-      )}
-    </Box>
+    <>
+      {notice ? <Text color={theme.composer}>{notice}</Text> : null}
+      <Box
+        ref={(node: DOMElement | null) => {
+          boxRef.current = node;
+        }}
+        borderStyle="round"
+        borderColor={theme.composer}
+        paddingX={1}
+        marginTop={1}
+        width={Math.max(20, width)}
+        aria-role="textbox"
+        aria-state={{ busy: approval }}
+      >
+        <Text color={theme.prompt}>› </Text>
+        {value.length === 0 ? (
+          <><Text color={theme.composer}>█</Text><Text color={theme.muted}>{placeholder}</Text></>
+        ) : (
+          <>
+            <Text>{before}</Text>
+            <Text
+              backgroundColor={cursorAtEnd ? undefined : "#eef4ff"}
+              color={cursorAtEnd ? theme.composer : "#131923"}
+            >
+              {active}
+            </Text>
+            <Text>{after}</Text>
+          </>
+        )}
+      </Box>
+    </>
   );
 }
 

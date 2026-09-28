@@ -17,7 +17,14 @@ Recon done 2026-09-28 from the Ink repository (github.com/vadimdemedes/ink, READ
 - Hand-rolled components: session-picker, command-palette, thought-line, diff-preview, mcp-panel, markdown, plan-review-panel, retry-panel, rotating-status (apps/cli/src/ink/*.tsx).
 - Feature greps: `usePaste` 0 hits, `useCursor` 0, `useAnimation` 0, `useBoxMetrics`/`measureElement` 0, `renderToString` 0, `alternateScreen` 0, kitty protocol 0, `useFocus` 0, `isScreenReaderEnabled` 0, `suspendTerminal` 0, `incrementalRendering` 0.
 
-### Ink 6.8 capabilities available for adoption
+### Ground truth: installed ink 6.8.0 API surface (verified from build/index.d.ts)
+- Present: `useCursor` ({x,y} absolute from output top; for IME), `renderToString`, `useIsScreenReaderEnabled`, `useFocus`/`useFocusManager`, `measureElement`, `kittyFlags`/`kittyModifiers`/`KittyKeyboardOptions`, render options `kittyKeyboard: {mode: auto|enabled|disabled, flags}` (auto probes and falls back), `incrementalRendering`, `maxFps`, `concurrent`, `onRender` (RenderMetrics).
+- NOT present (plan recalibrated): `usePaste`, `useAnimation`, `useBoxMetrics`, `alternateScreen`, `suspendTerminal`.
+- Paste handling needs no new hook: `useInput` already delivers a paste as ONE multi-character `input` chunk (documented behavior). The composer must treat multi-char chunks containing line breaks as paste blocks — previously any embedded break submitted and dropped the rest.
+- Kitty mapping: Shift+Enter arrives as `CSI 13;2u` → parsed `name: "return"` + `shift` modifier; `key.eventType` carries press/repeat/release, and Ink delivers release events too, so the composer MUST filter non-press events or every key registers twice.
+- Existing constraint: index.ts deliberately avoids `incrementalRendering` (its diff misplaces cursor rows on real PTYs — see render comment at maxFps), so Phase 3's incremental-rendering idea is a no-go; and maxFps: 15 throttling means input handlers must not read render state from closures (stale-closure lost updates under big pastes — fixed with a ref-backed composer during Phase 1).
+
+### Ink 6.8 capabilities available for adoption (superseded by ground truth above)
 - **Input**: `usePaste` (bracketed paste as one string), `useCursor` (cursor + IME composition), kitty keyboard protocol via `useInput`'s `key.eventType` (disambiguated keys, Shift+Enter vs Enter), `getKittyKeyboardProtocol`.
 - **A11y**: `isScreenReaderEnabled()`, `INK_SCREEN_READER=1`, `aria-*` props on Box/Text, screen-reader-compatible spinner guidance.
 - **Perf**: `useAnimation` (shared animation clock), `incrementalRendering`, `maxFps` (in use), `onRender` metrics.
