@@ -61,7 +61,8 @@ import {
 } from "./task-workspaces.js";
 import { TaskPresentationStore, TaskPresentationError, isTaskSessionId, parseTaskPresentationPatch, taskExcerpt, type TaskPresentation } from "./task-presentation.js";
 import { buildDeliveryReport, renderDeliveryReportMarkdown } from "./delivery-report.js";
-import { loadGitHubCiDiagnosis, normalizeCiDiagnosisSnapshot, type CiDiagnosisResult } from "./github-ci-diagnosis.js";
+import { loadGitHubCiDiagnosis, normalizeCiDiagnosisSnapshot, type CiDiagnosisResult, type CiDiagnosisSnapshot } from "./github-ci-diagnosis.js";
+import { compareCiDiagnosis, type RepairVerification } from "./github-repair-verify.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "./task-terminal.js";
 import {
   DesktopTaskValidationManager,
@@ -98,6 +99,13 @@ import {
   type GitHubPrReviewInput,
   type GitHubPrReviewResult,
 } from "./github-pr-review.js";
+import {
+  loadGitHubPrList,
+  normalizeGitHubPrListSnapshot,
+  normalizeGitHubRepoTarget,
+  type GitHubPrListInput,
+  type GitHubPrListResult,
+} from "./github-pr-list.js";
 
 /** The slice of a chat session the server needs; tests inject fakes. */
 export interface DesktopChatSession {
@@ -190,6 +198,8 @@ export interface DesktopServerOptions {
   readonly githubPrReview?: (input: GitHubPrReviewInput, workingDirectory?: string) => Promise<GitHubPrReviewResult>;
   /** Opt-in, bounded GitHub Actions diagnosis without remote mutations. */
   readonly githubCiDiagnosis?: (url: string, expectedSha?: string) => Promise<CiDiagnosisResult>;
+  /** Opt-in, bounded, read-only open-PR listing with check rollups. */
+  readonly githubPrList?: (input: GitHubPrListInput, workingDirectory?: string) => Promise<GitHubPrListResult>;
   /** Enables the server-scoped capability token for browser-originated mutations. */
   readonly requireCapabilityToken?: boolean;
   /** Optional deterministic capability token for tests or an embedding host. */
@@ -326,6 +336,17 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       new ChatSession({ sessionId, ...(workingDirectory ? { workingDirectory } : {}) }));
   const sessions = new Map<string, DesktopChatSession>([[defaultSessionId, defaultSession]]);
   const maxSessionRegistryEntries = 256;
+  // Per-process repair provenance: which failing PR head each repair task was
+  // created from, plus the latest human-initiated remote verification.
+  const repairLineage = new Map<string, {
+    readonly prUrl: string;
+    readonly failedSha: string;
+    readonly branch: string;
+    readonly createdAt: string;
+    readonly failingSnapshot: CiDiagnosisSnapshot;
+    lastVerification?: { readonly verification: RepairVerification; readonly verifiedAt: string };
+  }>();
+  const maxRepairLineageEntries = 256;
   const inFlight = new Set<string>();
   const runs = new DesktopRunRegistry();
   const taskPresentation = new TaskPresentationStore(sessionsDir());
@@ -441,6 +462,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         || url.pathname === "/api/github/pr-review"
         || url.pathname === "/api/github/ci-diagnosis"
         || url.pathname === "/api/github/ci-repair"
+        || url.pathname === "/api/github/pr-list"
+        || url.pathname === "/api/github/repair-lineage"
+        || url.pathname === "/api/github/repair-verify"
         || url.pathname === "/api/parallel-runs")
       && !isLoopbackTerminalRequest(req)
     ) {
@@ -488,22 +512,22 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
         const expectedSha = parsed.value.expectedSha.toLowerCase();
         const diagnose = options.githubCiDiagnosis ?? ((url: string, sha: string) => loadGitHubCiDiagnosis(url, { expectedSha: sha }));
-        const verifyRemote = async (): Promise<"current" | "stale" | "unavailable" | "disabled" | "no-failed-check"> => {
+        const verifyRemote = async (): Promise<{ status: "current" | "stale" | "unavailable" | "disabled" | "no-failed-check"; snapshot?: CiDiagnosisSnapshot }> => {
           try {
             const result = await diagnose(target.url, expectedSha);
-            if (!result.ok) return result.code === "opt-in-required" ? "disabled" : "unavailable";
+            if (!result.ok) return { status: result.code === "opt-in-required" ? "disabled" : "unavailable" };
             const snapshot = normalizeCiDiagnosisSnapshot(result.snapshot);
-            if (!snapshot || snapshot.target.url !== target.url) return "unavailable";
-            if (snapshot.stale || snapshot.headSha !== expectedSha) return "stale";
-            return snapshot.checks.some((check) => check.state === "failed") || snapshot.runs.length > 0 ? "current" : "no-failed-check";
-          } catch { return "unavailable"; }
+            if (!snapshot || snapshot.target.url !== target.url) return { status: "unavailable" };
+            if (snapshot.stale || snapshot.headSha !== expectedSha) return { status: "stale" };
+            return { status: snapshot.checks.some((check) => check.state === "failed") || snapshot.runs.length > 0 ? "current" : "no-failed-check", snapshot };
+          } catch { return { status: "unavailable" }; }
         };
         const sendRepairError = (code: string, status: number) => {
           res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
           res.end(JSON.stringify({ error: "Isolated CI repair could not be started.", code }));
         };
         const initial = await verifyRemote();
-        if (initial !== "current") { sendRepairError(initial === "disabled" ? "opt-in-required" : initial === "unavailable" ? "remote-unavailable" : initial === "stale" ? "stale-head" : initial, initial === "disabled" ? 403 : initial === "unavailable" ? 502 : 409); return; }
+        if (initial.status !== "current") { sendRepairError(initial.status === "disabled" ? "opt-in-required" : initial.status === "unavailable" ? "remote-unavailable" : initial.status === "stale" ? "stale-head" : initial.status, initial.status === "disabled" ? 403 : initial.status === "unavailable" ? 502 : 409); return; }
         try {
           const localHead = await taskWorkspaces.currentCommit();
           if (localHead.toLowerCase() !== expectedSha) { sendRepairError("local-head-mismatch", 409); return; }
@@ -516,10 +540,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           sendRepairError("workspace-unavailable", 500); return;
         }
         const final = await verifyRemote();
-        if (final !== "current") {
+        if (final.status !== "current") {
           try { await taskWorkspaces.cleanup(workspace.sessionId, false); }
           catch { sendRepairError("workspace-cleanup-failed", 500); return; }
-          sendRepairError(final === "disabled" ? "opt-in-required" : final === "stale" ? "stale-head" : final === "unavailable" ? "remote-unavailable" : final, final === "disabled" ? 403 : final === "unavailable" ? 502 : 409);
+          sendRepairError(final.status === "disabled" ? "opt-in-required" : final.status === "stale" ? "stale-head" : final.status === "unavailable" ? "remote-unavailable" : final.status, final.status === "disabled" ? 403 : final.status === "unavailable" ? 502 : 409);
           return;
         }
         const created = sessionFor(workspace.sessionId);
@@ -527,6 +551,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           try { await taskWorkspaces.cleanup(workspace.sessionId, false); }
           catch { sendRepairError("workspace-cleanup-failed", 500); return; }
           sendRepairError("workspace-limit", 409); return;
+        }
+        if (final.snapshot) {
+          if (repairLineage.size >= maxRepairLineageEntries) {
+            const oldest = repairLineage.keys().next().value;
+            if (oldest !== undefined) repairLineage.delete(oldest);
+          }
+          repairLineage.set(workspace.sessionId, {
+            prUrl: target.url, failedSha: expectedSha, branch: workspace.branch,
+            createdAt: new Date().toISOString(), failingSnapshot: final.snapshot,
+          });
         }
         res.writeHead(201, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
         res.end(JSON.stringify({ sessionId: workspace.sessionId, branch: workspace.branch, headSha: expectedSha,
@@ -562,6 +596,125 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         if (!snapshot || snapshot.target.url !== normalizeGitHubPrTarget(parsed.value.url)?.url) {
           res.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" });
           res.end(JSON.stringify({ error: "CI diagnosis unavailable", code: "malformed-response" }));
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        res.end(JSON.stringify({ snapshot }));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/github/repair-lineage") {
+        const sessionId = normalizeSessionIdForRequest(url.searchParams.get("sessionId") ?? undefined);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "sessionId is too long", code: "invalid-session" }));
+          return;
+        }
+        const lineage = repairLineage.get(sessionId);
+        if (!lineage) {
+          res.writeHead(404, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "No CI repair lineage is recorded for this session.", code: "no-lineage" }));
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        res.end(JSON.stringify({
+          sessionId,
+          prUrl: lineage.prUrl,
+          failedSha: lineage.failedSha,
+          branch: lineage.branch,
+          createdAt: lineage.createdAt,
+          ...(lineage.lastVerification
+            ? { lastVerification: lineage.lastVerification.verification, lastVerifiedAt: lineage.lastVerification.verifiedAt }
+            : {}),
+        }));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/github/repair-verify") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsed.ok || Object.keys(parsed.value).some((key) => key !== "sessionId")
+          || typeof parsed.value.sessionId !== "string") {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "invalid repair verification request", code: "invalid-request" }));
+          return;
+        }
+        const sessionId = normalizeSessionIdForRequest(parsed.value.sessionId);
+        if (!sessionId) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "sessionId is too long", code: "invalid-session" }));
+          return;
+        }
+        const lineage = repairLineage.get(sessionId);
+        if (!lineage) {
+          res.writeHead(404, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "No CI repair lineage is recorded for this session.", code: "no-lineage" }));
+          return;
+        }
+        let result: CiDiagnosisResult;
+        try {
+          result = await (options.githubCiDiagnosis ?? ((target) => loadGitHubCiDiagnosis(target, {})))(lineage.prUrl);
+        } catch { result = { ok: false, code: "request-failed" }; }
+        if (!result.ok) {
+          const code = ["opt-in-required", "invalid-target", "cli-unavailable", "request-failed", "response-too-large", "malformed-response"].includes(result.code)
+            ? result.code : "request-failed";
+          const status = code === "opt-in-required" ? 403 : code === "invalid-target" ? 400 : code === "response-too-large" ? 413 : 502;
+          res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "Repair verification unavailable", code }));
+          return;
+        }
+        const snapshot = normalizeCiDiagnosisSnapshot(result.snapshot);
+        if (!snapshot || snapshot.target.url !== lineage.prUrl) {
+          res.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "Repair verification unavailable", code: "malformed-response" }));
+          return;
+        }
+        const verification = compareCiDiagnosis(lineage.failingSnapshot, snapshot);
+        const verifiedAt = new Date().toISOString();
+        lineage.lastVerification = { verification, verifiedAt };
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        res.end(JSON.stringify({ sessionId, prUrl: lineage.prUrl, failedSha: lineage.failedSha, verifiedAt, verification }));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/github/pr-list") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsed.ok || Object.keys(parsed.value).some((key) => key !== "url" && key !== "owner" && key !== "repo")) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "invalid read-only PR list request", code: "invalid-request" }));
+          return;
+        }
+        const input: GitHubPrListInput = {
+          ...(parsed.value.url === undefined ? {} : { url: parsed.value.url }),
+          ...(parsed.value.owner === undefined ? {} : { owner: parsed.value.owner }),
+          ...(parsed.value.repo === undefined ? {} : { repo: parsed.value.repo }),
+        };
+        if (!normalizeGitHubRepoTarget(input)) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "Enter a GitHub repository URL or owner and repo.", code: "invalid-target" }));
+          return;
+        }
+        let result: GitHubPrListResult;
+        try {
+          result = await (options.githubPrList ?? ((request, directory) =>
+            loadGitHubPrList(request, { workingDirectory: directory })))(input);
+        } catch { result = { ok: false, code: "request-failed" }; }
+        if (!result.ok) {
+          const code = ["opt-in-required", "invalid-target", "cli-unavailable", "request-failed", "response-too-large", "malformed-response"].includes(result.code)
+            ? result.code : "request-failed";
+          const status = code === "opt-in-required" ? 403 : code === "invalid-target" ? 400 : code === "response-too-large" ? 413 : 502;
+          res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "GitHub PR list unavailable", code }));
+          return;
+        }
+        const snapshot = normalizeGitHubPrListSnapshot(result.snapshot);
+        const requested = normalizeGitHubRepoTarget(input);
+        if (!snapshot || !requested || snapshot.repo.owner !== requested.owner || snapshot.repo.repo !== requested.repo) {
+          res.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "GitHub PR list unavailable", code: "malformed-response" }));
           return;
         }
         res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
@@ -1212,9 +1365,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
         // An unavailable diff is explicitly recorded as unverified, never as an empty clean tree.
         const diff = await taskWorkspaces.diff(sessionId).catch(() => undefined);
+        const lineage = repairLineage.get(sessionId);
         const report = buildDeliveryReport(sessionId, workspace, diff, taskValidationManager.get(sessionId), {
           active: inFlight.has(sessionId) || taskValidationManager.hasRunning(sessionId) || terminalManager.hasRunning(sessionId),
-        });
+        }, lineage?.lastVerification ? {
+          verdict: lineage.lastVerification.verification.verdict,
+          prUrl: lineage.prUrl,
+          beforeHeadSha: lineage.lastVerification.verification.beforeHeadSha,
+          afterHeadSha: lineage.lastVerification.verification.afterHeadSha,
+          verifiedAt: lineage.lastVerification.verifiedAt,
+        } : undefined);
         let markdown: string;
         try { markdown = renderDeliveryReportMarkdown(report); } catch {
           res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });

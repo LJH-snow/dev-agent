@@ -65,7 +65,7 @@ Configure the model provider the same way as the CLI, via environment variables:
 
 - `DEV_AGENT_MODEL_PROVIDER` — `ollama` (default), `openai`, `anthropic`, `gemini`
 - `DEV_AGENT_MODEL` — model id
-- `DEV_AGENT_DESKTOP_GITHUB` — set to `1` to explicitly enable read-only GitHub PR review and CI diagnosis via local `gh`. Remote checks and failed-log excerpts are tied to the PR head commit. Neither route posts reviews, pushes commits, nor reruns workflows.
+- `DEV_AGENT_DESKTOP_GITHUB` — set to `1` to explicitly enable read-only GitHub PR review, CI diagnosis, open-PR listing, and repair verification via local `gh`. Remote checks and failed-log excerpts are tied to the PR head commit. Neither route posts reviews, pushes commits, nor reruns workflows.
 - Provider-specific keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_BASE_URL`
 - `DEV_AGENT_DESKTOP_HOST` / `DEV_AGENT_DESKTOP_PORT` — bind address (default `127.0.0.1:4317`)
 - `DEV_AGENT_MEMORY_FILE` — session memory file (defaults to `~/.dev-agent/sessions/desktop-default.json`)
@@ -130,6 +130,13 @@ are accepted, and validation command fields are deliberately not configurable.
   transcripts, reasoning, tool output, and cross-tab queue state are never
   persisted. A compact, localized checkpoint panel can create a history anchor,
   list existing anchors, and rewind only after an explicit confirmation.
+- `public/github-delivery-loop-ui.js` — read-only "Delivery loop" panel that
+  lists a repository's open PRs with per-PR CI rollups, jumps into the existing
+  PR review and CI diagnosis panels on row selection, and, when the active
+  session has CI repair lineage, offers **Verify repair**: a human-initiated,
+  read-only re-check of remote CI compared against the recorded failing head
+  (`repaired | improved | unresolved | inconclusive`). It never pushes,
+  comments, reruns workflows, or mutates GitHub state.
 
 ## API
 
@@ -222,9 +229,12 @@ ID returns `400` before the approval lookup.
   chat, validation, cleanup, or rollback request, or when the active target is
   another session. Rename locks both the source and target while it runs, so a
   concurrent rename cannot duplicate the same source into the target.
-- `GET /api/sessions/<id>/delivery-report` — download a bounded, task-scoped Markdown delivery checklist. It lists changed files, local validation facts, outstanding limitations, and explicitly marks checks that have not run; it does not attest to remote CI. Only existing isolated task sessions are eligible.
+- `GET /api/sessions/<id>/delivery-report` — download a bounded, task-scoped Markdown delivery checklist. It lists changed files, local validation facts, outstanding limitations, and explicitly marks checks that have not run; it does not attest to remote CI. Only existing isolated task sessions are eligible. When the session has CI repair lineage and a verification was run, the report includes a "Remote CI verification" section with the recorded verdict, PR, and head SHAs; it stays a point-in-time snapshot, not a live attestation.
 - `POST /api/github/ci-diagnosis` — body `{ "url": "https://github.com/owner/repo/pull/42", "expectedSha": "<optional 40-hex SHA>" }`. Opt-in and loopback-only, reads PR checks, failed runs, and bounded/redacted failed-log excerpts; never reruns CI. A changed head returns stale evidence instead of logs. The PR panel rechecks the head before inserting evidence into a prompt.
-- `POST /api/github/ci-repair` — body `{ "url": "...", "expectedSha": "<40-hex SHA>", "confirm": true }`. Requires an explicit UI confirmation, an accessible failing PR head, and the local checkout's `HEAD` to equal that exact remote commit. Rechecks the remote head after creating an isolated task worktree; a moved head aborts/cleans the new worktree. Creates only a task and a prepared local repair prompt, **not** an automatic fix, GitHub push, review/comment, or workflow rerun. Submit the prepared prompt in Plan mode, review and explicitly apply the proposed change, then inspect the task diff and run local task validation separately. Uncommitted changes in the base checkout are not copied into the isolated worktree.
+- `POST /api/github/ci-repair` — body `{ "url": "...", "expectedSha": "<40-hex SHA>", "confirm": true }`. Requires an explicit UI confirmation, an accessible failing PR head, and the local checkout's `HEAD` to equal that exact remote commit. Rechecks the remote head after creating an isolated task worktree; a moved head aborts/cleans the new worktree. Creates only a task and a prepared local repair prompt, **not** an automatic fix, GitHub push, review/comment, or workflow rerun. Submit the prepared prompt in Plan mode, review and explicitly apply the proposed change, then inspect the task diff and run local task validation separately. Uncommitted changes in the base checkout are not copied into the isolated worktree. On success the server records per-process repair lineage (PR, failed head, task session, branch) so the loop can be verified later; lineage is memory-only and disappears with the server process.
+- `POST /api/github/pr-list` — body `{ "url": "owner/repo or a GitHub repository/PR URL" }` or `{ "owner": "...", "repo": "..." }`. Opt-in and loopback-only; runs one `gh pr list` with `statusCheckRollup` and returns at most 25 open PRs with bounded titles, authors, branches, and per-PR check rollups (`passing | failing | pending | unknown | none`). Read-only; no per-PR fan-out.
+- `GET /api/github/repair-lineage?sessionId=<task session>` — returns the recorded repair lineage for a task session (`prUrl`, `failedSha`, `branch`, `createdAt`, and the last verification if one ran); `404 no-lineage` when the session has none.
+- `POST /api/github/repair-verify` — body `{ "sessionId": "<task session>" }`. Opt-in and loopback-only. Re-runs the read-only CI diagnosis at the PR's current head and compares it, via a pure before/after check-state diff, against the failing snapshot recorded when the repair task was created. Returns a verdict (`repaired | improved | unresolved | inconclusive`) with per-check before/after rows. It never reruns CI, pushes, or comments; the user still pushes the repaired branch and the verdict reflects whatever GitHub currently reports.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
   accepts the same `changeSetId`, `validationId`, and `status` filters, applies

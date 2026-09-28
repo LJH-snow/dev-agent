@@ -36,6 +36,14 @@ function fileStatus(value: unknown): string {
   return value.includes("M") ? "modified" : "unknown";
 }
 
+export interface DeliveryReportRemoteCiVerification {
+  readonly verdict: "repaired" | "improved" | "unresolved" | "inconclusive";
+  readonly prUrl: string;
+  readonly beforeHeadSha: string;
+  readonly afterHeadSha: string;
+  readonly verifiedAt: string;
+}
+
 export interface DeliveryReport {
   readonly sessionId: string;
   readonly readiness: "ready" | "attention" | "blocked" | "running";
@@ -48,6 +56,7 @@ export interface DeliveryReport {
     readonly checks: readonly { readonly label: string; readonly state: string; readonly reason?: string }[];
   };
   readonly caveats: readonly string[];
+  readonly remoteCiVerification?: DeliveryReportRemoteCiVerification;
 }
 
 export function buildDeliveryReport(
@@ -56,6 +65,7 @@ export function buildDeliveryReport(
   diff?: Pick<TaskWorkspaceDiff, "files" | "truncated" | "filesTruncated">,
   validation?: TaskValidationSnapshot,
   runtime: { readonly active: boolean } = { active: false },
+  remoteCiVerification?: DeliveryReportRemoteCiVerification,
 ): DeliveryReport {
   const validationState = state(validation?.state, ["running", "passed", "failed", "blocked", "skipped"], "not-run");
   const fileTruncated = Boolean(diff?.truncated || diff?.filesTruncated || (diff?.files.length ?? 0) > MAX_FILES);
@@ -90,10 +100,23 @@ export function buildDeliveryReport(
     files, filesTruncated: fileTruncated,
     validation: { state: validationState, policy: state(validation?.policy, ["fast", "default", "strict"], "unknown"), checks },
     caveats,
+    ...(remoteCiVerification ? {
+      remoteCiVerification: {
+        verdict: state(remoteCiVerification.verdict, ["repaired", "improved", "unresolved", "inconclusive"], "inconclusive") as DeliveryReportRemoteCiVerification["verdict"],
+        prUrl: safeText(remoteCiVerification.prUrl, 512),
+        beforeHeadSha: safeText(remoteCiVerification.beforeHeadSha, 64),
+        afterHeadSha: safeText(remoteCiVerification.afterHeadSha, 64),
+        verifiedAt: safeText(remoteCiVerification.verifiedAt, 64),
+      },
+    } : {}),
   };
 }
 
 export function renderDeliveryReportMarkdown(report: DeliveryReport): string {
+  const verification = report.remoteCiVerification;
+  const footer = verification
+    ? ["This report reflects local workspace and in-process validation state only; the remote CI verdict above is a snapshot from its recorded time, not a live attestation or deployment status."]
+    : ["This report reflects local workspace and in-process validation state only; it does not attest to remote CI or deployment."];
   const lines = [
     "# Task delivery report", "",
     `Session: ${report.sessionId}`,
@@ -104,9 +127,15 @@ export function renderDeliveryReportMarkdown(report: DeliveryReport): string {
     "", "## Validation (actual recorded run)",
     `Result: ${report.validation.state}; policy: ${report.validation.policy}`,
     ...(report.validation.checks.length ? report.validation.checks.map((check) => `- ${check.label}: ${check.state}${check.reason ? ` — ${check.reason}` : ""}`) : ["- No recorded checks."]),
+    ...(verification ? [
+      "", "## Remote CI verification (read-only, human-initiated)",
+      `Verdict: ${verification.verdict}; PR: ${verification.prUrl}`,
+      `Before head: ${verification.beforeHeadSha}; after head: ${verification.afterHeadSha}; verified at: ${verification.verifiedAt}`,
+      "- This verdict compares recorded check states at two commits; it does not re-run CI and may be stale.",
+    ] : []),
     "", "## Outstanding / delivery gate",
     ...(report.caveats.length ? report.caveats.map((caveat) => `- ${caveat}`) : ["- No known local validation blockers. Remote CI was not checked by this report."]),
-    "", "This report reflects local workspace and in-process validation state only; it does not attest to remote CI or deployment.", "",
+    "", ...footer, "",
   ];
   const markdown = lines.join("\n");
   if (Buffer.byteLength(markdown, "utf8") > MAX_REPORT_BYTES) throw new Error("delivery report exceeds size limit");

@@ -5626,3 +5626,51 @@ html[data-density="compact"] .settings-card {
 .github-ci-diagnosis-panel button:disabled { opacity: .55; cursor: not-allowed; }
 .github-ci-diagnosis-panel .github-pr-review-grid { grid-template-columns: minmax(0, 1fr); }
 .github-ci-diagnosis-panel .github-pr-review-column { min-width: 0; }
+
+/* Delivery loop: bounded, read-only open-PR listing with CI rollups. */
+.github-delivery-loop-panel .github-pr-review-form { grid-template-columns: minmax(0, 1fr) auto; }
+.github-delivery-loop-list {
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  max-width: 900px;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.github-delivery-loop-list li:empty { display: none; }
+.github-delivery-loop-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  overflow-wrap: anywhere;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--assistant-bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+.github-delivery-loop-item:hover { border-color: var(--accent); }
+.github-delivery-loop-item[data-selected="true"] {
+  border-color: var(--accent);
+  outline: 1px solid var(--accent);
+}
+.github-delivery-loop-panel button:disabled { opacity: .55; cursor: not-allowed; }
+.github-delivery-loop-repair { max-width: 900px; margin-top: 10px; }
+.github-delivery-loop-verification {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--assistant-bg);
+  font-size: 12px;
+}
+.github-delivery-loop-verification:empty { display: none; }
+.github-delivery-loop-verification-verdict { font-weight: 700; }
+.github-delivery-loop-verification-row { overflow-wrap: anywhere; color: var(--fg); }
+.github-delivery-loop-verification-stamp { color: var(--muted); font-size: 11px; }

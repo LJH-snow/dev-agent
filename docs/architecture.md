@@ -319,6 +319,17 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - **Interrupts**: a client disconnect aborts the run (the stream closes with
   `done { "status": "aborted" }`), and a second concurrent chat is rejected with
   409 so two runs never share one conversation state.
+- **GitHub delivery loop** (opt-in via `DEV_AGENT_DESKTOP_GITHUB=1`, loopback-only,
+  read-only): `github-pr-list.ts` loads bounded open-PR snapshots with per-PR
+  check rollups from one `gh pr list` call; the Delivery loop panel jumps from a
+  row into the PR review and CI diagnosis panels. `ci-repair` records
+  per-process lineage (PR, failed head, task session, branch) when a confirmed
+  isolated repair task is created, and `github-repair-verify.ts` compares a
+  fresh read-only diagnosis of the current head against that recorded failing
+  snapshot (`repaired | improved | unresolved | inconclusive`) for the panel's
+  **Verify repair** action and the delivery report's Remote CI verification
+  section. Verification never pushes, comments, reruns workflows, or mutates
+  GitHub; the user performs every remote mutation.
 - Reuses `@dev-agent/agent-core`, `@dev-agent/model`, `@dev-agent/tools`, `@dev-agent/mcp`, `@dev-agent/executor`.
 
 ### `runtime/rust`

@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-28（desktop GitHub delivery loop）
+
+- New read-only, opt-in (`DEV_AGENT_DESKTOP_GITHUB=1`) Delivery loop panel in
+  the desktop workbench: one `gh pr list --json statusCheckRollup` call
+  (`POST /api/github/pr-list`, loopback-only) returns at most 25 open PRs with
+  bounded titles/authors/branches and per-PR check rollups
+  (`passing | failing | pending | unknown | none`); selecting a row loads that
+  PR into the existing review and CI diagnosis panels.
+- Confirmed isolated CI repair tasks now record per-process lineage (PR,
+  failed head, task session, branch). `GET /api/github/repair-lineage` exposes
+  it, and `POST /api/github/repair-verify` re-runs the read-only CI diagnosis
+  at the PR's current head and compares it against the recorded failing
+  snapshot with a pure before/after diff, returning
+  `repaired | improved | unresolved | inconclusive` plus per-check rows. The
+  panel's **Verify repair** action and a new delivery report "Remote CI
+  verification" section surface the verdict; both state it is a point-in-time
+  snapshot, not a live attestation.
+- No route pushes, comments, reruns workflows, or otherwise mutates GitHub;
+  every remote mutation stays a separate human action. Covered by new
+  `github-pr-list`, `github-repair-verify`, and delivery-loop UI tests.
+
 ## 2026-09-19（`@agent_cli/cli@0.1.8` published release）
 
 - `index refresh` now accepts `SIGINT` cancellation, reports a stable
