@@ -5674,3 +5674,63 @@ html[data-density="compact"] .settings-card {
 .github-delivery-loop-verification-verdict { font-weight: 700; }
 .github-delivery-loop-verification-row { overflow-wrap: anywhere; color: var(--fg); }
 .github-delivery-loop-verification-stamp { color: var(--muted); font-size: 11px; }
+
+/* Scheduled tasks: bounded local watchers with persisted run history. */
+.scheduled-tasks-panel .scheduled-tasks-form { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 900px; }
+.scheduled-tasks-form input,
+.scheduled-tasks-form select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  padding: 8px 10px;
+  box-sizing: border-box;
+}
+.scheduled-tasks-form button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.scheduled-tasks-list {
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  max-width: 900px;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.scheduled-tasks-row-label {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--fg);
+}
+.scheduled-tasks-action {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 11px;
+  padding: 4px 8px;
+  margin-right: 6px;
+  cursor: pointer;
+}
+.scheduled-tasks-panel button:disabled { opacity: .55; cursor: not-allowed; }
+.scheduled-tasks-history {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--assistant-bg);
+  font-size: 12px;
+  max-width: 900px;
+}
+.scheduled-tasks-history:empty { display: none; }

@@ -5659,6 +5659,10 @@ async function interactiveInk(
       stderr: process.stderr,
       exitOnCtrlC: false,
       patchConsole: true,
+      // Kitty keyboard protocol: lets the composer tell Shift+Enter (newline)
+      // apart from Enter (submit) in terminals that support the protocol.
+      // "auto" probes support and silently falls back to legacy input.
+      kittyKeyboard: { mode: "auto", flags: ["disambiguateEscapeCodes"] },
       // The welcome panel is the only static block now; the transcript,
       // composer, and footer share one controlled dynamic viewport. Use Ink's
       // standard log-update renderer: the incremental diff misplaces cursor

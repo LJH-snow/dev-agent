@@ -1,11 +1,16 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { isIP } from "node:net";
-import { randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 import { opendir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, join, extname, sep } from "node:path";
+import { dirname, join, extname, sep, resolve as resolvePath } from "node:path";
+import {
+  ScheduledTaskManager,
+  type ScheduleDefinition,
+  type ScheduleRunRecord,
+} from "./scheduled-tasks.js";
 
 import {
   createEvidenceAuditExport,
@@ -200,6 +205,11 @@ export interface DesktopServerOptions {
   readonly githubCiDiagnosis?: (url: string, expectedSha?: string) => Promise<CiDiagnosisResult>;
   /** Opt-in, bounded, read-only open-PR listing with check rollups. */
   readonly githubPrList?: (input: GitHubPrListInput, workingDirectory?: string) => Promise<GitHubPrListResult>;
+  /** Overrides the persisted schedule registry location, primarily for tests. */
+  readonly scheduledTasksStateFile?: string;
+  /** Executes scheduled job definitions; defaults to the built-in ci-watch watcher. */
+  readonly scheduledJobRunner?: (definition: ScheduleDefinition, trigger: ScheduleRunRecord["trigger"]) =>
+    Promise<{ ok: boolean; summary: Record<string, unknown> }>;
   /** Enables the server-scoped capability token for browser-originated mutations. */
   readonly requireCapabilityToken?: boolean;
   /** Optional deterministic capability token for tests or an embedding host. */
@@ -361,6 +371,45 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     ...(options.workspaceStateFile === undefined ? {} : { stateFile: options.workspaceStateFile }),
   });
   const taskValidationManager = new DesktopTaskValidationManager();
+  // Built-in scheduled jobs are read-only watchers; the ci-watch runner calls
+  // the delivery-loop loaders directly, so the GitHub opt-in gate still applies.
+  const scheduledJobRunner = options.scheduledJobRunner ?? (async (definition: ScheduleDefinition) => {
+    if (definition.job !== "ci-watch" || !definition.repo) return { ok: false, summary: { code: "unknown-job" } };
+    const listResult = await loadGitHubPrList(definition.repo, {});
+    if (!listResult.ok) return { ok: false, summary: { code: listResult.code } };
+    const failing = listResult.snapshot.prs.filter((pr) => pr.checks.verdict === "failing").slice(0, 3);
+    const examined = [];
+    for (const pr of failing) {
+      const diagnosis = await loadGitHubCiDiagnosis(pr.url, {});
+      examined.push({
+        number: pr.number,
+        title: pr.title.slice(0, 120),
+        verdict: pr.checks.verdict,
+        ...(diagnosis.ok
+          ? { failedChecks: diagnosis.snapshot.checks.filter((check) => check.state === "failed").length, headSha: diagnosis.snapshot.headSha }
+          : { code: diagnosis.code }),
+      });
+    }
+    return {
+      ok: true,
+      summary: {
+        repo: definition.repo,
+        openPrs: listResult.snapshot.prs.length,
+        failingCount: failing.length,
+        prs: examined,
+        truncated: listResult.snapshot.truncated,
+      },
+    };
+  });
+  const scheduledRepositoryKey = createHash("sha256")
+    .update(resolvePath(options.workspaceRoot ?? process.cwd()))
+    .digest("hex")
+    .slice(0, 16);
+  const scheduledTasks = new ScheduledTaskManager({
+    stateFile: options.scheduledTasksStateFile
+      ?? join(homedir(), ".dev-agent", "desktop-schedules", `${scheduledRepositoryKey}.json`),
+    runJob: scheduledJobRunner,
+  });
   const terminalManager = new DesktopTaskTerminalManager({
     onLifecycle: ({ sessionId, status }) => {
       sessions.get(sessionId)?.recordTraceLifecycle?.("terminal", status);
@@ -465,6 +514,8 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         || url.pathname === "/api/github/pr-list"
         || url.pathname === "/api/github/repair-lineage"
         || url.pathname === "/api/github/repair-verify"
+        || url.pathname === "/api/schedules"
+        || url.pathname.startsWith("/api/schedules/")
         || url.pathname === "/api/parallel-runs")
       && !isLoopbackTerminalRequest(req)
     ) {
@@ -676,6 +727,99 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
         res.end(JSON.stringify({ sessionId, prUrl: lineage.prUrl, failedSha: lineage.failedSha, verifiedAt, verification }));
         return;
+      }
+
+      if (url.pathname === "/api/schedules" || url.pathname.startsWith("/api/schedules/")) {
+        const scheduleIdPattern = /^sched-[a-z0-9]{6,16}-[a-z0-9]{6,16}$/iu;
+        const serializeSchedule = (definition: ScheduleDefinition) => ({
+          ...definition,
+          running: scheduledTasks.isRunning(definition.id),
+        });
+        const sendScheduleError = (code: string, status: number) => {
+          res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "schedule request failed", code }));
+        };
+
+        if (req.method === "GET" && url.pathname === "/api/schedules") {
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+          res.end(JSON.stringify({ now: new Date().toISOString(), schedules: scheduledTasks.list().map(serializeSchedule) }));
+          return;
+        }
+
+        const scheduleSubPath = url.pathname === "/api/schedules" ? undefined : url.pathname.slice("/api/schedules/".length);
+
+        if (req.method === "GET" && scheduleSubPath?.endsWith("/runs")) {
+          const rawId = scheduleSubPath.slice(0, -"/runs".length);
+          let id: string;
+          try { id = decodeURIComponent(rawId); } catch { id = ""; }
+          if (!scheduleIdPattern.test(id)) { sendScheduleError("unknown-schedule", 404); return; }
+          if (!scheduledTasks.get(id)) { sendScheduleError("unknown-schedule", 404); return; }
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+          res.end(JSON.stringify({ id, runs: scheduledTasks.history(id) }));
+          return;
+        }
+
+        if (req.method === "POST" && scheduleSubPath === undefined) {
+          const body = await readJsonBody(req, res);
+          if (body === undefined) return;
+          const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+          if (!parsed.ok) { sendScheduleError("invalid-definition", 400); return; }
+          const result = await scheduledTasks.create(parsed.value);
+          if (!result.ok) {
+            sendScheduleError(result.code, ["invalid-title", "invalid-job", "invalid-repo", "invalid-cadence", "invalid-definition"].includes(result.code) ? 400
+              : result.code === "schedule-limit" ? 409 : 500);
+            return;
+          }
+          res.writeHead(201, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+          res.end(JSON.stringify({ schedule: serializeSchedule(result.schedule) }));
+          return;
+        }
+
+        if (req.method === "POST" && scheduleSubPath?.endsWith("/run")) {
+          const rawId = scheduleSubPath.slice(0, -"/run".length);
+          let id: string;
+          try { id = decodeURIComponent(rawId); } catch { id = ""; }
+          if (!scheduleIdPattern.test(id)) { sendScheduleError("unknown-schedule", 404); return; }
+          const result = await scheduledTasks.runNow(id);
+          if (!result.ok) {
+            sendScheduleError(result.code, result.code === "unknown-schedule" ? 404 : 409);
+            return;
+          }
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+          res.end(JSON.stringify({ id, record: result.record }));
+          return;
+        }
+
+        if (req.method === "POST" && scheduleSubPath !== undefined) {
+          const rawId = scheduleSubPath;
+          let id: string;
+          try { id = decodeURIComponent(rawId); } catch { id = ""; }
+          if (!scheduleIdPattern.test(id)) { sendScheduleError("unknown-schedule", 404); return; }
+          const body = await readJsonBody(req, res);
+          if (body === undefined) return;
+          const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+          if (!parsed.ok) { sendScheduleError("invalid-definition", 400); return; }
+          const result = await scheduledTasks.update(id, parsed.value);
+          if (!result.ok) {
+            sendScheduleError(result.code, ["invalid-title", "invalid-job", "invalid-repo", "invalid-cadence", "invalid-definition"].includes(result.code) ? 400
+              : result.code === "unknown-schedule" ? 404 : result.code === "schedule-limit" ? 409 : 500);
+            return;
+          }
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+          res.end(JSON.stringify({ schedule: serializeSchedule(result.schedule) }));
+          return;
+        }
+
+        if (req.method === "DELETE" && scheduleSubPath !== undefined) {
+          let id: string;
+          try { id = decodeURIComponent(scheduleSubPath); } catch { id = ""; }
+          if (!scheduleIdPattern.test(id)) { sendScheduleError("unknown-schedule", 404); return; }
+          const removed = await scheduledTasks.remove(id);
+          if (!removed) { sendScheduleError("unknown-schedule", 404); return; }
+          res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+          res.end(JSON.stringify({ removed: true, id }));
+          return;
+        }
       }
 
       if (req.method === "POST" && url.pathname === "/api/github/pr-list") {
@@ -2808,6 +2952,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     if ((error as NodeJS.ErrnoException).code === "EADDRINUSE") return;
     console.error("[desktop] server error: request failed");
   });
+
+  // One bounded wall-clock check per minute drives every schedule; unref'd so
+  // the timer never keeps the process alive, and cleared when the server closes.
+  const scheduleTickTimer = setInterval(() => { void scheduledTasks.tick("schedule"); }, 60_000);
+  scheduleTickTimer.unref?.();
+  server.once("close", () => { clearInterval(scheduleTickTimer); });
+  void scheduledTasks.tick("schedule");
 
   server.once("close", () => {
     taskValidationManager.closeAll();

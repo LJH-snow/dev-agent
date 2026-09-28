@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-28（desktop scheduled background tasks）
+
+- New bounded local scheduler (`apps/desktop/src/scheduled-tasks.ts`):
+  persisted schedule definitions (≤64) on `interval` (≥15 min) or `daily
+  HH:MM` cadences with strict validation (no cron DSL), atomic state files
+  under `~/.dev-agent/desktop-schedules/`, and per-schedule run history
+  (≤20 records, ≤8KB summaries). One unref'd 60-second tick drives firing;
+  overdue schedules catch up exactly once after downtime and long-running
+  jobs are never re-fired by overlapping ticks.
+- First job kind `ci-watch` is a read-only watcher: one `gh pr list` call plus
+  CI diagnosis for at most three failing PRs, summarized into a digest run
+  record. The GitHub opt-in gate applies; when disabled the run records
+  `opt-in-required` instead of touching `gh`.
+- New "Scheduled tasks" panel (en/zh) with create/update/enable/run-now/
+  remove and run history; routes `GET/POST /api/schedules`,
+  `POST /api/schedules/<id>`, `POST /api/schedules/<id>/run`,
+  `DELETE /api/schedules/<id>`, and `GET /api/schedules/<id>/runs` are
+  loopback-only with capability-token-gated mutations. No scheduled job can
+  push, comment, rerun CI, or start an agent.
+
 ## 2026-09-28（desktop GitHub delivery loop）
 
 - New read-only, opt-in (`DEV_AGENT_DESKTOP_GITHUB=1`) Delivery loop panel in
