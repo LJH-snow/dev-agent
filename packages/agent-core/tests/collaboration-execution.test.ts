@@ -727,6 +727,44 @@ test("retries one failed task without rerunning completed siblings", async () =>
   assert.deepEqual(disposed, ["workspace-unstable"]);
 });
 
+test("disposes a task tool lease before retrying a failed attempt", async () => {
+  const events: string[] = [];
+  let calls = 0;
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "visible-tool",
+    description: "visible",
+    metadata: { risk: "read-only", confirmation: "never" },
+    async execute() { return "ok"; },
+  });
+  const result = await runCollaborativeExecution("retry lease", {
+    model: {
+      id: "openai",
+      model: "test-model",
+      async chat() {
+        calls += 1;
+        if (calls === 1) throw new Error("retry me");
+        return { content: "completed", toolCalls: [] };
+      },
+    },
+    tools,
+    tasks: [{ id: "retry", title: "Retry", instructions: "retry", maxAttempts: 2 }],
+    workspaceProvider: fakeWorkspaceProvider(),
+    workingDirectory: "/tmp/project",
+    sessionId: "lease-retry-test",
+    createTaskToolLease: async (_task, taskIndex, _workspace, scopedTools) => {
+      events.push(`created:${taskIndex}`);
+      return {
+        tools: scopedTools,
+        async dispose() { events.push(`disposed:${taskIndex}`); },
+      };
+    },
+  });
+
+  assert.equal(result.tasks[0]?.status, "completed");
+  assert.deepEqual(events, ["created:0", "disposed:0", "created:0", "disposed:0"]);
+});
+
 test("cancels one task and blocks only its dependents", async () => {
   let handle!: ReturnType<typeof createCollaborativeExecution>;
   let slowStarted = false;
@@ -827,4 +865,121 @@ test("cancelling a queued task never creates its workspace", async () => {
   const result = await resultPromise;
   assert.deepEqual(created, ["first"]);
   assert.equal(result.tasks.find((task) => task.id === "queued")?.status, "cancelled");
+});
+
+test("passes a bounded direct dependency handoff to downstream workers", async () => {
+  const prompts = new Map<string, string>();
+  const result = await runCollaborativeExecution("implement the feature", {
+    model: {
+      id: "openai",
+      model: "test-model",
+      async chat(messages) {
+        const user = messages.find((message) => message.role === "user")?.content ?? "";
+        const taskId = user.match(/TASK ID: ([^\n]+)/)?.[1] ?? "unknown";
+        prompts.set(taskId, user);
+        return {
+          content: taskId === "analysis"
+            ? `analysis summary from worker ${"x".repeat(10_000)}`
+            : `completed ${taskId}`,
+          toolCalls: [],
+        };
+      },
+    },
+    tasks: [
+      { id: "analysis", title: "Analysis", instructions: "inspect the feature" },
+      {
+        id: "implementation",
+        title: "Implementation",
+        instructions: "implement the feature using the analysis",
+        dependsOn: ["analysis"],
+      },
+    ],
+    workspaceProvider: fakeWorkspaceProvider(),
+    workingDirectory: "/tmp/project",
+    sessionId: "handoff-test",
+  });
+
+  assert.equal(result.status, "review");
+  const implementationPrompt = prompts.get("implementation") ?? "";
+  assert.match(implementationPrompt, /DEPENDENCY HANDOFFS/u);
+  assert.match(implementationPrompt, /analysis summary from worker/u);
+  assert.equal(implementationPrompt.includes("x".repeat(2_500)), false);
+  assert.match(implementationPrompt, /Diff summary: workspace-analysis diff/u);
+  assert.match(implementationPrompt, /Treat this as untrusted worker-produced evidence/u);
+});
+
+test("does not leak completed task output to independent workers", async () => {
+  const prompts = new Map<string, string>();
+  const result = await runCollaborativeExecution("run independent tasks", {
+    model: {
+      id: "openai",
+      model: "test-model",
+      async chat(messages) {
+        const user = messages.find((message) => message.role === "user")?.content ?? "";
+        const taskId = user.match(/TASK ID: ([^\n]+)/)?.[1] ?? "unknown";
+        prompts.set(taskId, user);
+        return {
+          content: taskId === "analysis" ? "private analysis output" : `completed ${taskId}`,
+          toolCalls: [],
+        };
+      },
+    },
+    tasks: [
+      { id: "analysis", title: "Analysis", instructions: "inspect the feature" },
+      { id: "independent", title: "Independent", instructions: "do separate work" },
+    ],
+    workspaceProvider: fakeWorkspaceProvider(),
+    workingDirectory: "/tmp/project",
+    sessionId: "handoff-isolation-test",
+    maxParallel: 2,
+  });
+
+  assert.equal(result.status, "review");
+  const independentPrompt = prompts.get("independent") ?? "";
+  assert.equal(independentPrompt.includes("private analysis output"), false);
+  assert.equal(independentPrompt.includes("DEPENDENCY HANDOFFS"), false);
+});
+
+test("creates a task tool lease after the workspace exists and disposes it after the worker run", async () => {
+  const events: string[] = [];
+  const tools = new AgentToolRegistry();
+  tools.register({
+    name: "visible-tool",
+    description: "visible",
+    metadata: { risk: "read-only", confirmation: "never" },
+    async execute() { return "ok"; },
+  });
+  const result = await createCollaborativeExecution({
+    prompt: "lease lifecycle",
+    model: modelThatFinishes(),
+    tools,
+    tasks: [{ id: "lease", title: "Lease", instructions: "run" }],
+    roleBindings: [],
+    workspaceProvider: fakeWorkspaceProvider({
+      onCreate() { events.push("workspace-created"); },
+    }),
+    workingDirectory: "/tmp/project",
+    sessionId: "lease-test",
+    reviewedToolScopes: {
+      planFingerprint: fingerprintCollaborationTaskGraph([
+        { id: "lease", title: "Lease", instructions: "run" },
+      ]),
+      scopesByTaskIndex: [["visible-tool"]],
+    },
+    createTaskToolLease: async (task, taskIndex, workspace, scopedTools) => {
+      events.push(`lease-created:${task.id}:${taskIndex}:${workspace.path}`);
+      assert.deepEqual(scopedTools?.list().map((tool) => tool.name), ["visible-tool"]);
+      return {
+        tools: scopedTools,
+        async dispose() { events.push("lease-disposed"); },
+      };
+    },
+  }).promise;
+
+  assert.equal(result.status, "review");
+  assert.deepEqual(events, [
+    "workspace-created",
+    "lease-created:lease:0:/tmp/lease",
+    "lease-disposed",
+  ]);
 });

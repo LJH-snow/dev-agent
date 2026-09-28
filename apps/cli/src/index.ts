@@ -36,6 +36,7 @@ import {
   createValidationAttemptId,
   FileMemory,
   FileMemoryCheckpointStore,
+  AgentDefinitionRegistry,
   ExtensionRegistry,
   SkillRegistry,
   composePrompt,
@@ -175,10 +176,15 @@ import {
 } from "./setup-command.js";
 import { persistInkTheme } from "./theme-preferences.js";
 import { executeProviderCommand, type ProviderCommand } from "./provider-command.js";
-import { formatModelSelectionMetadata, resolveModelSelection, type ModelSelection, type ModelSelectionResult } from "./model-profiles.js";
+import { formatModelSelectionMetadata, resolveModelSelection, SUPPORTED_PROVIDER_IDS, type ModelSelection, type ModelSelectionResult } from "./model-profiles.js";
 import { FallbackModelProvider } from "./fallback-provider.js";
 import { GitCollaborationWorkspaceProvider } from "./collaboration-worktree.js";
 import { resolveSpecialistRoles } from "./specialist-roles.js";
+import {
+  createNonMcpToolCollection,
+  createWorkerMcpTaskToolLeaseFactory,
+  withoutMcpNames,
+} from "./collaboration-mcp.js";
 import {
   BackgroundJobManager,
   BackgroundJobStore,
@@ -219,6 +225,10 @@ import {
   executeExtensionCommand,
   formatExtensionCommandResult,
 } from "./extension-command.js";
+import {
+  executeAgentCommand,
+  formatAgentCommandResult,
+} from "./agent-command.js";
 import {
   executeTaskCommand,
   formatTaskCommandResult,
@@ -1887,6 +1897,22 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       );
     }
 
+    const mcpPrefixes = mcpSessions.map((session) => session.prefix);
+    const collaborationMcpScope = config.collaboration?.mcpScope ?? "disabled";
+    const collaborationTools = collaborationMcpScope === "disabled"
+      ? createNonMcpToolCollection(tools, mcpPrefixes)
+      : tools;
+    const collaborationToolCeiling = collaborationMcpScope === "disabled"
+      ? withoutMcpNames(collaborationToolAllowlist, mcpPrefixes)
+      : collaborationToolAllowlist;
+    const workerMcpTaskToolLease = collaborationMcpScope === "worker"
+      ? createWorkerMcpTaskToolLeaseFactory({
+          servers: loadMcpServers(config),
+          prefixes: mcpPrefixes,
+          sessionId: normalizedSessionId,
+        })
+      : undefined;
+
     if (args.includes("--tools")) {
       if (jsonOutput) {
         console.log(
@@ -2035,24 +2061,6 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
     const provider = modelBudget.wrap(adaptiveProvider);
     const projectContext = new ProjectContextManager({ workingDirectory });
     await projectContext.refresh();
-    const createConfiguredSpecialistRoles = () => resolveSpecialistRoles({
-      configured: config.collaboration?.roles,
-      tools,
-      toolCeiling: collaborationToolAllowlist,
-      createModel: ({ provider: roleProvider, model: roleModel }) => {
-        const selectedProvider = (roleProvider ?? activeModelSelection.selection.provider) as ModelSelection["provider"];
-        const selectedModel = roleModel ?? (roleProvider === undefined
-          ? activeModelSelection.selection.model
-          : undefined);
-        return modelBudget.wrap(new SpeedModeModelProvider(
-          createConcreteModelProvider(config, {
-            provider: selectedProvider,
-            ...(selectedModel === undefined ? {} : { model: selectedModel }),
-          }),
-          speedMode,
-        ));
-      },
-    });
     if (args.includes("--a2a")) {
       const { runA2aServer } = await import("./a2a-server.js");
       await runA2aServer({
@@ -2348,8 +2356,44 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       return;
     }
 
-    const skillRegistry = await SkillRegistry.load({ workingDirectory });
-    const extensionRegistry = await ExtensionRegistry.load({ workingDirectory });
+    const [skillRegistry, extensionRegistry, agentRegistry] = await Promise.all([
+      SkillRegistry.load({ workingDirectory }),
+      ExtensionRegistry.load({ workingDirectory }),
+      AgentDefinitionRegistry.load({
+        workingDirectory,
+        supportedProviders: SUPPORTED_PROVIDER_IDS,
+        availableTools: collaborationTools.list().map((tool) => tool.name),
+      }),
+    ]);
+    const discoveredSpecialistRoles = agentRegistry.list().map((agent) => ({
+      id: agent.id,
+      instructions: agent.instructions,
+      scope: agent.scope,
+      ...(agent.provider === undefined ? {} : { provider: agent.provider }),
+      ...(agent.model === undefined ? {} : { model: agent.model }),
+      ...(agent.toolAllowlist === undefined ? {} : { toolAllowlist: agent.toolAllowlist }),
+      ...(agent.budget === undefined ? {} : { budget: agent.budget }),
+    }));
+    const createConfiguredSpecialistRoles = () => resolveSpecialistRoles({
+      configured: config.collaboration?.roles,
+      discovered: discoveredSpecialistRoles,
+      tools: collaborationTools,
+      toolCeiling: collaborationToolCeiling,
+      currentProvider: activeModelSelection.selection.provider,
+      createModel: ({ provider: roleProvider, model: roleModel }) => {
+        const selectedProvider = (roleProvider ?? activeModelSelection.selection.provider) as ModelSelection["provider"];
+        const selectedModel = roleModel ?? (roleProvider === undefined
+          ? activeModelSelection.selection.model
+          : undefined);
+        return modelBudget.wrap(new SpeedModeModelProvider(
+          createConcreteModelProvider(config, {
+            provider: selectedProvider,
+            ...(selectedModel === undefined ? {} : { model: selectedModel }),
+          }),
+          speedMode,
+        ));
+      },
+    });
     const projectMemory = new ProjectMemoryStore({
       filePath: projectMemoryFilePath(workingDirectory, projectState),
     });
@@ -2375,6 +2419,7 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       workingDirectory,
       width: resolveTerminalWidth(),
       skills: skillRegistry,
+      agents: agentRegistry,
       extensions: extensionRegistry,
       activeSkill: activeSkillState,
       trace,
@@ -2411,7 +2456,7 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
         const roles = createConfiguredSpecialistRoles();
         return runCollaborativePlanWorkflow(prompt, {
           model: provider,
-          tools,
+          tools: collaborationTools,
           roles,
           workingDirectory: activeContext.workingDirectory,
           sessionId: activeContext.sessionId,
@@ -2425,9 +2470,9 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       },
       startCollaborativeExecution: async (prompt, activeContext, options) => {
         const roleBindings = createConfiguredSpecialistRoles();
-        const activeTools = tools.list();
+        const activeTools = collaborationTools.list();
         const activeToolNames = activeTools.map((tool) => tool.name);
-        const unavailableCeilingNames = collaborationToolAllowlist?.filter(
+        const unavailableCeilingNames = collaborationToolCeiling?.filter(
           (name) => !activeToolNames.includes(name),
         ) ?? [];
         if (unavailableCeilingNames.length > 0) {
@@ -2447,7 +2492,10 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
         }
         const review = await reviewCollaborationTaskToolScopes({
           tasks,
-          availableToolNames: collaborationToolAllowlist ?? activeToolNames,
+          availableToolNames: collaborationToolCeiling ?? activeToolNames,
+          sharedMcpWarning: collaborationMcpScope === "shared" && mcpPrefixes.length > 0
+            ? "Shared MCP tools are not rooted in task worktrees; they use the main session MCP context."
+            : undefined,
           ask: (reviewPrompt, signal, mode) => mode === "confirmation"
             ? questionBox.ask!(reviewPrompt, signal)
             : questionBox.askText!(reviewPrompt, signal),
@@ -2458,7 +2506,7 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
         }
         return createCollaborativeExecution({
           model: provider,
-          tools,
+          tools: collaborationTools,
           roleBindings,
           prompt,
           tasks: review.tasks,
@@ -2468,9 +2516,12 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
           toolSandboxProfile,
           onSandboxExpansion,
           reviewedToolScopes: review.reviewedToolScopes,
-          ...(collaborationToolAllowlist === undefined
+          ...(collaborationToolCeiling === undefined
             ? {}
-            : { toolScopeCeiling: collaborationToolAllowlist }),
+            : { toolScopeCeiling: collaborationToolCeiling }),
+          ...(workerMcpTaskToolLease === undefined
+            ? {}
+            : { createTaskToolLease: workerMcpTaskToolLease }),
           signal: options?.signal,
           attachedContext: joinPromptContext(
             projectContext.promptModules().map((module) => module.content),
@@ -3318,6 +3369,7 @@ interface InteractiveUiOptions {
   readonly workingDirectory: string;
   readonly width: number;
   readonly skills: SkillRegistry;
+  readonly agents: AgentDefinitionRegistry;
   readonly extensions: ExtensionRegistry;
   readonly activeSkill: ActiveSkillState;
   readonly trace: AgentRunTrace;
@@ -3399,6 +3451,17 @@ function skillCommandMessage(
 ): string | undefined {
   const result = executeSkillCommand(command, ui.skills, ui.activeSkill);
   return result.handled ? safeTerminalText(formatSkillCommandResult(result)) : undefined;
+}
+
+function agentCommandMessage(
+  command: string,
+  ui: InteractiveUiOptions,
+): string | undefined {
+  const result = executeAgentCommand(command, ui.agents, {
+    currentProvider: ui.provider,
+    currentModel: ui.model,
+  });
+  return result.handled ? safeTerminalText(formatAgentCommandResult(result)) : undefined;
 }
 
 function extensionCommandMessage(
@@ -4319,6 +4382,16 @@ async function interactive(
         continue;
       }
 
+      const agentMessage = agentCommandMessage(command, ui);
+      if (agentMessage !== undefined) {
+        const printAgentMessage = (): void => {
+          console.log(agentMessage);
+        };
+        if (ui.rich) streaming.withComposerHidden(printAgentMessage);
+        else printAgentMessage();
+        continue;
+      }
+
       const extensionMessage = extensionCommandMessage(command, ui);
       if (extensionMessage !== undefined) {
         const printExtensionMessage = (): void => {
@@ -4798,7 +4871,7 @@ async function interactive(
           });
         } else {
           console.log(
-            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :route [auto|manual], :budget [tokens|cost|duration], :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :security, :marketplace [list|search|install|disable|enable], :cleanup ..., exit, quit"
+            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :route [auto|manual], :budget [tokens|cost|duration], :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :agents, :agent <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :security, :marketplace [list|search|install|disable|enable], :cleanup ..., exit, quit"
           );
         }
         continue;
@@ -5726,6 +5799,11 @@ async function interactiveInk(
     const skillMessage = skillCommandMessage(command, ui);
     if (skillMessage !== undefined) {
       ink.store.addNotice(skillMessage);
+      return true;
+    }
+    const agentMessage = agentCommandMessage(command, ui);
+    if (agentMessage !== undefined) {
+      ink.store.addNotice(agentMessage);
       return true;
     }
     const extensionMessage = extensionCommandMessage(command, ui);

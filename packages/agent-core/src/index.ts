@@ -27,3 +27,5 @@ export * from "./trace.js";
 export * from "./usage.js";
 export * from "./validation.js";
 export * from "@dev-agent/runtime-events";
+
+export * from "./agents.js";

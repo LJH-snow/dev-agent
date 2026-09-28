@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createServer, type Server } from "node:http";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
@@ -143,17 +143,22 @@ function launchCli(
   cwd: string,
   baseUrl: string,
   configPath?: string,
+  mcpServers = "[]",
 ): ChildProcess {
   return spawn(process.execPath, [
     cliPath,
     "--no-stream",
+    "--cwd", cwd,
     ...(configPath === undefined ? [] : ["--config", configPath]),
   ], {
     cwd,
     env: {
       ...process.env,
+      // pnpm injects its caller directory into INIT_CWD; tests target isolated
+      // temporary projects, so keep CLI project discovery deterministic.
+      INIT_CWD: cwd,
       DEV_AGENT_TUI: "ink",
-      DEV_AGENT_MCP_SERVERS: "[]",
+      DEV_AGENT_MCP_SERVERS: mcpServers,
       DEV_AGENT_MODEL_PROVIDER: "openai",
       OPENAI_API_KEY: "test-key",
       OPENAI_BASE_URL: baseUrl,
@@ -267,6 +272,86 @@ test("ordinary :team request starts collaborative execution through the CLI", as
   } finally {
     await stub.close();
     await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("disabled collaboration MCP scope removes MCP tools from the reviewed worker surface", async () => {
+  const workspace = await createGitWorkspace();
+  const configDirectory = await mkdtemp(join(tmpdir(), "dev-agent-team-mcp-disabled-"));
+  const configPath = join(configDirectory, "config.json");
+  const stub = await startCollaborationStub();
+  const fakeMcpServer = fileURLToPath(new URL("../../../packages/mcp/tests/fake-mcp-server.mjs", import.meta.url));
+  const mcpServers = JSON.stringify([{
+    name: "files",
+    command: process.execPath,
+    args: [fakeMcpServer],
+  }]);
+  await writeFile(configPath, JSON.stringify({
+    collaboration: {
+      mcpScope: "disabled",
+      toolAllowlist: ["files:hello"],
+    },
+  }), "utf8");
+  try {
+    const child = launchCli(workspace, stub.baseUrl, configPath, mcpServers);
+    const result = await runInteractive(child, [
+      { input: ":team implement the feature", until: "TEAM TASK TOOL SCOPE REVIEW 1/1" },
+      { input: "all", until: "TEAM PLAN + TOOL SCOPE REVIEW (complete normalized plan)" },
+      { input: "yes", until: "TEAM EXECUTION · REVIEW" },
+    ]);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /Available tools: \(none\)/u);
+    const workerRequests = stub.requests.filter((request) =>
+      request.messages.some((message) => message.content?.includes("TASK ID:")),
+    );
+    assert.equal(workerRequests.length, 1);
+    assert.deepEqual(workerRequests[0]?.tools ?? [], []);
+  } finally {
+    await stub.close();
+    await rm(workspace, { recursive: true, force: true });
+    await rm(configDirectory, { recursive: true, force: true });
+  }
+});
+
+test("worker collaboration MCP scope starts a task-local session after review", async () => {
+  const workspace = await createGitWorkspace();
+  const configDirectory = await mkdtemp(join(tmpdir(), "dev-agent-team-mcp-worker-"));
+  const configPath = join(configDirectory, "config.json");
+  const startCountFile = join(configDirectory, "mcp-starts.log");
+  const stub = await startCollaborationStub();
+  const fakeMcpServer = fileURLToPath(new URL("../../../packages/mcp/tests/fake-mcp-server.mjs", import.meta.url));
+  const mcpServers = JSON.stringify([{
+    name: "files",
+    command: process.execPath,
+    args: [fakeMcpServer],
+    env: { MCP_START_COUNT_FILE: startCountFile },
+  }]);
+  await writeFile(configPath, JSON.stringify({
+    collaboration: {
+      mcpScope: "worker",
+      toolAllowlist: ["files:hello"],
+    },
+  }), "utf8");
+  try {
+    const child = launchCli(workspace, stub.baseUrl, configPath, mcpServers);
+    const result = await runInteractive(child, [
+      { input: ":team implement the feature", until: "TEAM TASK TOOL SCOPE REVIEW 1/1" },
+      { input: "all", until: "TEAM PLAN + TOOL SCOPE REVIEW (complete normalized plan)" },
+      { input: "yes", until: "TEAM EXECUTION · REVIEW" },
+    ]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const starts = (await readFile(startCountFile, "utf8"))
+      .trim()
+      .split("\n")
+      .filter(Boolean);
+    assert.equal(starts.length, 2, "one main session plus one task-local session");
+    assert.equal(result.stdout.includes("Shared MCP tools are not rooted"), false);
+  } finally {
+    await stub.close();
+    await rm(workspace, { recursive: true, force: true });
+    await rm(configDirectory, { recursive: true, force: true });
   }
 });
 
@@ -576,6 +661,88 @@ test(":team plan remains the read-only specialist planning flow", async () => {
       ),
       false,
     );
+  } finally {
+    await stub.close();
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test(":team plan discovers a project Agent.md definition and keeps its tool subset", async () => {
+  const workspace = await createGitWorkspace();
+  const stub = await startCollaborationStub({ plan: "discovered specialist result" });
+  try {
+    const agentDirectory = join(workspace, ".dev-agent", "agents", "doc-maintainer");
+    await mkdir(agentDirectory, { recursive: true });
+    await writeFile(join(agentDirectory, "AGENT.md"), `---
+name: doc-maintainer
+description: Keep documentation grounded
+model: specialist-model
+toolAllowlist: filesystem, search
+maxTurns: 2
+---
+SPECIALIST_MARKDOWN_MARKER: identify missing documentation.
+`, "utf8");
+    const unsupportedProvider = join(workspace, ".dev-agent", "agents", "bad-provider");
+    await mkdir(unsupportedProvider, { recursive: true });
+    await writeFile(join(unsupportedProvider, "AGENT.md"),
+      "---\nname: bad-provider\nprovider: never-a-supported-provider\n---\nIgnore me.\n", "utf8");
+    const missingTool = join(workspace, ".dev-agent", "agents", "bad-tool");
+    await mkdir(missingTool, { recursive: true });
+    await writeFile(join(missingTool, "AGENT.md"),
+      "---\nname: bad-tool\ntoolAllowlist: never-registered-specialist-tool\n---\nIgnore me.\n", "utf8");
+
+    const configPath = join(workspace, "config.json");
+    await writeFile(configPath, JSON.stringify({
+      collaboration: { toolAllowlist: ["filesystem"] },
+    }), "utf8");
+    const child = launchCli(workspace, stub.baseUrl, configPath);
+    const result = await runInteractive(child, [
+      { input: ":agents", until: "Available agents:" },
+      { input: ":agent doc-maintainer", until: "Agent: doc-maintainer" },
+      { input: ":team plan review the docs", until: "TEAM PLAN · specialist review" },
+    ]);
+
+    assert.equal(result.code, 0, result.stderr);
+    assert.match(result.stdout, /Agent: doc-maintainer/);
+    assert.doesNotMatch(result.stdout, /bad-provider|bad-tool|AGENT\.md|SPECIALIST_MARKDOWN_MARKER/);
+    const specialistRequest = stub.requests.find((request) =>
+      request.messages.some((message) => message.content?.includes("SPECIALIST_MARKDOWN_MARKER")),
+    );
+    assert.equal(specialistRequest?.model, "specialist-model");
+    assert.deepEqual(
+      specialistRequest?.tools?.map((tool) => tool.function?.name) ?? [],
+      ["filesystem"],
+    );
+  } finally {
+    await stub.close();
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test(":team plan does not let a project agent switch the active provider", async () => {
+  const workspace = await createGitWorkspace();
+  const stub = await startCollaborationStub({ plan: "project provider boundary result" });
+  try {
+    await mkdir(join(workspace, ".dev-agent", "agents", "cloud-reviewer"), { recursive: true });
+    await writeFile(join(workspace, ".dev-agent", "agents", "cloud-reviewer", "AGENT.md"), `---
+name: cloud-reviewer
+provider: ollama
+model: project-only-model
+---
+PROJECT_CROSS_PROVIDER_MARKER: review without changing the caller provider.
+`, "utf8");
+
+    const child = launchCli(workspace, stub.baseUrl);
+    const result = await runInteractive(child, [
+      { input: ":team plan review the docs", until: "TEAM PLAN · specialist review" },
+    ]);
+
+    assert.equal(result.code, 0, result.stderr);
+    const specialistRequest = stub.requests.find((request) =>
+      request.messages.some((message) => message.content?.includes("PROJECT_CROSS_PROVIDER_MARKER")),
+    );
+    assert.ok(specialistRequest);
+    assert.notEqual(specialistRequest.model, "project-only-model");
   } finally {
     await stub.close();
     await rm(workspace, { recursive: true, force: true });

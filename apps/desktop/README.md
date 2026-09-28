@@ -65,7 +65,7 @@ Configure the model provider the same way as the CLI, via environment variables:
 
 - `DEV_AGENT_MODEL_PROVIDER` — `ollama` (default), `openai`, `anthropic`, `gemini`
 - `DEV_AGENT_MODEL` — model id
-- `DEV_AGENT_DESKTOP_GITHUB` — set to `1` to explicitly enable the read-only GitHub PR Review panel; it uses the local `gh` CLI for PR metadata and diffs and never submits reviews or comments.
+- `DEV_AGENT_DESKTOP_GITHUB` — set to `1` to explicitly enable read-only GitHub PR review and CI diagnosis via local `gh`. Remote checks and failed-log excerpts are tied to the PR head commit. Neither route posts reviews, pushes commits, nor reruns workflows.
 - Provider-specific keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_BASE_URL`
 - `DEV_AGENT_DESKTOP_HOST` / `DEV_AGENT_DESKTOP_PORT` — bind address (default `127.0.0.1:4317`)
 - `DEV_AGENT_MEMORY_FILE` — session memory file (defaults to `~/.dev-agent/sessions/desktop-default.json`)
@@ -222,6 +222,9 @@ ID returns `400` before the approval lookup.
   chat, validation, cleanup, or rollback request, or when the active target is
   another session. Rename locks both the source and target while it runs, so a
   concurrent rename cannot duplicate the same source into the target.
+- `GET /api/sessions/<id>/delivery-report` — download a bounded, task-scoped Markdown delivery checklist. It lists changed files, local validation facts, outstanding limitations, and explicitly marks checks that have not run; it does not attest to remote CI. Only existing isolated task sessions are eligible.
+- `POST /api/github/ci-diagnosis` — body `{ "url": "https://github.com/owner/repo/pull/42", "expectedSha": "<optional 40-hex SHA>" }`. Opt-in and loopback-only, reads PR checks, failed runs, and bounded/redacted failed-log excerpts; never reruns CI. A changed head returns stale evidence instead of logs. The PR panel rechecks the head before inserting evidence into a prompt.
+- `POST /api/github/ci-repair` — body `{ "url": "...", "expectedSha": "<40-hex SHA>", "confirm": true }`. Requires an explicit UI confirmation, an accessible failing PR head, and the local checkout's `HEAD` to equal that exact remote commit. Rechecks the remote head after creating an isolated task worktree; a moved head aborts/cleans the new worktree. Creates only a task and a prepared local repair prompt, **not** an automatic fix, GitHub push, review/comment, or workflow rerun. Submit the prepared prompt in Plan mode, review and explicitly apply the proposed change, then inspect the task diff and run local task validation separately. Uncommitted changes in the base checkout are not copied into the isolated worktree.
 - `GET /api/sessions/<id>/export` — the session as a Markdown transcript
   (`text/markdown`, attachment filename `<id>.md`); `404` when unknown. It
   accepts the same `changeSetId`, `validationId`, and `status` filters, applies

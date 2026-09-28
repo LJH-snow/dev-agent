@@ -23,9 +23,8 @@ Implement the user's four requested CLI capabilities while preserving existing w
 
 ## Status
 
-- [~] Phase 1 implementation is present and focused-tested; the historical ~120s run is confirmed to be a model span (4,085 prompt tokens, 120,394ms first token, 132,321ms model time), but its provider substage is not attributable because that run predates provider timing. A controlled 4k-token provider probe remains pending.
 - [x] Phase 1 latency tracing, speed modes, benchmark, and metadata-only stage diagnosis are implemented and tested. Historical telemetry proves the slow span was the model; a fresh 4,004-token probe plus a live CLI trace show prompt evaluation dominates comparable slow paths. The historical request's exact substage cannot be recovered because it predates provider timing.
 - [x] Phase 2 layered instructions, scope/staleness reporting, reference-vs-instruction boundary, symlink safety, docs, and tests.
-- [x] Phase 3 named specialist configuration for `:team plan`, with model/prompt/tool/budget bindings intersected with the caller-owned tool ceiling, docs, and tests.
+- [x] Phase 3 named specialist configuration for `:team plan` and matching reviewed `:team` workers, with model/prompt/tool/budget bindings intersected with the caller-owned tool ceiling, docs, and tests.
 - [x] Phase 4 detached cross-session jobs, metadata-only list/inspect/cancel, isolated worktrees, explicit safe continuation, docs, and cross-CLI E2E tests.
-- [x] Phase 5 requirement audit; full CLI suite 625/625, model provider suite 92/92, Agent Core suite 210/210, workspace typecheck/build pass.
+- [x] Phase 5 requirement audit; full CLI suite 634/634, model provider suite 95/95, Agent Core suite 212/212, workspace typecheck/build pass.

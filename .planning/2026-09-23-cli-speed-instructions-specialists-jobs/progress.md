@@ -22,3 +22,11 @@
 - Next: run a metadata-only local Ollama probe near 4k prompt tokens with minimal generation to collect load/prompt-eval/generation durations; then final workspace typecheck and feature-by-feature audit.
 - The full CLI rerun completed successfully: 625/625 tests passed. Workspace `pnpm typecheck` and `pnpm build` both passed. Model provider suite passed 92/92; Agent Core suite passed 210/210.
 - Current CLI latency evidence: with warm local Qwen3 and project instructions active, `hi` took 4,739ms end-to-end (3,946ms first token); prompt-eval 3,368ms was the largest provider phase. A cache-miss synthetic 4,004-token greeting prompt took 24,071ms server-side, 23,295ms in prompt evaluation and 743ms generation; a distinct balanced-mode prompt was similarly prefill-bound. Exact measurements and limitations are recorded in `findings.md`.
+
+
+## 2026-09-25 continuation
+
+- Rebuilt Agent Core after wiring configured specialist roles into ordinary `:team` workers. The role binding test now proves the worker uses the configured model and system instructions, receives the role/task tool intersection, runs the role tool, and stops at the role budget without invoking the base model.
+- Verified the specialist CLI integration for ordinary `:team` execution, configured role prompts/model selection, and role binding/tool intersection: 9 focused tests passed.
+- Verification gates passed: workspace `pnpm typecheck`, workspace `pnpm build`, Agent Core suite 212/212, model provider suite 95/95, and the complete CLI suite 634/634.
+- Updated the phase audit to reflect that specialist bindings apply to both `:team plan` and matching reviewed `:team` workers; no prompt, output, path, or secret data is added to latency or job metadata.

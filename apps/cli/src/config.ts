@@ -22,6 +22,8 @@ export interface SpecialistAgentBudgetConfig {
 
 export interface SpecialistAgentConfig {
   readonly id: string;
+  /** Populated for discovered definitions; JSON roles remain trusted by default. */
+  readonly scope?: "project" | "user";
   readonly instructions: string;
   readonly provider?: string;
   readonly model?: string;
@@ -71,6 +73,7 @@ export interface CliConfig extends ProviderManagementConfig {
   /** Optional user-owned upper bound shared by every :team worker. */
   readonly collaboration?: {
     readonly toolAllowlist?: readonly string[];
+    readonly mcpScope?: "disabled" | "shared" | "worker";
     /** @deprecated Scope review is mandatory; this setting is accepted but ignored. */
     readonly reviewTaskToolScopes?: boolean;
     /** Optional named roles for `:team plan` and matching `:team` task workers; configured roles replace planning defaults. */

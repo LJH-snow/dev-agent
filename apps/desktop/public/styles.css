@@ -3208,6 +3208,7 @@ html[data-theme="light"] {
 
 .task-workspace-actions button:disabled { opacity: .45; }
 
+
 .task-validation-panel {
   min-width: 0;
   margin-top: 12px;
@@ -3332,7 +3333,6 @@ html[data-theme="light"] {
   font-size: 9px;
 }
 .task-validation-actions button:disabled { opacity: .45; }
-
 
 .task-workspace-diff-panel {
   min-width: 0;
@@ -4891,7 +4891,6 @@ html[data-density="compact"] .settings-card {
   }
 }
 
-
 .parallel-runs-panel {
   min-width: 0;
 }
@@ -5261,6 +5260,136 @@ html[data-density="compact"] .settings-card {
   }
 }
 
+/* Conversation reading and per-session draft feedback. */
+.jump-to-latest {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 13px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted-strong);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .14);
+  transition: border-color .15s ease, background .15s ease, color .15s ease;
+}
+
+.jump-to-latest[hidden] { display: none; }
+.jump-to-latest svg { flex: 0 0 auto; }
+.jump-to-latest[data-pending="true"] {
+  border-color: color-mix(in srgb, var(--composer-blue) 50%, var(--border));
+  color: var(--composer-blue);
+}
+.jump-to-latest[data-pending="true"]::after {
+  content: "";
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+}
+.jump-to-latest:focus-visible {
+  outline: 2px solid var(--composer-blue);
+  outline-offset: 3px;
+}
+#messages:focus-visible {
+  outline: 1px solid color-mix(in srgb, var(--composer-blue) 50%, transparent);
+  outline-offset: -3px;
+  border-radius: 6px;
+}
+.composer-meta { min-width: 0; }
+#composer-session-id, #composer-status {
+  min-width: 0;
+  max-width: 36%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-draft-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  flex: 0 1 auto;
+  color: var(--muted);
+  font: 10px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+.composer-draft-status[hidden] { display: none; }
+.composer-draft-status::before {
+  content: "";
+  width: 4px;
+  height: 4px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--muted);
+}
+@media (max-width: 680px) {
+  .composer-meta { flex-wrap: wrap; row-gap: 4px; }
+  .composer-draft-status { margin-left: auto; }
+  #composer-status { max-width: 100%; }
+  .jump-to-latest { min-height: 40px; bottom: 10px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .jump-to-latest { transition: none; }
+}
+
+/* Narrow-window reading keeps the transcript, not the document, scrollable. */
+@media (max-width: 900px) {
+  body { overflow: hidden; }
+  .app-shell {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .topbar { flex: 0 0 auto; }
+  .workbench { min-height: 0; }
+}
+@media (max-width: 680px) {
+  .workbench { position: relative; overflow: hidden; }
+  .session-rail {
+    display: flex;
+    min-height: 0;
+    max-height: min(28dvh, 240px);
+  }
+  .session-rail.is-collapsed {
+    max-height: 50px;
+    padding-block: 8px;
+  }
+  .session-rail.is-collapsed .workspace-identity {
+    justify-content: space-between;
+    min-height: 32px;
+  }
+  .session-rail.is-collapsed .workspace-identity-copy { display: grid; }
+  .session-rail.is-collapsed .workspace-identity-copy > span { display: none; }
+  .conversation-workspace {
+    min-height: 0;
+    flex: 1 1 0;
+    overflow: hidden;
+  }
+  .conversation-context { flex: 0 0 auto; min-height: 52px; padding-block: 10px; }
+  .conversation-meta { display: flex; }
+  .inspector-toggle { display: inline-flex; }
+  #messages { min-height: 0; }
+  .composer { position: relative; flex: 0 0 auto; padding-inline: 0; }
+  .composer-actions textarea { max-height: min(160px, 20dvh); }
+  .inspector-shell {
+    position: absolute;
+    inset: 0 0 0 auto;
+    width: min(360px, 100%);
+    height: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    border-top: 0;
+    border-left: 1px solid var(--border);
+    box-shadow: var(--shadow);
+  }
+}
+
 /* GitHub PR Review: bounded, read-only review workspace. */
 .github-pr-review-panel { display: block; }
 .github-pr-review-readonly {
@@ -5403,3 +5532,97 @@ html[data-density="compact"] .settings-card {
   .github-pr-review-target { grid-column: 1 / -1; }
   .github-pr-review-grid { grid-template-columns: 1fr; }
 }
+
+/* Task center: the session rail is organized around work, not storage ids. */
+.legacy-session-picker { display: none !important; }
+.task-list {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+  padding-right: 2px;
+}
+.task-group { display: grid; gap: 7px; }
+.task-group-heading {
+  margin: 0 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .11em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+.task-group-list { display: grid; gap: 4px; }
+.task-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 64px;
+  gap: 6px;
+  padding: 9px 7px 9px 10px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  transition: background .16s ease, border-color .16s ease, transform .16s ease;
+}
+.task-row:hover { border-color: var(--border); background: var(--surface); }
+.task-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.task-row.is-active {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.task-row-main { min-width: 0; display: grid; gap: 4px; }
+.task-row-title-line { min-width: 0; display: flex; align-items: center; gap: 6px; }
+.task-row-title { min-width: 0; overflow: hidden; color: var(--fg); font-size: 12px; line-height: 1.25; text-overflow: ellipsis; white-space: nowrap; }
+.task-pin-mark { flex: 0 0 auto; color: var(--accent); font-size: 11px; }
+.task-row-time { flex: 0 0 auto; margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.task-row-preview { overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.task-row-meta { display: flex; min-width: 0; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; }
+.task-row-status { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.task-row-status::before { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); content: ""; }
+.task-row-status[data-state="running"]::before { background: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent); }
+.task-row-status[data-state="waiting"]::before { background: #d99019; }
+.task-row-status[data-state="done"]::before { background: #4aa878; }
+.task-row-status[data-state="failed"]::before { background: #d85c62; }
+.task-row-status[data-state="aborted"]::before { background: #8d7cae; }
+.task-row-actions { display: flex; align-self: stretch; align-items: center; gap: 2px; opacity: 0; transition: opacity .16s ease; }
+.task-row:hover .task-row-actions, .task-row:focus-within .task-row-actions, .task-row.is-active .task-row-actions { opacity: 1; }
+.task-row-action {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+}
+.task-row-action:hover { border-color: var(--border); background: var(--surface-strong); color: var(--fg); }
+.task-list-empty { padding: 20px 8px; color: var(--muted); font-size: 12px; line-height: 1.5; text-align: center; }
+@media (prefers-reduced-motion: reduce) {
+  .task-row, .task-row-actions { transition: none; }
+}
+@media (max-width: 680px) {
+  .task-list { max-height: min(28dvh, 240px); }
+  .task-row { min-height: 58px; }
+  .task-row-actions { opacity: 1; }
+}
+
+/* Read-only CI evidence shares the PR review workspace styling. */
+.github-ci-diagnosis-panel .github-pr-review-actions { margin-top: 10px; }
+.github-ci-diagnosis-panel .github-pr-review-actions button {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--accent);
+  color: #fff; padding: 7px 10px; font-size: 12px;
+}
+.github-ci-diagnosis-panel .github-pr-review-actions button.github-pr-review-secondary { background: var(--bg); color: var(--fg); }
+.github-ci-diagnosis-panel [id="github-ci-diagnosis-runs"] li { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow-y: auto; }
+.github-ci-diagnosis-panel button:disabled { opacity: .55; cursor: not-allowed; }
+.github-ci-diagnosis-panel .github-pr-review-grid { grid-template-columns: minmax(0, 1fr); }
+.github-ci-diagnosis-panel .github-pr-review-column { min-width: 0; }

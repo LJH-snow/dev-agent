@@ -58,8 +58,26 @@ file body is the specialist instruction block. Optional front matter supports
 `name`, `description`, `provider`, `model`, `toolAllowlist`, `maxTurns`,
 `maxTokens`, `maxDurationMs`, and `maxOutputChars`. Front matter is deliberately
 not a general YAML runtime: unknown fields, duplicate tools, invalid selectors,
-and invalid budgets cause that optional definition to be ignored. Files and
-instruction bodies are bounded during discovery.
+unsupported provider IDs, unavailable tool names, and invalid budgets cause
+that optional definition to be ignored. Use `--tools` to inspect the active
+tool registry. Files and
+instruction bodies are bounded during discovery. Omit `toolAllowlist` to inherit
+only the caller-owned tool ceiling, or set `toolAllowlist: []` to request no
+tools for that specialist. Discovery caps each file at 128 KiB, retains at
+most 16,384 instruction characters per definition, and loads at most 256
+agents. Oversized or malformed optional files are skipped.
+
+For example, save this as `.dev-agent/agents/doc-maintainer/AGENT.md`:
+
+```markdown
+---
+name: doc-maintainer
+description: Review documentation against the implementation
+toolAllowlist: [filesystem, search]
+maxTurns: 2
+---
+Inspect the changed behavior and identify missing documentation.
+```
 
 Use these read-only commands to inspect the definitions:
 
@@ -70,6 +88,16 @@ Use these read-only commands to inspect the definitions:
 
 The `/agents` and `/agent` aliases are also accepted. Listing and inspection
 show only safe metadata; the instruction body and source path are not printed.
+Review project agent files before using `:team`: their Markdown is sent as
+specialist instructions and can affect behavior within the permitted tools.
+A project definition may declare a preferred `provider` and `model`, but it
+cannot silently move the current session to another provider: when the
+requested provider differs from the active session provider, both selectors are
+ignored and the specialist inherits the session model. `:agent <id>` reports
+this explicitly. A matching project provider may still select its declared
+model. User-scoped Markdown definitions and explicit JSON
+`collaboration.roles` remain caller-controlled configuration and keep their
+existing model-selection behavior.
 Discovered definitions augment the built-in `:team` roles. A JSON
 `collaboration.roles` entry with the same id wins over the Markdown definition.
 Before execution, every role still goes through the active tool registry and
@@ -1129,6 +1157,7 @@ saved preference never overrides an explicit invocation.
   "maxContextChars": 120000,
   "validation": { "policy": "default" },
   "collaboration": {
+    "mcpScope": "disabled",
     "toolAllowlist": ["filesystem", "search"],
     "roles": [
       {
@@ -1194,11 +1223,17 @@ saved preference never overrides an explicit invocation.
   built-in dangerous table. Malformed patterns are ignored.
 - `collaboration.toolAllowlist` - optional exact-name ceiling for tools offered
   during each CLI `:team` task review. It can contain up to 256 unique names
-  from the active tool collection. Agent Core validates every confirmed task
-  scope and the ceiling before creating any workspace. Omitting it does not
-  grant tools automatically; users still authorize each task. `[]` leaves only
-  the explicit `none` selection. This does not change approval or sandbox
-  policy.
+  from the active collaboration tool collection. Agent Core validates every
+  confirmed task scope and the ceiling before creating any workspace. Omitting
+  it does not grant tools automatically; users still authorize each task. `[]`
+  leaves only the explicit `none` selection. This does not change approval or
+  sandbox policy.
+- `collaboration.mcpScope` - MCP behavior for `:team` workers: `disabled`
+  (default) removes MCP tools from collaboration, `shared` reuses the main
+  MCP sessions and shows an explicit shared-state warning during review, or
+  `worker` creates a fresh MCP session for each task after review and roots it
+  at that task's worktree. Worker sessions are closed when the task ends; the
+  setting does not sandbox an MCP server's own external side effects.
 - `pricing` - model-name prefix to USD per one million tokens
   (`inputPerMillion` / `outputPerMillion`), used to estimate the cost shown in
   `[usage]` and `--json`. An optional `cachedInputPerMillion` prices cache-hit
@@ -1218,16 +1253,21 @@ rejected before an interactive agent run, so invalid safety config is never
 silently treated as omitted.
 
 When MCP servers are configured, dev-agent injects `DEV_AGENT_SESSION_ID` and
-`DEV_AGENT_WORKING_DIRECTORY` into each server process so MCP tools can share
-the same runtime context. The selected project directory is also the MCP child's
-process `cwd` and the root advertised to the server. Neither the process `cwd`
-nor the advertised MCP root confines server-side filesystem or remote-resource
-access by itself. Configured MCP servers run as child processes outside the Rust
-tool sandbox. During `:team` execution, the CLI registers these MCP sessions
-once at the project root and shares their tool wrappers with workers. Per-task
-tool-scope review limits which MCP tool names a worker can invoke, but does not
-create a separate server process, rebind it to the worker worktree, or sandbox
-its side effects. Configure MCP server arguments and permissions accordingly.
+`DEV_AGENT_WORKING_DIRECTORY` into each server process. The selected project
+directory is the main MCP child's process `cwd` and advertised root. Neither the
+process `cwd` nor an advertised MCP root confines server-side filesystem or
+remote-resource access by itself. Configured MCP servers run as child processes
+outside the Rust tool sandbox.
+
+During `:team` execution, `collaboration.mcpScope` controls the lifecycle: the
+default `disabled` mode removes MCP tools from the collaboration collection;
+`shared` keeps the historical main-session wrappers but warns that calls are not
+rooted in task worktrees; and `worker` creates a new MCP session per task after
+the reviewed scope is intersected with the configured ceiling. Worker sessions
+receive the task worktree as process `cwd`, advertised root, and
+`DEV_AGENT_WORKING_DIRECTORY`, and are closed on task completion or failure.
+The reviewed tool names still do not sandbox an MCP server's own external or
+remote side effects, so configure server arguments and permissions accordingly.
 If a server emits a tools, resources, or prompts list-change notification,
 dev-agent refreshes that server's tools and rebuilds the system-prompt metadata;
 the refreshed prompt/resource list is read immediately before the next model

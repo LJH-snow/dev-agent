@@ -397,3 +397,13 @@ test("validates bounded named collaboration roles and per-role budgets", () => {
   assert.equal(diagnosticAt(unsafe, "collaboration.roles[0].budget.maxTokens").code, "invalid_non_negative_integer");
   assert.equal(diagnosticAt(unsafe, "collaboration.roles[0].budget.shell").code, "unknown_field");
 });
+
+test("validates collaboration MCP scope modes", () => {
+  assert.equal(
+    validateConfigValue({ collaboration: { mcpScope: "worker" } }).valid,
+    true,
+  );
+  const result = validateConfigValue({ collaboration: { mcpScope: "main" } });
+  assert.equal(result.valid, false);
+  assert.equal(diagnosticAt(result, "collaboration.mcpScope").code, "invalid_mcp_scope");
+});

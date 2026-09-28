@@ -59,6 +59,9 @@ import {
   DesktopTaskWorkspaceManager,
   TaskWorkspaceError,
 } from "./task-workspaces.js";
+import { TaskPresentationStore, TaskPresentationError, isTaskSessionId, parseTaskPresentationPatch, taskExcerpt, type TaskPresentation } from "./task-presentation.js";
+import { buildDeliveryReport, renderDeliveryReportMarkdown } from "./delivery-report.js";
+import { loadGitHubCiDiagnosis, normalizeCiDiagnosisSnapshot, type CiDiagnosisResult } from "./github-ci-diagnosis.js";
 import { DesktopTaskTerminalManager, TaskTerminalError } from "./task-terminal.js";
 import {
   DesktopTaskValidationManager,
@@ -185,6 +188,8 @@ export interface DesktopServerOptions {
   readonly workbenchMetadata?: (workingDirectory: string) => Promise<WorkbenchMetadataSnapshot>;
   /** Optional bounded, read-only GitHub PR review loader for tests/custom hosts. */
   readonly githubPrReview?: (input: GitHubPrReviewInput, workingDirectory?: string) => Promise<GitHubPrReviewResult>;
+  /** Opt-in, bounded GitHub Actions diagnosis without remote mutations. */
+  readonly githubCiDiagnosis?: (url: string, expectedSha?: string) => Promise<CiDiagnosisResult>;
   /** Enables the server-scoped capability token for browser-originated mutations. */
   readonly requireCapabilityToken?: boolean;
   /** Optional deterministic capability token for tests or an embedding host. */
@@ -192,6 +197,9 @@ export interface DesktopServerOptions {
 }
 
 export interface DesktopSessionSummary {
+  readonly presentation?: TaskPresentation;
+  readonly suggestedTitle?: string;
+  readonly preview?: string;
   readonly sessionId: string;
   readonly entryCount: number;
   readonly createdAt?: string;
@@ -320,6 +328,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const maxSessionRegistryEntries = 256;
   const inFlight = new Set<string>();
   const runs = new DesktopRunRegistry();
+  const taskPresentation = new TaskPresentationStore(sessionsDir());
   // One controller per running session, so a cancel request can abort it the
   // same way a dropped connection does.
   const runControllers = new Map<string, AbortController>();
@@ -428,7 +437,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       (url.pathname === "/api/monitoring"
         || url.pathname.startsWith("/api/capabilities/")
         || url.pathname === "/api/mcp/health"
+        || url.pathname.endsWith("/delivery-report")
         || url.pathname === "/api/github/pr-review"
+        || url.pathname === "/api/github/ci-diagnosis"
+        || url.pathname === "/api/github/ci-repair"
         || url.pathname === "/api/parallel-runs")
       && !isLoopbackTerminalRequest(req)
     ) {
@@ -459,6 +471,101 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       if (req.method === "GET" && url.pathname === "/health") {
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ status: "ok", executorMode: defaultSession.executorMode ?? "unknown" }));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/github/ci-repair") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+        const target = parsed.ok && typeof parsed.value.url === "string" ? normalizeGitHubPrTarget(parsed.value.url) : undefined;
+        if (!parsed.ok || Object.keys(parsed.value).some((key) => !["url", "expectedSha", "confirm"].includes(key))
+          || !target || typeof parsed.value.expectedSha !== "string" || !/^[a-f0-9]{40}$/iu.test(parsed.value.expectedSha)
+          || parsed.value.confirm !== true) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "Explicit confirmation and an exact PR head commit are required.", code: "confirmation-required" }));
+          return;
+        }
+        const expectedSha = parsed.value.expectedSha.toLowerCase();
+        const diagnose = options.githubCiDiagnosis ?? ((url: string, sha: string) => loadGitHubCiDiagnosis(url, { expectedSha: sha }));
+        const verifyRemote = async (): Promise<"current" | "stale" | "unavailable" | "disabled" | "no-failed-check"> => {
+          try {
+            const result = await diagnose(target.url, expectedSha);
+            if (!result.ok) return result.code === "opt-in-required" ? "disabled" : "unavailable";
+            const snapshot = normalizeCiDiagnosisSnapshot(result.snapshot);
+            if (!snapshot || snapshot.target.url !== target.url) return "unavailable";
+            if (snapshot.stale || snapshot.headSha !== expectedSha) return "stale";
+            return snapshot.checks.some((check) => check.state === "failed") || snapshot.runs.length > 0 ? "current" : "no-failed-check";
+          } catch { return "unavailable"; }
+        };
+        const sendRepairError = (code: string, status: number) => {
+          res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "Isolated CI repair could not be started.", code }));
+        };
+        const initial = await verifyRemote();
+        if (initial !== "current") { sendRepairError(initial === "disabled" ? "opt-in-required" : initial === "unavailable" ? "remote-unavailable" : initial === "stale" ? "stale-head" : initial, initial === "disabled" ? 403 : initial === "unavailable" ? 502 : 409); return; }
+        try {
+          const localHead = await taskWorkspaces.currentCommit();
+          if (localHead.toLowerCase() !== expectedSha) { sendRepairError("local-head-mismatch", 409); return; }
+        } catch { sendRepairError("local-unavailable", 409); return; }
+        if (sessions.size >= maxSessionRegistryEntries) { sendRepairError("workspace-limit", 409); return; }
+        let workspace;
+        try { workspace = await taskWorkspaces.create(expectedSha); }
+        catch (error) {
+          if (error instanceof TaskWorkspaceError) { sendRepairError(error.code, error.statusCode); return; }
+          sendRepairError("workspace-unavailable", 500); return;
+        }
+        const final = await verifyRemote();
+        if (final !== "current") {
+          try { await taskWorkspaces.cleanup(workspace.sessionId, false); }
+          catch { sendRepairError("workspace-cleanup-failed", 500); return; }
+          sendRepairError(final === "disabled" ? "opt-in-required" : final === "stale" ? "stale-head" : final === "unavailable" ? "remote-unavailable" : final, final === "disabled" ? 403 : final === "unavailable" ? 502 : 409);
+          return;
+        }
+        const created = sessionFor(workspace.sessionId);
+        if (!created) {
+          try { await taskWorkspaces.cleanup(workspace.sessionId, false); }
+          catch { sendRepairError("workspace-cleanup-failed", 500); return; }
+          sendRepairError("workspace-limit", 409); return;
+        }
+        res.writeHead(201, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        res.end(JSON.stringify({ sessionId: workspace.sessionId, branch: workspace.branch, headSha: expectedSha,
+          localValidation: "not-run", remoteCi: "failed-at-confirmed-head", requiresReview: true }));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/github/ci-diagnosis") {
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        const parsed = parseJsonObjectBody<Record<string, unknown>>(body);
+        if (!parsed.ok || Object.keys(parsed.value).some((key) => key !== "url" && key !== "expectedSha")
+          || typeof parsed.value.url !== "string" || !normalizeGitHubPrTarget(parsed.value.url)
+          || (parsed.value.expectedSha !== undefined && (typeof parsed.value.expectedSha !== "string" || !/^[a-f0-9]{40}$/iu.test(parsed.value.expectedSha)))) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "invalid read-only CI diagnosis request", code: "invalid-request" }));
+          return;
+        }
+        let result: CiDiagnosisResult;
+        try {
+          result = await (options.githubCiDiagnosis ?? ((target, expectedSha) => loadGitHubCiDiagnosis(target, { expectedSha })))(
+            parsed.value.url, parsed.value.expectedSha as string | undefined,
+          );
+        } catch { result = { ok: false, code: "request-failed" }; }
+        if (!result.ok) {
+          const code = ["opt-in-required", "invalid-target", "cli-unavailable", "request-failed", "response-too-large", "malformed-response"].includes(result.code) ? result.code : "request-failed";
+          const status = code === "opt-in-required" ? 403 : code === "invalid-target" ? 400 : code === "response-too-large" ? 413 : 502;
+          res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "CI diagnosis unavailable", code }));
+          return;
+        }
+        const snapshot = normalizeCiDiagnosisSnapshot(result.snapshot);
+        if (!snapshot || snapshot.target.url !== normalizeGitHubPrTarget(parsed.value.url)?.url) {
+          res.writeHead(502, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "CI diagnosis unavailable", code: "malformed-response" }));
+          return;
+        }
+        res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" });
+        res.end(JSON.stringify({ snapshot }));
         return;
       }
 
@@ -757,6 +864,37 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         return;
       }
 
+      if (req.method === "PATCH" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/presentation")) {
+        if (!isLoopbackTerminalRequest(req)) {
+          req.resume();
+          res.writeHead(403, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "task updates require a trusted local request" }));
+          return;
+        }
+        let sessionId: string;
+        try { sessionId = decodeURIComponent(url.pathname.slice("/api/sessions/".length, -"/presentation".length)); }
+        catch { sessionId = ""; }
+        if (!isTaskSessionId(sessionId)) {
+          req.resume();
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "invalid session id" }));
+          return;
+        }
+        const body = await readJsonBody(req, res);
+        if (body === undefined) return;
+        let patch;
+        try { patch = parseTaskPresentationPatch(JSON.parse(body)); }
+        catch (error) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: error instanceof TaskPresentationError ? error.message : "invalid JSON" }));
+          return;
+        }
+        const presentation = await taskPresentation.update(sessionId, patch);
+        res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
+        res.end(JSON.stringify({ sessionId, presentation }));
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === "/api/sessions") {
         const summaries = await listSessions([...sessions.keys()]);
         const withCost = summaries.map((summary) => {
@@ -773,8 +911,8 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const activeSummary = activeSessionId === undefined
           ? undefined
           : withCost.find((summary) => summary.sessionId === activeSessionId);
-        const fallbackActiveSessionId = activeSummary?.sessionId
-          ?? withCost[0]?.sessionId
+        const fallbackActiveSessionId = (activeSummary?.presentation?.archived ? undefined : activeSummary?.sessionId)
+          ?? withCost.find((summary) => !summary.presentation?.archived)?.sessionId
           ?? defaultSessionId;
         activeSessionId = fallbackActiveSessionId;
         res.end(
@@ -1053,6 +1191,43 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const snapshot = taskValidationManager.cancel(sessionId);
         res.writeHead(202, { "content-type": "application/json", "cache-control": "no-store" });
         res.end(JSON.stringify(snapshot));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname.startsWith("/api/sessions/") && url.pathname.endsWith("/delivery-report")) {
+        const rawId = url.pathname.slice("/api/sessions/".length, -"/delivery-report".length);
+        let sessionId: string;
+        try { sessionId = decodeURIComponent(rawId); } catch { sessionId = ""; }
+        if (rawId.includes("/") || !isTaskSessionId(sessionId)) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "invalid task session id" }));
+          return;
+        }
+        const listing = await taskWorkspaces.list(new Set([...inFlight, ...taskValidationManager.runningSessionIds()]));
+        const workspace = listing.workspaces.find((item) => item.sessionId === sessionId);
+        if (!workspace) {
+          res.writeHead(404, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "unknown task session" }));
+          return;
+        }
+        // An unavailable diff is explicitly recorded as unverified, never as an empty clean tree.
+        const diff = await taskWorkspaces.diff(sessionId).catch(() => undefined);
+        const report = buildDeliveryReport(sessionId, workspace, diff, taskValidationManager.get(sessionId), {
+          active: inFlight.has(sessionId) || taskValidationManager.hasRunning(sessionId) || terminalManager.hasRunning(sessionId),
+        });
+        let markdown: string;
+        try { markdown = renderDeliveryReportMarkdown(report); } catch {
+          res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "delivery report exceeds size limit" }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "text/markdown; charset=utf-8",
+          "content-disposition": `attachment; filename="${sessionId}-delivery.md"`,
+          "x-content-type-options": "nosniff",
+          "cache-control": "no-store",
+        });
+        res.end(markdown);
         return;
       }
 
@@ -1565,6 +1740,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
             }
           }
 
+          deleted = (await taskPresentation.remove(sessionId)) || deleted;
           if (!deleted) {
             res.writeHead(404, { "content-type": "application/json" });
             res.end(JSON.stringify({ error: "unknown session" }));
@@ -1672,6 +1848,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
                 return;
               }
               await rename(source, memoryPathFor(to));
+              await taskPresentation.move(from, to);
               // The in-memory session is bound to the old path; drop it so the new
               // id is created fresh against the renamed file. Move any
               // session-scoped ephemeral state before dropping the old id.
@@ -1850,7 +2027,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
 
-        const entries = await memory.entries();
+        const entries = await memory.entries().catch(() => []);
         const validations = await memory.validations();
         const changeSets = await memory.changeSets();
         const metadata = await memory.getMetadata();
@@ -3219,7 +3396,11 @@ export async function listSessions(
     const sessionId = file.slice(0, -".json".length);
     const memory = new FileMemory({ filePath: join(sessionsDir(), file) });
     const metadata = await memory.getMetadata();
+    const entries = await memory.entries().catch(() => []);
+    const conversation = entries.filter((entry) => entry.role === "user" || entry.role === "assistant");
     summaries.set(sessionId, {
+      suggestedTitle: taskExcerpt(conversation.find((entry) => entry.role === "user")?.content, 60),
+      preview: taskExcerpt(conversation.at(-1)?.content, 140),
       sessionId,
       entryCount: metadata?.entryCount ?? 0,
       createdAt: metadata?.createdAt,
@@ -3227,6 +3408,13 @@ export async function listSessions(
       usage: metadata?.usage,
       evidenceSummary: await memory.evidenceSummary().catch(() => undefined),
     });
+  }
+
+  const presentation = await new TaskPresentationStore(sessionsDir()).list(maxSessionListEntries).catch(() => new Map<string, TaskPresentation>());
+  for (const [sessionId, record] of presentation) {
+    const summary = summaries.get(sessionId);
+    if (!summary && summaries.size >= maxSessionListEntries) continue;
+    summaries.set(sessionId, { sessionId, entryCount: 0, ...summary, presentation: record });
   }
 
   return [...summaries.values()].sort((left, right) =>

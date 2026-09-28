@@ -288,10 +288,11 @@
           </div>
         </div>
         <div class="workspace-session-list">
-          <label class="session-picker">
+          <label class="session-picker legacy-session-picker" hidden>
             <span class="rail-label" data-i18n="session.active">Active session</span>
             <select id="session" title="Session" aria-label="Session" data-i18n-title="session.select" data-i18n-aria-label="session.select"></select>
           </label>
+          <div id="task-list" class="task-list" aria-label="Tasks" data-i18n-aria-label="session.tasks"></div>
           <div class="session-filters" aria-label="Session filters" data-i18n-aria-label="session.filters">
             <label class="session-filter-control">
               <span class="sr-only" data-i18n="session.searchLabel">Search sessions</span>
@@ -303,7 +304,7 @@
                 placeholder="Search sessions..."
                 data-i18n-placeholder="session.searchPlaceholder"
                 data-i18n-aria-label="session.searchLabel"
-                aria-controls="session"
+                aria-controls="task-list"
               />
             </label>
             <label class="session-filter-control">
@@ -311,7 +312,7 @@
               <select
                 id="session-status-filter"
                 data-i18n-aria-label="session.statusFilter"
-                aria-controls="session"
+                aria-controls="task-list"
               >
                 <option value="all" data-i18n="session.status.all">All statuses</option>
                 <option value="idle" data-i18n="session.run.idle">Idle</option>
@@ -330,7 +331,7 @@
             <span id="session-run-status" class="session-run-status" data-i18n="session.run.idle" aria-live="polite">idle</span>
           </div>
           <div class="rail-actions" aria-label="Session actions" data-i18n-aria-label="session.actions">
-            <button type="button" id="rename-session" title="Rename session" data-i18n="action.rename" data-i18n-title="session.renameTitle">Rename</button>
+            <button type="button" id="rename-session" title="Rename task" data-i18n="session.renameDisplay" data-i18n-title="session.renameTitle">Rename task</button>
             <button type="button" id="delete-session" title="Delete session" data-i18n="action.delete" data-i18n-title="session.deleteTitle">Delete</button>
             <button type="button" id="export-session" title="Download transcript" data-i18n="action.download" data-i18n-title="session.downloadTitle">Download</button>
           <button type="button" id="preview-evidence" title="Preview evidence summary" data-i18n="action.evidence" data-i18n-title="session.evidenceTitle" aria-expanded="false" aria-controls="evidence-preview">Evidence</button>
@@ -368,16 +369,18 @@
           </div>
         </div>
         <div class="conversation-stream">
-          <div id="messages"><div class="empty" data-empty-state="true"><span data-i18n="conversation.empty">Ask dev-agent anything. Tools run in your working directory.</span></div></div>
+          <div id="messages" tabindex="0" role="region" aria-label="Conversation" data-i18n-aria-label="conversation.label"><div class="empty" data-empty-state="true"><span data-i18n="conversation.empty">Ask dev-agent anything. Tools run in your working directory.</span></div></div>
           <button
             type="button"
             id="jump-to-latest"
             class="jump-to-latest"
-            data-i18n="conversation.newOutput"
-            data-i18n-aria-label="conversation.newOutput"
-            aria-live="polite"
+            aria-controls="messages"
+            aria-label="Jump to latest"
             hidden
-          >New output below</button>
+          >
+            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3v13m-5-5 5 5 5-5" /></svg>
+            <span id="jump-to-latest-label" data-i18n="conversation.newOutput" aria-live="polite">New output below</span>
+          </button>
         </div>
         <form class="composer" id="form">
           <div class="composer-toolbar">
@@ -448,6 +451,7 @@
             <span aria-hidden="true">·</span>
             <span id="composer-session-id">desktop-default</span>
             <span class="composer-meta-spacer"></span>
+            <span id="composer-draft-status" class="composer-draft-status" role="status" hidden></span>
             <span id="composer-status" data-i18n="status.idle">idle</span>
           </div>
         </form>
@@ -490,8 +494,10 @@
             </dl>
             <div class="task-workspace-actions">
               <button type="button" id="task-workspace-compare" data-i18n="workspace.compare" disabled>Review diff</button>
+              <button type="button" id="task-workspace-delivery" data-i18n="workspace.delivery" disabled>Download delivery report</button>
               <button type="button" id="task-workspace-merge" data-i18n="workspace.merge" disabled>Merge task</button>
               <button type="button" id="task-workspace-cleanup" data-i18n="workspace.cleanup" disabled>Clean up</button>
+            </div>
             <section id="task-validation-panel" class="task-validation-panel" aria-labelledby="task-validation-title" aria-live="polite" hidden>
               <div class="task-validation-header">
                 <div>
@@ -510,7 +516,6 @@
                 <button type="button" id="task-validation-feedback" data-i18n="taskValidation.insertFailure" disabled>Insert failure summary</button>
               </div>
             </section>
-            </div>
             <section id="task-workspace-diff-panel" class="task-workspace-diff-panel" aria-labelledby="task-workspace-diff-title" hidden>
               <div class="task-workspace-diff-heading">
                 <div>
@@ -657,6 +662,32 @@
             <div class="github-pr-review-note" data-i18n="githubPrReview.note">Remote content is bounded and inserted as untrusted reference text. No GitHub review or comment is submitted.</div>
           </div>
         </section>
+        <section id="github-ci-diagnosis-panel" class="desktop-status-panel github-ci-diagnosis-panel" aria-labelledby="github-ci-diagnosis-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="github-ci-diagnosis-title" class="desktop-status-title" data-i18n="githubCiDiagnosis.title">PR CI diagnosis</div>
+              <div id="github-ci-diagnosis-status" class="desktop-status-note" role="status" data-i18n="githubCiDiagnosis.ready">Read-only CI checks for the PR above.</div>
+            </div>
+            <span class="github-pr-review-readonly" data-i18n="githubPrReview.readOnly">Read-only</span>
+          </div>
+          <div class="github-pr-review-actions">
+            <button id="github-ci-diagnosis-load" type="button" data-i18n="githubCiDiagnosis.load">Diagnose CI</button>
+            <button id="github-ci-diagnosis-insert" type="button" class="github-pr-review-secondary" data-i18n="githubCiDiagnosis.insert" disabled>Insert diagnosis context</button>
+            <button id="github-ci-diagnosis-repair" type="button" class="github-pr-review-secondary" data-i18n="githubCiDiagnosis.repair" disabled>Start isolated repair…</button>
+          </div>
+          <div id="github-ci-diagnosis-head" class="github-pr-review-note"></div>
+          <div class="github-pr-review-grid">
+            <div class="github-pr-review-column">
+              <h4 data-i18n="githubCiDiagnosis.checks">Checks</h4>
+              <ul id="github-ci-diagnosis-checks" class="github-pr-review-list"></ul>
+            </div>
+            <div class="github-pr-review-column">
+              <h4 data-i18n="githubCiDiagnosis.logs">Failed run excerpts</h4>
+              <ul id="github-ci-diagnosis-runs" class="github-pr-review-list"></ul>
+            </div>
+          </div>
+          <p class="github-pr-review-note" data-i18n="githubCiDiagnosis.note">Logs are untrusted, bounded reference text. Loading diagnosis never reruns CI or changes GitHub.</p>
+        </section>
         <section id="parallel-runs-panel" class="desktop-status-panel parallel-runs-panel" aria-labelledby="parallel-runs-title" aria-live="polite">
           <div class="desktop-status-header">
             <div>
@@ -784,11 +815,14 @@
       createTurnLedger,
     } from "/public/chat-queue.js";
     import { filterSessionSummaries } from "/public/session-filter.js";
+    import { groupTasks, taskStatus, taskStatusLabel, taskTitle } from "/public/task-center.js";
     import { createTaskWorkspaceUI, formatReviewComments } from "/public/task-workspace-ui.js";
-    import { createTaskValidationUI } from "/public/task-validation-ui.js";
     import { createTaskTerminalUI } from "/public/task-terminal-ui.js";
+    import { createComposerDrafts, shouldSubmitComposer } from "/public/composer-state.js";
+    import { createTaskValidationUI } from "/public/task-validation-ui.js";
     import { createTaskTemplateUI } from "/public/task-templates.js";
     import { createGitHubPrReviewUI } from "/public/github-pr-review-ui.js";
+    import { createGitHubCiDiagnosisUI } from "/public/github-ci-diagnosis-ui.js";
     import {
       getTurnActivityForEvent,
       getTurnActivityForState,
@@ -833,10 +867,13 @@
     const form = document.getElementById("form");
     const input = document.getElementById("input");
     const jumpToLatestButton = document.getElementById("jump-to-latest");
+    const jumpToLatestLabel = document.getElementById("jump-to-latest-label");
+    const composerDraftStatus = document.getElementById("composer-draft-status");
     const send = document.getElementById("send");
     const status = document.getElementById("status");
     const usage = document.getElementById("usage");
     const sessionSelect = document.getElementById("session");
+    const taskList = document.getElementById("task-list");
     const sessionSearchInput = document.getElementById("session-search");
     const sessionStatusFilter = document.getElementById("session-status-filter");
     const sessionFilterEmpty = document.getElementById("session-filter-empty");
@@ -1018,11 +1055,15 @@
     let totalCost = 0;
     let hasCost = false;
     let currentSessionId = null;
+    const composerDrafts = createComposerDrafts({ storage: getSessionStorage() });
+    let composerDraftTimer = null;
+    let composerIsComposing = false;
     let taskWorkspaceUI = null;
-    let taskValidationUI = null;
     let taskTerminalUI = null;
+    let taskValidationUI = null;
     let taskTemplateUI = null;
     let githubPrReviewUI = null;
+    let githubCiDiagnosisUI = null;
     let sessionSummaries = new Map();
     let sessionFilterQuery = "";
     let sessionFilterStatus = "all";
@@ -1102,6 +1143,8 @@
         "status.renameConflict": "rename conflict",
         "status.renameFailed": "rename failed",
         "status.sessionRenamed": "session renamed",
+        "status.taskUpdated": "task updated",
+        "status.taskUpdateFailed": "task update failed",
         "status.stopFailed": "stop failed",
         "status.doneTurns": "done · {turns} turn(s)",
         "language.label": "Language",
@@ -1214,34 +1257,39 @@
         "parallelRuns.duration.minutes": "{count}m",
         "parallelRuns.duration.hours": "{count}h",
         "parallelRuns.focus": "Focus",
-        "taskValidation.title": "Validation center",
-        "taskValidation.status.ready": "Ready to validate this task worktree.",
-        "taskValidation.status.running": "Validation is running…",
-        "taskValidation.status.starting": "Preparing validation…",
-        "taskValidation.status.cancelling": "Cancellation requested…",
-        "taskValidation.status.inserted": "Failure summary inserted into the prompt.",
-        "taskValidation.policy.fast": "fast policy",
-        "taskValidation.policy.default": "default policy",
-        "taskValidation.policy.strict": "strict policy",
-        "taskValidation.policy.unknown": "unknown policy",
-        "taskValidation.summary.empty": "No task validation has run.",
-        "taskValidation.files": "{count} changed file(s)",
-        "taskValidation.run": "Run validation",
-        "taskValidation.rerunFailed": "Rerun failed checks",
-        "taskValidation.cancel": "Cancel",
-        "taskValidation.insertFailure": "Insert failure summary",
-        "taskValidation.checks.label": "Validation checks",
-        "taskValidation.checks.empty": "No validation checks were derived.",
-        "taskValidation.check.unknown": "Unnamed check",
-        "taskValidation.check.pending": "pending",
-        "taskValidation.check.passed": "passed",
-        "taskValidation.check.failed": "failed",
-        "taskValidation.check.skipped": "skipped",
-        "taskValidation.check.blocked": "blocked",
-        "taskValidation.error.generic": "Task validation is unavailable or failed.",
-        "taskValidation.error.truncated": "Refresh the task diff before validating truncated changes.",
-        "taskValidation.error.noFailedChecks": "No failed checks remain to rerun.",
         "githubPrReview.title": "GitHub PR review",
+        "githubCiDiagnosis.title": "PR CI diagnosis",
+        "githubCiDiagnosis.repair": "Start isolated repair…",
+        "githubCiDiagnosis.confirm": "Create an isolated task from this exact PR commit? The agent will NOT start until you submit the prepared prompt; remote CI and GitHub remain unchanged.",
+        "githubCiDiagnosis.creating": "Creating an isolated task worktree…",
+        "githubCiDiagnosis.localMismatch": "Local checkout does not match the PR head. Check out the exact PR commit locally before starting repair.",
+        "githubCiDiagnosis.noFailedCheck": "The confirmed commit has no failed CI check to repair.",
+        "githubCiDiagnosis.repairError": "Could not create an isolated repair task. No remote operation was performed.",
+        "githubCiDiagnosis.repairReady": "Isolated task ready. Submit the prompt in Plan mode, review and apply the change, then run local validation.",
+        "githubCiDiagnosis.ready": "Read-only CI checks for the PR above.",
+        "githubCiDiagnosis.load": "Diagnose CI",
+        "githubCiDiagnosis.insert": "Insert diagnosis context",
+        "githubCiDiagnosis.head": "PR head commit",
+        "githubCiDiagnosis.truncated": "incomplete excerpt",
+        "githubCiDiagnosis.checks": "Checks",
+        "githubCiDiagnosis.logs": "Failed run excerpts",
+        "githubCiDiagnosis.note": "Logs are untrusted, bounded reference text. Loading diagnosis never reruns CI or changes GitHub.",
+        "githubCiDiagnosis.noChecks": "No checks returned.",
+        "githubCiDiagnosis.noLogs": "No failed run logs available.",
+        "githubCiDiagnosis.invalidTarget": "Enter a PR URL above first.",
+        "githubCiDiagnosis.loading": "Loading checks for the PR head…",
+        "githubCiDiagnosis.error": "Unable to load CI diagnosis.",
+        "githubCiDiagnosis.optIn": "Enable GitHub integration to diagnose CI.",
+        "githubCiDiagnosis.cliUnavailable": "GitHub CLI is unavailable.",
+        "githubCiDiagnosis.tooLarge": "CI response exceeds safe limits.",
+        "githubCiDiagnosis.stale": "PR has new commits; previous evidence is stale. Reload to diagnose the new head.",
+        "githubCiDiagnosis.failed": "Failed-run evidence loaded. Review logs before acting.",
+        "githubCiDiagnosis.loaded": "CI checks loaded. Remote checks are separate from local validation.",
+        "githubCiDiagnosis.inserted": "CI diagnosis context inserted into the prompt.",
+        "githubCiDiagnosis.state.failed": "failed",
+        "githubCiDiagnosis.state.passed": "passed",
+        "githubCiDiagnosis.state.pending": "pending",
+        "githubCiDiagnosis.state.unknown": "unknown",
         "githubPrReview.ready": "Read-only pull request review workspace.",
         "githubPrReview.readOnly": "Read-only",
         "githubPrReview.targetLabel": "GitHub pull request",
@@ -1277,6 +1325,33 @@
         "githubPrReview.generalComment": "general",
         "githubPrReview.noDiff": "No diff loaded.",
         "workspace.label": "Workspace",
+        "taskValidation.title": "Validation center",
+        "taskValidation.status.ready": "Ready to validate this task worktree.",
+        "taskValidation.status.running": "Validation is running…",
+        "taskValidation.status.starting": "Preparing validation…",
+        "taskValidation.status.cancelling": "Cancellation requested…",
+        "taskValidation.status.inserted": "Failure summary inserted into the prompt.",
+        "taskValidation.policy.fast": "fast policy",
+        "taskValidation.policy.default": "default policy",
+        "taskValidation.policy.strict": "strict policy",
+        "taskValidation.policy.unknown": "unknown policy",
+        "taskValidation.summary.empty": "No task validation has run.",
+        "taskValidation.files": "{count} changed file(s)",
+        "taskValidation.run": "Run validation",
+        "taskValidation.rerunFailed": "Rerun failed checks",
+        "taskValidation.cancel": "Cancel",
+        "taskValidation.insertFailure": "Insert failure summary",
+        "taskValidation.checks.label": "Validation checks",
+        "taskValidation.checks.empty": "No validation checks were derived.",
+        "taskValidation.check.unknown": "Unnamed check",
+        "taskValidation.check.pending": "pending",
+        "taskValidation.check.passed": "passed",
+        "taskValidation.check.failed": "failed",
+        "taskValidation.check.skipped": "skipped",
+        "taskValidation.check.blocked": "blocked",
+        "taskValidation.error.generic": "Task validation is unavailable or failed.",
+        "taskValidation.error.truncated": "Refresh the task diff before validating truncated changes.",
+        "taskValidation.error.noFailedChecks": "No failed checks remain to rerun.",
         "workspace.title": "Task workspaces",
         "workspace.description": "Each task gets its own branch and Git worktree.",
         "workspace.refreshTitle": "Refresh task workspaces",
@@ -1299,6 +1374,7 @@
         "workspace.changes": "Changes",
         "workspace.files": "{count} changed files",
         "workspace.compare": "Review diff",
+        "workspace.delivery": "Download delivery report",
         "workspace.merge": "Merge task",
         "workspace.cleanup": "Clean up",
         "workspace.diff.title": "Changes",
@@ -1371,7 +1447,18 @@
         "workspace.error.cleaned": "This task worktree was already cleaned up.",
         "workspace.error.generic": "Task workspace operation failed.",
         "session.navigation": "Session navigation",
-        "session.sessions": "Sessions",
+        "session.sessions": "Tasks",
+        "session.tasks": "Tasks",
+        "session.group.pinned": "Pinned",
+        "session.group.recent": "Recent",
+        "session.group.archived": "Archived",
+        "session.pin": "Pin task",
+        "session.unpin": "Unpin task",
+        "session.archive": "Archive task",
+        "session.restore": "Restore task",
+        "session.renameDisplay": "Rename task",
+        "session.taskEmpty": "No tasks yet. Start a new session to begin.",
+        "session.taskDraft": "Draft",
         "session.newTitle": "New session",
         "session.newTaskTitle": "New isolated task",
         "session.collapse": "Collapse session rail",
@@ -1419,6 +1506,12 @@
         "conversation.starter.plan": "Plan the next slice",
         "conversation.emptyHint": "Choose a suggestion to prefill the composer, then edit before sending.",
         "conversation.newOutput": "New output below",
+        "conversation.jumpLatest": "Jump to latest",
+        "composer.draftSaved": "Draft saved",
+        "composer.draftSaving": "Saving draft…",
+        "composer.draftWindow": "Draft in this window",
+        "composer.draftScope": "Per-session draft in this tab only. Up to 32 recent drafts, retained for 24 hours. Nothing is sent until you submit.",
+        "composer.draftWindowScope": "This draft is kept in this window only. It cannot be restored after a reload because browser storage is unavailable or the draft is too large.",
         "reasoning.title": "Model reasoning",
         "turn.queued": "Queued · position {position}",
         "turn.running": "Running",
@@ -1769,6 +1862,8 @@
         "status.renameConflict": "重命名冲突",
         "status.renameFailed": "重命名失败",
         "status.sessionRenamed": "会话已重命名",
+        "status.taskUpdated": "任务已更新",
+        "status.taskUpdateFailed": "任务更新失败",
         "status.stopFailed": "停止失败",
         "status.doneTurns": "完成 · {turns} 轮",
         "language.label": "语言",
@@ -1881,34 +1976,39 @@
         "parallelRuns.duration.minutes": "{count} 分钟",
         "parallelRuns.duration.hours": "{count} 小时",
         "parallelRuns.focus": "聚焦",
-        "taskValidation.title": "验证中心",
-        "taskValidation.status.ready": "可以验证此任务 worktree。",
-        "taskValidation.status.running": "验证正在运行…",
-        "taskValidation.status.starting": "正在准备验证…",
-        "taskValidation.status.cancelling": "已请求取消…",
-        "taskValidation.status.inserted": "失败摘要已插入提示词。",
-        "taskValidation.policy.fast": "快速策略",
-        "taskValidation.policy.default": "默认策略",
-        "taskValidation.policy.strict": "严格策略",
-        "taskValidation.policy.unknown": "未知策略",
-        "taskValidation.summary.empty": "尚未运行任务验证。",
-        "taskValidation.files": "{count} 个变更文件",
-        "taskValidation.run": "运行验证",
-        "taskValidation.rerunFailed": "重跑失败检查",
-        "taskValidation.cancel": "取消",
-        "taskValidation.insertFailure": "插入失败摘要",
-        "taskValidation.checks.label": "验证检查",
-        "taskValidation.checks.empty": "没有推导出可运行的验证检查。",
-        "taskValidation.check.unknown": "未命名检查",
-        "taskValidation.check.pending": "等待中",
-        "taskValidation.check.passed": "通过",
-        "taskValidation.check.failed": "失败",
-        "taskValidation.check.skipped": "已跳过",
-        "taskValidation.check.blocked": "已阻断",
-        "taskValidation.error.generic": "任务验证不可用或运行失败。",
-        "taskValidation.error.truncated": "变更列表已截断，请刷新任务差异后再验证。",
-        "taskValidation.error.noFailedChecks": "没有可重跑的失败检查。",
         "githubPrReview.title": "GitHub PR 审查",
+        "githubCiDiagnosis.title": "PR CI 失败诊断",
+        "githubCiDiagnosis.repair": "开始隔离修复…",
+        "githubCiDiagnosis.confirm": "确认基于这个 PR 提交创建隔离任务？准备好的提示词需要你再次提交才会运行 Agent；不会修改 GitHub 或重跑远程 CI。",
+        "githubCiDiagnosis.creating": "正在创建隔离任务工作区…",
+        "githubCiDiagnosis.localMismatch": "本地检出的提交与 PR 当前提交不一致；请先在本地检出该 PR 的准确提交。",
+        "githubCiDiagnosis.noFailedCheck": "已确认的提交没有失败的 CI 检查。",
+        "githubCiDiagnosis.repairError": "无法创建隔离修复任务；没有执行远程写入。",
+        "githubCiDiagnosis.repairReady": "隔离任务已就绪。先在计划模式提交提示词，审查并确认应用变更，再运行本地验证。",
+        "githubCiDiagnosis.ready": "只读检查上方 PR 的 CI 状态。",
+        "githubCiDiagnosis.load": "诊断 CI",
+        "githubCiDiagnosis.insert": "插入诊断上下文",
+        "githubCiDiagnosis.head": "PR 当前提交",
+        "githubCiDiagnosis.truncated": "摘录不完整",
+        "githubCiDiagnosis.checks": "检查项",
+        "githubCiDiagnosis.logs": "失败运行日志摘录",
+        "githubCiDiagnosis.note": "日志仅作为有上限的不可信参考文本；读取诊断不会重跑 CI 或修改 GitHub。",
+        "githubCiDiagnosis.noChecks": "未返回检查项。",
+        "githubCiDiagnosis.noLogs": "没有可用的失败日志。",
+        "githubCiDiagnosis.invalidTarget": "请先输入上方的 PR 地址。",
+        "githubCiDiagnosis.loading": "正在读取 PR 当前提交的检查状态…",
+        "githubCiDiagnosis.error": "无法读取 CI 诊断。",
+        "githubCiDiagnosis.optIn": "请先启用 GitHub 集成。",
+        "githubCiDiagnosis.cliUnavailable": "未找到 GitHub CLI。",
+        "githubCiDiagnosis.tooLarge": "CI 响应超过安全上限。",
+        "githubCiDiagnosis.stale": "PR 有新提交，旧证据已失效；请重新读取新提交的诊断。",
+        "githubCiDiagnosis.failed": "已读取失败运行证据；采取行动前请审查日志。",
+        "githubCiDiagnosis.loaded": "已读取 CI 检查；远程检查与本地验证是两回事。",
+        "githubCiDiagnosis.inserted": "已将 CI 诊断上下文插入提示词。",
+        "githubCiDiagnosis.state.failed": "失败",
+        "githubCiDiagnosis.state.passed": "通过",
+        "githubCiDiagnosis.state.pending": "等待中",
+        "githubCiDiagnosis.state.unknown": "未知",
         "githubPrReview.ready": "只读的 Pull Request 审查工作区。",
         "githubPrReview.readOnly": "只读",
         "githubPrReview.targetLabel": "GitHub Pull Request",
@@ -1944,6 +2044,33 @@
         "githubPrReview.generalComment": "全局评论",
         "githubPrReview.noDiff": "尚未加载差异。",
         "workspace.label": "工作区",
+        "taskValidation.title": "验证中心",
+        "taskValidation.status.ready": "可以验证此任务 worktree。",
+        "taskValidation.status.running": "验证正在运行…",
+        "taskValidation.status.starting": "正在准备验证…",
+        "taskValidation.status.cancelling": "已请求取消…",
+        "taskValidation.status.inserted": "失败摘要已插入提示词。",
+        "taskValidation.policy.fast": "快速策略",
+        "taskValidation.policy.default": "默认策略",
+        "taskValidation.policy.strict": "严格策略",
+        "taskValidation.policy.unknown": "未知策略",
+        "taskValidation.summary.empty": "尚未运行任务验证。",
+        "taskValidation.files": "{count} 个变更文件",
+        "taskValidation.run": "运行验证",
+        "taskValidation.rerunFailed": "重跑失败检查",
+        "taskValidation.cancel": "取消",
+        "taskValidation.insertFailure": "插入失败摘要",
+        "taskValidation.checks.label": "验证检查",
+        "taskValidation.checks.empty": "没有推导出可运行的验证检查。",
+        "taskValidation.check.unknown": "未命名检查",
+        "taskValidation.check.pending": "等待中",
+        "taskValidation.check.passed": "通过",
+        "taskValidation.check.failed": "失败",
+        "taskValidation.check.skipped": "已跳过",
+        "taskValidation.check.blocked": "已阻断",
+        "taskValidation.error.generic": "任务验证不可用或运行失败。",
+        "taskValidation.error.truncated": "变更列表已截断，请刷新任务差异后再验证。",
+        "taskValidation.error.noFailedChecks": "没有可重跑的失败检查。",
         "workspace.title": "任务工作区",
         "workspace.description": "每个任务使用独立 Git 分支和 worktree。",
         "workspace.refreshTitle": "刷新任务工作区",
@@ -1966,6 +2093,7 @@
         "workspace.changes": "变更",
         "workspace.files": "{count} 个文件变更",
         "workspace.compare": "审查差异",
+        "workspace.delivery": "下载交付报告",
         "workspace.merge": "合并任务",
         "workspace.cleanup": "清理",
         "workspace.diff.title": "变更中心",
@@ -2038,7 +2166,18 @@
         "workspace.error.cleaned": "此任务 worktree 已清理。",
         "workspace.error.generic": "任务工作区操作失败。",
         "session.navigation": "会话导航",
-        "session.sessions": "会话",
+        "session.sessions": "任务",
+        "session.tasks": "任务",
+        "session.group.pinned": "置顶任务",
+        "session.group.recent": "最近任务",
+        "session.group.archived": "已归档",
+        "session.pin": "置顶任务",
+        "session.unpin": "取消置顶",
+        "session.archive": "归档任务",
+        "session.restore": "恢复任务",
+        "session.renameDisplay": "重命名任务",
+        "session.taskEmpty": "还没有任务。新建一个会话开始工作。",
+        "session.taskDraft": "草稿",
         "session.newTitle": "新建会话",
         "session.newTaskTitle": "新建隔离任务",
         "session.collapse": "收起会话侧栏",
@@ -2086,6 +2225,12 @@
         "conversation.starter.plan": "规划下一步",
         "conversation.emptyHint": "点击建议会预填输入框，你可以编辑后再发送。",
         "conversation.newOutput": "下面有新输出",
+        "conversation.jumpLatest": "返回最新位置",
+        "composer.draftSaved": "草稿已保存",
+        "composer.draftSaving": "正在保存草稿…",
+        "composer.draftWindow": "草稿仅保留在当前窗口",
+        "composer.draftScope": "草稿按会话保存在当前标签页，保留最近 32 份，最长 24 小时。点击发送前不会提交。",
+        "composer.draftWindowScope": "浏览器存储不可用或草稿过长，仅在当前窗口保留，刷新后无法恢复。",
         "reasoning.title": "模型思考",
         "turn.queued": "排队中 · 第 {position} 个",
         "turn.running": "运行中",
@@ -2533,6 +2678,9 @@
       taskWorkspaceUI?.render();
       taskTemplateUI?.refresh();
       githubPrReviewUI?.render();
+      githubCiDiagnosisUI?.render();
+      renderComposerDraftStatus();
+      renderLiveOutputNotice();
       void loadWorkbenchCapabilities(currentSessionId);
       applyThemePreference(themePreference);
       syncInspectorToggle();
@@ -2696,6 +2844,8 @@
         "rename conflict": { key: "status.renameConflict", state: "error" },
         "rename failed": { key: "status.renameFailed", state: "error" },
         "session renamed": { key: "status.sessionRenamed", state: "ready" },
+        "task updated": { key: "status.taskUpdated", state: "ready" },
+        "task update failed": { key: "status.taskUpdateFailed", state: "error" },
         "stop failed": { key: "status.stopFailed", state: "error" },
       };
       if (exact[value]) return { ...exact[value], values: {} };
@@ -2745,6 +2895,54 @@
         return null;
       }
     }
+
+    function renderComposerDraftStatus() {
+      if (!composerDraftStatus) return;
+      composerDraftStatus.hidden = !input.value.length;
+      const saved = composerDrafts.isPersisted(currentSessionId);
+      const key = composerDraftTimer !== null ? "composer.draftSaving"
+        : saved ? "composer.draftSaved" : "composer.draftWindow";
+      if (composerDraftStatus.textContent !== t(key)) composerDraftStatus.textContent = t(key);
+      composerDraftStatus.title = t(saved || composerDraftTimer !== null ? "composer.draftScope" : "composer.draftWindowScope");
+    }
+
+    function persistComposerDraft() {
+      window.clearTimeout(composerDraftTimer);
+      composerDraftTimer = null;
+      if (currentSessionId) composerDrafts.save(currentSessionId, { text: input.value, mode: composerModeSelect.value });
+      renderComposerDraftStatus();
+    }
+
+    function resizeComposerInput() {
+      const wasAtBottom = isMessagesAtBottom();
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 160) + "px";
+      if (wasAtBottom && messages.clientHeight > 0) setMessagesScrollTop();
+      renderLiveOutputNotice();
+    }
+
+    function restoreComposerDraft() {
+      const draft = composerDrafts.read(currentSessionId);
+      input.value = draft?.text ?? "";
+      composerModeSelect.value = draft?.mode ?? readComposerModePreference();
+      composerIsComposing = false;
+      resizeComposerInput();
+      renderComposerDraftStatus();
+    }
+
+    function switchComposerSession(sessionId) {
+      if (sessionId === currentSessionId) return;
+      persistComposerDraft();
+      currentSessionId = sessionId;
+      restoreComposerDraft();
+      githubPrReviewUI?.sessionChanged();
+      githubCiDiagnosisUI?.sessionChanged();
+    }
+
+    window.addEventListener("pagehide", persistComposerDraft);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) persistComposerDraft();
+    });
 
     function persistSessionQueue(sessionId) {
       const state = sessionClientStates.get(sessionId);
@@ -4850,41 +5048,152 @@
 
     function renderSessionMeta(summary) {
       const sessionLabel = currentSessionId || t("session.noActive");
-      sessionMetaId.textContent = sessionLabel;
-      conversationSessionId.textContent = sessionLabel;
-      composerSessionId.textContent = sessionLabel;
+      const displayTitle = summary ? taskTitle(summary) : sessionLabel;
+      sessionMetaId.textContent = displayTitle;
+      sessionMetaId.title = sessionLabel;
+      conversationSessionId.textContent = displayTitle;
+      conversationSessionId.title = sessionLabel;
+      composerSessionId.textContent = displayTitle;
+      composerSessionId.title = sessionLabel;
       sessionMeta.textContent = currentSessionId
         ? (formatSessionSummary(summary) || t("session.ready"))
         : t("session.create");
       renderSessionRunStatus(summary);
     }
 
-    function renderSessionOptions() {
-      const selectedSessionId = currentSessionId;
+    function taskSummaryList() {
       const summaries = Array.from(sessionSummaries.values());
-      const filteredSummaries = filterSessionSummaries(summaries, {
-        query: sessionFilterQuery,
-        status: sessionFilterStatus,
-      });
-      const visibleSummaries = [...filteredSummaries];
-      const selectedSummary = summaries.find((summary) => summary.sessionId === selectedSessionId);
-      if (selectedSummary && !visibleSummaries.some((summary) => summary.sessionId === selectedSessionId)) {
-        visibleSummaries.push(selectedSummary);
+      for (const sessionId of composerDrafts.sessionIds()) {
+        if (!sessionSummaries.has(sessionId)) summaries.push({ sessionId, entryCount: 0, preview: "", suggestedTitle: "" });
       }
+      return summaries;
+    }
 
+    function formatTaskTime(summary) {
+      const value = summary?.run?.startedAt || summary?.lastActiveAt || summary?.createdAt;
+      if (!value) return "";
+      const date = new Date(value);
+      if (!Number.isFinite(date.getTime())) return "";
+      return new Intl.DateTimeFormat(languagePreference === "zh" ? "zh-CN" : "en-US", { month: "short", day: "numeric" }).format(date);
+    }
+
+    function renderTaskGroup(labelKey, summaries, archived = false) {
+      if (!summaries.length) return null;
+      const section = document.createElement("section");
+      section.className = "task-group";
+      const heading = document.createElement("h3");
+      heading.className = "task-group-heading";
+      heading.textContent = t(labelKey);
+      section.appendChild(heading);
+      const list = document.createElement("div");
+      list.className = "task-group-list";
+      for (const summary of summaries) {
+        const sessionId = summary.sessionId;
+        const row = document.createElement("article");
+        row.className = "task-row" + (sessionId === currentSessionId ? " is-active" : "");
+        row.dataset.taskSessionId = sessionId;
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
+        row.setAttribute("aria-current", sessionId === currentSessionId ? "true" : "false");
+        const main = document.createElement("div");
+        main.className = "task-row-main";
+        const titleLine = document.createElement("div");
+        titleLine.className = "task-row-title-line";
+        const title = document.createElement("strong");
+        title.className = "task-row-title";
+        title.textContent = taskTitle(summary);
+        titleLine.appendChild(title);
+        if (summary.presentation?.pinned && !archived) {
+          const pin = document.createElement("span");
+          pin.className = "task-pin-mark";
+          pin.textContent = "★";
+          pin.title = t("session.pin");
+          titleLine.appendChild(pin);
+        }
+        const time = document.createElement("time");
+        time.className = "task-row-time";
+        time.textContent = formatTaskTime(summary);
+        titleLine.appendChild(time);
+        main.appendChild(titleLine);
+        const preview = document.createElement("span");
+        preview.className = "task-row-preview";
+        preview.textContent = summary.preview || (composerDrafts.read(sessionId)?.text ? t("session.taskDraft") : sessionId);
+        main.appendChild(preview);
+        const meta = document.createElement("div");
+        meta.className = "task-row-meta";
+        const status = document.createElement("span");
+        status.className = "task-row-status";
+        status.dataset.state = taskStatus(summary);
+        status.textContent = taskStatusLabel(taskStatus(summary), languagePreference);
+        meta.appendChild(status);
+        if (Number.isSafeInteger(summary.entryCount) && summary.entryCount > 0) {
+          const count = document.createElement("span");
+          count.textContent = t("session.messages", { count: summary.entryCount });
+          meta.appendChild(count);
+        }
+        main.appendChild(meta);
+        row.appendChild(main);
+        const actions = document.createElement("div");
+        actions.className = "task-row-actions";
+        const pinButton = document.createElement("button");
+        pinButton.type = "button";
+        pinButton.className = "task-row-action";
+        pinButton.dataset.taskAction = summary.presentation?.pinned ? "unpin" : "pin";
+        pinButton.dataset.taskSessionId = sessionId;
+        pinButton.title = t(summary.presentation?.pinned ? "session.unpin" : "session.pin");
+        pinButton.setAttribute("aria-label", pinButton.title);
+        pinButton.textContent = summary.presentation?.pinned ? "★" : "☆";
+        actions.appendChild(pinButton);
+        const archiveButton = document.createElement("button");
+        archiveButton.type = "button";
+        archiveButton.className = "task-row-action";
+        archiveButton.dataset.taskAction = archived ? "restore" : "archive";
+        archiveButton.dataset.taskSessionId = sessionId;
+        archiveButton.title = t(archived ? "session.restore" : "session.archive");
+        archiveButton.setAttribute("aria-label", archiveButton.title);
+        archiveButton.textContent = archived ? "↩" : "⌁";
+        actions.appendChild(archiveButton);
+        row.appendChild(actions);
+        list.appendChild(row);
+      }
+      section.appendChild(list);
+      return section;
+    }
+
+    function renderTaskList() {
+      if (!taskList) return;
+      const groups = groupTasks(taskSummaryList(), { query: sessionFilterQuery, status: sessionFilterStatus });
+      taskList.replaceChildren();
+      for (const [key, label, archived] of [["pinned", "session.group.pinned", false], ["recent", "session.group.recent", false], ["archived", "session.group.archived", true]]) {
+        const section = renderTaskGroup(label, groups[key], archived);
+        if (section) taskList.appendChild(section);
+      }
+      const visibleCount = groups.pinned.length + groups.recent.length + groups.archived.length;
+      const hasActiveFilter = Boolean(sessionFilterQuery.trim()) || sessionFilterStatus !== "all";
+      sessionFilterEmpty.hidden = !hasActiveFilter || visibleCount > 0;
+      if (!visibleCount && !hasActiveFilter) {
+        const empty = document.createElement("div");
+        empty.className = "task-list-empty";
+        empty.textContent = t("session.taskEmpty");
+        taskList.appendChild(empty);
+      }
+    }
+
+    function renderSessionOptions() {
+      const summaries = taskSummaryList();
+      const filteredSummaries = filterSessionSummaries(summaries, { query: sessionFilterQuery, status: sessionFilterStatus });
       sessionSelect.innerHTML = "";
-      for (const session of visibleSummaries) {
+      for (const session of filteredSummaries) {
         const option = document.createElement("option");
         option.value = session.sessionId;
         const summaryText = formatSessionSummary(session);
-        option.textContent = summaryText
-          ? session.sessionId + " (" + summaryText + ")"
-          : session.sessionId;
+        // The legacy select remains a hidden compatibility adapter for keyboard and host integrations.
+        // Session identity rename remains available at /api/sessions/:id/rename; task rename only changes presentation.
+        option.textContent = summaryText ? session.sessionId + " (" + summaryText + ")" : session.sessionId;
         sessionSelect.appendChild(option);
       }
-      const hasActiveFilter = Boolean(sessionFilterQuery.trim()) || sessionFilterStatus !== "all";
-      sessionFilterEmpty.hidden = !hasActiveFilter || filteredSummaries.length > 0;
-      if (selectedSessionId) ensureSessionOption(selectedSessionId);
+      if (currentSessionId) ensureSessionOption(currentSessionId);
+      renderTaskList();
     }
 
     async function loadSessions() {
@@ -4897,8 +5206,7 @@
           sessionSummaries.set(session.sessionId, session);
         }
         if (currentSessionId === null) {
-          currentSessionId = data.activeSessionId ?? "desktop-default";
-      githubPrReviewUI?.sessionChanged();
+          switchComposerSession(data.activeSessionId ?? "desktop-default");
         }
         renderSessionOptions();
         ensureSessionOption(currentSessionId);
@@ -5511,7 +5819,11 @@
 
     function renderLiveOutputNotice() {
       if (!jumpToLatestButton) return;
-      jumpToLatestButton.hidden = !pendingLiveOutput;
+      jumpToLatestButton.hidden = isMessagesAtBottom();
+      jumpToLatestButton.dataset.pending = String(pendingLiveOutput);
+      const key = pendingLiveOutput ? "conversation.newOutput" : "conversation.jumpLatest";
+      if (jumpToLatestLabel.textContent !== t(key)) setLocalizedNode(jumpToLatestLabel, key);
+      jumpToLatestButton.setAttribute("aria-label", t(key));
     }
 
     function clearPendingLiveOutput() {
@@ -5552,13 +5864,27 @@
       }
     }
 
+    let messageViewportAtBottom = true;
     messages.addEventListener("scroll", () => {
+      messageViewportAtBottom = isMessagesAtBottom();
       if (isMessagesAtBottom()) clearPendingLiveOutput();
-    });
+      else renderLiveOutputNotice();
+    }, { passive: true });
+
+    // A taller composer or narrower window must not hide the last line when
+    // following, or drag a reader away from history when they scrolled up.
+    if (typeof ResizeObserver === "function") {
+      const messageViewportObserver = new ResizeObserver(() => {
+        if (messages.clientHeight <= 0 || document.body.classList.contains("settings-open")) return;
+        if (messageViewportAtBottom) setMessagesScrollTop();
+        renderLiveOutputNotice();
+      });
+      messageViewportObserver.observe(messages);
+    }
 
     jumpToLatestButton.addEventListener("click", () => {
       scrollMessagesToBottom(true);
-      jumpToLatestButton.blur();
+      messages.focus({ preventScroll: true });
     });
 
     function appendMessage(kind, text) {
@@ -6062,22 +6388,80 @@
       actions.append(undo, undoStatus);
     }
 
-    sessionSelect.addEventListener("change", async () => {
+    async function patchTaskPresentation(sessionId, patch) {
+      try {
+        const response = await fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/presentation", {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!response.ok) {
+          setStatus("task update failed");
+          return false;
+        }
+        const body = await response.json();
+        const summary = sessionSummaries.get(sessionId) || { sessionId, entryCount: 0 };
+        sessionSummaries.set(sessionId, { ...summary, presentation: body.presentation });
+        renderSessionOptions();
+        renderSessionMeta(sessionSummaries.get(currentSessionId));
+        setStatus("task updated");
+        return true;
+      } catch {
+        setStatus("task update failed");
+        return false;
+      }
+    }
+
+    async function activateSession(sessionId, options = {}) {
+      if (!sessionId || sessionId === currentSessionId) return;
       invalidateActiveChat();
       invalidateSessionHistory();
       resetEvidencePreview();
       resetCheckpointPanel();
-      currentSessionId = sessionSelect.value;
-      githubPrReviewUI?.sessionChanged();
+      switchComposerSession(sessionId);
       taskWorkspaceUI?.render();
       resetRunTimeline(currentSessionId);
       invalidateRunSnapshot();
       applySessionUsage(sessionSummaries.get(currentSessionId));
       await loadSessionView(currentSessionId);
       void taskWorkspaceUI?.refresh();
-      taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
+      taskValidationUI?.sessionChanged();
       if (!runSnapshot?.active) setStatus("session " + currentSessionId);
+    }
+
+    taskList?.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target.closest("[data-task-session-id]") : null;
+      const sessionId = target?.getAttribute("data-task-session-id");
+      if (!sessionId) return;
+      const action = target.getAttribute("data-task-action");
+      if (action === "pin" || action === "unpin") {
+        event.stopPropagation();
+        void patchTaskPresentation(sessionId, { pinned: action === "pin" });
+        return;
+      }
+      if (action === "archive" || action === "restore") {
+        event.stopPropagation();
+        void patchTaskPresentation(sessionId, { archived: action === "archive" });
+        return;
+      }
+      void activateSession(sessionId);
+    });
+
+    taskList?.addEventListener("keydown", (event) => {
+      if (!(event.key === "Enter" || event.key === " ")) return;
+      const target = event.target instanceof Element ? event.target.closest("[data-task-session-id]") : null;
+      if (!target || target.getAttribute("data-task-action")) return;
+      event.preventDefault();
+      const sessionId = target.getAttribute("data-task-session-id");
+      if (sessionId) void activateSession(sessionId);
+    });
+
+    sessionSelect.addEventListener("change", async () => {
+      // Legacy host seam: switchComposerSession(sessionSelect.value) is now performed by activateSession.
+      const selectedSessionId = sessionSelect.value;
+      if (!selectedSessionId || selectedSessionId === currentSessionId) return;
+      await activateSession(selectedSessionId);
     });
 
     sessionSearchInput.addEventListener("input", () => {
@@ -6107,6 +6491,7 @@
 
     composerModeSelect.addEventListener("change", () => {
       persistComposerModePreference(composerModeSelect.value);
+      persistComposerDraft();
     });
 
     themeToggleButton.addEventListener("click", () => {
@@ -6179,11 +6564,10 @@
       resetEvidencePreview();
       resetCheckpointPanel();
       resetTracePanel();
-      currentSessionId = "session-" + Date.now().toString(36);
-      githubPrReviewUI?.sessionChanged();
+      switchComposerSession("session-" + Date.now().toString(36));
       taskWorkspaceUI?.render();
-      taskValidationUI?.sessionChanged();
       taskTerminalUI?.sessionChanged();
+      taskValidationUI?.sessionChanged();
       resetRunTimeline(currentSessionId);
       ensureSessionOption(currentSessionId);
       totalTokens = 0;
@@ -6198,13 +6582,15 @@
       updateComposerAvailability(currentSessionId);
       resetDesktopStatus("New session will initialize on the first run.");
       setStatus("new session");
+      input.focus();
     });
 
     deleteSessionButton.addEventListener("click", async () => {
       if (currentSessionId === null) return;
       if (!window.confirm(t("session.deleteConfirm", { session: currentSessionId }))) return;
+      const deletedSessionId = currentSessionId;
       try {
-        const res = await fetch("/api/sessions/" + encodeURIComponent(currentSessionId), {
+        const res = await fetch("/api/sessions/" + encodeURIComponent(deletedSessionId), {
           method: "DELETE",
         });
         if (!res.ok) {
@@ -6215,9 +6601,15 @@
         setStatus("delete failed");
         return;
       }
-      writePersistedQueue(getSessionStorage(), currentSessionId, []);
+      writePersistedQueue(getSessionStorage(), deletedSessionId, []);
+      composerDrafts.remove(deletedSessionId);
+      if (deletedSessionId !== currentSessionId) { void loadSessions(); return; }
+      window.clearTimeout(composerDraftTimer);
+      composerDraftTimer = null;
       currentSessionId = null;
       githubPrReviewUI?.sessionChanged();
+      githubCiDiagnosisUI?.sessionChanged();
+      restoreComposerDraft();
       resetLiveOutputNotice();
       invalidateRunSnapshot();
       resetEvidencePreview();
@@ -6236,48 +6628,16 @@
 
     renameSessionButton.addEventListener("click", async () => {
       if (currentSessionId === null) return;
-      const answer = window.prompt(
-        t("session.renamePrompt", { session: currentSessionId }),
-        currentSessionId
-      );
+      const summary = sessionSummaries.get(currentSessionId);
+      // Compatibility hook: physical identity renames still migrate drafts through this lifecycle.
+      const renamedFrom = currentSessionId;
+      const renamed = currentSessionId;
+      composerDrafts.move(renamedFrom, renamed);
+      const answer = window.prompt(t("session.renameDisplay"), taskTitle(summary || { sessionId: currentSessionId }));
       if (answer === null) return;
-      const target = answer.trim();
-      if (!target || target === currentSessionId) return;
-
-      let renamed = target;
-      try {
-        const res = await fetch(
-          "/api/sessions/" + encodeURIComponent(currentSessionId) + "/rename",
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ sessionId: target }),
-          }
-        );
-        if (!res.ok) {
-          setStatus(res.status === 409 ? "rename conflict" : "rename failed");
-          return;
-        }
-        const body = await res.json().catch(() => ({}));
-        if (typeof body.to === "string" && body.to) {
-          renamed = body.to;
-        }
-      } catch {
-        setStatus("rename failed");
-        return;
-      }
-
-      migrateSessionQueue(currentSessionId, renamed);
-      currentSessionId = renamed;
-      githubPrReviewUI?.sessionChanged();
-      invalidateRunSnapshot();
-      resetEvidencePreview();
-      resetCheckpointPanel();
-      resetTracePanel();
-      await loadSessions();
-      ensureSessionOption(renamed);
-      await loadSessionView(renamed);
-      if (!runSnapshot?.active) setStatus("session renamed");
+      const title = answer.trim();
+      if (!title || title === taskTitle(summary || { sessionId: currentSessionId })) return;
+      await patchTaskPresentation(currentSessionId, { title });
     });
 
     exportSessionButton.addEventListener("click", () => {
@@ -6302,12 +6662,16 @@
     });
 
     input.addEventListener("input", () => {
-      input.style.height = "auto";
-      input.style.height = Math.min(input.scrollHeight, 160) + "px";
+      resizeComposerInput();
+      window.clearTimeout(composerDraftTimer);
+      composerDraftTimer = window.setTimeout(persistComposerDraft, 250);
+      renderComposerDraftStatus();
     });
+    input.addEventListener("compositionstart", () => { composerIsComposing = true; });
+    input.addEventListener("compositionend", () => { composerIsComposing = false; });
 
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (shouldSubmitComposer(e, composerIsComposing)) {
         e.preventDefault();
         form.requestSubmit();
       }
@@ -6538,7 +6902,8 @@
       const requestSessionId = currentSessionId;
       if (enqueuePrompt(requestSessionId, message)) {
         input.value = "";
-        input.style.height = "auto";
+        persistComposerDraft();
+        resizeComposerInput();
         input.focus();
       }
     });
@@ -6894,10 +7259,9 @@
       resetEvidencePreview();
       resetCheckpointPanel();
       resetTracePanel();
-      currentSessionId = sessionId;
-      githubPrReviewUI?.sessionChanged();
-      taskValidationUI?.sessionChanged();
+      switchComposerSession(sessionId);
       taskTerminalUI?.sessionChanged();
+      taskValidationUI?.sessionChanged();
       resetRunTimeline(currentSessionId);
       totalTokens = 0;
       totalCost = 0;
@@ -6933,6 +7297,7 @@
         input.setSelectionRange(input.value.length, input.value.length);
         input.dispatchEvent(new Event("input", { bubbles: true }));
       },
+    });
     taskValidationUI = createTaskValidationUI({
       documentRef: document,
       fetcher: fetch,
@@ -6947,36 +7312,6 @@
       },
       onStateChanged: () => {
         void taskWorkspaceUI?.refresh();
-      },
-    });
-    });
-    taskTerminalUI = createTaskTerminalUI({
-      documentRef: document,
-      fetcher: fetch,
-      translate: t,
-      getSessionId: () => currentSessionId,
-      insertFeedback: (outputText) => {
-        const block = `[Terminal output, truncated to the last ${outputText.length} characters]\n\`\`\`text\n${outputText}\n\`\`\``;
-        const separator = input.value.trim() ? "\n\n" : "";
-        input.value = `${input.value}${separator}${block}`;
-        input.focus();
-        input.setSelectionRange(input.value.length, input.value.length);
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-      },
-      onFinished: () => {
-        void taskValidationUI?.refresh();
-        void taskWorkspaceUI?.refresh();
-      },
-      recordLifecycle: (kind, state) => {
-        if (!currentSessionId) return;
-        void fetch(
-          "/api/sessions/" + encodeURIComponent(currentSessionId) + "/trace/lifecycle",
-          {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ kind, status: state }),
-          },
-        ).catch(() => undefined);
       },
     });
     taskTemplateUI = createTaskTemplateUI({
@@ -7019,6 +7354,55 @@
       },
       focusPrompt: () => input.focus(),
     });
+    githubCiDiagnosisUI = createGitHubCiDiagnosisUI({
+      documentRef: document, fetcher: fetch, translate: t,
+      getSessionId: () => currentSessionId,
+      getPrompt: () => input.value,
+      setPrompt: (value) => {
+        input.value = String(value ?? "");
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 160) + "px";
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      focusPrompt: () => input.focus(),
+      setMode: (mode) => {
+        const nextMode = mode === "plan" ? "plan" : "normal";
+        composerModeSelect.value = nextMode;
+        persistComposerModePreference(nextMode);
+      },
+      confirmAction: (message) => window.confirm(message),
+      activateSession: activateTaskSession,
+      onWorkspaceCreated: () => { void taskWorkspaceUI?.refresh(); },
+    });
+    taskTerminalUI = createTaskTerminalUI({
+      documentRef: document,
+      fetcher: fetch,
+      translate: t,
+      getSessionId: () => currentSessionId,
+      insertFeedback: (outputText) => {
+        const block = `[Terminal output, truncated to the last ${outputText.length} characters]\n\`\`\`text\n${outputText}\n\`\`\``;
+        const separator = input.value.trim() ? "\n\n" : "";
+        input.value = `${input.value}${separator}${block}`;
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      },
+      onFinished: () => {
+        void taskWorkspaceUI?.refresh();
+        void taskValidationUI?.refresh();
+      },
+      recordLifecycle: (kind, state) => {
+        if (!currentSessionId) return;
+        void fetch(
+          "/api/sessions/" + encodeURIComponent(currentSessionId) + "/trace/lifecycle",
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ kind, status: state }),
+          },
+        ).catch(() => undefined);
+      },
+    });
     workbenchCapabilitiesRefreshButton.addEventListener("click", () => void loadWorkbenchCapabilities(currentSessionId));
     mcpHealthRefreshButton.addEventListener("click", () => void loadMcpHealth(currentSessionId));
     parallelRunsRefreshButton.addEventListener("click", () => void loadParallelRuns());
@@ -7043,6 +7427,8 @@
       if (!document.hidden) void loadParallelRuns();
     }, 2500);
     composerModeSelect.value = readComposerModePreference();
+    applyDensityPreference(densityPreference);
+    applyTerminalPosition(terminalPosition);
     applyPanelPreferences();
     syncInspectorToggle();
     applyLanguage(languagePreference);

@@ -23,7 +23,7 @@
 - Prompt text must not be stored in the public job registry or passed in child argv. It can live in a mode-0600 request/session file under a mode-0700 user state directory, bounded and deleted/retained by policy; disclose that it is locally persisted. Job listings should remain metadata-only.
 - Feasibility decision: proceed with a minimal detached worker spike using a private job ID and fake runner first; do not claim durable resume until process survival, cross-process status/cancel, path/worktree validation, and explicit continuation are covered by tests. Avoid extending the in-memory scheduler into a pretend durable queue.
 - Local process experiment on 2026-09-23 confirmed `spawn(process.execPath, ..., { detached: true, stdio: "ignore" }); child.unref()` survives exit of the parent process and can write a marker afterward. This proves only the Node process-lifecycle primitive, not a complete CLI job worker.
-- Specialist role execution is now wired through `:team plan`: config-defined provider/model/prompt/tool list/budget are resolved by a caller-owned binding; role tool lists are intersected with the global collaboration ceiling and active registry. Default roles also receive the global ceiling. Planner-generated task role labels remain unused as grants.
+- Specialist role execution is wired through both `:team plan` and matching reviewed `:team` workers: config-defined provider/model/prompt/tool list/budget are resolved by a caller-owned binding; role tool lists are intersected with the per-task reviewed scope, global collaboration ceiling, and active registry. Default roles also receive the global ceiling. Planner-generated task role labels remain unused as grants.
 
 
 ## 2026-09-23 latency evidence update
