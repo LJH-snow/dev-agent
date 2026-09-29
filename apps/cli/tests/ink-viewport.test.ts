@@ -1,7 +1,23 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { InkViewportModel } from "../dist/ink/viewport.js";
+import {
+  deriveInkViewportLayout,
+  InkViewportModel,
+} from "../dist/ink/viewport.js";
+
+test("viewport geometry derives navigation from the clamped visible frame", () => {
+  assert.deepEqual(deriveInkViewportLayout(24, 8), {
+    frameRows: 23,
+    visibleRows: 15,
+    navigationRow: 16,
+  });
+  assert.deepEqual(deriveInkViewportLayout(12, 20), {
+    frameRows: 11,
+    visibleRows: 1,
+    navigationRow: 2,
+  });
+});
 
 test("Ink runtime starts at the live bottom of an empty viewport", () => {
   const viewport = new InkViewportModel();

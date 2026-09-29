@@ -67,6 +67,11 @@ No new runtime dependencies; every guard fails closed; bounded I/O only.
 - Targeted Ink/editor/interactive coverage passed **95/95** and the full CLI
   suite passed **757/757** with no failures/cancellations/skips.
 
+## Pre-Ink 7 baseline closure (historical, 2026-09-29)
+
+The following results belong to the original implementation before the Ink
+7.1.1 terminal-lifecycle follow-up. They remain useful as a historical record,
+but the current verification is the Ink 7.1.1 result above.
 
 - RED→GREEN: `tests-dist/ink-editor-suspend.test.js` 12/12 (RED first:
   module import failure, then store/hint failures).

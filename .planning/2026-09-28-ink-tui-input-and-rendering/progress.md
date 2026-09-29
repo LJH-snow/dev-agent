@@ -116,3 +116,80 @@
 | First paste heuristic (any multi-char chunk with a break = paste) broke 4 expect-based PTY tests that send `text\r` as one chunk | Boundary moved to ≥2 line breaks; single trailing break still submits; added script-driver-parity test |
 | Full CLI suite appeared to hang 70+ min | Earlier cause was not established; the pipe-blockage explanation was speculative. `/tmp/cli-full-suite-4.log` was interrupted and is not a valid green run. Use complete redirected logs, bounded test timeouts, and recorded shell exit codes |
 | Oversized-paste e2e initially submitted nothing (stale-closure overwrite under maxFps) | Ref-backed composer state; also bisected the size threshold to confirm it was timing, not size |
+
+## Phase 5 visual regression baseline (started 2026-09-29)
+
+- Chosen approach: use Ink 7.1.1's built-in `renderToString` plus inline,
+  dependency-free snapshots. The repository already has live Ink terminal
+  helpers and `@xterm/headless`; no new runtime dependency is needed.
+- Static snapshots will pin the launch/composer surface, command palette,
+  approval card, and tool timeline while controlling animation frame and clock
+  inputs. A separate live render will pin the screen-reader frame after
+  stripping terminal control sequences.
+
+### Phase 5 verification (complete, 2026-09-29)
+
+- Added `apps/cli/tests/ink-visual-regression.test.ts` with five stable
+  contracts: launch/composer, command palette, approval card, tool timeline,
+  and a live screen-reader approval frame.
+- Targeted visual suite: **5/5 passed**.
+- Source and test TypeScript checks: passed.
+- Full CLI suite after adding the visual baseline: **762/762 passed**, 0
+  failures/cancellations/skips, shell exit code 0; log:
+  `/tmp/cli-ink-visual-regression-full.log`.
+- No new runtime or test dependency was added; existing `@xterm/headless`
+  and Ink terminal helpers remain available for future geometry snapshots.
+
+## Phase 6 focus-aware input ownership (started 2026-09-29)
+
+- Scope: keep the existing single `useInput` stream for cross-cutting terminal
+  events, but make modal ownership explicit through Ink 7.1.1 `useFocus` and
+  `useFocusManager`.
+- Priority order must remain: approval/text prompt → session picker → path
+  completion → command palette → retry → composer/viewport.
+- Ctrl-C, mouse reports, bracketed paste, kitty release filtering, and the
+  post-`:editor` replay guard remain global and must not be intercepted by a
+  focus owner.
+
+### Phase 6 verification (complete, 2026-09-29)
+
+- Added `src/ink/focus-router.ts` with a pure focus-owner resolver and a live
+  Ink registration hook. Priority is prompt → session picker → path completion
+  → command palette → retry → composer.
+- Updated `InkCliApp` to route modal-specific branches through the resolved
+  owner. Ctrl-C, mouse input, paste, kitty filtering, and editor replay
+  suppression remain global.
+- Added `tests/ink-focus-router.test.ts`: resolver matrix plus live owner
+  transitions. Final focus/command-palette/composer/editor interactive
+  coverage: **90/90 passed**.
+- Source and test TypeScript checks passed.
+- Isolated CLI verification excluding the concurrently changing auto-fix CLI
+  test and the environment-sensitive package-install test: **776/776 passed**,
+  0 failures/cancellations/skips; log:
+  `/tmp/cli-ink-focus-full-isolated.log`.
+- The package-install test passed standalone in **49.1s**; the combined run
+  hit its existing 120s in-suite timeout. The concurrently changing
+  `auto-fix-cli.test.ts` also currently fails its own targeted wait, so neither
+  result is attributed to the focus change.
+
+## Phase 7 measured transcript viewport geometry (complete, 2026-09-29)
+
+- Added `deriveInkViewportLayout` to centralize the Ink one-row frame guard,
+  measured bottom-shell subtraction, clamped visible rows, and the one-based
+  navigation row. The outer live frame and IME cursor now use the same geometry.
+- Hardened the `measureElement` pass with safe detached-ref handling. The
+  complete scroll content (welcome, transcript, and dynamic panels) remains the
+  source of `totalRows`; the measured bottom shell drives the available
+  transcript rows.
+- Added viewport geometry unit coverage and expanded the headless navigation
+  screen matrix to include a narrow **20x12** terminal. Streaming follow,
+  manual scroll, Home/End/PageUp/PageDown, and Back-to-bottom behavior remain
+  covered by the existing contracts.
+- Verification: targeted viewport/app/navigation suite **64/64 passed**; the
+  broader Ink/input/editor/visual regression set passed **93/93**. The isolated
+  CLI suite excluding the concurrently changing `auto-fix-cli.test.js` and the
+  environment-sensitive `package-install.test.js` passed **780/780**; log:
+  `/tmp/cli-ink-geometry-full-isolated.log`. `git diff --check` and CLI
+  source/test TypeScript checks passed. Focused logs:
+  `/tmp/cli-viewport-geometry-targeted-2.log` and
+  `/tmp/cli-ink-geometry-regression.log`.

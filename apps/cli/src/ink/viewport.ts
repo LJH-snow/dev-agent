@@ -14,6 +14,41 @@ export interface InkViewportInput {
 }
 
 /**
+ * Ink keeps one physical guard row below the live frame so a full-height
+ * render does not clear the terminal scrollback. The transcript viewport is
+ * the remaining space after the measured bottom shell (navigation, status,
+ * composer, and footer).
+ */
+export const INK_FRAME_GUARD_ROWS = 1;
+
+export interface InkViewportLayout {
+  readonly frameRows: number;
+  readonly visibleRows: number;
+  /** One-based terminal row where the navigation bar is painted. */
+  readonly navigationRow: number;
+}
+
+/**
+ * Derive the live viewport geometry from the terminal frame and the measured
+ * bottom shell. Deriving the navigation row from the clamped visible height
+ * is important for short/narrow terminals: `terminalRows - shellRows` can
+ * point above the actual frame when the shell is taller than the available
+ * area.
+ */
+export function deriveInkViewportLayout(
+  terminalRows: number,
+  shellRows: number,
+): InkViewportLayout {
+  const frameRows = Math.max(0, normalizeRows(terminalRows) - INK_FRAME_GUARD_ROWS);
+  const visibleRows = Math.max(1, frameRows - normalizeRows(shellRows));
+  return {
+    frameRows,
+    visibleRows,
+    navigationRow: visibleRows + 1,
+  };
+}
+
+/**
  * Keeps transcript navigation independent from the runtime event stream.
  * `offset` is the first visible wrapped row, with zero at the oldest row.
  */

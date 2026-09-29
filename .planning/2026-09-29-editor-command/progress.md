@@ -6,14 +6,20 @@
 - Phase 0 (recon) complete; Phase 1 (RED) complete; Phase 2 (implementation)
   complete; Phase 3 (docs) complete; Phase 4 (verification complete; rechecked after Ink 7.1.1 upgrade).
 
+### Pre-Ink 7 baseline (historical)
+
+The initial `:editor` implementation was designed against the pre-upgrade Ink
+runtime. The notes below are retained as historical context; the production
+terminal handoff now uses Ink 7.1.1's public APIs described later in this
+ledger.
+
 ### Phase 0 — recon
 - Command flow: composer submit → `ink.controller.nextPrompt()` →
   `normalizeInteractiveCommand` → `handleCommand` (src/index.ts:5709 area).
   `:editor` is dispatched there; `/editor` normalizes to `:editor`.
-- Render output already flows through `createInkRenderOutput` (rows guard);
-  a new `createGatedWriteOutput` proxy wraps it to pause frame writes.
-- Alternate-screen session exposes idempotent `enter`/`exit`, safe to call
-  around the editor.
+- Render output already flows through `createInkRenderOutput` (rows guard).
+  The first implementation added a `createGatedWriteOutput` proxy and used the
+  existing alternate-screen session to pause frame writes during the editor.
 - Composer state is ref-backed (`composerRef` + `applyComposer`); drafts are
   injected via a new monotonic-id `composerInsert` snapshot field, mirroring
   the paste path.
@@ -29,9 +35,9 @@
 ### Phase 2 — implementation
 - `src/ink/editor-suspend.ts`: resolution ($VISUAL → $EDITOR → vi, single
   token only), token blocklist (`editorTokensAreSafe`), `--` before the only
-  dynamic spawn argument, `shell: false`, gated writes, raw-mode toggle,
-  alt-screen exit/re-enter, bounded read (64KB) + char cap (8,000), temp dir
-  cleanup in `finally`.
+  dynamic spawn argument, `shell: false`, a retained gated-write compatibility
+  helper, bounded read (64KB) + char cap (8,000), and temp-dir cleanup in
+  `finally`.
 - Security-gate iterations: the Mimosa pre-tool-use scanner blocked two
   earlier drafts (env → spawn patterns). Final shape passes: validated single
   command token, fixed argument list `["--", filePath]`, `shell: false`,
@@ -72,6 +78,9 @@
 - Targeted Ink/editor/interactive coverage: **95/95**.
 - Full CLI suite: **757/757 passed**, 0 failures/cancellations/skips; log
   `/tmp/cli-ink7-full-final.log`.
+- Final shell-exit rerun: **757/757 passed**, 0 failures/cancellations/skips,
+  `293978ms`, verified `VERIFIED_SHELL_EXIT_CODE=0`; log
+  `/tmp/cli-ink7-full-final-rerun.log`.
 - Documentation contract: **60/60**; `git diff --check` clean.
 
 ### Verification (final, 2026-09-29)

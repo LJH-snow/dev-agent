@@ -100,7 +100,7 @@ function createScreen(columns: number, rows: number) {
   return { store, resize, terminal, stdin, lines, button, buttonBackground, waitFor, loadTranscript, dispose };
 }
 
-for (const [columns, rows] of [[80, 24], [120, 40], [160, 50]] as const) {
+for (const [columns, rows] of [[20, 12], [80, 24], [120, 40], [160, 50]] as const) {
   test(`Back to bottom highlights only under the pointer on a ${columns}x${rows} terminal`, async () => {
     const screen = createScreen(columns, rows);
     try {

@@ -15,6 +15,7 @@ import {
   type InkRuntimeSnapshot,
 } from "./runtime-store.js";
 import {
+  deriveInkViewportLayout,
   InkViewportModel,
   type InkViewportSnapshot,
 } from "./viewport.js";
@@ -26,6 +27,7 @@ import {
   type MouseMove,
   type MouseWheelDirection,
 } from "./mouse-wheel.js";
+import { KittyQueryResponseFilter } from "./kitty-query-response.js";
 import { RetryPanel } from "./retry-panel.js";
 import { ThinkingIndicator } from "./thinking-indicator.js";
 import { ThoughtLine } from "./thought-line.js";
@@ -43,6 +45,7 @@ import { PlanReviewPanel } from "./plan-review-panel.js";
 import { CollaborationPanel } from "./collaboration-panel.js";
 import { McpPanel } from "./mcp-panel.js";
 import { InkThemeProvider, getInkTheme, useInkTheme } from "./theme.js";
+import { useInkFocusRouter } from "./focus-router.js";
 import {
   completeWorkspacePath,
   type PathCompletionResult,
@@ -87,6 +90,7 @@ export const MAX_PASTE_CHARS = 8_000;
 // CJK composition windows open in the right place. Off by default because the
 // absolute row depends on the terminal honoring the frame-height contract.
 const IME_CURSOR_ENABLED = process.env.DEV_AGENT_IME_CURSOR === "1";
+const DEFAULT_BOTTOM_SHELL_ROWS = 8;
 
 export function InkCliApp({
   store,
@@ -139,12 +143,17 @@ export function InkCliApp({
     (stdout.rows ?? process.stdout.rows ?? 24) - Math.max(0, terminalRowsOffset),
   );
   const shellRef = useRef<DOMElement>(null);
+  // This is the complete scrollable frame (welcome, transcript, and dynamic
+  // panels), not just the currently visible transcript rows. Its measured
+  // height is the source of truth for totalRows.
   const contentRef = useRef<DOMElement>(null);
-  const [shellRows, setShellRows] = useState(8);
+  const [shellRows, setShellRows] = useState(DEFAULT_BOTTOM_SHELL_ROWS);
   const [contentRows, setContentRows] = useState(0);
-  const baseTranscriptRows = Math.max(1, terminalRows - 1 - shellRows);
-  const navigationRow = terminalRows - shellRows;
+  const viewportLayout = deriveInkViewportLayout(terminalRows, shellRows);
+  const visibleTranscriptRows = viewportLayout.visibleRows;
+  const navigationRow = viewportLayout.navigationRow;
   const viewportMouseInput = useRef(new MouseInputParser()).current;
+  const kittyQueryResponseFilter = useRef(new KittyQueryResponseFilter()).current;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const [pasteTruncated, setPasteTruncated] = useState(false);
@@ -184,19 +193,25 @@ export function InkCliApp({
   const [dismissedCommandKey, setDismissedCommandKey] = useState<string | undefined>(undefined);
   const viewportModel = useRef(new InkViewportModel({
     totalRows: 0,
-    visibleRows: baseTranscriptRows,
+    visibleRows: visibleTranscriptRows,
   })).current;
   const [viewport, setViewport] = useState<InkViewportSnapshot>(() =>
     viewportModel.snapshot(),
   );
   // Measure on every commit: panels rendered from component state (path
-  // completion, command palette, queued prompts) change the content height
-  // without touching these deps, and a stale height would clip them.
+  // completion, command palette, queued prompts) change the scroll-content
+  // height, while approval text and wrapped composer input change the bottom
+  // shell height. The next render derives the clipped viewport from the
+  // measured shell instead of relying on fixed row estimates.
   useLayoutEffect(() => {
-    const shellHeight = shellRef.current === null ? 0 : measureElement(shellRef.current).height;
-    const contentHeight = contentRef.current === null ? 0 : measureElement(contentRef.current).height;
-    if (shellHeight > 0 && shellHeight !== shellRows) setShellRows(shellHeight);
-    if (contentHeight > 0 && contentHeight !== contentRows) setContentRows(contentHeight);
+    const shellHeight = measureBoxHeight(shellRef.current);
+    const contentHeight = measureBoxHeight(contentRef.current);
+    if (shellHeight !== undefined && shellHeight > 0 && shellHeight !== shellRows) {
+      setShellRows(shellHeight);
+    }
+    if (contentHeight !== undefined && contentHeight !== contentRows) {
+      setContentRows(contentHeight);
+    }
   });
   const rememberMousePosition = useCallback((position: MouseMove): void => {
     const previous = lastMousePosition.current;
@@ -241,6 +256,13 @@ export function InkCliApp({
   const activeApprovalPrompt = inputSnapshot.approvalPrompt ?? approvalPrompt;
   const activeTextPrompt = inputSnapshot.textPrompt ?? textPrompt;
   const activeInputPrompt = activeTextPrompt ?? activeApprovalPrompt;
+  const { owner: focusOwner } = useInkFocusRouter({
+    activeInputPrompt: activeInputPrompt !== undefined,
+    sessionPicker: snapshot.sessionPicker !== undefined,
+    pathCompletion: pathCompletion !== undefined,
+    commandPalette: suggestions.length > 0,
+    retry: snapshot.retry !== undefined,
+  });
   const displayedSessionId = inputSnapshot.sessionId ?? sessionId;
   const pathCompletionKey = `${value}\u0000${cursor}`;
   const allTranscriptEntries = visibleTranscriptEntries(snapshot);
@@ -254,7 +276,6 @@ export function InkCliApp({
   // from the live answer viewport.
   const navigationHovered = mousePosition !== undefined &&
     isNavigationBarHovered(mousePosition, navigationRow, viewport, columns);
-  const visibleTranscriptRows = baseTranscriptRows;
   const transcriptRows = contentRows;
   // The run summary is a post-run diagnostic: show it once the run has
   // actually settled through the event stream (or under explicit debug), so
@@ -393,6 +414,11 @@ export function InkCliApp({
   });
 
   useInput((input, key) => {
+    const kittyQuery = kittyQueryResponseFilter.push(input);
+    if (kittyQuery.consumed) {
+      if (kittyQuery.input.length === 0) return;
+      input = kittyQuery.input;
+    }
     // Ink 7 detaches its readable listener during suspendTerminal(). A PTY
     // can replay the command bytes that were buffered at the handoff when the
     // listener is reattached; consume one such event before it can submit the
@@ -437,11 +463,11 @@ export function InkCliApp({
     // Some terminals expose Home/End as raw escape sequences without Ink's
     // parsed key flags. Handle those sequences before the generic Escape path.
     const draft = composerRef.current;
+    const sessionPicker = snapshot.sessionPicker;
     const rawHome = input === "\u001b[H" || input === "\u001b[1~";
     const rawEnd = input === "\u001b[F" || input === "\u001b[4~";
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
@@ -452,68 +478,72 @@ export function InkCliApp({
       return;
     }
     if (key.escape) {
-      if (activeInputPrompt !== undefined) {
-        onApprovalAnswer?.("");
-      } else if (snapshot.sessionPicker !== undefined) {
-        onDismissSessionPicker?.();
-      } else if (pathCompletion !== undefined) {
-        dismissedPathKey.current = pathCompletionKey;
-        setPathCompletion(undefined);
-        setPathCompletionIndex(0);
-      } else if (suggestions.length > 0) {
-        setDismissedCommandKey(commandPaletteKey);
-        setSuggestionIndex(0);
-      } else if (snapshot.retry !== undefined) {
-        if (onDismissRetry) {
-          onDismissRetry();
-        } else {
-          store.setRetry(undefined);
-        }
-      } else {
-        onCancel();
+      switch (focusOwner) {
+        case "prompt":
+          onApprovalAnswer?.("");
+          break;
+        case "sessionPicker":
+          onDismissSessionPicker?.();
+          break;
+        case "pathCompletion":
+          dismissedPathKey.current = pathCompletionKey;
+          setPathCompletion(undefined);
+          setPathCompletionIndex(0);
+          break;
+        case "commandPalette":
+          setDismissedCommandKey(commandPaletteKey);
+          setSuggestionIndex(0);
+          break;
+        case "retry":
+          if (onDismissRetry) {
+            onDismissRetry();
+          } else {
+            store.setRetry(undefined);
+          }
+          break;
+        case "composer":
+          onCancel();
+          break;
       }
       return;
     }
-    if (snapshot.sessionPicker !== undefined) {
+    if (focusOwner === "sessionPicker" && sessionPicker !== undefined) {
       if (key.upArrow) {
-        const next = snapshot.sessionPicker.selectedIndex - 1;
+        const next = sessionPicker.selectedIndex - 1;
         store.setSessionPickerIndex(
-          next < 0 ? snapshot.sessionPicker.rows.length - 1 : next,
+          next < 0 ? sessionPicker.rows.length - 1 : next,
         );
         return;
       }
       if (key.downArrow) {
-        const next = snapshot.sessionPicker.selectedIndex + 1;
+        const next = sessionPicker.selectedIndex + 1;
         store.setSessionPickerIndex(
-          next >= snapshot.sessionPicker.rows.length ? 0 : next,
+          next >= sessionPicker.rows.length ? 0 : next,
         );
         return;
       }
       if (key.return) {
-        onSessionResume?.(snapshot.sessionPicker.selectedIndex);
+        onSessionResume?.(sessionPicker.selectedIndex);
         return;
       }
       return;
     }
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       key.pageUp
     ) {
       moveViewport("up");
       return;
     }
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       key.pageDown
     ) {
       moveViewport("down");
       return;
     }
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
@@ -524,8 +554,7 @@ export function InkCliApp({
       return;
     }
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
@@ -536,9 +565,8 @@ export function InkCliApp({
       return;
     }
     if (
-      snapshot.retry !== undefined &&
+      focusOwner === "retry" &&
       !busy &&
-      activeInputPrompt === undefined &&
       draft.value.length === 0 &&
       input.toLowerCase() === "r"
     ) {
@@ -577,30 +605,30 @@ export function InkCliApp({
       submitPrompt(chars.join(""));
       return;
     }
-    if (key.tab && pathCompletion?.suggestions.length) {
+    if (focusOwner === "pathCompletion" && key.tab && pathCompletion?.suggestions.length) {
       choosePathSuggestion(pathCompletionIndex);
       return;
     }
-    if (key.tab && suggestions.length > 0) {
+    if (focusOwner === "commandPalette" && key.tab && suggestions.length > 0) {
       const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
       const selected = Math.min(suggestionIndex, visibleCount - 1);
       const suggestion = suggestions[selected]?.command ?? "";
       applyComposer(suggestion, Array.from(suggestion).length);
       return;
     }
-    if (pathCompletion?.suggestions.length && key.upArrow) {
+    if (focusOwner === "pathCompletion" && pathCompletion?.suggestions.length && key.upArrow) {
       setPathCompletionIndex((index) =>
         index <= 0 ? pathCompletion.suggestions.length - 1 : index - 1,
       );
       return;
     }
-    if (pathCompletion?.suggestions.length && key.downArrow) {
+    if (focusOwner === "pathCompletion" && pathCompletion?.suggestions.length && key.downArrow) {
       setPathCompletionIndex((index) =>
         index >= pathCompletion.suggestions.length - 1 ? 0 : index + 1,
       );
       return;
     }
-    if (suggestions.length > 0 && key.upArrow) {
+    if (focusOwner === "commandPalette" && suggestions.length > 0 && key.upArrow) {
       const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
       setSuggestionIndex((index) => {
         const current = Math.min(Math.max(index, 0), visibleCount - 1);
@@ -608,7 +636,7 @@ export function InkCliApp({
       });
       return;
     }
-    if (suggestions.length > 0 && key.downArrow) {
+    if (focusOwner === "commandPalette" && suggestions.length > 0 && key.downArrow) {
       const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
       setSuggestionIndex((index) =>
         index >= visibleCount - 1 ? 0 : index + 1,
@@ -681,12 +709,18 @@ export function InkCliApp({
       : "Type your message or @path/to/file";
   return (
     <InkThemeProvider theme={getInkTheme(inputSnapshot.theme)}>
-      <Box flexDirection="column" width={columns} height={stdout.isTTY ? terminalRows - 1 : undefined}>
+      <Box flexDirection="column" width={columns} height={stdout.isTTY ? viewportLayout.frameRows : undefined}>
       {/* Non-TTY renders (renderToString) have no fixed viewport to scroll:
           offsetting the content would just amputate its top rows, so the
           scroll offset only applies where the frame is height-constrained. */}
       <Box height={stdout.isTTY ? visibleTranscriptRows : undefined} flexShrink={0} overflow="hidden" flexDirection="column">
-      <Box ref={contentRef} flexShrink={0} flexDirection="column" width={columns} marginTop={stdout.isTTY ? -renderedViewport.offset : undefined}>
+      <Box
+        ref={contentRef}
+        flexShrink={0}
+        flexDirection="column"
+        width={columns}
+        marginTop={stdout.isTTY ? -renderedViewport.offset : undefined}
+      >
         <WelcomePanel provider={provider} model={model} sessionId={displayedSessionId}
           workingDirectory={workingDirectory} executor={executor} mcpCount={mcpCount} columns={columns} />
         <TranscriptViewport
@@ -785,7 +819,7 @@ export function InkCliApp({
               ? `Editor draft truncated to ${MAX_EDITOR_CHARS} characters`
               : undefined}
           imeCursor={IME_CURSOR_ENABLED}
-          terminalRows={terminalRows - 1}
+          terminalRows={viewportLayout.frameRows}
         />
         <Footer
           workingDirectory={workingDirectory}
@@ -806,6 +840,18 @@ export function InkCliApp({
       </Box>
     </InkThemeProvider>
   );
+}
+
+function measureBoxHeight(node: DOMElement | null): number | undefined {
+  if (node === null) return undefined;
+  try {
+    const height = measureElement(node).height;
+    return Number.isFinite(height) ? Math.max(0, Math.floor(height)) : undefined;
+  } catch {
+    // Ink may detach a ref while a render is being replaced. The next commit
+    // will measure the newly attached node.
+    return undefined;
+  }
 }
 
 function WelcomePanel(props: {

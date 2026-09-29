@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-29（CLI TUI measured transcript viewport geometry）
+
+- Transcript scrolling now derives its live frame from Ink `measureElement`
+  measurements of the complete scroll content and bottom shell. Command
+  palette, retry, approval, wrapped composer, and resize changes all update the
+  same viewport geometry instead of relying on fixed row estimates.
+- The one-row Ink frame guard and clamped visible height are centralized in the
+  viewport model; the navigation hit row follows the actual painted frame even
+  on narrow or short terminals.
+- Added 20x12 headless terminal coverage for Back-to-bottom hover/click
+  behavior while retaining streaming follow and manual navigation contracts.
+
+## 2026-09-29（CLI TUI focus-aware input ownership）
+
+- Ink TUI modal input ownership is now explicit through Ink 7.1.1's
+  `useFocus`/`useFocusManager` APIs. Approval/text prompts, session picker,
+  path completion, command palette, retry actions, and the composer follow a
+  deterministic priority without changing existing Tab completion behavior.
+- Cross-cutting terminal handling remains global: Ctrl-C cancellation, mouse
+  reports, bracketed paste, Kitty protocol filtering, and the post-editor input
+  replay guard are not captured by a modal focus owner.
+
 ## 2026-09-29（CLI 升级 Ink 7.1.1）
 
 - CLI rich TTY rendering upgraded from Ink 6.8.0 to Ink 7.1.1. The minimum
