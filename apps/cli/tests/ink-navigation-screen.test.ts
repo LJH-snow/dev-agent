@@ -32,6 +32,7 @@ function createScreen(columns: number, rows: number) {
   }) as Writable & NodeJS.WriteStream;
   Object.assign(physicalOutput, { isTTY: true, columns, rows });
   const store = new InkRuntimeStore();
+  const submitted: string[] = [];
   const instance = render(createElement(InkCliApp, {
     store,
     provider: "fixture",
@@ -40,7 +41,7 @@ function createScreen(columns: number, rows: number) {
     workingDirectory: "/tmp",
     executor: "local",
     terminalRowsOffset: 1,
-    onSubmit: () => undefined,
+    onSubmit: (value: string) => submitted.push(value),
     onCancel: () => undefined,
     onExit: () => undefined,
   }), {
@@ -97,7 +98,14 @@ function createScreen(columns: number, rows: number) {
     Object.assign(physicalOutput, { columns, rows });
     physicalOutput.emit("resize");
   };
-  return { store, resize, terminal, stdin, lines, button, buttonBackground, waitFor, loadTranscript, dispose };
+  const click = (x: number, y: number): void => {
+    stdin.write(`\u001b[<0;${x};${y}M\u001b[<0;${x};${y}m`);
+  };
+  const paintedRow = (needle: string): number | undefined => {
+    const row = lines().findIndex((line) => line.includes(needle));
+    return row < 0 ? undefined : row + 1;
+  };
+  return { store, resize, terminal, stdin, lines, button, buttonBackground, waitFor, loadTranscript, click, paintedRow, submitted, dispose };
 }
 
 for (const [columns, rows] of [[20, 12], [80, 24], [120, 40], [160, 50]] as const) {
@@ -216,5 +224,54 @@ test("oversized paste notice leaves resized navigation and status usable", async
     screen.stdin.write(`\u001b[<0;${position.x};${position.y}M`);
     await screen.waitFor(() => screen.button() === undefined, "paste notice click works");
     assert.ok(screen.lines().some((line) => line.includes("Context:")));
+  } finally { screen.dispose(); }
+});
+
+test("clicking a palette row selects it and clicking again submits it", async () => {
+  const screen = createScreen(80, 24);
+  try {
+    screen.stdin.write(":");
+    await screen.waitFor(() => screen.paintedRow("COMMANDS // DECK") !== undefined, "palette open");
+    const editorRow = screen.paintedRow(":editor");
+    assert.ok(editorRow !== undefined, "editor row painted");
+    assert.ok(screen.paintedRow("› :help") !== undefined, "first row starts selected");
+
+    screen.click(2, editorRow);
+    await screen.waitFor(() => screen.paintedRow("› :editor") !== undefined, "click selects editor row");
+    assert.deepEqual(screen.submitted, []);
+
+    screen.click(2, editorRow);
+    await screen.waitFor(() => screen.submitted.length === 1, "second click submits the command");
+    assert.deepEqual(screen.submitted, [":editor"]);
+    await screen.waitFor(
+      () => screen.paintedRow("COMMANDS // DECK") === undefined,
+      "palette closes after submit",
+    );
+  } finally { screen.dispose(); }
+});
+
+test("clicking a template palette row fills the composer for completion", async () => {
+  const screen = createScreen(80, 24);
+  try {
+    screen.stdin.write(":");
+    await screen.waitFor(() => screen.paintedRow("COMMANDS // DECK") !== undefined, "palette open");
+    const planRow = screen.paintedRow(":plan <request>");
+    assert.ok(planRow !== undefined, "plan row painted");
+
+    screen.click(2, planRow);
+    await screen.waitFor(() => screen.paintedRow("› :plan <request>") !== undefined, "click selects plan row");
+    assert.deepEqual(screen.submitted, []);
+
+    screen.click(2, planRow);
+    await screen.waitFor(
+      () => screen.paintedRow("COMMANDS // DECK") === undefined &&
+        screen.lines().some((line) => line.includes(":plan <request>")),
+      "composer shows the accepted template",
+    );
+    assert.deepEqual(screen.submitted, []);
+
+    screen.stdin.write("\r");
+    await screen.waitFor(() => screen.submitted.length === 1, "Enter submits the filled template");
+    assert.deepEqual(screen.submitted, [":plan <request>"]);
   } finally { screen.dispose(); }
 });

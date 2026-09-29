@@ -14,6 +14,10 @@ import {
   isBackToBottomClick,
   isNavigationBarHovered,
 } from "../dist/ink/app.js";
+import {
+  commandPaletteRowAt,
+  type CommandPaletteLayout,
+} from "../dist/ink/command-palette.js";
 import { InkRuntimeStore } from "../dist/ink/runtime-store.js";
 import {
   createInkRenderOutput,
@@ -222,6 +226,166 @@ test("Ink command palette moves selection with arrows and accepts it with Tab", 
     await new Promise((resolve) => setTimeout(resolve, 40));
     assert.match(writes.join(""), /› :second/);
     assert.deepEqual(submitted, []);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("commandPaletteRowAt maps clicks onto painted rows and rejects other buttons", () => {
+  const layout: CommandPaletteLayout = { top: 10, height: 8 };
+  // Command row 0 is painted at 0-based frame row 12; mouse rows are 1-based.
+  assert.equal(commandPaletteRowAt(
+    { button: 0, y: 13, action: "press" },
+    layout,
+    8,
+  ), 0);
+  assert.equal(commandPaletteRowAt(
+    { button: 0, y: 15, action: "press" },
+    layout,
+    8,
+  ), 2);
+  assert.equal(commandPaletteRowAt(
+    { button: 0, y: 13, action: "release" },
+    layout,
+    8,
+  ), undefined);
+  assert.equal(commandPaletteRowAt(
+    { button: 64, y: 13, action: "press" },
+    layout,
+    8,
+  ), undefined, "wheel events never select rows");
+  assert.equal(commandPaletteRowAt(
+    { button: 32, y: 13, action: "press" },
+    layout,
+    8,
+  ), undefined, "motion events never select rows");
+  assert.equal(commandPaletteRowAt(
+    { button: 2, y: 13, action: "press" },
+    layout,
+    8,
+  ), undefined, "secondary buttons never select rows");
+  assert.equal(commandPaletteRowAt(
+    { button: 0, y: 9, action: "press" },
+    layout,
+    8,
+  ), undefined, "clicks above the first row miss");
+  assert.equal(commandPaletteRowAt(
+    { button: 0, y: 13, action: "press" },
+    undefined,
+    8,
+  ), undefined, "an unmeasured palette has no hit rows");
+  assert.equal(commandPaletteRowAt(
+    { button: 0, y: 13, action: "press" },
+    layout,
+    0,
+  ), undefined, "a closed palette has no hit rows");
+});
+
+test("Ink command palette Enter submits the highlighted command", async () => {
+  const { stdin, stdout } = createInkTerminal();
+  const submitted: string[] = [];
+  const commands = [
+    { command: ":first", description: "First command" },
+    { command: ":second", description: "Second command" },
+  ];
+  const instance = renderInkApp(
+    stdin,
+    stdout,
+    (value) => submitted.push(value),
+    undefined,
+    true,
+    commands,
+  );
+
+  try {
+    stdin.write("/");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, [":second"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("Ink command palette Enter loads a template command into the composer", async () => {
+  const { stdin, stdout } = createInkTerminal();
+  const submitted: string[] = [];
+  const commands = [
+    { command: ":first", description: "First command" },
+    { command: ":plan <request>", description: "Plan command" },
+  ];
+  const instance = renderInkApp(
+    stdin,
+    stdout,
+    (value) => submitted.push(value),
+    undefined,
+    true,
+    commands,
+  );
+
+  try {
+    stdin.write(":");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, []);
+
+    // The template was accepted into the composer; the next Enter submits it.
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, [":plan <request>"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("Ink command palette Enter treats option and bracket templates as composer input", async () => {
+  const { stdin, stdout } = createInkTerminal();
+  const submitted: string[] = [];
+  const commands = [
+    { command: ":mode fast|balanced|deep", description: "Select reasoning mode" },
+    { command: ":history [count]", description: "Show recent session history" },
+  ];
+  const instance = renderInkApp(
+    stdin,
+    stdout,
+    (value) => submitted.push(value),
+    undefined,
+    true,
+    commands,
+  );
+
+  try {
+    stdin.write(":m");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, []);
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, [":mode fast|balanced|deep"]);
+
+    stdin.write(":history");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, [":mode fast|balanced|deep"]);
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, [":mode fast|balanced|deep", ":history [count]"]);
   } finally {
     instance.unmount();
     stdin.destroy();

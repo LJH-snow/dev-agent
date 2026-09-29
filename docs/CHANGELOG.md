@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-30（CLI TUI command palette pointer and Enter acceptance）
+
+- With the command palette open, Enter now acts on the highlighted row instead
+  of submitting the raw composer prefix: complete commands submit directly and
+  template commands with argument placeholders are filled into the composer
+  for completion. A fully typed or accepted command closes the palette so the
+  next Enter submits it.
+- Palette rows are clickable: the palette measures its painted position with
+  Ink `measureElement`, the first click selects a row, and clicking the
+  already-selected row accepts it. Wheel, motion, and non-primary buttons
+  never select rows.
+- Enter right after a click-accept no longer re-accepts the stale palette;
+  the branch recomputes suggestions from the ref-backed composer draft.
+- The Kitty query response filter drops any buffered partial prefix when a
+  turn is submitted, and the unused `flush()` API was removed.
+
 ## 2026-09-29（CLI TUI measured transcript viewport geometry）
 
 - Transcript scrolling now derives its live frame from Ink `measureElement`

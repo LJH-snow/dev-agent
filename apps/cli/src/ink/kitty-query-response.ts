@@ -113,12 +113,12 @@ export class KittyQueryResponseFilter {
     };
   }
 
-  flush(): string {
-    const pending = this.pending;
-    this.pending = "";
-    return pending;
-  }
-
+  /**
+   * Drops any buffered partial prefix. Ink probes the terminal only once at
+   * startup, so a partial that survives to a turn boundary can never complete
+   * into a real response; resetting at submit keeps it from leaking into the
+   * next turn's input.
+   */
   reset(): void {
     this.pending = "";
   }

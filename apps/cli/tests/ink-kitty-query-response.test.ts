@@ -62,6 +62,15 @@ test("preserves ordinary text adjacent to a query response", () => {
   assert.deepEqual(filter.push("0uhello"), { input: "hello", consumed: true });
 });
 
+test("reset drops a buffered partial prefix at a turn boundary", () => {
+  const filter = new KittyQueryResponseFilter();
+
+  assert.deepEqual(filter.push("\u001b[?0"), { input: "", consumed: true });
+  filter.reset();
+  assert.deepEqual(filter.push("u"), { input: "u", consumed: false });
+  assert.deepEqual(filter.push("\u001b[?1u"), { input: "", consumed: true });
+});
+
 test("does not retain an oversized query-like prefix", () => {
   const filter = new KittyQueryResponseFilter();
   const input = `[?${"1".repeat(40)}`;

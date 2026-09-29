@@ -38,6 +38,8 @@ import { MAX_EDITOR_CHARS } from "./editor-suspend.js";
 import {
   COMMAND_PALETTE_VISIBLE,
   CommandPalette,
+  commandPaletteRowAt,
+  type CommandPaletteLayout,
 } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
 import { SessionPicker } from "./session-picker.js";
@@ -189,6 +191,7 @@ export function InkCliApp({
   const [pathCompletion, setPathCompletion] = useState<PathCompletionResult | undefined>(undefined);
   const [pathCompletionIndex, setPathCompletionIndex] = useState(0);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [paletteLayout, setPaletteLayout] = useState<CommandPaletteLayout | undefined>(undefined);
   const dismissedPathKey = useRef<string | undefined>(undefined);
   const [dismissedCommandKey, setDismissedCommandKey] = useState<string | undefined>(undefined);
   const viewportModel = useRef(new InkViewportModel({
@@ -247,6 +250,7 @@ export function InkCliApp({
   const suggestions = dismissedCommandKey === commandPaletteKey
     ? []
     : rawSuggestions;
+  const activePaletteLayout = suggestions.length > 0 ? paletteLayout : undefined;
   const busy = inputSnapshot.busy ||
     (snapshot.state !== "ready" && snapshot.state !== "done" &&
       snapshot.state !== "error" && snapshot.state !== "interrupted");
@@ -314,6 +318,7 @@ export function InkCliApp({
     setSuggestionIndex((current) => visibleCount === 0
       ? 0
       : Math.min(current, visibleCount - 1));
+    if (visibleCount === 0) setPaletteLayout(undefined);
   }, [suggestions.length]);
 
   useEffect(() => {
@@ -349,6 +354,9 @@ export function InkCliApp({
   ]);
 
   const submitPrompt = (submitted: string): void => {
+    // A partial protocol prefix can never complete once the turn ends; drop
+    // it so it cannot leak into the next turn's input.
+    kittyQueryResponseFilter.reset();
     applyComposer("", 0);
     setPasteTruncated(false);
     setHistoryIndex(-1);
@@ -383,6 +391,23 @@ export function InkCliApp({
     if (capped.length < insertion.length) setPasteTruncated(true);
     chars.splice(composerRef.current.cursor, 0, capped.join(""));
     applyComposer(chars.join(""), composerRef.current.cursor + capped.length);
+  };
+
+  // Acts on one highlighted palette row: complete commands submit directly,
+  // template commands with an argument placeholder are filled into the
+  // composer so the user can complete the argument (which also closes the
+  // palette because the filled text no longer prefix-matches any command).
+  const acceptCommandSuggestion = (index: number): void => {
+    const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+    if (visibleCount === 0) return;
+    const selected = Math.min(Math.max(index, 0), visibleCount - 1);
+    const suggestion = suggestions[selected];
+    if (suggestion === undefined) return;
+    if (commandSuggestionNeedsInput(suggestion.command)) {
+      applyComposer(suggestion.command, Array.from(suggestion.command).length);
+    } else {
+      submitPrompt(suggestion.command);
+    }
   };
 
   const choosePathSuggestion = (index: number): void => {
@@ -439,6 +464,23 @@ export function InkCliApp({
     }
     for (const click of mouseInput.clicks) {
       rememberMousePosition({ x: click.x, y: click.y });
+      const paletteRow = focusOwner === "commandPalette"
+        ? commandPaletteRowAt(click, activePaletteLayout, suggestions.length)
+        : undefined;
+      if (paletteRow !== undefined) {
+        // The first click selects the row; clicking the already-selected row
+        // accepts it, mirroring the Enter behavior.
+        const currentSelection = Math.min(
+          Math.max(suggestionIndex, 0),
+          Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length) - 1,
+        );
+        if (paletteRow === currentSelection) {
+          acceptCommandSuggestion(paletteRow);
+        } else {
+          setSuggestionIndex(paletteRow);
+        }
+        continue;
+      }
       if (isBackToBottomClick(
         click,
         navigationRow,
@@ -590,6 +632,22 @@ export function InkCliApp({
       setPasteTruncated(normalized.length > MAX_PASTE_CHARS);
       setEditorTruncated(false);
       insertText(normalized.slice(0, MAX_PASTE_CHARS).join(""));
+      return;
+    }
+    // With the command palette open, Enter acts on the highlighted row instead
+    // of submitting the raw composer draft (which is just the typed prefix,
+    // e.g. "/"). The suggestions are recomputed from the ref-backed draft so a
+    // key event that arrives right after a click accepted a row (before the
+    // next render) falls through to the normal submit path instead of
+    // re-accepting the stale palette.
+    if (
+      focusOwner === "commandPalette" &&
+      key.return &&
+      !key.shift &&
+      suggestions.length > 0 &&
+      commandSuggestions(draft.value, commands).length > 0
+    ) {
+      acceptCommandSuggestion(suggestionIndex);
       return;
     }
     // Some PTYs normalize carriage return to line feed while Ink is in raw
@@ -779,6 +837,7 @@ export function InkCliApp({
             suggestions={suggestions}
             selectedIndex={suggestionIndex}
             columns={columns}
+            onLayout={setPaletteLayout}
           />
         ) : null}
         {pathCompletion?.suggestions.length ? (
@@ -1564,12 +1623,21 @@ function Footer({
   );
 }
 
+function commandSuggestionNeedsInput(command: string): boolean {
+  return /<[^>\r\n]+>|\[[^\r\n\]]+\]|\|/u.test(command);
+}
+
 function commandSuggestions(
   value: string,
   commands: readonly CommandHint[],
 ): readonly CommandHint[] {
   const prefix = value.trimStart();
   if (!prefix.startsWith(":") && !prefix.startsWith("/")) {
+    return [];
+  }
+  // A fully typed or accepted command closes the palette; otherwise it would
+  // keep prefix-matching itself and Enter could never submit it.
+  if (commands.some((command) => command.command === prefix)) {
     return [];
   }
   const normalized = prefix.slice(1).toLowerCase();
