@@ -12,10 +12,13 @@ const MAX_FAILURE_SUMMARY_CHARS = 3_200;
 const MAX_FAILURE_LINE_CHARS = 640;
 const MAX_CHECKS_IN_SUMMARY = 8;
 
+export type AutoFixAction = "review" | "apply" | "discard";
+
 export type AutoFixCommand =
   | { readonly handled: false }
   | {
       readonly handled: true;
+      readonly action?: AutoFixAction;
       readonly attempts?: number;
       readonly error?: string;
     };
@@ -78,6 +81,10 @@ export function parseAutoFixCommand(value: string): AutoFixCommand {
   }
   if (tokens.length === 1) {
     return { handled: true, attempts: DEFAULT_AUTO_FIX_ATTEMPTS };
+  }
+  const action = tokens[1]?.toLowerCase();
+  if (tokens.length === 2 && (action === "review" || action === "apply" || action === "discard")) {
+    return { handled: true, action };
   }
   if (tokens.length !== 2 || !/^\d+$/u.test(tokens[1] ?? "")) {
     return { handled: true, error: "Usage: :autofix [1-3]" };

@@ -56,6 +56,18 @@ test("parseAutoFixCommand accepts bounded attempts and slash aliases", () => {
   assert.deepEqual(parseAutoFixCommand(":autofix"), { handled: true, attempts: 2 });
   assert.deepEqual(parseAutoFixCommand("/autofix 1"), { handled: true, attempts: 1 });
   assert.deepEqual(parseAutoFixCommand(":autofix 3"), { handled: true, attempts: 3 });
+  assert.deepEqual(parseAutoFixCommand(":autofix review"), {
+    handled: true,
+    action: "review",
+  });
+  assert.deepEqual(parseAutoFixCommand("/autofix apply"), {
+    handled: true,
+    action: "apply",
+  });
+  assert.deepEqual(parseAutoFixCommand(":autofix discard"), {
+    handled: true,
+    action: "discard",
+  });
   assert.deepEqual(parseAutoFixCommand(":autofixer"), { handled: false });
   assert.deepEqual(parseAutoFixCommand(":autofix 0"), {
     handled: true,
