@@ -146,6 +146,19 @@ export function buildAutoFixPrompt(
 export async function runAutoFixLoop(
   options: AutoFixLoopOptions,
 ): Promise<AutoFixLoopResult> {
+  if (
+    !Number.isSafeInteger(options.maxAttempts) ||
+    options.maxAttempts < 1 ||
+    options.maxAttempts > MAX_AUTO_FIX_ATTEMPTS
+  ) {
+    return {
+      status: "failed",
+      context: options.context,
+      attempts: 0,
+      message: "Auto-fix attempt budget must be between 1 and 3.",
+    };
+  }
+  const maxAttempts = options.maxAttempts;
   let currentContext = options.context;
   let target = await loadTarget(options);
   if (target === undefined) {
@@ -168,12 +181,16 @@ export async function runAutoFixLoop(
       };
     }
 
+    const progressSummary = compactFailureText(
+      summarizeValidationFailure(target.validation),
+      MAX_FAILURE_LINE_CHARS,
+    );
     options.onProgress?.(
-      `Auto-fix attempt ${attempt}/${options.maxAttempts} · ${target.validation.status}: ${target.validation.summary}`,
+      `Auto-fix attempt ${attempt}/${maxAttempts} · ${progressSummary}`,
     );
     const beforeValidationIds = new Set(options.validations.map((result) => result.validationId));
     const repair = await options.runRepair(
-      buildAutoFixPrompt(target, attempt, options.maxAttempts),
+      buildAutoFixPrompt(target, attempt, maxAttempts),
     );
     if (repair.cancelled || options.signal?.aborted) {
       return {
@@ -240,7 +257,7 @@ export async function runAutoFixLoop(
       summary: summarizeValidationFailure(validation),
     };
 
-    if (attempt === options.maxAttempts) {
+    if (attempt === maxAttempts) {
       return {
         status: "exhausted",
         context: currentContext,
@@ -256,7 +273,7 @@ export async function runAutoFixLoop(
   return {
     status: "exhausted",
     context: currentContext,
-    attempts: options.maxAttempts,
+    attempts: maxAttempts,
     validation: target.validation,
     message: "Auto-fix stopped before validation passed.",
   };

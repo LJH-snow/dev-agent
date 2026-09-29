@@ -19,7 +19,7 @@ await build({
   bundle: true,
   format: "esm",
   platform: "node",
-  target: "node20",
+  target: "node22",
   // TypeScript exposes a CommonJS runtime that uses Node's dynamic require.
   // Keep it as an ordinary npm dependency instead of emitting an ESM shim that
   // cannot load Node built-ins after installation.

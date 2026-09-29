@@ -122,9 +122,26 @@ export interface InkMcpSnapshot {
   readonly updatedAt?: string;
 }
 
+export interface InkConversationStatus {
+  readonly sessionId: string;
+  readonly provider: string;
+  readonly model: string;
+  /** Provider-reported input tokens for the latest request, never session totals. */
+  readonly promptTokens?: number;
+}
+
+export interface InkComposerInsert {
+  /** Monotonic id so repeated identical inserts still retrigger the app effect. */
+  readonly id: number;
+  readonly value: string;
+  readonly truncated: boolean;
+}
+
 export interface InkRuntimeSnapshot extends TuiStateSnapshot {
+  readonly conversation?: InkConversationStatus;
   readonly notices: readonly string[];
   readonly summary?: InkRunSummary;
+  readonly summaryAnnounced: boolean;
   readonly speedMode: "fast" | "balanced" | "deep";
   readonly committedTranscript: readonly TuiTranscriptEntry[];
   readonly thought: InkThoughtSnapshot;
@@ -134,13 +151,29 @@ export interface InkRuntimeSnapshot extends TuiStateSnapshot {
   readonly plan?: InkPlanState;
   readonly collaboration?: InkCollaborationSnapshot;
   readonly mcp?: InkMcpSnapshot;
+  readonly composerInsert?: InkComposerInsert;
+  /** Suppress one stale input event replayed when Ink resumes a suspension. */
+  readonly inputSuppressed?: boolean;
 }
 
 export class InkRuntimeStore {
   private readonly model = new TuiSessionModel();
   private queuedPrompts: string[] = [];
   private notices: string[] = [];
+  private conversation: InkConversationStatus | undefined;
+
+  setConversation(status: InkConversationStatus): void {
+    this.conversation = { ...status };
+    this.publish();
+  }
   private summary: InkRunSummary | undefined;
+  /**
+   * A summary is user-visible only after its run actually settled through the
+   * event stream. Summaries injected before any run (restored state, tests,
+   * pre-population) stay hidden so stale `[timing]`/`[state=]` diagnostics do
+   * not announce themselves on launch.
+   */
+  private summaryAnnounced = false;
   private speedMode: InkRuntimeSnapshot["speedMode"] = "balanced";
   private historyView: InkHistoryView | undefined;
   private sessionPicker: InkSessionPicker | undefined;
@@ -154,6 +187,9 @@ export class InkRuntimeStore {
   private plan: InkPlanState | undefined;
   private collaboration: InkCollaborationSnapshot | undefined;
   private mcp: InkMcpSnapshot | undefined;
+  private composerInsert: InkComposerInsert | undefined;
+  private composerInsertId = 0;
+  private inputSuppressed = false;
   private readonly lastThoughtSequenceBySession = new Map<string, number>();
   private snapshotValue: InkRuntimeSnapshot = this.buildSnapshot();
   private readonly listeners = new Set<() => void>();
@@ -184,7 +220,14 @@ export class InkRuntimeStore {
     } finally {
       this.applyingRuntimeEvent = false;
     }
+    if (event.type === "usage.reported" && this.conversation?.sessionId === event.sessionId && shouldProjectThought) {
+      this.conversation = { ...this.conversation, promptTokens: event.data.promptTokens };
+    }
     if (event.type === "run.started") {
+      if (this.conversation) this.conversation = {
+        sessionId: event.sessionId, provider: this.conversation.provider, model: event.data.model ?? this.conversation.model,
+      };
+      this.summaryAnnounced = false;
       this.commitPromptTranscript(event.runId);
     }
     if (
@@ -192,6 +235,7 @@ export class InkRuntimeStore {
       event.type === "run.interrupted" ||
       event.type === "run.failed"
     ) {
+      this.summaryAnnounced = true;
       this.commitTranscript(event.runId);
     }
     if (shouldProjectThought) {
@@ -206,13 +250,28 @@ export class InkRuntimeStore {
   }
 
   addNotice(notice: string): void {
-    if (notice.trim() === "") return;
-    this.notices = [...this.notices, notice];
-    this.publish();
+    this.addNoticeInternal(notice, false);
+  }
+
+  /**
+   * Retains routine diagnostics only when the user explicitly enables the
+   * debug surface. Actionable notices continue to use addNotice so callers
+   * cannot accidentally hide failures or approval prompts.
+   */
+  addDiagnostic(notice: string): void {
+    this.addNoticeInternal(notice, true);
   }
 
   clearNotices(): void {
     this.notices = [];
+    this.publish();
+  }
+
+  private addNoticeInternal(notice: string, diagnostic: boolean): void {
+    const normalized = notice.trim();
+    if (normalized === "") return;
+    if ((diagnostic || /^\[(route|state|timing|usage)\]/u.test(normalized)) && process.env.DEV_AGENT_TUI_DEBUG !== "1") return;
+    this.notices = [...this.notices.filter((item) => item !== notice).slice(-49), notice];
     this.publish();
   }
 
@@ -262,6 +321,23 @@ export class InkRuntimeStore {
 
   setRetry(retry: InkRetryState | undefined): void {
     this.retry = retry === undefined ? undefined : { ...retry };
+    this.publish();
+  }
+
+  /**
+   * Queues external content (for example an `:editor` draft) into the
+   * composer. The app consumes it exactly once per id and applies it to the
+   * ref-backed composer state.
+   */
+  setComposerInsert(value: string, truncated: boolean): void {
+    this.composerInsertId += 1;
+    this.composerInsert = { id: this.composerInsertId, value, truncated };
+    this.publish();
+  }
+
+  setInputSuppressed(suppressed: boolean): void {
+    if (this.inputSuppressed === suppressed) return;
+    this.inputSuppressed = suppressed;
     this.publish();
   }
 
@@ -423,10 +499,12 @@ export class InkRuntimeStore {
   }
 
   reset(): void {
+    this.conversation = undefined;
     this.model.reset();
     this.queuedPrompts = [];
     this.notices = [];
     this.summary = undefined;
+    this.summaryAnnounced = false;
     this.historyView = undefined;
     this.sessionPicker = undefined;
     this.committedTranscript = [];
@@ -446,8 +524,10 @@ export class InkRuntimeStore {
   private buildSnapshot(): InkRuntimeSnapshot {
     return {
       ...this.model.snapshot(),
+      ...(this.conversation === undefined ? {} : { conversation: { ...this.conversation } }),
       queuedPrompts: [...this.queuedPrompts],
       notices: [...this.notices],
+      summaryAnnounced: this.summaryAnnounced,
       speedMode: this.speedMode,
       committedTranscript: this.committedTranscript.map((entry) => ({ ...entry })),
       thought: {
@@ -475,6 +555,10 @@ export class InkRuntimeStore {
             },
           }),
       ...(this.retry === undefined ? {} : { retry: { ...this.retry } }),
+      ...(this.composerInsert === undefined
+        ? {}
+        : { composerInsert: { ...this.composerInsert } }),
+      ...(this.inputSuppressed ? { inputSuppressed: true } : {}),
       ...(this.plan === undefined
         ? {}
         : {

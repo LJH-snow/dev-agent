@@ -1,5 +1,16 @@
 # Findings — Ink TUI Input and Rendering
 
+## Ink 7.1.1 upgrade result (2026-09-29)
+
+- `apps/cli` now depends on `ink ^7.1.1`; the lockfile resolves Ink 7.1.1 with
+  React 19.3.0 and Node.js 26 satisfies the package's `>=22` engine.
+- Ink 7.1.1 exposes the native capabilities that the earlier Ink 6.8 audit
+  marked unavailable: `usePaste`, `alternateScreen`, and `suspendTerminal`.
+- Production now uses `render(..., {alternateScreen})`, `usePaste`, and
+  `useApp().suspendTerminal`; the private Ink 6 event-emitter path is gone.
+- The older Ink 6.8 API findings below are historical evidence from the prior
+  dependency state and are superseded for current implementation decisions.
+
 Recon done 2026-09-28 from the Ink repository (github.com/vadimdemedes/ink, README + docs) and a usage inventory of `apps/cli/src`.
 
 ## Requirements

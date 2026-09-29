@@ -1,5 +1,125 @@
 # Changelog
 
+## 2026-09-29（CLI 升级 Ink 7.1.1）
+
+- CLI rich TTY rendering upgraded from Ink 6.8.0 to Ink 7.1.1. The minimum
+  supported Node.js version is now 22, matching Ink 7's runtime requirement.
+- Interactive rendering now opts into Ink's native `alternateScreen` render
+  option when `DEV_AGENT_TUI_ALT_SCREEN=1`; the old project-owned wrapper is no
+  longer part of the production lifecycle.
+- `:editor` now uses Ink's native `suspendTerminal` API to hand the terminal to
+  `$VISUAL`/`$EDITOR` and force a clean redraw on resume.
+- Bracketed paste handling now uses Ink's native `usePaste` hook, while the
+  existing bounded composer fallback remains for terminals that do not emit
+  bracketed-paste markers.
+- Updated package manifests, doctor checks, documentation, and manifest tests
+  for the Ink 7 / Node.js 22 baseline.
+
+## 2026-09-29（CLI command palette keyboard selection）
+
+- Command suggestions opened with `:` or `/` now support `↑`/`↓` navigation with wraparound.
+- The active command is rendered as a full-row themed highlight; `Tab` inserts the selected command, and `Esc` closes the palette without cancelling the Ink session.
+
+## 2026-09-29（CLI `:editor` external editor composition）
+
+- New `:editor` command (also `/editor`) for idle interactive Ink sessions:
+  it suspends the TUI, opens `$VISUAL`/`$EDITOR` (fallback `vi`) on a private
+  temp file, and loads the saved content into the composer draft for review.
+  Nothing is submitted automatically.
+- The editor value must name a single executable. It is resolved from
+  `$VISUAL` → `$EDITOR` → `vi` and spawned through an argument array with
+  `shell: false` and an explicit `--` before the temp file path. Values with
+  shell metacharacters or extra tokens (flags such as `code -w`) are refused
+  fail-closed; use a wrapper script for flags.
+- Suspension pauses Ink frame writes through a new gated output wrapper,
+  exits the opt-in alternate screen, and disables raw mode; resume restores
+  raw mode, re-enters the alternate screen, and unpauses before the outcome
+  notice. The interactive SIGINT handler is detached while the editor owns
+  the terminal, so a Ctrl-C that kills the editor does not cancel the session.
+- Editor output is normalized (CRLF → LF, one trailing newline stripped),
+  read with a 64KB byte cap, capped at 8,000 characters with an explicit
+  truncation notice, and inserted into the composer through a monotonic-id
+  `composerInsert` on the runtime snapshot (same ref-backed application as
+  paste). Temp files are private (0600) and removed on every exit path.
+- Refusals (non-TTY, unsupported platform, unsupported editor value) and
+  failures (exit code, signal, start error) report bounded messages without
+  editor output. Piped, JSON, `--once`, and MCP server modes are unaffected.
+- Added unit coverage (resolution, safety, gating, suspend/resume order,
+  outcomes), a composer-insert component test, and a real-PTY happy-path
+  test. The command is advertised in `:help` and the command palette.
+
+## 2026-09-29（CLI TUI alternate-screen mode）
+
+- Added an opt-in `DEV_AGENT_TUI_ALT_SCREEN=1` alternate-screen wrapper for
+  interactive Ink sessions. On TTY stdout it sends `CSI ?1049h` before the first
+  frame and `CSI ?1049l` after the final Ink unmount, keeping normal scrollback
+  intact while the full-screen TUI is active.
+- The wrapper is disabled by default, never affects pipes or non-interactive
+  modes, makes enter/exit idempotent, and registers a best-effort process-exit
+  restoration hook. `SIGKILL` and other uncatchable termination cannot guarantee
+  that the primary screen is restored.
+- Added unit coverage for opt-in gating, failure-safe cleanup, idempotence, and
+  process-exit restoration, plus PTY smoke coverage for sequence ordering.
+- The installed Ink 6.8.0 version has no public native `alternateScreen` render
+  option. Ink upstream has already merged the native API in commit `5a60eb9`;
+  this project retains its local wrapper until a compatible Ink upgrade is
+  selected. No duplicate upstream PR is needed.
+
+## 2026-09-28（CLI managed scrolling and conversation status）
+
+- Welcome, transcript, and notices share a measured scroll area from startup.
+  Composer height and live resize drive viewport and navigation hit geometry;
+  the terminal row guard and standard renderer are preserved.
+- Routine route and run diagnostics are quiet by default, with explicit
+  `:route`/`:trace` access and `DEV_AGENT_TUI_DEBUG=1` opt-in verbosity.
+  Notice retention is deduplicated and bounded to 50, separately from approvals.
+- Composer status shows active provider/model and last-request input tokens.
+  Unknown context limits remain explicit; session token totals are not treated
+  as context utilization. Multiline drafts retain their full submission value.
+- Added headless terminal checks for startup scrolling, compact/large terminals,
+  composer growth, resize, painted hover/click targets, and model/session status.
+
+
+## 2026-09-28（CLI TUI shared animation clock and render-jank probe）
+
+- The five decorative TUI animations (status line, thinking glyph, thought
+  line, command palette, approval pulse) now share one 180ms clock in
+  `src/ink/animation-clock.ts` instead of running one `setInterval` each. The
+  timer starts with the first subscriber, stops with the last, and is
+  `unref()`ed so it never keeps the process alive. Animated components accept
+  inline callbacks (the tick handler lives in a ref), with local tick counts
+  and reset keys; status advances every second tick. Screen-reader freeze is
+  preserved. Timer consolidation is not a measured FPS/latency improvement.
+- New optional render-jank probe: `DEV_AGENT_TUI_RENDER_METRICS=1` collects
+  slow-render count and maximum time above the exact `1000 / 15` ms budget.
+  Constant-space collection does no I/O in `onRender`; after normal unmount
+  it emits at most one `[tui-render] slow frames: …` stderr summary. Writing
+  stderr inside `onRender` is unsafe because Ink can restore/re-render output.
+  Off by default; abrupt termination may lose the summary.
+- The standard log-update renderer stays in place; `incrementalRendering`
+  remains disabled under the existing cursor-row rationale. No new manual
+  real-terminal verification or render-performance benchmark was performed.
+
+## 2026-09-28（CLI TUI screen-reader mode）
+
+- New screen-reader mode for the Ink TUI, enabled with `INK_SCREEN_READER=true`
+  (or ink's `isScreenReaderEnabled` render option): the frame renders
+  unthrottled as flattened text, where box `aria-role`/`aria-state` surface as
+  `role:` prefixes and `(busy)` markers.
+- Decorative animations freeze into deterministic text in this mode:
+  `RotatingStatus` renders its current status label instead of cycling frames,
+  `ThinkingIndicator`'s spinner glyph is omitted, `ThoughtLine`,
+  `CommandPalette`, and `ApprovalCard` stop their 180ms timers so a screen
+  reader gets one announcement instead of a stream of near-identical frames.
+- Pending approval cards announce `(busy)` while awaiting a decision, and
+  running tool cards in the timeline announce `(busy)` until they finish.
+- This closes the CLI side of assistive-tech support. The separately recorded
+  Desktop (HTML) screen-reader-announcement deferral still stands; it needs a
+  browser harness and is not affected by this change.
+- Note: the earlier composer paste work also landed in this release cycle
+  (bounded multi-line paste blocks, kitty-keyboard Shift+Enter, ref-backed
+  composer state, opt-in `DEV_AGENT_IME_CURSOR` IME cursor).
+
 ## 2026-09-28（desktop scheduled background tasks）
 
 - New bounded local scheduler (`apps/desktop/src/scheduled-tasks.ts`):

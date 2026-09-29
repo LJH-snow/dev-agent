@@ -163,3 +163,109 @@ test("runAutoFixLoop reports no target without invoking the agent", async () => 
   assert.equal(result.attempts, 0);
   assert.equal(invoked, false);
 });
+
+test("runAutoFixLoop rejects an attempt budget outside the CLI bound", async () => {
+  let invoked = false;
+  const result = await runAutoFixLoop({
+    context: context(),
+    validations: [validation("failed", "validation:failed")],
+    maxAttempts: 4,
+    runRepair: async () => {
+      invoked = true;
+      return { context: context("unexpected") };
+    },
+  });
+
+  assert.equal(result.status, "failed");
+  assert.equal(result.attempts, 0);
+  assert.match(result.message, /between 1 and 3/);
+  assert.equal(invoked, false);
+});
+
+test("runAutoFixLoop keeps progress notices redacted", async () => {
+  const failed = {
+    ...validation("failed", "validation:raw"),
+    summary: "password=secret /tmp/auto-fix-workspace/failure.ts",
+  };
+  const progress: string[] = [];
+  const result = await runAutoFixLoop({
+    context: context(),
+    validations: [failed],
+    maxAttempts: 2,
+    onProgress: (message) => progress.push(message),
+    runRepair: async () => ({ cancelled: true }),
+  });
+
+  assert.equal(result.status, "cancelled");
+  assert.equal(progress.length, 1);
+  assert.doesNotMatch(progress[0]!, /secret/);
+  assert.doesNotMatch(progress[0]!, /auto-fix-workspace/);
+});
+
+test("runAutoFixLoop reports exhaustion after the requested retries", async () => {
+  const validations: ValidationResult[] = [validation("failed", "validation:failed")];
+  let repairs = 0;
+  let reruns = 0;
+  const result = await runAutoFixLoop({
+    context: context(),
+    validations,
+    maxAttempts: 2,
+    runRepair: async () => {
+      repairs += 1;
+      return { context: context(`after-${repairs}`) };
+    },
+    rerunValidation: async (changeSetId) => {
+      reruns += 1;
+      return validation("failed", `validation:rerun-${reruns}`, changeSetId);
+    },
+    onValidation: (next) => {
+      validations.push(next);
+    },
+  });
+
+  assert.equal(result.status, "exhausted");
+  assert.equal(result.attempts, 2);
+  assert.equal(repairs, 2);
+  assert.equal(reruns, 2);
+});
+
+test("runAutoFixLoop stops before repair when cancelled", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let invoked = false;
+  const result = await runAutoFixLoop({
+    context: context(),
+    validations: [validation("failed", "validation:failed")],
+    maxAttempts: 2,
+    signal: controller.signal,
+    runRepair: async () => {
+      invoked = true;
+      return { context: context("unexpected") };
+    },
+  });
+
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.attempts, 0);
+  assert.equal(invoked, false);
+});
+
+test("runAutoFixLoop reports a blocked trusted rerun without another repair", async () => {
+  let invoked = false;
+  const result = await runAutoFixLoop({
+    context: context(),
+    validations: [validation("failed", "validation:failed")],
+    maxAttempts: 2,
+    runRepair: async () => {
+      invoked = true;
+      return { context: context("after-repair") };
+    },
+    rerunValidation: async () => {
+      throw new Error("postimage conflict at /tmp/auto-fix-workspace/file.ts");
+    },
+  });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.attempts, 1);
+  assert.equal(invoked, true);
+  assert.doesNotMatch(result.message, /auto-fix-workspace/);
+});

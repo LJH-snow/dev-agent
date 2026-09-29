@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore, useState } from "react";
-import { Box, Static, Text, measureElement, useCursor, useInput, useStdin, useStdout, type DOMElement } from "ink";
+import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore, useState } from "react";
+import { Box, Text, measureElement, useApp, useCursor, useInput, usePaste, useStdin, useStdout, type DOMElement, type SuspendTerminal } from "ink";
 
 import {
   DEFAULT_COMMAND_HINTS,
@@ -32,7 +32,11 @@ import { ThoughtLine } from "./thought-line.js";
 import { RotatingStatus } from "./rotating-status.js";
 import { ToolTimeline } from "./tool-timeline.js";
 import { MarkdownView, measureMarkdownRows } from "./markdown.js";
-import { CommandPalette } from "./command-palette.js";
+import { MAX_EDITOR_CHARS } from "./editor-suspend.js";
+import {
+  COMMAND_PALETTE_VISIBLE,
+  CommandPalette,
+} from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
 import { SessionPicker } from "./session-picker.js";
 import { PlanReviewPanel } from "./plan-review-panel.js";
@@ -43,12 +47,6 @@ import {
   completeWorkspacePath,
   type PathCompletionResult,
 } from "../path-completion.js";
-
-type InkStaticItem =
-  | {
-      readonly kind: "welcome";
-      readonly id: "signal-loom-welcome";
-    };
 
 export interface InkCliAppProps {
   readonly store: InkRuntimeStore;
@@ -71,6 +69,7 @@ export interface InkCliAppProps {
   readonly onDismissRetry?: () => void;
   readonly onSessionResume?: (index: number) => void;
   readonly onDismissSessionPicker?: () => void;
+  readonly onSuspendTerminalReady?: (suspendTerminal: SuspendTerminal) => void;
 }
 
 const EMPTY_UI_SNAPSHOT: InkUiSnapshot = {
@@ -80,12 +79,6 @@ const EMPTY_UI_SNAPSHOT: InkUiSnapshot = {
 };
 const NOOP_SUBSCRIBE = (): (() => void) => () => undefined;
 const EMPTY_GET_SNAPSHOT = (): InkUiSnapshot => EMPTY_UI_SNAPSHOT;
-// The fixed bottom shell uses eight rows (navigation + status + composer +
-// footer). The guarded inline Ink render leaves two physical rows below the
-// footer, so mouse reports for the painted navigation row use the physical
-// screen row (terminalRows - 9). Verified at multiple sizes by screen tests.
-const BOTTOM_SHELL_ROWS = 8;
-const NAVIGATION_ROW_FROM_BOTTOM = BOTTOM_SHELL_ROWS + 1;
 // Pasted blocks land in the composer capped at this many characters so a
 // runaway clipboard cannot stall the frame loop; anything beyond is dropped
 // and surfaced as a one-line notice above the composer.
@@ -116,6 +109,7 @@ export function InkCliApp({
   onDismissRetry,
   onSessionResume,
   onDismissSessionPicker,
+  onSuspendTerminalReady,
 }: InkCliAppProps): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     store.subscribe,
@@ -128,23 +122,33 @@ export function InkCliApp({
     controller === undefined ? EMPTY_GET_SNAPSHOT : controller.snapshot.bind(controller),
   );
   const { stdout, write } = useStdout();
-  const { internal_eventEmitter, isRawModeSupported } = useStdin();
-  const columns = Math.max(52, stdout.columns ?? process.stdout.columns ?? 80);
+  const { suspendTerminal } = useApp();
+  const { isRawModeSupported } = useStdin();
+  useEffect(() => {
+    onSuspendTerminalReady?.(suspendTerminal);
+  }, [onSuspendTerminalReady, suspendTerminal]);
+  const [, resize] = useState(0);
+  useEffect(() => {
+    const changed = (): void => resize((n) => n + 1);
+    stdout.on("resize", changed);
+    return () => { stdout.off("resize", changed); };
+  }, [stdout]);
+  const columns = Math.max(20, stdout.columns ?? process.stdout.columns ?? 80);
   const terminalRows = Math.max(
     12,
     (stdout.rows ?? process.stdout.rows ?? 24) - Math.max(0, terminalRowsOffset),
   );
-  // Leave room for the status line, composer, footer, transient panels, and
-  // one bottom navigation slot. The navigation slot stays reserved even when
-  // its label is hidden, so entering/leaving history does not make the
-  // transcript jump under the composer. The task header is accounted for
-  // after the current transcript is known below.
-  const baseTranscriptRows = Math.max(4, terminalRows - 15);
+  const shellRef = useRef<DOMElement>(null);
+  const contentRef = useRef<DOMElement>(null);
+  const [shellRows, setShellRows] = useState(8);
+  const [contentRows, setContentRows] = useState(0);
+  const baseTranscriptRows = Math.max(1, terminalRows - 1 - shellRows);
+  const navigationRow = terminalRows - shellRows;
   const viewportMouseInput = useRef(new MouseInputParser()).current;
-  const composerMouseInput = useRef(new MouseInputParser()).current;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const [pasteTruncated, setPasteTruncated] = useState(false);
+  const [editorTruncated, setEditorTruncated] = useState(false);
   // Composer text lives in a ref alongside the render state: input events can
   // arrive between throttled frames (maxFps), and a handler reading render
   // state would apply edits against a stale draft and silently drop content.
@@ -154,23 +158,46 @@ export function InkCliApp({
     setValue(nextValue);
     setCursor(nextCursor);
   }, []);
+  // External editor drafts (`:editor`) arrive through the runtime store. The
+  // monotonic id makes repeated inserts of identical text effective, and the
+  // same ref-backed application as paste keeps throttled frames from losing
+  // the content.
+  const lastComposerInsertIdRef = useRef(0);
+  const composerInsert = snapshot.composerInsert;
+  useEffect(() => {
+    if (composerInsert === undefined || composerInsert.id === lastComposerInsertIdRef.current) {
+      return;
+    }
+    lastComposerInsertIdRef.current = composerInsert.id;
+    applyComposer(composerInsert.value, Array.from(composerInsert.value).length);
+    setPasteTruncated(false);
+    setEditorTruncated(composerInsert.truncated);
+  }, [composerInsert, applyComposer]);
   const [mousePosition, setMousePosition] = useState<MouseMove | undefined>(undefined);
   const lastMousePosition = useRef<MouseMove | undefined>(undefined);
   const [history, setHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pathCompletion, setPathCompletion] = useState<PathCompletionResult | undefined>(undefined);
   const [pathCompletionIndex, setPathCompletionIndex] = useState(0);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
   const dismissedPathKey = useRef<string | undefined>(undefined);
+  const [dismissedCommandKey, setDismissedCommandKey] = useState<string | undefined>(undefined);
   const viewportModel = useRef(new InkViewportModel({
     totalRows: 0,
     visibleRows: baseTranscriptRows,
   })).current;
-  const staticItems = useRef<InkStaticItem[]>([
-    { kind: "welcome", id: "signal-loom-welcome" },
-  ]).current;
   const [viewport, setViewport] = useState<InkViewportSnapshot>(() =>
     viewportModel.snapshot(),
   );
+  // Measure on every commit: panels rendered from component state (path
+  // completion, command palette, queued prompts) change the content height
+  // without touching these deps, and a stale height would clip them.
+  useLayoutEffect(() => {
+    const shellHeight = shellRef.current === null ? 0 : measureElement(shellRef.current).height;
+    const contentHeight = contentRef.current === null ? 0 : measureElement(contentRef.current).height;
+    if (shellHeight > 0 && shellHeight !== shellRows) setShellRows(shellHeight);
+    if (contentHeight > 0 && contentHeight !== contentRows) setContentRows(contentHeight);
+  });
   const rememberMousePosition = useCallback((position: MouseMove): void => {
     const previous = lastMousePosition.current;
     if (previous?.x === position.x && previous.y === position.y) return;
@@ -189,48 +216,22 @@ export function InkCliApp({
     setViewport(next);
   }, [viewportModel]);
 
+  // Ink 7 keeps its stdin event emitter private. Enable mouse reports through
+  // the public stream writer, then consume those reports in the single
+  // useInput router below so mouse bytes never reach the composer.
   useEffect(() => {
     if (!isRawModeSupported) return;
-    const handleMouseInput = (input: string): void => {
-      const parsed = viewportMouseInput.push(input);
-      for (const direction of parsed.directions) {
-        moveViewport(direction, "wheel");
-      }
-      for (const move of parsed.moves) {
-        rememberMousePosition(move);
-      }
-      for (const click of parsed.clicks) {
-        rememberMousePosition({ x: click.x, y: click.y });
-        if (!isBackToBottomClick(
-          click,
-          terminalRows,
-          viewportModel.snapshot(),
-          columns,
-        )) {
-          continue;
-        }
-        setViewport(viewportModel.end());
-      }
-    };
-    internal_eventEmitter.on("input", handleMouseInput);
     write(MOUSE_TRACKING_ENABLE);
     return () => {
-      internal_eventEmitter.off("input", handleMouseInput);
       write(MOUSE_TRACKING_DISABLE);
     };
-  }, [
-    columns,
-    internal_eventEmitter,
-    isRawModeSupported,
-    moveViewport,
-    rememberMousePosition,
-    terminalRows,
-    viewportModel,
-    viewportMouseInput,
-    write,
-  ]);
+  }, [isRawModeSupported, write]);
 
-  const suggestions = commandSuggestions(value, commands);
+  const rawSuggestions = commandSuggestions(value, commands);
+  const commandPaletteKey = `${value}\u0000${JSON.stringify(rawSuggestions)}`;
+  const suggestions = dismissedCommandKey === commandPaletteKey
+    ? []
+    : rawSuggestions;
   const busy = inputSnapshot.busy ||
     (snapshot.state !== "ready" && snapshot.state !== "done" &&
       snapshot.state !== "error" && snapshot.state !== "interrupted");
@@ -245,27 +246,21 @@ export function InkCliApp({
   const allTranscriptEntries = visibleTranscriptEntries(snapshot);
   // Keep one authoritative transcript source. Static transcript items cannot
   // be removed once Ink has emitted them, so switching from Static history to
-  // a manual viewport would otherwise paint the same turns twice. The welcome
-  // panel remains static, while every turn is rendered through this bounded
-  // dynamic viewport.
+  // a manual viewport would otherwise paint the same turns twice. Welcome and turns share the measured managed viewport.
   const transcriptEntries = allTranscriptEntries;
-  const taskTitle = deriveStickyTaskTitle(transcriptEntries);
   // The task title is sticky only while the user is browsing away from live
   // output. During an active answer (or any normal follow-output state), the
   // title remains part of the transcript instead of taking a permanent row
   // from the live answer viewport.
-  const stickyTaskTitle = viewport.followOutput ? undefined : taskTitle;
   const navigationHovered = mousePosition !== undefined &&
-    isNavigationBarHovered(mousePosition, terminalRows, viewport, columns);
-  const visibleTranscriptRows = Math.max(
-    4,
-    baseTranscriptRows - (stickyTaskTitle === undefined ? 0 : 1),
-  );
-  const transcriptRows = estimateTranscriptRows(
-    allTranscriptEntries,
-    columns,
-    snapshot.summary,
-  );
+    isNavigationBarHovered(mousePosition, navigationRow, viewport, columns);
+  const visibleTranscriptRows = baseTranscriptRows;
+  const transcriptRows = contentRows;
+  // The run summary is a post-run diagnostic: show it once the run has
+  // actually settled through the event stream (or under explicit debug), so
+  // summaries that predate any run never announce stale `[timing]` lines.
+  const showRunSummary = snapshot.summaryAnnounced ||
+    process.env.DEV_AGENT_TUI_DEBUG === "1";
   const renderedViewport = viewport.followOutput
     ? {
         ...viewport,
@@ -287,8 +282,22 @@ export function InkCliApp({
   }, [transcriptRows, viewportModel, visibleTranscriptRows]);
 
   useEffect(() => {
+    setSuggestionIndex(0);
+    setDismissedCommandKey((current) =>
+      current === undefined || current === commandPaletteKey ? current : undefined,
+    );
+  }, [commandPaletteKey]);
+
+  useEffect(() => {
+    const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+    setSuggestionIndex((current) => visibleCount === 0
+      ? 0
+      : Math.min(current, visibleCount - 1));
+  }, [suggestions.length]);
+
+  useEffect(() => {
     let cancelled = false;
-    if (activeInputPrompt !== undefined || suggestions.length > 0) {
+    if (activeInputPrompt !== undefined || rawSuggestions.length > 0) {
       setPathCompletion(undefined);
       setPathCompletionIndex(0);
       return () => {
@@ -313,7 +322,7 @@ export function InkCliApp({
     activeInputPrompt,
     cursor,
     pathCompletionKey,
-    suggestions.length,
+    rawSuggestions.length,
     value,
     workingDirectory,
   ]);
@@ -374,8 +383,45 @@ export function InkCliApp({
     dismissedPathKey.current = undefined;
   };
 
+  usePaste((text: string) => {
+    // Ink 7 routes bracketed paste through a dedicated channel, preserving
+    // newlines and keeping the composer key router focused on key presses.
+    const normalized = Array.from(text.replace(/\r\n?/gu, "\n"));
+    setPasteTruncated(normalized.length > MAX_PASTE_CHARS);
+    setEditorTruncated(false);
+    insertText(normalized.slice(0, MAX_PASTE_CHARS).join(""));
+  });
+
   useInput((input, key) => {
-    const mouseInput = composerMouseInput.push(input);
+    // Ink 7 detaches its readable listener during suspendTerminal(). A PTY
+    // can replay the command bytes that were buffered at the handoff when the
+    // listener is reattached; consume one such event before it can submit the
+    // freshly loaded editor draft. Ctrl-C remains a real cancellation signal.
+    if (store.getSnapshot().inputSuppressed === true) {
+      store.setInputSuppressed(false);
+      if (key.ctrl && (input === "c" || input === "\u0003")) {
+        onCancel();
+      }
+      return;
+    }
+    const mouseInput = viewportMouseInput.push(input);
+    for (const direction of mouseInput.directions) {
+      moveViewport(direction, "wheel");
+    }
+    for (const move of mouseInput.moves) {
+      rememberMousePosition(move);
+    }
+    for (const click of mouseInput.clicks) {
+      rememberMousePosition({ x: click.x, y: click.y });
+      if (isBackToBottomClick(
+        click,
+        navigationRow,
+        viewportModel.snapshot(),
+        columns,
+      )) {
+        setViewport(viewportModel.end());
+      }
+    }
     if (mouseInput.consumed) {
       if (mouseInput.remaining.length === 0) return;
       input = mouseInput.remaining;
@@ -414,6 +460,9 @@ export function InkCliApp({
         dismissedPathKey.current = pathCompletionKey;
         setPathCompletion(undefined);
         setPathCompletionIndex(0);
+      } else if (suggestions.length > 0) {
+        setDismissedCommandKey(commandPaletteKey);
+        setSuggestionIndex(0);
       } else if (snapshot.retry !== undefined) {
         if (onDismissRetry) {
           onDismissRetry();
@@ -511,6 +560,7 @@ export function InkCliApp({
       const withoutTrailingBreak = input.replace(/[\r\n]+$/u, "");
       const normalized = Array.from(withoutTrailingBreak.replace(/\r\n?/gu, "\n"));
       setPasteTruncated(normalized.length > MAX_PASTE_CHARS);
+      setEditorTruncated(false);
       insertText(normalized.slice(0, MAX_PASTE_CHARS).join(""));
       return;
     }
@@ -532,7 +582,9 @@ export function InkCliApp({
       return;
     }
     if (key.tab && suggestions.length > 0) {
-      const suggestion = suggestions[0]?.command ?? "";
+      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+      const selected = Math.min(suggestionIndex, visibleCount - 1);
+      const suggestion = suggestions[selected]?.command ?? "";
       applyComposer(suggestion, Array.from(suggestion).length);
       return;
     }
@@ -545,6 +597,21 @@ export function InkCliApp({
     if (pathCompletion?.suggestions.length && key.downArrow) {
       setPathCompletionIndex((index) =>
         index >= pathCompletion.suggestions.length - 1 ? 0 : index + 1,
+      );
+      return;
+    }
+    if (suggestions.length > 0 && key.upArrow) {
+      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+      setSuggestionIndex((index) => {
+        const current = Math.min(Math.max(index, 0), visibleCount - 1);
+        return current === 0 ? visibleCount - 1 : current - 1;
+      });
+      return;
+    }
+    if (suggestions.length > 0 && key.downArrow) {
+      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+      setSuggestionIndex((index) =>
+        index >= visibleCount - 1 ? 0 : index + 1,
       );
       return;
     }
@@ -614,31 +681,19 @@ export function InkCliApp({
       : "Type your message or @path/to/file";
   return (
     <InkThemeProvider theme={getInkTheme(inputSnapshot.theme)}>
-      <Box flexDirection="column" width={columns}>
-      <Static items={staticItems} style={{ width: columns }}>
-        {(item) => (
-          <WelcomePanel
-            key={item.id}
-            provider={provider}
-            model={model}
-            sessionId={displayedSessionId}
-            workingDirectory={workingDirectory}
-            executor={executor}
-            mcpCount={mcpCount}
-            columns={columns}
-          />
-        )}
-      </Static>
-      <Box flexDirection="column" width={columns}>
-        {stickyTaskTitle !== undefined ? (
-          <StickyTaskHeader title={stickyTaskTitle} columns={columns} />
-        ) : null}
+      <Box flexDirection="column" width={columns} height={stdout.isTTY ? terminalRows - 1 : undefined}>
+      {/* Non-TTY renders (renderToString) have no fixed viewport to scroll:
+          offsetting the content would just amputate its top rows, so the
+          scroll offset only applies where the frame is height-constrained. */}
+      <Box height={stdout.isTTY ? visibleTranscriptRows : undefined} flexShrink={0} overflow="hidden" flexDirection="column">
+      <Box ref={contentRef} flexShrink={0} flexDirection="column" width={columns} marginTop={stdout.isTTY ? -renderedViewport.offset : undefined}>
+        <WelcomePanel provider={provider} model={model} sessionId={displayedSessionId}
+          workingDirectory={workingDirectory} executor={executor} mcpCount={mcpCount} columns={columns} />
         <TranscriptViewport
-          snapshot={snapshot}
-          entries={transcriptEntries}
-          summary={snapshot.summary}
+          snapshot={snapshot} entries={transcriptEntries}
+          summary={showRunSummary ? snapshot.summary : undefined}
           columns={columns}
-          viewport={renderedViewport}
+          viewport={{ ...renderedViewport, offset: 0, totalRows: 0, visibleRows: Number.MAX_SAFE_INTEGER, followOutput: false }}
         />
         {snapshot.historyView !== undefined ? (
           <HistoryPanel
@@ -686,7 +741,11 @@ export function InkCliApp({
           <ToolTimeline cards={snapshot.cards} columns={columns} />
         ) : null}
         {suggestions.length > 0 ? (
-          <CommandPalette suggestions={suggestions} columns={columns} />
+          <CommandPalette
+            suggestions={suggestions}
+            selectedIndex={suggestionIndex}
+            columns={columns}
+          />
         ) : null}
         {pathCompletion?.suggestions.length ? (
           <PathCompletionPanel
@@ -698,18 +757,21 @@ export function InkCliApp({
         {queuedPrompts.length > 0 ? (
           <QueuePanel prompts={queuedPrompts} columns={columns} />
         ) : null}
-        {activeInputPrompt !== undefined ? (
-          <Box marginTop={1} width={columns - 2}>
-            <Text color={getInkTheme(inputSnapshot.theme).warning} wrap="wrap">! {activeInputPrompt}</Text>
-          </Box>
-        ) : null}
+
       </Box>
-      <Box flexDirection="column">
+      </Box>
+      <Box ref={shellRef} flexShrink={0} flexDirection="column">
+
         <NavigationBar
           viewport={viewport}
           hovered={navigationHovered}
           columns={columns}
         />
+        {activeInputPrompt !== undefined ? (
+          <Box marginTop={1} width={columns - 2}>
+            <Text color={getInkTheme(inputSnapshot.theme).warning} wrap="wrap">! {activeInputPrompt}</Text>
+          </Box>
+        ) : null}
         <StatusLine snapshot={snapshot} busy={busy} />
         <Composer
           value={value}
@@ -717,14 +779,27 @@ export function InkCliApp({
           placeholder={promptLabel}
           width={columns - 2}
           approval={activeInputPrompt !== undefined}
-          notice={pasteTruncated ? `Pasted content truncated to ${MAX_PASTE_CHARS} characters` : undefined}
+          notice={pasteTruncated
+            ? `Pasted content truncated to ${MAX_PASTE_CHARS} characters`
+            : editorTruncated
+              ? `Editor draft truncated to ${MAX_EDITOR_CHARS} characters`
+              : undefined}
           imeCursor={IME_CURSOR_ENABLED}
-          terminalRows={terminalRows}
+          terminalRows={terminalRows - 1}
         />
         <Footer
           workingDirectory={workingDirectory}
           sessionId={displayedSessionId}
           executor={executor}
+          provider={snapshot.conversation?.sessionId === displayedSessionId
+            ? snapshot.conversation.provider
+            : provider}
+          model={snapshot.conversation?.sessionId === displayedSessionId
+            ? snapshot.conversation.model
+            : model}
+          promptTokens={snapshot.conversation?.sessionId === displayedSessionId
+            ? snapshot.conversation.promptTokens
+            : undefined}
           width={columns - 2}
         />
       </Box>
@@ -764,7 +839,7 @@ function WelcomePanel(props: {
         <Text>1. Ask questions, edit files, or run commands.</Text>
         <Text>2. Be specific for the best results.</Text>
         <Text>3. Type / or : for commands.</Text>
-        <Text>4. After a turn, wheel/PageUp/PageDown browse; Home/End jump to bounds.</Text>
+        <Text>4. Wheel/PageUp/PageDown browse; Home/End jump to bounds.</Text>
       </Box>
       <Box marginTop={1} flexDirection="column">
         <Text color={theme.muted}>Provider: <Text color={theme.text}>{props.provider}</Text></Text>
@@ -839,13 +914,13 @@ function navigationBarBounds(
   terminalColumns: number,
 ): { readonly row: number; readonly startColumn: number; readonly endColumn: number } | undefined {
   if (!isBrowsingViewport(viewport)) return undefined;
-  const labelWidth = displayWidth(navigationBarText(viewport));
+  const labelWidth = displayWidth(truncateToDisplayWidth(navigationBarText(viewport), Math.max(1, terminalColumns - 2)));
   const startColumn = Math.max(
     1,
     Math.floor((Math.max(1, Math.floor(terminalColumns)) - labelWidth) / 2) + 1,
   );
   return {
-    row: Math.max(1, Math.floor(terminalRows) - NAVIGATION_ROW_FROM_BOTTOM),
+    row: Math.max(1, Math.floor(terminalRows)),
     startColumn,
     endColumn: startColumn + Math.max(1, labelWidth) - 1,
   };
@@ -899,7 +974,7 @@ function NavigationBar({
     return <Box height={1} />;
   }
 
-  const label = navigationBarText(viewport);
+  const label = truncateToDisplayWidth(navigationBarText(viewport), Math.max(1, columns - 2));
   return (
     <Box width={columns} paddingX={1} height={1} justifyContent="center">
       <Text
@@ -1103,11 +1178,9 @@ function estimateSummaryPanelRows(
 
 function summaryPanelLines(summary: InkRunSummary): readonly string[] {
   const lines = [`[state=${summary.status} turns=${summary.turns}]`];
-  if (summary.usage !== undefined) {
-    lines.push(
-      `[usage] prompt=${summary.usage.promptTokens ?? 0} completion=${summary.usage.completionTokens ?? 0} total=${summary.usage.totalTokens ?? 0}`,
-    );
-  }
+  // Token usage deliberately stays off this panel: the composer footer's
+  // `Context:` cell already reports last-request prompt tokens, and the
+  // committed transcript contract keeps `[usage]` lines out of the frame.
   lines.push(
     `[timing] queue=${formatTiming(summary.queueMs)} first-token=${formatTiming(summary.firstTokenMs)} model=${formatTiming(summary.modelMs)} tool=${formatTiming(summary.toolMs)} total=${formatTiming(summary.totalMs)}`,
   );
@@ -1290,7 +1363,7 @@ function StatusLine({
   if (!busy) {
     return (
       <Box marginTop={1} paddingX={1}>
-        <Text color={theme.muted}>STATUS / {statusLabel(snapshot.state)} · mode={snapshot.speedMode}</Text>
+        <Text color={theme.muted}>{statusLabel(snapshot.state)}</Text>
       </Box>
     );
   }
@@ -1363,7 +1436,14 @@ function Composer({
     }
     setCursorPosition({ x, y });
   }, [imeCursor, boxHeight, value, cursor, terminalRows, setCursorPosition]);
-  const chars = Array.from(value);
+  const caretPrefix = Array.from(value).slice(0, cursor).join("");
+  const caretLine = caretPrefix.split("\n").length - 1;
+  const startLine = Math.max(0, caretLine - 3);
+  const valueLines = value.split("\n");
+  const visibleValue = valueLines.slice(startLine, startLine + 4).join("\n");
+  const hiddenChars = Array.from(valueLines.slice(0, startLine).join("\n")).length + (startLine > 0 ? 1 : 0);
+  const chars = Array.from(visibleValue);
+  cursor = Math.max(0, cursor - hiddenChars);
   const before = chars.slice(0, cursor).join("");
   const cursorAtEnd = chars[cursor] === undefined;
   const active = chars[cursor] ?? "█";
@@ -1381,10 +1461,12 @@ function Composer({
         paddingX={1}
         marginTop={1}
         width={Math.max(20, width)}
+        height={Math.min(6, Math.max(3, (visibleValue || placeholder).split("\n").reduce((sum, line) => sum + splitByDisplayWidth(line, Math.max(1, width - 6)).length, 0) + 2))}
+        overflow="hidden"
         aria-role="textbox"
         aria-state={{ busy: approval }}
       >
-        <Text color={theme.prompt}>› </Text>
+        <Text><Text color={theme.prompt}>› </Text>
         {value.length === 0 ? (
           <><Text color={theme.composer}>█</Text><Text color={theme.muted}>{placeholder}</Text></>
         ) : (
@@ -1398,7 +1480,7 @@ function Composer({
             </Text>
             <Text>{after}</Text>
           </>
-        )}
+        )}</Text>
       </Box>
     </>
   );
@@ -1408,32 +1490,30 @@ function Footer({
   workingDirectory,
   sessionId,
   executor,
+  provider,
+  model,
+  promptTokens,
   width,
 }: {
-  workingDirectory: string;
-  sessionId: string;
-  executor: string;
-  width: number;
+  readonly workingDirectory: string;
+  readonly sessionId: string;
+  readonly executor: string;
+  readonly provider: string;
+  readonly model: string;
+  readonly promptTokens?: number;
+  readonly width: number;
 }): React.JSX.Element {
   const theme = useInkTheme();
   const available = Math.max(20, width - 2);
-  const right = `${sessionId} · ${executor} · ${theme.name}`;
-  const separator = "  ";
-  const leftWidth = Math.max(
-    1,
-    available - displayWidth(right) - displayWidth(separator),
-  );
-  const left = truncateToDisplayWidth(shortenPath(workingDirectory), leftWidth);
-  const gap = " ".repeat(
-    Math.max(
-      displayWidth(separator),
-      available - displayWidth(left) - displayWidth(right),
-    ),
-  );
-
+  const context = promptTokens === undefined
+    ? "Context: unknown"
+    : `Context: ${promptTokens.toLocaleString()} tokens (last request)`;
+  const right = `${provider}/${model} · ${context} · ${sessionId} · ${executor} · ${theme.name}`;
+  const left = truncateToDisplayWidth(shortenPath(workingDirectory), Math.max(1, available - displayWidth(right) - 2));
+  const text = `${left}  ${right}`;
   return (
-    <Box width={Math.max(20, width)} justifyContent="space-between" paddingX={1}>
-      <Text dimColor wrap="truncate-end">{left}{gap}{right}</Text>
+    <Box width={Math.max(20, width)} paddingX={1} height={1}>
+      <Text dimColor wrap="truncate-end">{truncateToDisplayWidth(text, available)}</Text>
     </Box>
   );
 }

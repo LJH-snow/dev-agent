@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Text } from "ink";
+import { Text, useIsScreenReaderEnabled } from "ink";
+
+import { useAnimationTicks } from "./animation-clock.js";
 
 import type { TuiRunState } from "../tui-session.js";
 
@@ -56,6 +58,7 @@ export function RotatingStatus({
   readonly frameIndex?: number;
 }): React.JSX.Element {
   const [frameIndex, setFrameIndex] = useState(0);
+  const isScreenReader = useIsScreenReaderEnabled();
   const frame = active
     ? rotatingStatusFrame(
       controlledFrameIndex ?? frameIndex,
@@ -66,16 +69,19 @@ export function RotatingStatus({
 
   useEffect(() => {
     setFrameIndex(0);
-    if (!active || controlledFrameIndex !== undefined) {
-      return;
-    }
-    const timer = setInterval(() => {
-      setFrameIndex((current) => current + 1);
-    }, 360);
-    return () => clearInterval(timer);
-  }, [active, controlledFrameIndex, state, steps.join("\u0000")]);
+  }, [active, controlledFrameIndex, isScreenReader, state, steps.join("\u0000")]);
+  // Screen readers re-read the frame on every commit; animating frames would
+  // turn one status line into a stream of repeated announcements. Render the
+  // deterministic status label instead. The status line advances at 360ms —
+  // every second shared-clock tick.
+  useAnimationTicks((value) => {
+    if (value % 2 === 0) setFrameIndex((current) => current + 1);
+  }, active && !isScreenReader && controlledFrameIndex === undefined, JSON.stringify([state, steps]));
 
-  return <Text>{frame}</Text>;
+  const screenReaderFrame = active
+    ? rotatingStatusFrame(0, state, steps)
+    : staticStatusLabel(state);
+  return <Text>{isScreenReader ? screenReaderFrame : frame}</Text>;
 }
 
 function staticStatusLabel(state: TuiRunState): string {

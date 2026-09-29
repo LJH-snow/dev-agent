@@ -12,7 +12,7 @@ import { dirname } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import React from "react";
-import { render as renderInk } from "ink";
+import { render as renderInk, type SuspendTerminal } from "ink";
 import {
   createTaskStatusBridge,
   scheduleInteractiveTask,
@@ -149,6 +149,12 @@ import { executeWorkflowCommand } from "./workflow-command.js";
 import { createNonInteractiveController, EXIT_CODES } from "./non-interactive.js";
 import { runAcpServer } from "./acp-server.js";
 import { InkCliApp } from "./ink/app.js";
+import { createRenderMetricsLifecycle } from "./ink/render-metrics.js";
+import { alternateScreenEnabled } from "./ink/alternate-screen.js";
+import {
+  MAX_EDITOR_CHARS,
+  runExternalEditor,
+} from "./ink/editor-suspend.js";
 import {
   CollaborationScopeReviewCancelledError,
   reviewCollaborationTaskToolScopes,
@@ -2219,6 +2225,10 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       eventSink: (event) => {
         trace.recordRuntimeEvent(event);
         if (inkStore) {
+          const previous = inkStore.getSnapshot().conversation;
+          if (previous?.sessionId !== event.sessionId || previous.model !== provider.model || previous.provider !== provider.id) {
+            inkStore.setConversation({ sessionId: event.sessionId, provider: provider.id, model: provider.model });
+          }
           inkStore.apply(event);
         }
       },
@@ -3537,6 +3547,16 @@ function formatContextNotice(result: ResolvedPromptContext): string | undefined 
     );
   }
   return lines.length === 0 ? undefined : lines.join("\n");
+}
+
+function formatActionableContextNotice(result: ResolvedPromptContext): string | undefined {
+  if (result.unresolved.length === 0) return undefined;
+  return `Context not found: ${result.unresolved.map((reference) => `@${reference}`).join(", ")}`;
+}
+
+function formatContextDiagnostic(result: ResolvedPromptContext): string | undefined {
+  if (result.attachments.length === 0) return undefined;
+  return `Attached context: ${result.attachments.map((item) => `@${item.reference}`).join(", ")}`;
 }
 
 async function prepareInteractivePrompt(
@@ -5231,6 +5251,7 @@ async function interactiveInk(
   let closed = false;
   let pickerSessions: readonly StoredSession[] | undefined;
   let instance: ReturnType<typeof renderInk> | undefined;
+  let suspendTerminal: SuspendTerminal | undefined;
   let lastRetry:
     | {
         readonly prompt: string;
@@ -5544,7 +5565,7 @@ async function interactiveInk(
     activeCollaboration?.cancel("session closed");
     activeAbort?.abort();
     ink.controller.close();
-    instance?.unmount();
+    renderMetrics.unmount(() => instance?.unmount());
   };
 
   const cancel = (): void => {
@@ -5615,11 +5636,20 @@ async function interactiveInk(
   process.on("SIGINT", onSigint);
   normalizeTerminalSize();
   process.stdout.on("resize", normalizeTerminalSize);
+  // Ink 7's native `suspendTerminal` owns the child-process handoff and
+  // redraw lifecycle. Keep only the rows guard that protects the TUI viewport.
   const inkOutput = createInkRenderOutput(process.stdout);
   let resolveInitialRender!: () => void;
   const initialRender = new Promise<void>((resolve) => {
     resolveInitialRender = resolve;
   });
+
+  const renderMetrics = createRenderMetricsLifecycle(resolveInitialRender);
+
+  // Ink 7 owns alternate-screen entry/exit and restores the primary buffer
+  // during unmount. Keep the environment gate so the existing opt-in remains
+  // backwards-compatible and pipes/non-interactive sessions stay unchanged.
+  const useAlternateScreen = alternateScreenEnabled() && process.stdout.isTTY === true;
 
   instance = renderInk(
     React.createElement(InkCliApp, {
@@ -5648,6 +5678,9 @@ async function interactiveInk(
       },
       onSessionResume: resumeSessionAt,
       onDismissSessionPicker: dismissSessionPicker,
+      onSuspendTerminalReady: (handler) => {
+        suspendTerminal = handler;
+      },
       onApprovalAnswer: (value: string) => {
         ink.controller.submit(value);
         syncQueue();
@@ -5663,19 +5696,16 @@ async function interactiveInk(
       // apart from Enter (submit) in terminals that support the protocol.
       // "auto" probes support and silently falls back to legacy input.
       kittyKeyboard: { mode: "auto", flags: ["disambiguateEscapeCodes"] },
-      // The welcome panel is the only static block now; the transcript,
-      // composer, and footer share one controlled dynamic viewport. Use Ink's
+      // Welcome, transcript, and panels share a managed viewport above the
+      // measured composer shell. Use Ink's
       // standard log-update renderer: the incremental diff misplaces cursor
       // rows whenever a frame grows or shrinks, which leaves stale duplicated
       // status and transcript lines on real PTYs.
       maxFps: 15,
-      onRender: () => {
-        // Do not let input that arrived while providers/MCP were starting
-        // launch a run before the composer has painted its first frame. Ink
-        // still receives and buffers those keystrokes through the controller;
-        // the interactive loop begins consuming them only after this point.
-        resolveInitialRender();
-      },
+      // Release buffered input after the first paint; collect diagnostics
+      // without I/O while Ink owns the terminal (including its final render).
+      onRender: renderMetrics.onRender,
+      alternateScreen: useAlternateScreen,
     },
   );
 
@@ -5698,6 +5728,84 @@ async function interactiveInk(
           ink.controller.setTheme(previousTheme);
           ink.store.addNotice("Theme changed for this session, but could not be saved.");
         }
+      }
+      return true;
+    }
+    if (command === ":editor") {
+      const controllerSnapshot = ink.controller.snapshot();
+      if (
+        queued ||
+        activeTaskId !== undefined ||
+        controllerSnapshot.busy ||
+        controllerSnapshot.queuedPrompts.length > 0
+      ) {
+        ink.store.addNotice("The editor is available only while idle.");
+        return true;
+      }
+      // A Ctrl-C that kills the editor must not cascade into session cancel
+      // after the blocked spawn returns; detach the interactive handler for
+      // the duration of the editor and re-attach it after the resume.
+      process.removeListener("SIGINT", onSigint);
+      // Ink resumes its readable listener before suspendTerminal() resolves;
+      // suppress one replayed command event in the composer until then.
+      ink.store.setInputSuppressed(true);
+      let outcome: ReturnType<typeof runExternalEditor> | undefined;
+      try {
+        if (suspendTerminal === undefined) {
+          outcome = {
+            status: "failed",
+            detail: "terminal suspension is unavailable",
+          };
+        } else {
+          await suspendTerminal(() => {
+            outcome = runExternalEditor({
+              platform: process.platform,
+              stdin: process.stdin,
+              manageTerminal: false,
+            });
+          });
+        }
+      } catch {
+        outcome = { status: "failed", detail: "terminal suspension failed" };
+      } finally {
+        process.on("SIGINT", onSigint);
+      }
+      // Ink's public suspension API detaches its readable listener while the
+      // child owns the terminal. Discard bytes that were already queued by the
+      // command line before the listener was detached; otherwise a PTY can
+      // replay the `:editor` carriage return after resume as a new prompt.
+      try {
+        while (process.stdin.read() !== null) {
+          // Drain all currently buffered input; new input after this point is
+          // user intent and remains available to the resumed composer.
+        }
+      } catch {
+        // Best-effort only: a non-standard stdin must not make the editor path
+        // fail after Ink has already restored the terminal.
+      }
+      const clearInputSuppression = setTimeout(() => {
+        ink.store.setInputSuppressed(false);
+      }, 100);
+      clearInputSuppression.unref?.();
+      const editorOutcome = outcome ?? {
+        status: "failed" as const,
+        detail: "editor did not run",
+      };
+      if (editorOutcome.status === "completed") {
+        ink.store.setComposerInsert(editorOutcome.value, editorOutcome.truncated);
+        ink.store.addNotice(editorOutcome.truncated
+          ? `Editor draft truncated to ${MAX_EDITOR_CHARS} characters. Review it and press Enter to submit.`
+          : "Editor draft loaded. Review it and press Enter to submit.");
+      } else if (editorOutcome.status === "empty") {
+        ink.store.addNotice("Editor closed without content.");
+      } else if (editorOutcome.status === "refused") {
+        ink.store.addNotice(editorOutcome.reason === "not-a-tty"
+          ? "The editor requires an interactive TTY."
+          : editorOutcome.reason === "unsupported-platform"
+            ? "The editor is not supported on this platform."
+            : "VISUAL/EDITOR must name a single executable; use a wrapper script for flags.");
+      } else {
+        ink.store.addNotice(safeTerminalText(`Editor failed: ${editorOutcome.detail}`));
       }
       return true;
     }
@@ -5866,9 +5974,13 @@ async function interactiveInk(
           teamCommand.request,
           ui.workingDirectory,
         );
-        const contextNotice = formatContextNotice(prepared);
+        const contextNotice = formatActionableContextNotice(prepared);
         if (contextNotice) {
           ink.store.addNotice(contextNotice);
+        }
+        const contextDiagnostic = formatContextDiagnostic(prepared);
+        if (contextDiagnostic) {
+          ink.store.addDiagnostic(contextDiagnostic);
         }
         await runTeamExecution(prepared.prompt, prepared.context);
         return true;
@@ -5886,9 +5998,13 @@ async function interactiveInk(
           teamCommand.request,
           ui.workingDirectory,
         );
-        const contextNotice = formatContextNotice(prepared);
+        const contextNotice = formatActionableContextNotice(prepared);
         if (contextNotice) {
           ink.store.addNotice(contextNotice);
+        }
+        const contextDiagnostic = formatContextDiagnostic(prepared);
+        if (contextDiagnostic) {
+          ink.store.addDiagnostic(contextDiagnostic);
         }
         await runInkPrompt(
           prepared.prompt,
@@ -5964,6 +6080,10 @@ async function interactiveInk(
       if (contextNotice) {
         ink.store.addNotice(contextNotice);
       }
+      const contextDiagnostic = formatContextDiagnostic(prepared);
+      if (contextDiagnostic) {
+        ink.store.addDiagnostic(contextDiagnostic);
+      }
       const result = await runInkPrompt(
         prepared.prompt,
         {
@@ -6017,6 +6137,10 @@ async function interactiveInk(
       const contextNotice = formatContextNotice(prepared);
       if (contextNotice) {
         ink.store.addNotice(contextNotice);
+      }
+      const contextDiagnostic = formatContextDiagnostic(prepared);
+      if (contextDiagnostic) {
+        ink.store.addDiagnostic(contextDiagnostic);
       }
       ink.store.setPlanStatus("applying");
       const approvedContext = approvedPlanContext(planToApply);
@@ -6234,8 +6358,12 @@ async function interactiveInk(
       if (contextNotice) {
         ink.store.addNotice(contextNotice);
       }
+      const contextDiagnostic = formatContextDiagnostic(prepared);
+      if (contextDiagnostic) {
+        ink.store.addDiagnostic(contextDiagnostic);
+      }
       const route = ui.modelRouting.select(prepared.prompt);
-      ink.store.addNotice(`[route] mode=${route.mode} reason=${route.reason}`);
+      ink.store.addDiagnostic(`[route] mode=${route.mode} reason=${route.reason}`);
       await runInkPrompt(
         prepared.prompt,
         prepared.context === undefined ? {} : { attachedContext: prepared.context },

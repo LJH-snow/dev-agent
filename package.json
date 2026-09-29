@@ -5,7 +5,7 @@
   "description": "AI coding agent for developers, built with TypeScript and Node.js.",
   "packageManager": "pnpm@12.3.4",
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "scripts": {
     "build": "pnpm -r run build",

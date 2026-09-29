@@ -41,6 +41,7 @@ export interface ToolCardRenderOptions extends BlockOptions {
 
 export const DEFAULT_COMMAND_HINTS: readonly CommandHint[] = [
   { command: ":help", description: "Show available commands" },
+  { command: ":editor", description: "Compose the next prompt in $EDITOR" },
   { command: ":plan <request>", description: "Create a read-only implementation plan" },
   { command: ":apply", description: "Confirm and execute the latest plan" },
   { command: ":mode fast|balanced|deep", description: "Choose reasoning speed and depth" },

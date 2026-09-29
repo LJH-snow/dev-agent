@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useIsScreenReaderEnabled } from "ink";
+
+import { useAnimationTicks } from "./animation-clock.js";
 
 import type { ToolCard } from "../tui-session.js";
 import { DiffPreview } from "./diff-preview.js";
@@ -44,6 +46,10 @@ export function ApprovalCard({
 }): React.JSX.Element {
   const theme = useInkTheme();
   const [frameIndex, setFrameIndex] = useState(0);
+  // A pending approval is the one thing a screen-reader user must act on, so
+  // the card announces itself as busy and drops the pulsing animation that
+  // would otherwise re-read the frame every 180ms.
+  const isScreenReader = useIsScreenReaderEnabled();
   const active = card.status === "approval";
   const pulseIndex = controlledFrameIndex ?? frameIndex;
   const color = active
@@ -57,14 +63,12 @@ export function ApprovalCard({
 
   useEffect(() => {
     setFrameIndex(0);
-    if (!active || controlledFrameIndex !== undefined) {
-      return;
-    }
-    const timer = setInterval(() => {
-      setFrameIndex((current) => current + 1);
-    }, 180);
-    return () => clearInterval(timer);
-  }, [active, controlledFrameIndex, card.id]);
+  }, [active, controlledFrameIndex, isScreenReader, card.id]);
+  useAnimationTicks(
+    (value) => setFrameIndex(value),
+    active && !isScreenReader && controlledFrameIndex === undefined,
+    card.id,
+  );
 
   return (
     <Box
@@ -73,6 +77,7 @@ export function ApprovalCard({
       borderColor={color}
       paddingX={1}
       width={width}
+      aria-state={active ? { busy: true } : undefined}
     >
       <Text color={color} bold>
         {glyph} APPROVAL / {card.status.toUpperCase()} · {card.name}

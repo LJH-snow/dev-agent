@@ -39,3 +39,20 @@ test("command palette highlights the Tab target and caps visible commands", () =
   assert.match(output, /:command-6/);
   assert.doesNotMatch(output, /:command-7/);
 });
+
+test("command palette moves the full-row selection highlight", () => {
+  const output = renderToString(
+    createElement(CommandPalette, {
+      suggestions: COMMANDS,
+      columns: 80,
+      selectedIndex: 1,
+      frameIndex: 0,
+    }),
+    { columns: 80 },
+  );
+  const rows = output.split("\\n");
+
+  assert.ok(rows.some((row) => row.includes("· :command-1")));
+  assert.ok(rows.some((row) => row.includes("› :command-2")));
+  assert.match(output, /Tab select · ↑↓ move · esc close/);
+});
