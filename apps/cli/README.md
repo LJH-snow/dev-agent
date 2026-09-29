@@ -48,6 +48,29 @@ run summaries and automatic route notices. Notices are deduplicated and retain
 the latest 50; pending approvals and retry state are stored separately. Errors,
 safety decisions, and explicit command results remain visible in the scroll area.
 
+## External editor composition
+
+While the Ink session is idle, `:editor` (also `/editor`) suspends the TUI and
+opens the configured editor on a private temp file:
+
+```text
+:editor
+```
+
+- The editor is resolved from `$VISUAL` first, then `$EDITOR`, then `vi`. The
+  value must name a single executable; it runs through an argument array with
+  `shell: false` and an explicit `--` before the temp file path, and any value
+  containing shell metacharacters or extra tokens is refused (use a wrapper
+  script for flags such as `code -w`).
+- Saving content and exiting the editor loads it into the composer draft for
+  review; nothing is submitted automatically. Content is normalized (CRLF →
+  LF, one trailing newline stripped) and capped at 8,000 characters with an
+  explicit truncation notice. Closing the editor with an empty buffer is a
+  quiet no-op.
+- The command is available only while the session is idle; piped, JSON, and
+  `--once` runs are unaffected. A Ctrl-C that terminates the editor does not
+  cancel the CLI session. Temp files are private (0600) and always removed.
+
 ## Interactive skills
 
 The interactive CLI discovers bounded Markdown skills from:

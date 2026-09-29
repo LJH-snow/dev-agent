@@ -130,6 +130,13 @@ export interface InkConversationStatus {
   readonly promptTokens?: number;
 }
 
+export interface InkComposerInsert {
+  /** Monotonic id so repeated identical inserts still retrigger the app effect. */
+  readonly id: number;
+  readonly value: string;
+  readonly truncated: boolean;
+}
+
 export interface InkRuntimeSnapshot extends TuiStateSnapshot {
   readonly conversation?: InkConversationStatus;
   readonly notices: readonly string[];
@@ -144,6 +151,7 @@ export interface InkRuntimeSnapshot extends TuiStateSnapshot {
   readonly plan?: InkPlanState;
   readonly collaboration?: InkCollaborationSnapshot;
   readonly mcp?: InkMcpSnapshot;
+  readonly composerInsert?: InkComposerInsert;
 }
 
 export class InkRuntimeStore {
@@ -177,6 +185,8 @@ export class InkRuntimeStore {
   private plan: InkPlanState | undefined;
   private collaboration: InkCollaborationSnapshot | undefined;
   private mcp: InkMcpSnapshot | undefined;
+  private composerInsert: InkComposerInsert | undefined;
+  private composerInsertId = 0;
   private readonly lastThoughtSequenceBySession = new Map<string, number>();
   private snapshotValue: InkRuntimeSnapshot = this.buildSnapshot();
   private readonly listeners = new Set<() => void>();
@@ -308,6 +318,17 @@ export class InkRuntimeStore {
 
   setRetry(retry: InkRetryState | undefined): void {
     this.retry = retry === undefined ? undefined : { ...retry };
+    this.publish();
+  }
+
+  /**
+   * Queues external content (for example an `:editor` draft) into the
+   * composer. The app consumes it exactly once per id and applies it to the
+   * ref-backed composer state.
+   */
+  setComposerInsert(value: string, truncated: boolean): void {
+    this.composerInsertId += 1;
+    this.composerInsert = { id: this.composerInsertId, value, truncated };
     this.publish();
   }
 
@@ -525,6 +546,9 @@ export class InkRuntimeStore {
             },
           }),
       ...(this.retry === undefined ? {} : { retry: { ...this.retry } }),
+      ...(this.composerInsert === undefined
+        ? {}
+        : { composerInsert: { ...this.composerInsert } }),
       ...(this.plan === undefined
         ? {}
         : {

@@ -1,5 +1,33 @@
 # Changelog
 
+## 2026-09-29（CLI `:editor` external editor composition）
+
+- New `:editor` command (also `/editor`) for idle interactive Ink sessions:
+  it suspends the TUI, opens `$VISUAL`/`$EDITOR` (fallback `vi`) on a private
+  temp file, and loads the saved content into the composer draft for review.
+  Nothing is submitted automatically.
+- The editor value must name a single executable. It is resolved from
+  `$VISUAL` → `$EDITOR` → `vi` and spawned through an argument array with
+  `shell: false` and an explicit `--` before the temp file path. Values with
+  shell metacharacters or extra tokens (flags such as `code -w`) are refused
+  fail-closed; use a wrapper script for flags.
+- Suspension pauses Ink frame writes through a new gated output wrapper,
+  exits the opt-in alternate screen, and disables raw mode; resume restores
+  raw mode, re-enters the alternate screen, and unpauses before the outcome
+  notice. The interactive SIGINT handler is detached while the editor owns
+  the terminal, so a Ctrl-C that kills the editor does not cancel the session.
+- Editor output is normalized (CRLF → LF, one trailing newline stripped),
+  read with a 64KB byte cap, capped at 8,000 characters with an explicit
+  truncation notice, and inserted into the composer through a monotonic-id
+  `composerInsert` on the runtime snapshot (same ref-backed application as
+  paste). Temp files are private (0600) and removed on every exit path.
+- Refusals (non-TTY, unsupported platform, unsupported editor value) and
+  failures (exit code, signal, start error) report bounded messages without
+  editor output. Piped, JSON, `--once`, and MCP server modes are unaffected.
+- Added unit coverage (resolution, safety, gating, suspend/resume order,
+  outcomes), a composer-insert component test, and a real-PTY happy-path
+  test. The command is advertised in `:help` and the command palette.
+
 ## 2026-09-29（CLI TUI alternate-screen mode）
 
 - Added an opt-in `DEV_AGENT_TUI_ALT_SCREEN=1` alternate-screen wrapper for

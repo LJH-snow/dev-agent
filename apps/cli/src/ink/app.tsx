@@ -32,6 +32,7 @@ import { ThoughtLine } from "./thought-line.js";
 import { RotatingStatus } from "./rotating-status.js";
 import { ToolTimeline } from "./tool-timeline.js";
 import { MarkdownView, measureMarkdownRows } from "./markdown.js";
+import { MAX_EDITOR_CHARS } from "./editor-suspend.js";
 import { CommandPalette } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
 import { SessionPicker } from "./session-picker.js";
@@ -139,6 +140,7 @@ export function InkCliApp({
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const [pasteTruncated, setPasteTruncated] = useState(false);
+  const [editorTruncated, setEditorTruncated] = useState(false);
   // Composer text lives in a ref alongside the render state: input events can
   // arrive between throttled frames (maxFps), and a handler reading render
   // state would apply edits against a stale draft and silently drop content.
@@ -148,6 +150,21 @@ export function InkCliApp({
     setValue(nextValue);
     setCursor(nextCursor);
   }, []);
+  // External editor drafts (`:editor`) arrive through the runtime store. The
+  // monotonic id makes repeated inserts of identical text effective, and the
+  // same ref-backed application as paste keeps throttled frames from losing
+  // the content.
+  const lastComposerInsertIdRef = useRef(0);
+  const composerInsert = snapshot.composerInsert;
+  useEffect(() => {
+    if (composerInsert === undefined || composerInsert.id === lastComposerInsertIdRef.current) {
+      return;
+    }
+    lastComposerInsertIdRef.current = composerInsert.id;
+    applyComposer(composerInsert.value, Array.from(composerInsert.value).length);
+    setPasteTruncated(false);
+    setEditorTruncated(composerInsert.truncated);
+  }, [composerInsert, applyComposer]);
   const [mousePosition, setMousePosition] = useState<MouseMove | undefined>(undefined);
   const lastMousePosition = useRef<MouseMove | undefined>(undefined);
   const [history, setHistory] = useState<string[]>([]);
@@ -505,6 +522,7 @@ export function InkCliApp({
       const withoutTrailingBreak = input.replace(/[\r\n]+$/u, "");
       const normalized = Array.from(withoutTrailingBreak.replace(/\r\n?/gu, "\n"));
       setPasteTruncated(normalized.length > MAX_PASTE_CHARS);
+      setEditorTruncated(false);
       insertText(normalized.slice(0, MAX_PASTE_CHARS).join(""));
       return;
     }
@@ -702,7 +720,11 @@ export function InkCliApp({
           placeholder={promptLabel}
           width={columns - 2}
           approval={activeInputPrompt !== undefined}
-          notice={pasteTruncated ? `Pasted content truncated to ${MAX_PASTE_CHARS} characters` : undefined}
+          notice={pasteTruncated
+            ? `Pasted content truncated to ${MAX_PASTE_CHARS} characters`
+            : editorTruncated
+              ? `Editor draft truncated to ${MAX_EDITOR_CHARS} characters`
+              : undefined}
           imeCursor={IME_CURSOR_ENABLED}
           terminalRows={terminalRows - 1}
         />

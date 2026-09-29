@@ -1865,3 +1865,21 @@ test("Ink keeps a submitted prompt in one bounded live frame", async () => {
     stdout.destroy();
   }
 });
+
+test("Ink composer shows editor-inserted drafts", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const store = new InkRuntimeStore();
+  store.setComposerInsert("hello from $EDITOR\nsecond line", false);
+  const instance = renderInkApp(stdin, stdout, () => undefined, store);
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const frame = writes.join("");
+    assert.match(frame, /hello from \$EDITOR/, "the editor draft must appear in the composer");
+    assert.match(frame, /second line/);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});

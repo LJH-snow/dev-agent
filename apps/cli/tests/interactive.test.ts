@@ -1129,3 +1129,61 @@ test(
     }
   },
 );
+
+test(
+  "Ink TTY composes a prompt in $EDITOR and loads it into the composer",
+  { skip: !expectAvailable ? "expect is unavailable" : false },
+  async () => {
+    await withTempDir(async (dir) => {
+      const editorScript = join(dir, "fake-editor.sh");
+      // The CLI spawns `editor -- <tempFile>`, so the fake editor picks the
+      // argument that starts with "/" instead of relying on a fixed position.
+      await writeFile(
+        editorScript,
+        [
+          "#!/bin/sh",
+          'for a in "$@"; do',
+          '  case "$a" in /*) f="$a" ;; esac',
+          "done",
+          "printf 'hello-from-editor\\nsecond line' >> \"$f\"",
+          "",
+        ].join("\n"),
+        { mode: 0o755 },
+      );
+      const expectScript = `
+        log_user 1
+        set timeout 20
+        spawn {${process.execPath}} {${cliPath}}
+        expect "Type your message"
+        send ":editor\\r"
+        expect "Editor draft loaded"
+        expect "hello-from-editor"
+        expect "second line"
+        send "\\x03"
+        expect eof
+      `;
+      const child = spawn("expect", ["-c", expectScript], {
+        env: {
+          ...process.env,
+          DEV_AGENT_MCP_SERVERS: TEST_MCP_SERVERS,
+          DEV_AGENT_TUI: "ink",
+          DEV_AGENT_MODEL_PROVIDER: "ollama",
+          DEV_AGENT_MEMORY_FILE: join(dir, "session.json"),
+          EDITOR: editorScript,
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      child.stdout?.on("data", (chunk) => { stdout += chunk.toString(); });
+      try {
+        const result = await waitForExit(child, 20_000);
+        assert.equal(result.code, 0, stdout);
+      } finally {
+        if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+      }
+      assert.match(stdout, /Editor draft loaded/);
+      assert.match(stdout, /hello-from-editor/);
+      assert.match(stdout, /second line/);
+    });
+  },
+);

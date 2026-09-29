@@ -152,6 +152,11 @@ import { InkCliApp } from "./ink/app.js";
 import { createRenderMetricsLifecycle } from "./ink/render-metrics.js";
 import { alternateScreenEnabled, createAlternateScreenSession } from "./ink/alternate-screen.js";
 import {
+  MAX_EDITOR_CHARS,
+  createGatedWriteOutput,
+  runExternalEditor,
+} from "./ink/editor-suspend.js";
+import {
   CollaborationScopeReviewCancelledError,
   reviewCollaborationTaskToolScopes,
 } from "./collaboration-scope-review.js";
@@ -5633,7 +5638,11 @@ async function interactiveInk(
   process.on("SIGINT", onSigint);
   normalizeTerminalSize();
   process.stdout.on("resize", normalizeTerminalSize);
-  const inkOutput = createInkRenderOutput(process.stdout);
+  // Frame writes go through a gate so `:editor` can suspend the whole
+  // rendering session: while the gate is paused, Ink's frames are dropped
+  // instead of corrupting the external editor's screen. The rows guard from
+  // createInkRenderOutput stays in front of the gate.
+  const inkOutput = createGatedWriteOutput(createInkRenderOutput(process.stdout));
   let resolveInitialRender!: () => void;
   const initialRender = new Promise<void>((resolve) => {
     resolveInitialRender = resolve;
@@ -5686,7 +5695,7 @@ async function interactiveInk(
     }),
     {
       stdin: process.stdin,
-      stdout: inkOutput,
+      stdout: inkOutput.output,
       stderr: process.stderr,
       exitOnCtrlC: false,
       patchConsole: true,
@@ -5725,6 +5734,50 @@ async function interactiveInk(
           ink.controller.setTheme(previousTheme);
           ink.store.addNotice("Theme changed for this session, but could not be saved.");
         }
+      }
+      return true;
+    }
+    if (command === ":editor") {
+      const controllerSnapshot = ink.controller.snapshot();
+      if (
+        queued ||
+        activeTaskId !== undefined ||
+        controllerSnapshot.busy ||
+        controllerSnapshot.queuedPrompts.length > 0
+      ) {
+        ink.store.addNotice("The editor is available only while idle.");
+        return true;
+      }
+      // A Ctrl-C that kills the editor must not cascade into session cancel
+      // after the blocked spawn returns; detach the interactive handler for
+      // the duration of the editor and re-attach it after the resume.
+      process.removeListener("SIGINT", onSigint);
+      let outcome: ReturnType<typeof runExternalEditor>;
+      try {
+        outcome = runExternalEditor({
+          platform: process.platform,
+          stdin: process.stdin,
+          setInkWritesPaused: inkOutput.setWritesPaused,
+          alternateScreen,
+        });
+      } finally {
+        process.on("SIGINT", onSigint);
+      }
+      if (outcome.status === "completed") {
+        ink.store.setComposerInsert(outcome.value, outcome.truncated);
+        ink.store.addNotice(outcome.truncated
+          ? `Editor draft truncated to ${MAX_EDITOR_CHARS} characters. Review it and press Enter to submit.`
+          : "Editor draft loaded. Review it and press Enter to submit.");
+      } else if (outcome.status === "empty") {
+        ink.store.addNotice("Editor closed without content.");
+      } else if (outcome.status === "refused") {
+        ink.store.addNotice(outcome.reason === "not-a-tty"
+          ? "The editor requires an interactive TTY."
+          : outcome.reason === "unsupported-platform"
+            ? "The editor is not supported on this platform."
+            : "VISUAL/EDITOR must name a single executable; use a wrapper script for flags.");
+      } else {
+        ink.store.addNotice(safeTerminalText(`Editor failed: ${outcome.detail}`));
       }
       return true;
     }

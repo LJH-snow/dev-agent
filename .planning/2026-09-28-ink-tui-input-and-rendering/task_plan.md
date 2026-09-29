@@ -43,11 +43,11 @@ Phase 4 (project implementation complete; native Ink API merged upstream, compat
 - **Status:** project implementation complete; upstream API available, compatible dependency upgrade deferred
 
 ### Phase 5: Deferred backlog (not scheduled)
-- [ ] `suspendTerminal`-backed `:editor` command (compose long prompts in $EDITOR)
+- [x] `suspendTerminal`-backed `:editor` command (compose long prompts in $EDITOR) — implemented 2026-09-29 as `src/ink/editor-suspend.ts` + the `:editor` command (gated frame writes, raw-mode and alt-screen suspend; ink 6.8 has no `suspendTerminal`, so the CLI drives the suspension itself). Plan: `.planning/2026-09-29-editor-command/`
 - [ ] `renderToString` + ink-testing-library snapshot tests for cards
 - [ ] `useFocus`/`useFocusManager` refactor of the single global `useInput` key router
 - [ ] `useBoxMetrics`/`measureElement` scrollable transcript viewport
-- **Status:** pending
+- **Status:** first backlog item done; the rest remain pending
 
 ## Decisions Made
 | Decision | Rationale |

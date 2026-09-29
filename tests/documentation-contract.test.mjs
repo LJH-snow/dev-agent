@@ -685,9 +685,11 @@ test("team scope review and MCP lifecycle docs match the current runtime boundar
 
   assert.doesNotMatch(architecture, /With `collaboration\.reviewTaskToolScopes: true`/);
   assert.doesNotMatch(geminiAlignment, /opt-in `collaboration\.reviewTaskToolScopes`/);
-  assert.match(cliReadme, /shares their tool wrappers with workers/);
-  assert.match(cliReadme, /does not\ncreate a separate server process/);
-  assert.match(architecture, /MCP sessions are\s+currently registered once by the CLI at the project root/);
-  assert.match(architecture, /per-task tool scopes do not create separate\s+MCP processes/);
-  assert.match(geminiAlignment, /they do not isolate MCP server\s+processes/);
+  // The MCP boundary is the `collaboration.mcpScope` model (disabled by
+  // default, shared, or worker-scoped), not the earlier always-shared
+  // project-root sessions described before 6e607a7.
+  assert.match(cliReadme, /`collaboration\.mcpScope`[\s\S]{0,400}closed when the task ends/i);
+  assert.match(architecture, /makes MCP\s+lifecycle explicit[\s\S]{0,200}`worker` creates and disposes a fresh session per task/);
+  assert.match(geminiAlignment, /explicit through\s+`collaboration\.mcpScope`/);
+  assert.match(geminiAlignment, /keeping process creation and configuration in the CLI rather than Agent Core/);
 });
