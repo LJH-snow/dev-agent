@@ -1,5 +1,21 @@
 # Progress Log
 
+## Session: 2026-09-29 — Ink 7.1.1 upgrade verification (complete)
+
+- Rebuilt source, test output, and the npm bundle after switching `apps/cli` to
+  Ink 7.1.1; the bundle target is Node 22 and all current engine/manifest checks
+  use the Node.js >=22 baseline.
+- Targeted Ink, composer, editor, command-palette, app, and PTY coverage passed
+  **95/95**. The new native checks cover `alternateScreen`, bracketed
+  `usePaste`, and `manageTerminal: false` under `suspendTerminal`.
+- The full CLI suite passed **757/757**, with 0 failures, cancellations, or
+  skips. Log: `/tmp/cli-ink7-full-final.log`. Documentation contract passed
+  **60/60** and `git diff --check` passed.
+- Ink 7 can repaint an unchanged transcript line during settling, so the PTY
+  response assertion checks presence rather than raw-frame occurrence count.
+  Native suspension can replay a queued command event; the runtime now
+  suppresses one resumed event with a bounded timeout while preserving Ctrl-C.
+
 ## Session: 2026-09-29 (Phase 4 project implementation and verification)
 
 - Repaired the concurrent managed-scrolling/conversation-status workstream in the
@@ -7,17 +23,16 @@
   and the runtime summary gate keeps pre-seeded diagnostics hidden while showing
   timing metadata after real terminal runs.
 - Added `src/ink/alternate-screen.ts` with an opt-in
-  `DEV_AGENT_TUI_ALT_SCREEN=1` wrapper around Ink. It is enabled only for TTY
-  stdout, enters with `CSI ?1049h`, exits after Ink's final unmount with
-  `CSI ?1049l`, is idempotent, and has a best-effort synchronous `process.exit`
-  restoration hook. Hard termination such as `SIGKILL` remains unrecoverable.
+  `DEV_AGENT_TUI_ALT_SCREEN=1` compatibility helper. It remains enabled only for
+  TTY stdout and is covered independently, but production entry/exit is now
+  owned by Ink 7.1.1's native `alternateScreen` render option. Hard
+  termination such as `SIGKILL` remains unrecoverable.
 - Added `tests/ink-alternate-screen.test.ts` (5/5) and manually verified PTY
   sequence ordering (`enter < composer < exit`, one enter/exit each) plus the
   default-off path (zero sequences).
-- Ink upstream already includes the native `alternateScreen` option in commit
-  `5a60eb9`. This checkout still uses Ink 6.8.0, so the local wrapper remains
-  until a compatible dependency upgrade is selected; a duplicate upstream PR is
-  unnecessary.
+- Ink upstream already includes the native `alternateScreen` option; the later
+  upgrade to Ink 7.1.1 adopts it directly. The local helper remains only for
+  compatibility/unit coverage, and no duplicate upstream PR is needed.
 - An initial combined CLI run ended at 734/737 with three tests cancelled at the
   120s per-test limit (`session-delete`, `--no-stream`, and preview exclusivity);
   all three suites passed independently. The cause of those timeouts was not
@@ -62,18 +77,18 @@
 ## Session: 2026-09-28
 
 ### Current Status
-- **Phase:** 3 complete (render performance); Phase 4 project implementation complete, native API merged upstream; compatible Ink upgrade deferred
+- **Phase:** Ink 7.1.1 upgrade complete; Phases 1–4 verified against the native APIs; remaining Phase 5 items are backlog
 - **Started:** 2026-09-28
 
 ### Actions Taken
 - Plan created in the earlier session; implementation started after scheduled-background-tasks landed
-- Verified the installed ink 6.8.0 API surface from build/index.d.ts and recalibrated the plan: no `usePaste`/`useAnimation`/`useBoxMetrics`/`alternateScreen`/`suspendTerminal`; `useInput` already delivers pastes as one chunk; kitty protocol available via render option
+- The earlier session verified the installed Ink 6.8.0 API surface and recalibrated the plan. This session superseded that dependency state with Ink 7.1.1, where `usePaste`, `alternateScreen`, and `suspendTerminal` are public APIs.
 - Phase 1 implemented in `apps/cli/src/ink/app.tsx` + `src/index.ts`:
   - bounded paste blocks (≥2 line breaks, cap 8000 chars, truncation notice); single trailing break still submits (script-driver parity)
   - ref-backed composer state (`composerRef` + `applyComposer`) fixing stale-closure lost updates under maxFps throttling
   - kitty protocol enabled (`auto` + disambiguateEscapeCodes); Shift+Enter inserts newline; non-press events filtered
   - IME cursor via `useCursor`+`measureElement`, gated behind `DEV_AGENT_IME_CURSOR=1`
-- Plan file updated with recalibrated Phase 3/4 (ink 6.8 has no shared-clock or alt-screen APIs)
+- Plan file updated to record the Ink 7.1.1 upgrade and native Phase 4 adoption.
 
 ### Test Results
 | Suite | Result |
@@ -87,7 +102,7 @@
 ### Phase 3 implementation and verification (completed)
 - Preserved existing Phase 2/3 edits and unrelated `.mimosa/`; no commit/push.
 - Fixed clock subscription ownership for duplicate callbacks and unsubscribe-during-dispatch. Hook tick counts are local, inline callbacks stay current, and reset keys restart card/status/palette sequences without restarting other subscribers. Palette reset keys now serialize actual suggestions rather than joining objects.
-- Replaced unsafe stderr writes in `onRender` with constant-space count/max collection and at most one summary after normal unmount. Confirmed installed Ink 6.8 restores console interception during unmount, after its final render. Collection uses the exact `1000 / 15` ms threshold and preserves first-paint input release. Tests exercise real Ink callback/teardown wiring plus re-entry, bounded output, invalid samples, disabled collection, and sink failure.
+- Replaced unsafe stderr writes in `onRender` with constant-space count/max collection and at most one summary after normal unmount. Confirmed Ink restores console interception during unmount, after its final render. Collection uses the exact `1000 / 15` ms threshold and preserves first-paint input release. Tests exercise real Ink callback/teardown wiring plus re-entry, bounded output, invalid samples, disabled collection, and sink failure.
 - Source and test typechecks passed (exit 0): `pnpm exec tsc -p apps/cli/tsconfig.json --noEmit` and `pnpm exec tsc -p apps/cli/tsconfig.test.json --noEmit`. Source was built before checking tests because tests import dist declarations; an initial test check against stale dist failed, then passed after rebuilding.
 - Builds passed: `pnpm exec tsc -p apps/cli/tsconfig.json && pnpm exec tsc -p apps/cli/tsconfig.test.json`.
 - Targeted command (from repository root): `node --test --test-concurrency=1 --test-timeout=30000 apps/cli/tests-dist/ink-animation-clock.test.js apps/cli/tests-dist/ink-render-metrics.test.js apps/cli/tests-dist/ink-screen-reader.test.js apps/cli/tests-dist/rotating-status.test.js apps/cli/tests-dist/thinking-indicator.test.js apps/cli/tests-dist/thought-line.test.js apps/cli/tests-dist/command-palette.test.js apps/cli/tests-dist/tool-timeline.test.js`. **31/31 passed**, no skips/cancellations; complete log `/tmp/cli-phase3-targeted.log`, recorded shell exit 0.

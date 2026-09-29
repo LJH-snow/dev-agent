@@ -41,7 +41,7 @@ dev-agent/
 
 ## Getting Started
 
-Requires Node.js >= 20 (see `.nvmrc`, currently 26) and pnpm 12.3.4.
+Requires Node.js >= 22 (see `.nvmrc`, currently 26) and pnpm 12.3.4.
 
 Additional tools used by the build and tests:
 

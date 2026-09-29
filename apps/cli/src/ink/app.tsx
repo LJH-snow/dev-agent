@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore, useState } from "react";
-import { Box, Text, measureElement, useCursor, useInput, useStdin, useStdout, type DOMElement } from "ink";
+import { Box, Text, measureElement, useApp, useCursor, useInput, usePaste, useStdin, useStdout, type DOMElement, type SuspendTerminal } from "ink";
 
 import {
   DEFAULT_COMMAND_HINTS,
@@ -33,7 +33,10 @@ import { RotatingStatus } from "./rotating-status.js";
 import { ToolTimeline } from "./tool-timeline.js";
 import { MarkdownView, measureMarkdownRows } from "./markdown.js";
 import { MAX_EDITOR_CHARS } from "./editor-suspend.js";
-import { CommandPalette } from "./command-palette.js";
+import {
+  COMMAND_PALETTE_VISIBLE,
+  CommandPalette,
+} from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
 import { SessionPicker } from "./session-picker.js";
 import { PlanReviewPanel } from "./plan-review-panel.js";
@@ -66,6 +69,7 @@ export interface InkCliAppProps {
   readonly onDismissRetry?: () => void;
   readonly onSessionResume?: (index: number) => void;
   readonly onDismissSessionPicker?: () => void;
+  readonly onSuspendTerminalReady?: (suspendTerminal: SuspendTerminal) => void;
 }
 
 const EMPTY_UI_SNAPSHOT: InkUiSnapshot = {
@@ -105,6 +109,7 @@ export function InkCliApp({
   onDismissRetry,
   onSessionResume,
   onDismissSessionPicker,
+  onSuspendTerminalReady,
 }: InkCliAppProps): React.JSX.Element {
   const snapshot = useSyncExternalStore(
     store.subscribe,
@@ -117,7 +122,11 @@ export function InkCliApp({
     controller === undefined ? EMPTY_GET_SNAPSHOT : controller.snapshot.bind(controller),
   );
   const { stdout, write } = useStdout();
-  const { internal_eventEmitter, isRawModeSupported } = useStdin();
+  const { suspendTerminal } = useApp();
+  const { isRawModeSupported } = useStdin();
+  useEffect(() => {
+    onSuspendTerminalReady?.(suspendTerminal);
+  }, [onSuspendTerminalReady, suspendTerminal]);
   const [, resize] = useState(0);
   useEffect(() => {
     const changed = (): void => resize((n) => n + 1);
@@ -136,7 +145,6 @@ export function InkCliApp({
   const baseTranscriptRows = Math.max(1, terminalRows - 1 - shellRows);
   const navigationRow = terminalRows - shellRows;
   const viewportMouseInput = useRef(new MouseInputParser()).current;
-  const composerMouseInput = useRef(new MouseInputParser()).current;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const [pasteTruncated, setPasteTruncated] = useState(false);
@@ -171,7 +179,9 @@ export function InkCliApp({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pathCompletion, setPathCompletion] = useState<PathCompletionResult | undefined>(undefined);
   const [pathCompletionIndex, setPathCompletionIndex] = useState(0);
+  const [suggestionIndex, setSuggestionIndex] = useState(0);
   const dismissedPathKey = useRef<string | undefined>(undefined);
+  const [dismissedCommandKey, setDismissedCommandKey] = useState<string | undefined>(undefined);
   const viewportModel = useRef(new InkViewportModel({
     totalRows: 0,
     visibleRows: baseTranscriptRows,
@@ -206,48 +216,22 @@ export function InkCliApp({
     setViewport(next);
   }, [viewportModel]);
 
+  // Ink 7 keeps its stdin event emitter private. Enable mouse reports through
+  // the public stream writer, then consume those reports in the single
+  // useInput router below so mouse bytes never reach the composer.
   useEffect(() => {
     if (!isRawModeSupported) return;
-    const handleMouseInput = (input: string): void => {
-      const parsed = viewportMouseInput.push(input);
-      for (const direction of parsed.directions) {
-        moveViewport(direction, "wheel");
-      }
-      for (const move of parsed.moves) {
-        rememberMousePosition(move);
-      }
-      for (const click of parsed.clicks) {
-        rememberMousePosition({ x: click.x, y: click.y });
-        if (!isBackToBottomClick(
-          click,
-          navigationRow,
-          viewportModel.snapshot(),
-          columns,
-        )) {
-          continue;
-        }
-        setViewport(viewportModel.end());
-      }
-    };
-    internal_eventEmitter.on("input", handleMouseInput);
     write(MOUSE_TRACKING_ENABLE);
     return () => {
-      internal_eventEmitter.off("input", handleMouseInput);
       write(MOUSE_TRACKING_DISABLE);
     };
-  }, [
-    columns,
-    internal_eventEmitter,
-    isRawModeSupported,
-    moveViewport,
-    rememberMousePosition,
-    navigationRow,
-    viewportModel,
-    viewportMouseInput,
-    write,
-  ]);
+  }, [isRawModeSupported, write]);
 
-  const suggestions = commandSuggestions(value, commands);
+  const rawSuggestions = commandSuggestions(value, commands);
+  const commandPaletteKey = `${value}\u0000${JSON.stringify(rawSuggestions)}`;
+  const suggestions = dismissedCommandKey === commandPaletteKey
+    ? []
+    : rawSuggestions;
   const busy = inputSnapshot.busy ||
     (snapshot.state !== "ready" && snapshot.state !== "done" &&
       snapshot.state !== "error" && snapshot.state !== "interrupted");
@@ -298,8 +282,22 @@ export function InkCliApp({
   }, [transcriptRows, viewportModel, visibleTranscriptRows]);
 
   useEffect(() => {
+    setSuggestionIndex(0);
+    setDismissedCommandKey((current) =>
+      current === undefined || current === commandPaletteKey ? current : undefined,
+    );
+  }, [commandPaletteKey]);
+
+  useEffect(() => {
+    const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+    setSuggestionIndex((current) => visibleCount === 0
+      ? 0
+      : Math.min(current, visibleCount - 1));
+  }, [suggestions.length]);
+
+  useEffect(() => {
     let cancelled = false;
-    if (activeInputPrompt !== undefined || suggestions.length > 0) {
+    if (activeInputPrompt !== undefined || rawSuggestions.length > 0) {
       setPathCompletion(undefined);
       setPathCompletionIndex(0);
       return () => {
@@ -324,7 +322,7 @@ export function InkCliApp({
     activeInputPrompt,
     cursor,
     pathCompletionKey,
-    suggestions.length,
+    rawSuggestions.length,
     value,
     workingDirectory,
   ]);
@@ -385,8 +383,45 @@ export function InkCliApp({
     dismissedPathKey.current = undefined;
   };
 
+  usePaste((text: string) => {
+    // Ink 7 routes bracketed paste through a dedicated channel, preserving
+    // newlines and keeping the composer key router focused on key presses.
+    const normalized = Array.from(text.replace(/\r\n?/gu, "\n"));
+    setPasteTruncated(normalized.length > MAX_PASTE_CHARS);
+    setEditorTruncated(false);
+    insertText(normalized.slice(0, MAX_PASTE_CHARS).join(""));
+  });
+
   useInput((input, key) => {
-    const mouseInput = composerMouseInput.push(input);
+    // Ink 7 detaches its readable listener during suspendTerminal(). A PTY
+    // can replay the command bytes that were buffered at the handoff when the
+    // listener is reattached; consume one such event before it can submit the
+    // freshly loaded editor draft. Ctrl-C remains a real cancellation signal.
+    if (store.getSnapshot().inputSuppressed === true) {
+      store.setInputSuppressed(false);
+      if (key.ctrl && (input === "c" || input === "\u0003")) {
+        onCancel();
+      }
+      return;
+    }
+    const mouseInput = viewportMouseInput.push(input);
+    for (const direction of mouseInput.directions) {
+      moveViewport(direction, "wheel");
+    }
+    for (const move of mouseInput.moves) {
+      rememberMousePosition(move);
+    }
+    for (const click of mouseInput.clicks) {
+      rememberMousePosition({ x: click.x, y: click.y });
+      if (isBackToBottomClick(
+        click,
+        navigationRow,
+        viewportModel.snapshot(),
+        columns,
+      )) {
+        setViewport(viewportModel.end());
+      }
+    }
     if (mouseInput.consumed) {
       if (mouseInput.remaining.length === 0) return;
       input = mouseInput.remaining;
@@ -425,6 +460,9 @@ export function InkCliApp({
         dismissedPathKey.current = pathCompletionKey;
         setPathCompletion(undefined);
         setPathCompletionIndex(0);
+      } else if (suggestions.length > 0) {
+        setDismissedCommandKey(commandPaletteKey);
+        setSuggestionIndex(0);
       } else if (snapshot.retry !== undefined) {
         if (onDismissRetry) {
           onDismissRetry();
@@ -544,7 +582,9 @@ export function InkCliApp({
       return;
     }
     if (key.tab && suggestions.length > 0) {
-      const suggestion = suggestions[0]?.command ?? "";
+      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+      const selected = Math.min(suggestionIndex, visibleCount - 1);
+      const suggestion = suggestions[selected]?.command ?? "";
       applyComposer(suggestion, Array.from(suggestion).length);
       return;
     }
@@ -557,6 +597,21 @@ export function InkCliApp({
     if (pathCompletion?.suggestions.length && key.downArrow) {
       setPathCompletionIndex((index) =>
         index >= pathCompletion.suggestions.length - 1 ? 0 : index + 1,
+      );
+      return;
+    }
+    if (suggestions.length > 0 && key.upArrow) {
+      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+      setSuggestionIndex((index) => {
+        const current = Math.min(Math.max(index, 0), visibleCount - 1);
+        return current === 0 ? visibleCount - 1 : current - 1;
+      });
+      return;
+    }
+    if (suggestions.length > 0 && key.downArrow) {
+      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+      setSuggestionIndex((index) =>
+        index >= visibleCount - 1 ? 0 : index + 1,
       );
       return;
     }
@@ -686,7 +741,11 @@ export function InkCliApp({
           <ToolTimeline cards={snapshot.cards} columns={columns} />
         ) : null}
         {suggestions.length > 0 ? (
-          <CommandPalette suggestions={suggestions} columns={columns} />
+          <CommandPalette
+            suggestions={suggestions}
+            selectedIndex={suggestionIndex}
+            columns={columns}
+          />
         ) : null}
         {pathCompletion?.suggestions.length ? (
           <PathCompletionPanel

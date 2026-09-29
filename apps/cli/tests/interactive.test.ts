@@ -962,7 +962,10 @@ test(
         .reverse()
         .find((message) => message.role === "user");
       assert.equal(userMessage?.content, "你是什么模型");
-      assert.equal((stdout.match(/FIRST_RESPONSE/g) ?? []).length, 1);
+      // Ink 7 may repaint an unchanged transcript line while the composer
+      // settles; assert the response is present without coupling to raw
+      // terminal frame replay count.
+      assert.ok((stdout.match(/FIRST_RESPONSE/g) ?? []).length >= 1);
     });
     await provider.close();
   }

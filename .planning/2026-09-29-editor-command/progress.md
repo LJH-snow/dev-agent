@@ -4,7 +4,7 @@
 
 ### Current status
 - Phase 0 (recon) complete; Phase 1 (RED) complete; Phase 2 (implementation)
-  complete; Phase 3 (docs) complete; Phase 4 (verification) in progress.
+  complete; Phase 3 (docs) complete; Phase 4 (verification complete; rechecked after Ink 7.1.1 upgrade).
 
 ### Phase 0 — recon
 - Command flow: composer submit → `ink.controller.nextPrompt()` →
@@ -56,8 +56,26 @@
   terminal restored and Ctrl-C still exiting cleanly — a real failure-path
   PTY observation before the happy path went green.
 
+### Ink 7.1.1 follow-up (verified)
+- The CLI now relies on Ink 7.1.1's public `alternateScreen`, `usePaste`, and
+  `suspendTerminal` APIs. `runExternalEditor({manageTerminal: false})` keeps the
+  editor helper from duplicating Ink's raw-mode and screen-buffer lifecycle.
+- Native suspension can replay one command event buffered at the handoff. The
+  runtime suppresses that one resumed event with a bounded timeout, while
+  Ctrl-C remains a real cancellation signal.
+- Targeted Ink/interactive coverage passed **95/95** and the full CLI suite
+  passed **757/757** with no failures/cancellations/skips. Log:
+  `/tmp/cli-ink7-full-final.log`.
+
+### Verification (Ink 7.1.1 recheck, 2026-09-29)
+- Source/test typechecks and package builds passed.
+- Targeted Ink/editor/interactive coverage: **95/95**.
+- Full CLI suite: **757/757 passed**, 0 failures/cancellations/skips; log
+  `/tmp/cli-ink7-full-final.log`.
+- Documentation contract: **60/60**; `git diff --check` clean.
+
 ### Verification (final, 2026-09-29)
-- Full CLI suite: `pnpm --dir apps/cli exec sh -c 'node build-package.mjs &&
+- Full CLI suite (pre-upgrade closure): `pnpm --dir apps/cli exec sh -c 'node build-package.mjs &&
   node --test --test-concurrency=1 --test-timeout=120000
   tests-dist/*.test.js'` — **751/751 passed, 0 failed/cancelled/skipped**
   (was 737 before this feature; +12 unit, +1 component, +1 PTY), 314692ms,

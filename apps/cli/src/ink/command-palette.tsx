@@ -7,6 +7,8 @@ import type { CommandHint } from "../tui-renderer.js";
 import { useInkTheme } from "./theme.js";
 
 export const COMMAND_PULSE_FRAMES = ["✦", "✧", "✸", "✹"] as const;
+export const COMMAND_PALETTE_VISIBLE = 6;
+const COMMAND_PALETTE_SELECTED_INK = "#131923";
 
 export function commandPaletteFrame(index: number): string {
   const normalized = ((index % COMMAND_PULSE_FRAMES.length) +
@@ -17,17 +19,23 @@ export function commandPaletteFrame(index: number): string {
 export function CommandPalette({
   suggestions,
   columns,
+  selectedIndex = 0,
   frameIndex: controlledFrameIndex,
 }: {
   readonly suggestions: readonly CommandHint[];
   readonly columns: number;
+  readonly selectedIndex?: number;
   readonly frameIndex?: number;
 }): React.JSX.Element | null {
   const theme = useInkTheme();
   const [frameIndex, setFrameIndex] = useState(0);
   const isScreenReader = useIsScreenReaderEnabled();
-  const visible = suggestions.slice(0, 6);
+  const visible = suggestions.slice(0, COMMAND_PALETTE_VISIBLE);
   const active = visible.length > 0;
+  const selected = Math.min(
+    Math.max(0, selectedIndex),
+    Math.max(0, visible.length - 1),
+  );
   const suggestionsKey = JSON.stringify(suggestions);
   const glyph = commandPaletteFrame(isScreenReader ? 0 : controlledFrameIndex ?? frameIndex);
 
@@ -54,19 +62,28 @@ export function CommandPalette({
       <Text color={theme.info} bold>
         {glyph} COMMANDS // DECK
       </Text>
-      {visible.map((command, index) => (
-        <Text key={command.command} wrap="truncate-end">
-          <Text color={index === 0 ? theme.accent : theme.quote}>
-            {index === 0 ? "› " : "· "}
-          </Text>
-          <Text color={index === 0 ? theme.text : theme.accent}>
-            {command.command}
-          </Text>
-          {command.description ? (
-            <Text dimColor>  {command.description}</Text>
-          ) : null}
-        </Text>
-      ))}
+      {visible.map((command, index) => {
+        const isSelected = index === selected;
+        return (
+          <Box key={command.command} backgroundColor={isSelected ? theme.primary : undefined}>
+            <Text
+              color={isSelected ? COMMAND_PALETTE_SELECTED_INK : theme.accent}
+              wrap="truncate-end"
+            >
+              <Text color={isSelected ? COMMAND_PALETTE_SELECTED_INK : theme.quote}>
+                {isSelected ? "› " : "· "}
+              </Text>
+              {command.command}
+              {command.description ? (
+                <Text color={isSelected ? COMMAND_PALETTE_SELECTED_INK : undefined} dimColor={!isSelected}>
+                  {`  ${command.description}`}
+                </Text>
+              ) : null}
+            </Text>
+          </Box>
+        );
+      })}
+      <Text color={theme.muted}>Tab select · ↑↓ move · esc close</Text>
     </Box>
   );
 }

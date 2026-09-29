@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-29（CLI 升级 Ink 7.1.1）
+
+- CLI rich TTY rendering upgraded from Ink 6.8.0 to Ink 7.1.1. The minimum
+  supported Node.js version is now 22, matching Ink 7's runtime requirement.
+- Interactive rendering now opts into Ink's native `alternateScreen` render
+  option when `DEV_AGENT_TUI_ALT_SCREEN=1`; the old project-owned wrapper is no
+  longer part of the production lifecycle.
+- `:editor` now uses Ink's native `suspendTerminal` API to hand the terminal to
+  `$VISUAL`/`$EDITOR` and force a clean redraw on resume.
+- Bracketed paste handling now uses Ink's native `usePaste` hook, while the
+  existing bounded composer fallback remains for terminals that do not emit
+  bracketed-paste markers.
+- Updated package manifests, doctor checks, documentation, and manifest tests
+  for the Ink 7 / Node.js 22 baseline.
+
+## 2026-09-29（CLI command palette keyboard selection）
+
+- Command suggestions opened with `:` or `/` now support `↑`/`↓` navigation with wraparound.
+- The active command is rendered as a full-row themed highlight; `Tab` inserts the selected command, and `Esc` closes the palette without cancelling the Ink session.
+
 ## 2026-09-29（CLI `:editor` external editor composition）
 
 - New `:editor` command (also `/editor`) for idle interactive Ink sessions:

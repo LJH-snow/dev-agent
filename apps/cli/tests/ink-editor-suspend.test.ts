@@ -56,6 +56,34 @@ test("editor resolution prefers VISUAL over EDITOR and defaults to vi", () => {
   });
 });
 
+test("native Ink suspension mode does not duplicate terminal ownership", () => {
+  const calls: string[] = [];
+  const stdin = createFakeStdin(true, calls);
+  const outcome = runExternalEditor({
+    env: { EDITOR: "my-editor" },
+    platform: "darwin" as const,
+    stdin,
+    manageTerminal: false,
+    setInkWritesPaused: (paused) => calls.push(paused ? "pause" : "resume"),
+    alternateScreen: {
+      enter: () => calls.push("alt-enter"),
+      exit: () => calls.push("alt-exit"),
+    },
+    spawnRunner: (_command, args) => {
+      writeFileSync(args[args.length - 1] as string, "native suspension\n");
+      return { status: 0, signal: null, error: undefined };
+    },
+  });
+
+  assert.deepEqual(outcome, {
+    status: "completed",
+    value: "native suspension",
+    truncated: false,
+  });
+  assert.deepEqual(calls, []);
+  assert.deepEqual(stdin.rawStates, []);
+});
+
 test("editor token safety rejects shell metacharacters", () => {
   assert.equal(editorTokensAreSafe(["vi", "/usr/bin/vim"]), true);
   assert.equal(editorTokensAreSafe(["vi; rm"]), false);

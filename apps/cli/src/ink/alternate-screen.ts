@@ -4,9 +4,10 @@
 // full-screen TUI paint every row without pushing the session transcript into
 // the user's scrollback; leaving it restores the previous screen exactly.
 //
-// Ink 6.8 has no render option for this, so the CLI drives the sequences
-// around the Ink instance. CSI ?1049h saves the cursor position and switches
-// to the alternate buffer; CSI ?1049l switches back and restores the cursor.
+// Ink 7.1.1 owns production alternate-screen lifecycle through its native
+// render option. This small helper is retained for bounded compatibility and
+// unit/PTY tests. CSI ?1049h saves the cursor position and switches to the
+// alternate buffer; CSI ?1049l switches back and restores the cursor.
 export const ENTER_ALTERNATE_SCREEN = "\u001B[?1049h";
 export const EXIT_ALTERNATE_SCREEN = "\u001B[?1049l";
 

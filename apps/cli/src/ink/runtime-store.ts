@@ -152,6 +152,8 @@ export interface InkRuntimeSnapshot extends TuiStateSnapshot {
   readonly collaboration?: InkCollaborationSnapshot;
   readonly mcp?: InkMcpSnapshot;
   readonly composerInsert?: InkComposerInsert;
+  /** Suppress one stale input event replayed when Ink resumes a suspension. */
+  readonly inputSuppressed?: boolean;
 }
 
 export class InkRuntimeStore {
@@ -187,6 +189,7 @@ export class InkRuntimeStore {
   private mcp: InkMcpSnapshot | undefined;
   private composerInsert: InkComposerInsert | undefined;
   private composerInsertId = 0;
+  private inputSuppressed = false;
   private readonly lastThoughtSequenceBySession = new Map<string, number>();
   private snapshotValue: InkRuntimeSnapshot = this.buildSnapshot();
   private readonly listeners = new Set<() => void>();
@@ -329,6 +332,12 @@ export class InkRuntimeStore {
   setComposerInsert(value: string, truncated: boolean): void {
     this.composerInsertId += 1;
     this.composerInsert = { id: this.composerInsertId, value, truncated };
+    this.publish();
+  }
+
+  setInputSuppressed(suppressed: boolean): void {
+    if (this.inputSuppressed === suppressed) return;
+    this.inputSuppressed = suppressed;
     this.publish();
   }
 
@@ -549,6 +558,7 @@ export class InkRuntimeStore {
       ...(this.composerInsert === undefined
         ? {}
         : { composerInsert: { ...this.composerInsert } }),
+      ...(this.inputSuppressed ? { inputSuppressed: true } : {}),
       ...(this.plan === undefined
         ? {}
         : {

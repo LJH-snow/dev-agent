@@ -155,6 +155,8 @@ export interface ExternalEditorDeps {
   readonly removeTempDir?: (dir: string) => void;
   readonly setInkWritesPaused?: (paused: boolean) => void;
   readonly alternateScreen?: Pick<AlternateScreenSession, "enter" | "exit">;
+  /** Set false when Ink 7 owns suspension through its public suspendTerminal API. */
+  readonly manageTerminal?: boolean;
 }
 
 function createDefaultTempDir(prefix: string): string {
@@ -210,6 +212,7 @@ export function runExternalEditor(deps: ExternalEditorDeps = {}): ExternalEditor
   const spawnRunner = deps.spawnRunner ?? defaultEditorRunner;
   const createTempDir = deps.createTempDir ?? createDefaultTempDir;
   const removeTempDir = deps.removeTempDir ?? removeDefaultTempDir;
+  const manageTerminal = deps.manageTerminal ?? true;
 
   const tempDir = createTempDir(TEMP_PREFIX);
   const filePath = join(tempDir, "prompt.md");
@@ -217,20 +220,29 @@ export function runExternalEditor(deps: ExternalEditorDeps = {}): ExternalEditor
   try {
     writeFileSync(filePath, "", { mode: 0o600 });
 
-    deps.setInkWritesPaused?.(true);
-    deps.alternateScreen?.exit();
-    if (stdin.isRaw && stdin.setRawMode) {
-      wasRaw = true;
-      stdin.setRawMode(false);
+    let terminalSuspended = false;
+    if (manageTerminal) {
+      deps.setInkWritesPaused?.(true);
+      deps.alternateScreen?.exit();
+      if (stdin.isRaw && stdin.setRawMode) {
+        wasRaw = true;
+        stdin.setRawMode(false);
+      }
+      terminalSuspended = true;
     }
 
-    const result = spawnRunner(editor.command, ["--", filePath]);
-
-    if (stdin.setRawMode) {
-      stdin.setRawMode(wasRaw);
+    let result: SpawnSyncLikeResult;
+    try {
+      result = spawnRunner(editor.command, ["--", filePath]);
+    } finally {
+      if (manageTerminal && terminalSuspended) {
+        if (stdin.setRawMode) {
+          stdin.setRawMode(wasRaw);
+        }
+        deps.alternateScreen?.enter();
+        deps.setInkWritesPaused?.(false);
+      }
     }
-    deps.alternateScreen?.enter();
-    deps.setInkWritesPaused?.(false);
 
     if (result.error !== undefined) {
       const code = (result.error as NodeJS.ErrnoException).code;

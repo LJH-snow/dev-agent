@@ -358,7 +358,7 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - Primary CLI entry point.
 - Commands: `--once`, `--tools`, `--metadata`, `--compact`, `--session`, `--session-list`, `--reset-memory`.
 - Live streaming output via `onToken`/`onToolCall`/`onToolResult` callbacks; `--no-stream` to disable.
-- Ink interactive TTY mode uses Ink 6/React 19 and projects the shared runtime
+- Ink interactive TTY mode uses Ink 7.1.1/React 19 and projects the shared runtime
   event stream into the queue-aware Signal Loom workbench. Ink is the only
   interactive TTY renderer; pipes and other non-rich modes retain their
   line-oriented contracts.

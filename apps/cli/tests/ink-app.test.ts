@@ -192,6 +192,86 @@ test("Ink command palette advertises plan and apply workflow commands", async ()
   }
 });
 
+test("Ink command palette moves selection with arrows and accepts it with Tab", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const submitted: string[] = [];
+  const commands = [
+    { command: ":first", description: "First command" },
+    { command: ":second", description: "Second command" },
+  ];
+  const instance = renderInkApp(
+    stdin,
+    stdout,
+    (value) => submitted.push(value),
+    undefined,
+    true,
+    commands,
+  );
+
+  try {
+    stdin.write(":");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /› :second/);
+    assert.match(writes.join(""), /· :first/);
+
+    stdin.write("\t");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\u001b");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /› :second/);
+    assert.deepEqual(submitted, []);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("Ink command palette Escape closes suggestions without cancelling the app", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  let cancelled = 0;
+  const instance = render(
+    createElement(InkCliApp, {
+      store: new InkRuntimeStore(),
+      provider: "ollama",
+      model: "qwen3:4b-instruct",
+      sessionId: "default",
+      workingDirectory: "/Users/Admin/Desktop/dev-agent",
+      executor: "local",
+      commands: [{ command: ":first", description: "First command" }],
+      onSubmit: () => undefined,
+      onCancel: () => {
+        cancelled += 1;
+      },
+      onExit: () => undefined,
+    }),
+    {
+      stdin,
+      stdout,
+      stderr: stdout,
+      debug: true,
+      incrementalRendering: false,
+      exitOnCtrlC: false,
+    },
+  );
+
+  try {
+    stdin.write(":");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /COMMANDS \/\/ DECK/);
+    stdin.write("\u001b");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.equal(cancelled, 0);
+    assert.match(writes.join(""), /› :/);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
 test("Ink app renders the live collaboration panel from projected task events", () => {
   const store = new InkRuntimeStore();
   store.applyCollaborationEvent({

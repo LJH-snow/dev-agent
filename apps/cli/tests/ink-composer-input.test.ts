@@ -66,6 +66,30 @@ function renderComposerApp(
 
 const pause = () => new Promise((resolve) => setTimeout(resolve, 30));
 
+test("bracketed paste is routed through Ink's usePaste channel", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const submitted: string[] = [];
+  const instance = renderComposerApp(stdin, stdout, (value) => submitted.push(value));
+
+  try {
+    // Let Ink install usePaste before sending the bracketed-paste markers.
+    await pause();
+    stdin.write("\u001b[200~first line\nsecond line\u001b[201~");
+    await pause();
+    assert.deepEqual(submitted, []);
+    assert.match(writes.join(""), /first line/);
+    assert.match(writes.join(""), /second line/);
+
+    stdin.write("\r");
+    await pause();
+    assert.deepEqual(submitted, ["first line\nsecond line"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
 test("pasted multi-line text inserts as one block instead of submitting early", async () => {
   const { stdin, stdout, writes } = createInkTerminal();
   const submitted: string[] = [];

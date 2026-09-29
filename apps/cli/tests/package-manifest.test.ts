@@ -47,7 +47,7 @@ test("CLI package is publishable and exposes the bundled executable", async () =
   assert.equal(manifest.bugs?.url, "https://github.com/LJH-snow/dev-agent/issues");
   assert.equal(manifest.main, "dist/cli.js");
   assert.equal(manifest.bin?.["dev-agent"], "dist/cli.js");
-  assert.equal(manifest.engines?.node, ">=20");
+  assert.equal(manifest.engines?.node, ">=22");
   assert.deepEqual(manifest.files, ["dist/cli.js", "dist/cli.js.map", "LICENSE"]);
   assert.match(sourceEntry, /^#!\/usr\/bin\/env node\n/);
   await assert.doesNotReject(readFile(bundlePath), "the package bundle must be built");
@@ -85,7 +85,7 @@ test("the npm CLI package does not install a Rust runtime implicitly", async () 
 test("rich TTY rendering is backed by Ink and React", async () => {
   const manifest = await readManifest();
 
-  assert.match(manifest.dependencies?.ink ?? "", /^\^?6\./);
+  assert.match(manifest.dependencies?.ink ?? "", /^\^?7\./);
   assert.match(manifest.dependencies?.react ?? "", /^\^?19\./);
   assert.match(manifest.devDependencies?.["@types/react"] ?? "", /^\^?19\./);
   assert.equal(

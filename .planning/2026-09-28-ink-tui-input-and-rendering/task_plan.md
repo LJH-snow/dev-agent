@@ -1,10 +1,10 @@
-# Ink 6.8 built-in capability adoption: composer input, a11y, render performance, full-screen modes
+# Ink 7.1.1 capability adoption: composer input, a11y, render performance, full-screen modes
 
 ## Goal
-Enable the Ink 6.8 built-in capabilities the CLI does not use yet, in priority order — composer input experience (paste/IME/kitty keyboard), screen-reader support, shared-clock render performance, and alternate-screen full-screen modes — without new runtime dependencies and with each phase independently shippable.
+Enable the Ink 7.1.1 built-in capabilities the CLI does not use yet, in priority order — composer input experience (paste/IME/kitty keyboard), screen-reader support, shared-clock render performance, and alternate-screen full-screen modes — without new runtime dependencies and with each phase independently shippable.
 
 ## Current Phase
-Phase 4 (project implementation complete; native Ink API merged upstream, compatible upgrade pending)
+Phase 4 (complete; Ink 7.1.1 native APIs adopted and verified)
 
 ## Phases
 
@@ -12,8 +12,8 @@ Phase 4 (project implementation complete; native Ink API merged upstream, compat
 - [x] Inventory current Ink usage and unused capabilities (see findings.md)
 - **Status:** complete
 
-### Phase 1: Composer input experience (complete; recalibrated to real ink 6.8 APIs)
-- [x] Paste blocks: `usePaste` does not exist in ink 6.8 and `useInput` already delivers pastes as one multi-char chunk. Composer now treats chunks with ≥2 line breaks as a bounded paste block (cap `MAX_PASTE_CHARS=8000` + truncation notice); a single trailing break still submits so expect-style drivers and one-line pastes keep the old behavior (this boundary broke 4 PTY tests until fixed — see progress.md)
+### Phase 1: Composer input experience (complete; Ink 7.1.1 native paste API adopted)
+- [x] Paste blocks: Ink 7.1.1 `usePaste` now handles bracketed paste as one bounded block (cap `MAX_PASTE_CHARS=8000` + truncation notice). The composer retains a `useInput` fallback heuristic for terminals/test drivers that do not emit bracketed-paste markers; a single trailing break still submits so expect-style drivers and one-line pastes keep the old behavior.
 - [x] Stale-closure fix: under `maxFps: 15`, handler closures could apply edits against a stale draft and drop pasted content; composer state is now ref-backed (`composerRef` + `applyComposer`) with all branches (arrows/backspace/history/tab/submit) reading the ref
 - [x] Kitty keyboard protocol: render option `kittyKeyboard: { mode: "auto", flags: ["disambiguateEscapeCodes"] }` (auto probes, falls back silently); Shift+Enter (`CSI 13;2u` → `key.return && key.shift`) inserts a newline; non-press events filtered so keys register once
 - [x] IME cursor: `useCursor` + `measureElement` position the terminal cursor at the caret, gated behind `DEV_AGENT_IME_CURSOR=1` (off by default; absolute-row contract verified manually)
@@ -36,14 +36,15 @@ Phase 4 (project implementation complete; native Ink API merged upstream, compat
 - [x] Targeted verification: 31/31 across clock (6), metrics lifecycle including mounted Ink (6), screen reader (5), and component regressions (14); 30s test timeout. Full-suite outcome and exact commands recorded in progress.md.
 - **Status:** complete
 
-### Phase 4: Alternate-screen full-screen modes (project implementation complete; native API merged upstream)
+### Phase 4: Alternate-screen full-screen modes (complete; native Ink 7.1.1 API adopted)
 - [x] Added a bounded, opt-in project wrapper in `src/ink/alternate-screen.ts` using `CSI ?1049h`/`CSI ?1049l`; it enters before Ink's first frame, exits after final unmount, is TTY-gated, and has an `exit`-hook fallback.
 - [x] Added unit coverage for environment opt-in, idempotent enter/exit, disabled sessions, writer failures, and process-exit restoration; added PTY smoke coverage for sequence ordering and default-off behavior.
-- [x] Verified Ink upstream already merged the native `alternateScreen?: boolean` option in commit `5a60eb9`; no duplicate PR is needed. Keep the local wrapper while this project uses Ink 6.8.0, until a compatible upgrade is selected.
-- **Status:** project implementation complete; upstream API available, compatible dependency upgrade deferred
+- [x] Upgraded the CLI to Ink 7.1.1 and wired its native `alternateScreen: true` render option behind the existing `DEV_AGENT_TUI_ALT_SCREEN=1` gate; Ink now owns entry/exit and primary-buffer restoration.
+- [x] Updated the `:editor` path to use Ink 7.1.1 `suspendTerminal`, and `usePaste` handles bracketed paste without the old custom event-emitter access.
+- **Status:** complete; the local alternate-screen module remains only as a bounded compatibility/test helper.
 
 ### Phase 5: Deferred backlog (not scheduled)
-- [x] `suspendTerminal`-backed `:editor` command (compose long prompts in $EDITOR) — implemented 2026-09-29 as `src/ink/editor-suspend.ts` + the `:editor` command (gated frame writes, raw-mode and alt-screen suspend; ink 6.8 has no `suspendTerminal`, so the CLI drives the suspension itself). Plan: `.planning/2026-09-29-editor-command/`
+- [x] `suspendTerminal`-backed `:editor` command (compose long prompts in $EDITOR) — implemented 2026-09-29 as `src/ink/editor-suspend.ts` + the `:editor` command; production suspension now delegates to Ink 7.1.1 while the helper remains independently testable. Plan: `.planning/2026-09-29-editor-command/`
 - [ ] `renderToString` + ink-testing-library snapshot tests for cards
 - [ ] `useFocus`/`useFocusManager` refactor of the single global `useInput` key router
 - [ ] `useBoxMetrics`/`measureElement` scrollable transcript viewport
@@ -52,11 +53,11 @@ Phase 4 (project implementation complete; native Ink API merged upstream, compat
 ## Decisions Made
 | Decision | Rationale |
 |----------|-----------|
-| No new runtime dependencies | Use Ink 6.8 capabilities where available and small local wrappers for missing APIs; retain Node >=20 compatibility |
+| No new runtime dependencies | Use Ink 7.1.1 capabilities where available and small local helpers only where the project needs bounded compatibility behavior; Node >=22 matches Ink 7.1.1 |
 | Priority: input UX → a11y → perf → alt-screen | User pain first; a11y closes a recorded roadmap debt cheaply |
 | Paste inserts one bounded block with truncation notice | Matches repo's bounded-input house rules |
 | Backlog phases stay unscheduled | Value real but not blocking; revisit after Phase 4 |
-| Alternate-screen stays opt-in and TTY-gated | Preserve normal scrollback and pipe/non-interactive output; retain the local wrapper until the project can upgrade to a compatible Ink release with the native option |
+| Alternate-screen stays opt-in and TTY-gated | Preserve normal scrollback and pipe/non-interactive output; production uses Ink 7.1.1 native lifecycle ownership, with the local wrapper retained only for compatibility tests |
 
 ## Boundaries
 - No behavior change for non-paste typing or terminals without kitty protocol/alt-screen support; every feature degrades gracefully.

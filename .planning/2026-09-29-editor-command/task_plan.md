@@ -14,14 +14,15 @@ No new runtime dependencies; every guard fails closed; bounded I/O only.
     token split (first token = command, rest = args; no shell, no quoting).
   - `normalizeEditorContent(raw)`: CRLF → LF, strip one trailing newline,
     cap at `MAX_EDITOR_CHARS = 8_000` (parity with `MAX_PASTE_CHARS`).
-  - `createGatedWriteOutput(output)`: proxy that drops Ink frame writes while
-    paused so the suspended session cannot corrupt the editor's screen.
+  - `createGatedWriteOutput(output)`: retained bounded compatibility helper for
+    callers/tests that need to gate frame writes while a child owns the screen.
   - `runExternalEditor(deps)`: orchestrates temp file (mkdtemp 0o700, file
-    0o600, bounded read), suspend (pause writes → exit alt screen → raw off),
-    `spawnSync(editor, [args..., file], { stdio: "inherit" })`, resume (raw on
-    → re-enter alt screen → unpause), bounded read + normalize, temp cleanup
-    in `finally`. Refusals: win32 platform, non-TTY stdin. Failures report
-    bounded detail (exit code / signal / errno) without command output.
+    0o600, bounded read), safe `spawnSync(editor, [args..., file], {
+    stdio: "inherit" })`, bounded read + normalize, and temp cleanup in
+    `finally`. Refusals: win32 platform, non-TTY stdin. Failures report
+    bounded detail (exit code / signal / errno) without command output. The
+    production caller wraps it in Ink 7.1.1 `suspendTerminal` and passes
+    `manageTerminal: false`.
 - `index.ts` handleCommand: `:editor` and `/editor` alias handled while idle
   only (busy, queued prompts, or active task → notice, fail closed). SIGINT
   listener is detached during the editor so a Ctrl-C that kills the editor
@@ -37,7 +38,7 @@ No new runtime dependencies; every guard fails closed; bounded I/O only.
 ## Phases
 
 - [x] Phase 0 — recon: command flow (`nextPrompt` → `handleCommand`),
-      render output wrapper, alternate-screen session, composer ref state.
+      render output wrapper, native Ink 7.1.1 suspension, composer ref state.
 - [x] Phase 1 — RED contracts: `tests/ink-editor-suspend.test.ts` (unit),
       composer-insert component test, real-PTY happy path in
       `tests/interactive.test.ts` (a pipe-refusal test was dropped: piped
@@ -56,7 +57,16 @@ No new runtime dependencies; every guard fails closed; bounded I/O only.
 - Idle-only; refusal notices are explicit; pipe/JSON/once/MCP modes unaffected.
 - Preserve all existing dirty/untracked work; no resets or broad formats.
 
-## Closure evidence (2026-09-29)
+## Ink 7.1.1 follow-up closure (2026-09-29)
+
+- Production now uses Ink 7.1.1 native `suspendTerminal`; the editor helper is
+  called with `manageTerminal: false` so raw-mode and screen-buffer ownership is
+  not duplicated.
+- A bounded one-event replay guard handles PTY input buffered during the native
+  suspension handoff without swallowing Ctrl-C.
+- Targeted Ink/editor/interactive coverage passed **95/95** and the full CLI
+  suite passed **757/757** with no failures/cancellations/skips.
+
 
 - RED→GREEN: `tests-dist/ink-editor-suspend.test.js` 12/12 (RED first:
   module import failure, then store/hint failures).

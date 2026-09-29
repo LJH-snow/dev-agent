@@ -120,7 +120,7 @@ export interface DoctorOptions {
   readonly probeRust?: (path: string) => Promise<RustProbeResult>;
 }
 
-const MIN_NODE_MAJOR = 20;
+const MIN_NODE_MAJOR = 22;
 const MAX_CONFIG_FILE_BYTES = 1024 * 1024; // 1 MiB
 const CLI_LATEST_URL = "https://registry.npmjs.org/@agent_cli%2fcli/latest";
 const MAX_UPDATE_RESPONSE_BYTES = 64 * 1024;

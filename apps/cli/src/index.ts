@@ -12,7 +12,7 @@ import { dirname } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import React from "react";
-import { render as renderInk } from "ink";
+import { render as renderInk, type SuspendTerminal } from "ink";
 import {
   createTaskStatusBridge,
   scheduleInteractiveTask,
@@ -150,10 +150,9 @@ import { createNonInteractiveController, EXIT_CODES } from "./non-interactive.js
 import { runAcpServer } from "./acp-server.js";
 import { InkCliApp } from "./ink/app.js";
 import { createRenderMetricsLifecycle } from "./ink/render-metrics.js";
-import { alternateScreenEnabled, createAlternateScreenSession } from "./ink/alternate-screen.js";
+import { alternateScreenEnabled } from "./ink/alternate-screen.js";
 import {
   MAX_EDITOR_CHARS,
-  createGatedWriteOutput,
   runExternalEditor,
 } from "./ink/editor-suspend.js";
 import {
@@ -5252,6 +5251,7 @@ async function interactiveInk(
   let closed = false;
   let pickerSessions: readonly StoredSession[] | undefined;
   let instance: ReturnType<typeof renderInk> | undefined;
+  let suspendTerminal: SuspendTerminal | undefined;
   let lastRetry:
     | {
         readonly prompt: string;
@@ -5566,8 +5566,6 @@ async function interactiveInk(
     activeAbort?.abort();
     ink.controller.close();
     renderMetrics.unmount(() => instance?.unmount());
-    // Restore the user's screen only after Ink has emitted its final frame.
-    alternateScreen.exit();
   };
 
   const cancel = (): void => {
@@ -5638,11 +5636,9 @@ async function interactiveInk(
   process.on("SIGINT", onSigint);
   normalizeTerminalSize();
   process.stdout.on("resize", normalizeTerminalSize);
-  // Frame writes go through a gate so `:editor` can suspend the whole
-  // rendering session: while the gate is paused, Ink's frames are dropped
-  // instead of corrupting the external editor's screen. The rows guard from
-  // createInkRenderOutput stays in front of the gate.
-  const inkOutput = createGatedWriteOutput(createInkRenderOutput(process.stdout));
+  // Ink 7's native `suspendTerminal` owns the child-process handoff and
+  // redraw lifecycle. Keep only the rows guard that protects the TUI viewport.
+  const inkOutput = createInkRenderOutput(process.stdout);
   let resolveInitialRender!: () => void;
   const initialRender = new Promise<void>((resolve) => {
     resolveInitialRender = resolve;
@@ -5650,16 +5646,10 @@ async function interactiveInk(
 
   const renderMetrics = createRenderMetricsLifecycle(resolveInitialRender);
 
-  // Alternate screen (opt-in via DEV_AGENT_TUI_ALT_SCREEN=1): the full-screen
-  // buffer keeps the user's scrollback intact while the TUI owns every row.
-  // Enter before Ink's first frame; exit after its final one in close().
-  const alternateScreen = createAlternateScreenSession(
-    (data) => {
-      process.stdout.write(data);
-    },
-    alternateScreenEnabled() && process.stdout.isTTY === true,
-  );
-  alternateScreen.enter();
+  // Ink 7 owns alternate-screen entry/exit and restores the primary buffer
+  // during unmount. Keep the environment gate so the existing opt-in remains
+  // backwards-compatible and pipes/non-interactive sessions stay unchanged.
+  const useAlternateScreen = alternateScreenEnabled() && process.stdout.isTTY === true;
 
   instance = renderInk(
     React.createElement(InkCliApp, {
@@ -5688,6 +5678,9 @@ async function interactiveInk(
       },
       onSessionResume: resumeSessionAt,
       onDismissSessionPicker: dismissSessionPicker,
+      onSuspendTerminalReady: (handler) => {
+        suspendTerminal = handler;
+      },
       onApprovalAnswer: (value: string) => {
         ink.controller.submit(value);
         syncQueue();
@@ -5695,7 +5688,7 @@ async function interactiveInk(
     }),
     {
       stdin: process.stdin,
-      stdout: inkOutput.output,
+      stdout: inkOutput,
       stderr: process.stderr,
       exitOnCtrlC: false,
       patchConsole: true,
@@ -5712,6 +5705,7 @@ async function interactiveInk(
       // Release buffered input after the first paint; collect diagnostics
       // without I/O while Ink owns the terminal (including its final render).
       onRender: renderMetrics.onRender,
+      alternateScreen: useAlternateScreen,
     },
   );
 
@@ -5752,32 +5746,66 @@ async function interactiveInk(
       // after the blocked spawn returns; detach the interactive handler for
       // the duration of the editor and re-attach it after the resume.
       process.removeListener("SIGINT", onSigint);
-      let outcome: ReturnType<typeof runExternalEditor>;
+      // Ink resumes its readable listener before suspendTerminal() resolves;
+      // suppress one replayed command event in the composer until then.
+      ink.store.setInputSuppressed(true);
+      let outcome: ReturnType<typeof runExternalEditor> | undefined;
       try {
-        outcome = runExternalEditor({
-          platform: process.platform,
-          stdin: process.stdin,
-          setInkWritesPaused: inkOutput.setWritesPaused,
-          alternateScreen,
-        });
+        if (suspendTerminal === undefined) {
+          outcome = {
+            status: "failed",
+            detail: "terminal suspension is unavailable",
+          };
+        } else {
+          await suspendTerminal(() => {
+            outcome = runExternalEditor({
+              platform: process.platform,
+              stdin: process.stdin,
+              manageTerminal: false,
+            });
+          });
+        }
+      } catch {
+        outcome = { status: "failed", detail: "terminal suspension failed" };
       } finally {
         process.on("SIGINT", onSigint);
       }
-      if (outcome.status === "completed") {
-        ink.store.setComposerInsert(outcome.value, outcome.truncated);
-        ink.store.addNotice(outcome.truncated
+      // Ink's public suspension API detaches its readable listener while the
+      // child owns the terminal. Discard bytes that were already queued by the
+      // command line before the listener was detached; otherwise a PTY can
+      // replay the `:editor` carriage return after resume as a new prompt.
+      try {
+        while (process.stdin.read() !== null) {
+          // Drain all currently buffered input; new input after this point is
+          // user intent and remains available to the resumed composer.
+        }
+      } catch {
+        // Best-effort only: a non-standard stdin must not make the editor path
+        // fail after Ink has already restored the terminal.
+      }
+      const clearInputSuppression = setTimeout(() => {
+        ink.store.setInputSuppressed(false);
+      }, 100);
+      clearInputSuppression.unref?.();
+      const editorOutcome = outcome ?? {
+        status: "failed" as const,
+        detail: "editor did not run",
+      };
+      if (editorOutcome.status === "completed") {
+        ink.store.setComposerInsert(editorOutcome.value, editorOutcome.truncated);
+        ink.store.addNotice(editorOutcome.truncated
           ? `Editor draft truncated to ${MAX_EDITOR_CHARS} characters. Review it and press Enter to submit.`
           : "Editor draft loaded. Review it and press Enter to submit.");
-      } else if (outcome.status === "empty") {
+      } else if (editorOutcome.status === "empty") {
         ink.store.addNotice("Editor closed without content.");
-      } else if (outcome.status === "refused") {
-        ink.store.addNotice(outcome.reason === "not-a-tty"
+      } else if (editorOutcome.status === "refused") {
+        ink.store.addNotice(editorOutcome.reason === "not-a-tty"
           ? "The editor requires an interactive TTY."
-          : outcome.reason === "unsupported-platform"
+          : editorOutcome.reason === "unsupported-platform"
             ? "The editor is not supported on this platform."
             : "VISUAL/EDITOR must name a single executable; use a wrapper script for flags.");
       } else {
-        ink.store.addNotice(safeTerminalText(`Editor failed: ${outcome.detail}`));
+        ink.store.addNotice(safeTerminalText(`Editor failed: ${editorOutcome.detail}`));
       }
       return true;
     }

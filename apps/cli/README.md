@@ -32,7 +32,7 @@ managed scroll area. Wheel/PageUp/PageDown work from startup; Home/End (with an
 empty draft) jump to the beginning/latest output. Back to bottom uses the current
 painted layout, including composer growth and terminal resize. The composer keeps
 a bounded four-line draft window; the full draft is preserved for submission.
-Approval input remains beside the composer.
+Approval input remains beside the composer. When a draft starts with `:` or `/`, the command palette supports `↑`/`↓` selection, highlights the active row, uses `Tab` to insert that command, and uses `Esc` to close the palette without cancelling the session.
 
 Below the composer, the active provider/model and context status replace the
 repeated workspace/session footer. Context tokens are the provider-reported input
@@ -63,10 +63,11 @@ opens the configured editor on a private temp file:
   containing shell metacharacters or extra tokens is refused (use a wrapper
   script for flags such as `code -w`).
 - Saving content and exiting the editor loads it into the composer draft for
-  review; nothing is submitted automatically. Content is normalized (CRLF →
-  LF, one trailing newline stripped) and capped at 8,000 characters with an
-  explicit truncation notice. Closing the editor with an empty buffer is a
-  quiet no-op.
+  review; nothing is submitted automatically. Ink 7's native `suspendTerminal`
+  lifecycle clears the TUI, hands the terminal to the editor, and forces a full
+  redraw when it resumes. Content is normalized (CRLF → LF, one trailing
+  newline stripped) and capped at 8,000 characters with an explicit truncation
+  notice. Closing the editor with an empty buffer is a quiet no-op.
 - The command is available only while the session is idle; piped, JSON, and
   `--once` runs are unaffected. A Ctrl-C that terminates the editor does not
   cancel the CLI session. Temp files are private (0600) and always removed.
@@ -414,16 +415,15 @@ end-to-end latency or achieved FPS; abrupt termination may lose the summary.
 No runtime performance improvement has been benchmarked.
 
 Set `DEV_AGENT_TUI_ALT_SCREEN=1` to opt into the terminal's alternate screen buffer
-for interactive Ink sessions. When stdout is a TTY, the CLI writes `CSI ?1049h`
-before the first Ink frame and `CSI ?1049l` after the final unmount, preserving
-the user's normal scrollback while the full-screen TUI is active. The default is
-off, and pipes/non-interactive modes never enter the alternate screen. Normal
-shutdown restores the primary screen; uncatchable hard termination such as
-`SIGKILL` cannot run the cleanup hook, so it cannot guarantee restoration. The
-installed Ink 6.8.0 version does not expose this option natively; Ink upstream
-has already merged the native API in commit `5a60eb9`. This local wrapper remains
-until the project selects a compatible Ink upgrade, so no duplicate upstream PR
-is needed.
+for interactive Ink sessions. When stdout is a TTY, Ink 7.1.1 enters the
+alternate buffer before the first frame and restores the primary buffer after
+unmount, preserving the user's normal scrollback while the full-screen TUI is
+active. The default is off, and pipes/non-interactive modes never enter the
+alternate screen. Normal shutdown restores the primary screen; uncatchable hard
+termination such as `SIGKILL` cannot run cleanup and cannot guarantee
+restoration. The repository still keeps `src/ink/alternate-screen.ts` as a
+bounded compatibility/test helper, but production runtime ownership now stays
+with Ink's native `alternateScreen` render option.
 
 ## Installed CLI and external projects
 
@@ -700,7 +700,7 @@ streaming, command completion, and live tool cards. The launch state is always
 run state. During a request, the status rail moves through `THINKING`,
 `STREAMING`, tool-running, approval, and validation states, and rapid tokens are
 coalesced into bounded live redraws.
-The only rich renderer is Ink 6 with React 19. Interactive TTY input, cursor
+The only rich renderer is Ink 7.1.1 with React 19. Interactive TTY input, cursor
 movement, queueing, and redraws all go through the Ink composer; there is no
 second raw-ANSI editor path.
 Prompts submitted while a run is active stay in a passive waiting queue; only
