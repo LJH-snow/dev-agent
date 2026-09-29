@@ -393,6 +393,56 @@ test("Ink command palette Enter treats option and bracket templates as composer 
   }
 });
 
+test("Ink command palette scrolls so every command stays keyboard-reachable", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const submitted: string[] = [];
+  const commands = Array.from({ length: 8 }, (_, index) => ({
+    command: `:c${index}`,
+    description: `Command ${index}`,
+  }));
+  const instance = renderInkApp(
+    stdin,
+    stdout,
+    (value) => submitted.push(value),
+    undefined,
+    true,
+    commands,
+  );
+
+  try {
+    stdin.write(":");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    // Wrapping up from index 0 lands on the last command of the full list
+    // (index 7), and wrapping down returns to the first.
+    stdin.write("\u001b[A");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /› :c7/);
+    stdin.write("\u001b[B");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /› :c0/);
+
+    // Moving past the visible 6-row window: index 6 must stay selectable.
+    for (let step = 0; step < 6; step += 1) {
+      stdin.write("\u001b[B");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.match(writes.join(""), /› :c6/);
+
+    // Tab accepts the selection from the scrolled window; the next Enter
+    // submits the accepted command.
+    stdin.write("\t");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, [":c6"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
 test("Ink command palette Escape closes suggestions without cancelling the app", async () => {
   const { stdin, stdout, writes } = createInkTerminal();
   let cancelled = 0;

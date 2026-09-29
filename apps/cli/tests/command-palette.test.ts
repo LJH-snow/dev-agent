@@ -54,5 +54,5 @@ test("command palette moves the full-row selection highlight", () => {
 
   assert.ok(rows.some((row) => row.includes("· :command-1")));
   assert.ok(rows.some((row) => row.includes("› :command-2")));
-  assert.match(output, /Tab select · ↑↓ move · esc close/);
+  assert.match(output, /Tab select · ↑↓ move · click accept · esc close/);
 });

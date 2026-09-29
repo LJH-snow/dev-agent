@@ -147,7 +147,43 @@ test("command palette keeps the selected row and keyboard affordance stable", ()
     "│ · :help  Show available commands                       │",
     "│ › :plan  Plan a task                                   │",
     "│ · :quit  Exit the session                              │",
-    "│ Tab select · ↑↓ move · esc close                       │",
+    "│ Tab select · ↑↓ move · click accept · esc close        │",
+    "╰────────────────────────────────────────────────────────╯",
+  ]);
+});
+
+test("command palette scrolls its visible window with the offset", () => {
+  const output = renderToString(
+    createElement(CommandPalette, {
+      suggestions: [
+        { command: ":c0", description: "Zero" },
+        { command: ":c1", description: "One" },
+        { command: ":c2", description: "Two" },
+        { command: ":c3", description: "Three" },
+        { command: ":c4", description: "Four" },
+        { command: ":c5", description: "Five" },
+        { command: ":c6", description: "Six" },
+        { command: ":c7", description: "Seven" },
+      ],
+      columns: 60,
+      selectedIndex: 6,
+      offset: 2,
+      frameIndex: 1,
+    }),
+    { columns: 60 },
+  );
+
+  assertSnapshot("command palette scrolled", output, [
+    "",
+    "╭────────────────────────────────────────────────────────╮",
+    "│ ✧ COMMANDS // DECK                                     │",
+    "│ · :c2  Two                                             │",
+    "│ · :c3  Three                                           │",
+    "│ · :c4  Four                                            │",
+    "│ · :c5  Five                                            │",
+    "│ › :c6  Six                                             │",
+    "│ · :c7  Seven                                           │",
+    "│ Tab select · ↑↓ move · click accept · esc close        │",
     "╰────────────────────────────────────────────────────────╯",
   ]);
 });

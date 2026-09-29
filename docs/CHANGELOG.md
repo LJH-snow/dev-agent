@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-30（CLI TUI command palette scrolling window）
+
+- Every prefix-matched command is now keyboard-reachable: arrow keys move
+  across the full suggestion list (wrapping at its bounds) and the 6-row
+  visible window follows the selection, instead of wrapping inside the first
+  six entries.
+- Click mapping follows the scrolled window (`offset + row`), so clicking a
+  painted row selects and accepts the command that is actually painted.
+- Palette footer hint now advertises click support.
+
 ## 2026-09-30（CLI TUI command palette pointer and Enter acceptance）
 
 - With the command palette open, Enter now acts on the highlighted row instead

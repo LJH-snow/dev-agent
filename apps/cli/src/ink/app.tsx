@@ -191,6 +191,7 @@ export function InkCliApp({
   const [pathCompletion, setPathCompletion] = useState<PathCompletionResult | undefined>(undefined);
   const [pathCompletionIndex, setPathCompletionIndex] = useState(0);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [paletteOffset, setPaletteOffset] = useState(0);
   const [paletteLayout, setPaletteLayout] = useState<CommandPaletteLayout | undefined>(undefined);
   const dismissedPathKey = useRef<string | undefined>(undefined);
   const [dismissedCommandKey, setDismissedCommandKey] = useState<string | undefined>(undefined);
@@ -314,12 +315,28 @@ export function InkCliApp({
   }, [commandPaletteKey]);
 
   useEffect(() => {
-    const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
-    setSuggestionIndex((current) => visibleCount === 0
+    setSuggestionIndex((current) => suggestions.length === 0
       ? 0
-      : Math.min(current, visibleCount - 1));
-    if (visibleCount === 0) setPaletteLayout(undefined);
+      : Math.min(current, suggestions.length - 1));
+    if (suggestions.length === 0) {
+      setPaletteLayout(undefined);
+      setPaletteOffset(0);
+    }
   }, [suggestions.length]);
+
+  // Keep the 6-row visible window on the selection so every prefix-matched
+  // command stays keyboard-reachable; the window never scrolls otherwise.
+  useEffect(() => {
+    setPaletteOffset((current) => {
+      const maxOffset = Math.max(0, suggestions.length - COMMAND_PALETTE_VISIBLE);
+      const clamped = Math.min(current, maxOffset);
+      if (suggestionIndex < clamped) return suggestionIndex;
+      if (suggestionIndex >= clamped + COMMAND_PALETTE_VISIBLE) {
+        return Math.max(0, suggestionIndex - COMMAND_PALETTE_VISIBLE + 1);
+      }
+      return clamped;
+    });
+  }, [suggestionIndex, suggestions.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -398,9 +415,8 @@ export function InkCliApp({
   // composer so the user can complete the argument (which also closes the
   // palette because the filled text no longer prefix-matches any command).
   const acceptCommandSuggestion = (index: number): void => {
-    const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
-    if (visibleCount === 0) return;
-    const selected = Math.min(Math.max(index, 0), visibleCount - 1);
+    if (suggestions.length === 0) return;
+    const selected = Math.min(Math.max(index, 0), suggestions.length - 1);
     const suggestion = suggestions[selected];
     if (suggestion === undefined) return;
     if (commandSuggestionNeedsInput(suggestion.command)) {
@@ -468,16 +484,18 @@ export function InkCliApp({
         ? commandPaletteRowAt(click, activePaletteLayout, suggestions.length)
         : undefined;
       if (paletteRow !== undefined) {
-        // The first click selects the row; clicking the already-selected row
-        // accepts it, mirroring the Enter behavior.
+        // Rows are window-relative; the offset maps them onto the full
+        // suggestion list. The first click selects the row; clicking the
+        // already-selected row accepts it, mirroring the Enter behavior.
+        const absoluteRow = paletteRow + paletteOffset;
         const currentSelection = Math.min(
           Math.max(suggestionIndex, 0),
-          Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length) - 1,
+          suggestions.length - 1,
         );
-        if (paletteRow === currentSelection) {
-          acceptCommandSuggestion(paletteRow);
+        if (absoluteRow === currentSelection) {
+          acceptCommandSuggestion(absoluteRow);
         } else {
-          setSuggestionIndex(paletteRow);
+          setSuggestionIndex(absoluteRow);
         }
         continue;
       }
@@ -668,8 +686,7 @@ export function InkCliApp({
       return;
     }
     if (focusOwner === "commandPalette" && key.tab && suggestions.length > 0) {
-      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
-      const selected = Math.min(suggestionIndex, visibleCount - 1);
+      const selected = Math.min(Math.max(suggestionIndex, 0), suggestions.length - 1);
       const suggestion = suggestions[selected]?.command ?? "";
       applyComposer(suggestion, Array.from(suggestion).length);
       return;
@@ -687,17 +704,14 @@ export function InkCliApp({
       return;
     }
     if (focusOwner === "commandPalette" && suggestions.length > 0 && key.upArrow) {
-      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
-      setSuggestionIndex((index) => {
-        const current = Math.min(Math.max(index, 0), visibleCount - 1);
-        return current === 0 ? visibleCount - 1 : current - 1;
-      });
+      setSuggestionIndex((index) =>
+        index <= 0 ? suggestions.length - 1 : index - 1,
+      );
       return;
     }
     if (focusOwner === "commandPalette" && suggestions.length > 0 && key.downArrow) {
-      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
       setSuggestionIndex((index) =>
-        index >= visibleCount - 1 ? 0 : index + 1,
+        index >= suggestions.length - 1 ? 0 : index + 1,
       );
       return;
     }
@@ -836,6 +850,7 @@ export function InkCliApp({
           <CommandPalette
             suggestions={suggestions}
             selectedIndex={suggestionIndex}
+            offset={paletteOffset}
             columns={columns}
             onLayout={setPaletteLayout}
           />

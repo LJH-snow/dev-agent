@@ -56,12 +56,15 @@ export function CommandPalette({
   suggestions,
   columns,
   selectedIndex = 0,
+  offset = 0,
   frameIndex: controlledFrameIndex,
   onLayout,
 }: {
   readonly suggestions: readonly CommandHint[];
   readonly columns: number;
   readonly selectedIndex?: number;
+  /** First suggestion painted in the scrolling visible window. */
+  readonly offset?: number;
   readonly frameIndex?: number;
   readonly onLayout?: (layout: CommandPaletteLayout) => void;
 }): React.JSX.Element | null {
@@ -70,10 +73,10 @@ export function CommandPalette({
   const isScreenReader = useIsScreenReaderEnabled();
   const boxRef = useRef<DOMElement | null>(null);
   const reportedLayoutRef = useRef("");
-  const visible = suggestions.slice(0, COMMAND_PALETTE_VISIBLE);
+  const visible = suggestions.slice(offset, offset + COMMAND_PALETTE_VISIBLE);
   const active = visible.length > 0;
   const selected = Math.min(
-    Math.max(0, selectedIndex),
+    Math.max(0, selectedIndex - offset),
     Math.max(0, visible.length - 1),
   );
   const suggestionsKey = JSON.stringify(suggestions);
@@ -145,7 +148,7 @@ export function CommandPalette({
           </Box>
         );
       })}
-      <Text color={theme.muted}>Tab select · ↑↓ move · esc close</Text>
+      <Text color={theme.muted}>Tab select · ↑↓ move · click accept · esc close</Text>
     </Box>
   );
 }

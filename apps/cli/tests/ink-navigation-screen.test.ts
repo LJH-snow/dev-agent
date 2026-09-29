@@ -16,7 +16,11 @@ const { InkCliApp } = await import("../dist/ink/app.js");
 const { InkRuntimeStore } = await import("../dist/ink/runtime-store.js");
 const { createInkRenderOutput } = await import("../dist/ink/terminal-size.js");
 
-function createScreen(columns: number, rows: number) {
+function createScreen(
+  columns: number,
+  rows: number,
+  commands?: readonly { command: string; description: string }[],
+) {
   const terminal = new Terminal({ cols: columns, rows, convertEol: true, allowProposedApi: true, scrollback: 1000 });
   const stdin = new PassThrough() as PassThrough & NodeJS.ReadStream;
   Object.assign(stdin, {
@@ -41,6 +45,7 @@ function createScreen(columns: number, rows: number) {
     workingDirectory: "/tmp",
     executor: "local",
     terminalRowsOffset: 1,
+    ...(commands === undefined ? {} : { commands }),
     onSubmit: (value: string) => submitted.push(value),
     onCancel: () => undefined,
     onExit: () => undefined,
@@ -247,6 +252,36 @@ test("clicking a palette row selects it and clicking again submits it", async ()
       () => screen.paintedRow("COMMANDS // DECK") === undefined,
       "palette closes after submit",
     );
+  } finally { screen.dispose(); }
+});
+
+test("clicking a scrolled palette window row maps to the absolute command", async () => {
+  const commands = Array.from({ length: 8 }, (_, index) => ({
+    command: `:c${index}`,
+    description: `Command ${index}`,
+  }));
+  const screen = createScreen(80, 24, commands);
+  try {
+    screen.stdin.write(":");
+    await screen.waitFor(() => screen.paintedRow("COMMANDS // DECK") !== undefined, "palette open");
+
+    for (let step = 0; step < 6; step += 1) {
+      screen.stdin.write("\u001b[B");
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await screen.waitFor(() => screen.paintedRow("› :c6") !== undefined, "window scrolled to c6");
+
+    // The window shows c1..c6, so the painted :c3 row is window row 2. With
+    // the offset applied the click selects :c3, not the unscrolled :c2.
+    const c3Row = screen.paintedRow(":c3");
+    assert.ok(c3Row !== undefined, "c3 painted in scrolled window");
+    screen.click(2, c3Row);
+    await screen.waitFor(() => screen.paintedRow("› :c3") !== undefined, "click selects c3");
+    assert.deepEqual(screen.submitted, []);
+
+    screen.click(2, c3Row);
+    await screen.waitFor(() => screen.submitted.length === 1, "second click submits c3");
+    assert.deepEqual(screen.submitted, [":c3"]);
   } finally { screen.dispose(); }
 });
 
