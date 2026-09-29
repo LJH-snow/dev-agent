@@ -73,7 +73,12 @@ export function ToolTimeline({
               Math.min(16, Math.max(8, Math.floor((columns - 36) / 2))),
             );
         return (
-          <Box key={card.id} flexDirection="column" marginTop={1}>
+          <Box
+            key={card.id}
+            flexDirection="column"
+            marginTop={1}
+            aria-state={card.status === "running" ? { busy: true } : undefined}
+          >
             <Text color={theme.dim}>
               {isLast ? "└─ " : "├─ "}
               <Text color={color} bold>

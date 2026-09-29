@@ -25,6 +25,29 @@ pnpm cli --tools
 DEV_AGENT_MODEL_PROVIDER=ollama pnpm cli
 ```
 
+## Interactive terminal layout
+
+The Ink interface keeps welcome, conversation, and informational panels in one
+managed scroll area. Wheel/PageUp/PageDown work from startup; Home/End (with an
+empty draft) jump to the beginning/latest output. Back to bottom uses the current
+painted layout, including composer growth and terminal resize. The composer keeps
+a bounded four-line draft window; the full draft is preserved for submission.
+Approval input remains beside the composer.
+
+Below the composer, the active provider/model and context status replace the
+repeated workspace/session footer. Context tokens are the provider-reported input
+count for the **last request**, not cumulative session usage or a live estimate of
+the next request. Before telemetry arrives (and after switching models/sessions),
+usage is unknown. The model context-window limit is currently unknown; no
+utilization percentage is inferred from session budgets or character limits.
+The executor being local does not imply a local model.
+
+Routine route/state/timing/token diagnostics are hidden by default. Use `:route`,
+`:trace`, and `:budget` for explicit details, or `DEV_AGENT_TUI_DEBUG=1` for verbose
+run summaries and automatic route notices. Notices are deduplicated and retain
+the latest 50; pending approvals and retry state are stored separately. Errors,
+safety decisions, and explicit command results remain visible in the scroll area.
+
 ## Interactive skills
 
 The interactive CLI discovers bounded Markdown skills from:
@@ -346,6 +369,38 @@ In Ink mode, `:theme` lists the built-in `signal`, `mono`, and `ember` palettes,
 and `:theme <name>` switches the presentation without changing the session.
 Assistant answers use bounded streaming Markdown, while approval cards show a
 sanitized, truncated unified diff when a reviewed file change is available.
+
+Set `INK_SCREEN_READER=true` to run the Ink TUI in screen-reader mode: the
+frame renders unthrottled as flattened text, decorative spinner glyphs are
+omitted, animation timers freeze into deterministic status labels (one
+announcement instead of a stream of near-identical frames), and pending
+approval cards and running tool cards announce themselves with an explicit
+`(busy)` state prefix.
+
+The TUI keeps its animation cheap: the status line, thinking glyph, thought
+line, command palette, and approval pulse all ride one shared 180ms clock
+(`src/ink/animation-clock.ts`) that starts on the first subscriber and stops
+when the last one leaves, instead of one OS timer per component. Set
+`DEV_AGENT_TUI_RENDER_METRICS=1` to count renders exceeding `1000 / 15` ms
+(about 66.67ms). After normal TUI unmount, at most one stderr line reports
+`[tui-render] slow frames: …; max: …ms; budget: 66.67ms`. No line is emitted
+without slow samples. Collection uses constant memory and performs no I/O
+while Ink owns the terminal: stderr writes during `onRender` can trigger Ink
+frame restoration. This opt-in diagnostic measures Ink render time, not
+end-to-end latency or achieved FPS; abrupt termination may lose the summary.
+No runtime performance improvement has been benchmarked.
+
+Set `DEV_AGENT_TUI_ALT_SCREEN=1` to opt into the terminal's alternate screen buffer
+for interactive Ink sessions. When stdout is a TTY, the CLI writes `CSI ?1049h`
+before the first Ink frame and `CSI ?1049l` after the final unmount, preserving
+the user's normal scrollback while the full-screen TUI is active. The default is
+off, and pipes/non-interactive modes never enter the alternate screen. Normal
+shutdown restores the primary screen; uncatchable hard termination such as
+`SIGKILL` cannot run the cleanup hook, so it cannot guarantee restoration. The
+installed Ink 6.8.0 version does not expose this option natively; Ink upstream
+has already merged the native API in commit `5a60eb9`. This local wrapper remains
+until the project selects a compatible Ink upgrade, so no duplicate upstream PR
+is needed.
 
 ## Installed CLI and external projects
 

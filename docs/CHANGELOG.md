@@ -1,5 +1,77 @@
 # Changelog
 
+## 2026-09-29（CLI TUI alternate-screen mode）
+
+- Added an opt-in `DEV_AGENT_TUI_ALT_SCREEN=1` alternate-screen wrapper for
+  interactive Ink sessions. On TTY stdout it sends `CSI ?1049h` before the first
+  frame and `CSI ?1049l` after the final Ink unmount, keeping normal scrollback
+  intact while the full-screen TUI is active.
+- The wrapper is disabled by default, never affects pipes or non-interactive
+  modes, makes enter/exit idempotent, and registers a best-effort process-exit
+  restoration hook. `SIGKILL` and other uncatchable termination cannot guarantee
+  that the primary screen is restored.
+- Added unit coverage for opt-in gating, failure-safe cleanup, idempotence, and
+  process-exit restoration, plus PTY smoke coverage for sequence ordering.
+- The installed Ink 6.8.0 version has no public native `alternateScreen` render
+  option. Ink upstream has already merged the native API in commit `5a60eb9`;
+  this project retains its local wrapper until a compatible Ink upgrade is
+  selected. No duplicate upstream PR is needed.
+
+## 2026-09-28（CLI managed scrolling and conversation status）
+
+- Welcome, transcript, and notices share a measured scroll area from startup.
+  Composer height and live resize drive viewport and navigation hit geometry;
+  the terminal row guard and standard renderer are preserved.
+- Routine route and run diagnostics are quiet by default, with explicit
+  `:route`/`:trace` access and `DEV_AGENT_TUI_DEBUG=1` opt-in verbosity.
+  Notice retention is deduplicated and bounded to 50, separately from approvals.
+- Composer status shows active provider/model and last-request input tokens.
+  Unknown context limits remain explicit; session token totals are not treated
+  as context utilization. Multiline drafts retain their full submission value.
+- Added headless terminal checks for startup scrolling, compact/large terminals,
+  composer growth, resize, painted hover/click targets, and model/session status.
+
+
+## 2026-09-28（CLI TUI shared animation clock and render-jank probe）
+
+- The five decorative TUI animations (status line, thinking glyph, thought
+  line, command palette, approval pulse) now share one 180ms clock in
+  `src/ink/animation-clock.ts` instead of running one `setInterval` each. The
+  timer starts with the first subscriber, stops with the last, and is
+  `unref()`ed so it never keeps the process alive. Animated components accept
+  inline callbacks (the tick handler lives in a ref), with local tick counts
+  and reset keys; status advances every second tick. Screen-reader freeze is
+  preserved. Timer consolidation is not a measured FPS/latency improvement.
+- New optional render-jank probe: `DEV_AGENT_TUI_RENDER_METRICS=1` collects
+  slow-render count and maximum time above the exact `1000 / 15` ms budget.
+  Constant-space collection does no I/O in `onRender`; after normal unmount
+  it emits at most one `[tui-render] slow frames: …` stderr summary. Writing
+  stderr inside `onRender` is unsafe because Ink can restore/re-render output.
+  Off by default; abrupt termination may lose the summary.
+- The standard log-update renderer stays in place; `incrementalRendering`
+  remains disabled under the existing cursor-row rationale. No new manual
+  real-terminal verification or render-performance benchmark was performed.
+
+## 2026-09-28（CLI TUI screen-reader mode）
+
+- New screen-reader mode for the Ink TUI, enabled with `INK_SCREEN_READER=true`
+  (or ink's `isScreenReaderEnabled` render option): the frame renders
+  unthrottled as flattened text, where box `aria-role`/`aria-state` surface as
+  `role:` prefixes and `(busy)` markers.
+- Decorative animations freeze into deterministic text in this mode:
+  `RotatingStatus` renders its current status label instead of cycling frames,
+  `ThinkingIndicator`'s spinner glyph is omitted, `ThoughtLine`,
+  `CommandPalette`, and `ApprovalCard` stop their 180ms timers so a screen
+  reader gets one announcement instead of a stream of near-identical frames.
+- Pending approval cards announce `(busy)` while awaiting a decision, and
+  running tool cards in the timeline announce `(busy)` until they finish.
+- This closes the CLI side of assistive-tech support. The separately recorded
+  Desktop (HTML) screen-reader-announcement deferral still stands; it needs a
+  browser harness and is not affected by this change.
+- Note: the earlier composer paste work also landed in this release cycle
+  (bounded multi-line paste blocks, kitty-keyboard Shift+Enter, ref-backed
+  composer state, opt-in `DEV_AGENT_IME_CURSOR` IME cursor).
+
 ## 2026-09-28（desktop scheduled background tasks）
 
 - New bounded local scheduler (`apps/desktop/src/scheduled-tasks.ts`):

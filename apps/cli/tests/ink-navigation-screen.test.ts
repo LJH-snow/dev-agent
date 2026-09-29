@@ -90,7 +90,14 @@ function createScreen(columns: number, rows: number) {
     physicalOutput.destroy();
     terminal.dispose();
   };
-  return { terminal, stdin, lines, button, buttonBackground, waitFor, loadTranscript, dispose };
+  const resize = (nextColumns: number, nextRows: number): void => {
+    columns = nextColumns;
+    rows = nextRows;
+    terminal.resize(columns, rows);
+    Object.assign(physicalOutput, { columns, rows });
+    physicalOutput.emit("resize");
+  };
+  return { store, resize, terminal, stdin, lines, button, buttonBackground, waitFor, loadTranscript, dispose };
 }
 
 for (const [columns, rows] of [[80, 24], [120, 40], [160, 50]] as const) {
@@ -144,3 +151,70 @@ for (const [columns, rows] of [[80, 24], [120, 40], [160, 50]] as const) {
     }
   });
 }
+
+for (const [columns, rows] of [[60, 18], [120, 40]] as const) {
+  test(`startup wheel, growing composer, diagnostics and resize at ${columns}x${rows}`, async () => {
+    const screen = createScreen(columns, rows);
+    try {
+      await screen.waitFor(() => screen.lines().some((line) => line.includes("Context:")), "status visible at startup");
+      screen.stdin.write("\u001b[<64;20;5M");
+      screen.stdin.write("\u001b[H");
+      await screen.waitFor(() => screen.lines().some((line) => line.includes("SIGNAL LOOM")), "welcome reachable by scrolling");
+      for (let i = 0; i < 100; i++) screen.store.addNotice(`[route] mode=fast reason=${i}`);
+      assert.equal(screen.store.getSnapshot().notices.length, 0);
+      screen.stdin.write("\u001b[F");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await screen.loadTranscript();
+      screen.stdin.write("one\ntwo\nthree\n");
+      await screen.waitFor(() => screen.lines().some((line) => line.includes("three")), "multiline composer visible");
+      screen.resize(80, 24);
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const position = screen.button()!;
+      assert.ok(position);
+      screen.stdin.write(`\u001b[<35;${position.x};${position.y}M`);
+      await screen.waitFor(() => screen.buttonBackground() === 0x67a9ff, "hover follows resized composer");
+      screen.stdin.write(`\u001b[<0;${position.x};${position.y}M`);
+      await screen.waitFor(() => screen.button() === undefined, "click follows resized composer");
+      screen.store.setConversation({ sessionId: "fixture", provider: "remote", model: "current", promptTokens: 123 });
+      await screen.waitFor(() => screen.lines().some((line) => line.includes("123 tokens (last request)")), "request usage visible");
+      screen.store.setConversation({ sessionId: "fixture", provider: "remote", model: "next" });
+      await screen.waitFor(() => screen.lines().some((line) => line.includes("remote/next") && line.includes("unknown")), "model switch clears usage");
+      screen.store.setConversation({ sessionId: "stale", provider: "wrong", model: "stale", promptTokens: 999 });
+      await screen.waitFor(() => screen.lines().some((line) => line.includes("fixture/fixture")), "stale session ignored");
+      assert.ok(!screen.lines().join("\n").includes("999 tokens"));
+    } finally { screen.dispose(); }
+  });
+}
+
+test("notices are bounded and request usage rejects stale sessions and duplicate events", () => {
+  const store = new InkRuntimeStore();
+  for (let i = 0; i < 80; i++) store.addNotice(`action ${i}`);
+  store.addNotice("action 79");
+  assert.equal(store.getSnapshot().notices.length, 50);
+  store.setRetry({ prompt: "retry", error: "failed" });
+  store.setConversation({ sessionId: "current", provider: "remote", model: "model" });
+  const events = new RuntimeEventSequence("current");
+  const usage = events.create("usage.reported", { promptTokens: 12, completionTokens: 3, totalTokens: 15 });
+  store.apply(usage);
+  store.apply(usage);
+  store.apply(new RuntimeEventSequence("old").create("usage.reported", { promptTokens: 999, completionTokens: 0, totalTokens: 999 }));
+  assert.equal(store.getSnapshot().conversation?.promptTokens, 12);
+  assert.equal(store.getSnapshot().retry?.prompt, "retry");
+  store.reset();
+  assert.equal(store.getSnapshot().conversation, undefined);
+});
+
+test("oversized paste notice leaves resized navigation and status usable", async () => {
+  const screen = createScreen(80, 24);
+  try {
+    await screen.loadTranscript();
+    screen.stdin.write("x".repeat(8100) + "\na\nb\n");
+    await screen.waitFor(() => screen.lines().some((line) => line.includes("truncated")), "paste notice visible");
+    const position = screen.button()!;
+    screen.stdin.write(`\u001b[<35;${position.x};${position.y}M`);
+    await screen.waitFor(() => screen.buttonBackground() === 0x67a9ff, "paste notice shifts hit row with layout");
+    screen.stdin.write(`\u001b[<0;${position.x};${position.y}M`);
+    await screen.waitFor(() => screen.button() === undefined, "paste notice click works");
+    assert.ok(screen.lines().some((line) => line.includes("Context:")));
+  } finally { screen.dispose(); }
+});

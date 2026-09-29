@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useIsScreenReaderEnabled } from "ink";
+
+import { useAnimationTicks } from "./animation-clock.js";
 
 import type { TuiRunState } from "../tui-session.js";
 import {
@@ -33,19 +35,19 @@ export function ThoughtLine({
   const theme = useInkTheme();
   const [frameIndex, setFrameIndex] = useState(0);
   const [clock, setClock] = useState(() => Date.now());
+  // Screen readers announce the frame on every commit; a 180ms spinner plus
+  // ticking clock would produce a stream of near-identical announcements.
+  // Freeze the glyph and elapsed time and let the text speak for itself.
+  const isScreenReader = useIsScreenReaderEnabled();
 
   useEffect(() => {
     setFrameIndex(0);
     setClock(Date.now());
-    if (!active || now !== undefined) {
-      return;
-    }
-    const timer = setInterval(() => {
-      setFrameIndex((current) => current + 1);
-      setClock(Date.now());
-    }, 180);
-    return () => clearInterval(timer);
-  }, [active, now, startedAt]);
+  }, [active, isScreenReader, now, startedAt]);
+  useAnimationTicks(() => {
+    setFrameIndex((current) => current + 1);
+    setClock(Date.now());
+  }, active && now === undefined && !isScreenReader);
 
   const currentTime = now === undefined ? clock : Date.parse(now);
   const startedTime = startedAt === undefined ? undefined : Date.parse(startedAt);

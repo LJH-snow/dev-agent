@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { useIsScreenReaderEnabled } from "ink";
+
+import { useAnimationTicks } from "./animation-clock.js";
 import { Text } from "ink";
 
 import { useInkTheme } from "./theme.js";
@@ -26,19 +29,22 @@ export function ThinkingIndicator({
 }): React.JSX.Element | null {
   const theme = useInkTheme();
   const [frameIndex, setFrameIndex] = useState(0);
+  // The glyph is purely decorative; RotatingStatus and ThoughtLine already
+  // announce the run state as text, and animating here would make a screen
+  // reader re-read the frame on every commit.
+  const isScreenReader = useIsScreenReaderEnabled();
 
   useEffect(() => {
     if (!active) {
       setFrameIndex(0);
-      return;
     }
-    const timer = setInterval(() => {
-      setFrameIndex((current) => current + 1);
-    }, 180);
-    return () => clearInterval(timer);
   }, [active]);
+  useAnimationTicks(
+    (value) => setFrameIndex(value),
+    active && !isScreenReader,
+  );
 
-  if (!active) {
+  if (!active || isScreenReader) {
     return null;
   }
   const frame = thinkingFrame(frameIndex);

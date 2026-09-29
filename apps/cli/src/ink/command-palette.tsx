@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { Box, Text } from "ink";
+import { Box, Text, useIsScreenReaderEnabled } from "ink";
+
+import { useAnimationTicks } from "./animation-clock.js";
 
 import type { CommandHint } from "../tui-renderer.js";
 import { useInkTheme } from "./theme.js";
@@ -23,20 +25,20 @@ export function CommandPalette({
 }): React.JSX.Element | null {
   const theme = useInkTheme();
   const [frameIndex, setFrameIndex] = useState(0);
+  const isScreenReader = useIsScreenReaderEnabled();
   const visible = suggestions.slice(0, 6);
   const active = visible.length > 0;
-  const glyph = commandPaletteFrame(controlledFrameIndex ?? frameIndex);
+  const suggestionsKey = JSON.stringify(suggestions);
+  const glyph = commandPaletteFrame(isScreenReader ? 0 : controlledFrameIndex ?? frameIndex);
 
   useEffect(() => {
     setFrameIndex(0);
-    if (!active || controlledFrameIndex !== undefined) {
-      return;
-    }
-    const timer = setInterval(() => {
-      setFrameIndex((current) => current + 1);
-    }, 180);
-    return () => clearInterval(timer);
-  }, [active, controlledFrameIndex, suggestions.join("\u0000")]);
+  }, [active, controlledFrameIndex, isScreenReader, suggestionsKey]);
+  useAnimationTicks(
+    (value) => setFrameIndex(value),
+    active && !isScreenReader && controlledFrameIndex === undefined,
+    suggestionsKey,
+  );
 
   if (!active) return null;
 
