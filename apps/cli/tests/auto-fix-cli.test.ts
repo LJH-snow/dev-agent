@@ -73,14 +73,19 @@ test("interactive CLI uses the bounded auto-fix loop after a failed validation",
           content: "",
           tool_calls: [
             {
-              id: "call_repair_write",
+              id: "call_repair_preview",
               type: "function",
               function: {
                 name: "filesystem",
                 arguments: JSON.stringify({
-                  action: "write",
-                  path: "target.md",
-                  content: "changed\n",
+                  action: "preview",
+                  changes: [
+                    {
+                      action: "write",
+                      path: "target.md",
+                      content: "changed\n",
+                    },
+                  ],
                 }),
               },
             },
@@ -132,7 +137,8 @@ test("interactive CLI uses the bounded auto-fix loop after a failed validation",
         child.stdin.write("y\n");
         await waitFor(() => stdout.includes("[validation] failed"));
         child.stdin.write(":autofix 1\n");
-        await waitFor(() => (stdout.match(/Apply this change\?/g) ?? []).length >= 2);
+        await waitFor(() => stdout.includes("AUTO-FIX REVIEW"));
+        await waitFor(() => stdout.includes("Apply this auto-fix change set?"));
         child.stdin.write("y\n");
         await waitFor(() => stdout.includes("Auto-fix passed validation after 1 attempt"));
         child.stdin.write("exit\n");

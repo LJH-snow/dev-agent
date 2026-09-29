@@ -3618,6 +3618,40 @@ function formatPlanReviewForTerminal(review: PlanReview): string {
   return lines.join("\n").slice(0, 16_000);
 }
 
+function formatAutoFixReviewForTerminal(review: PlanReview): string {
+  const lines = [
+    "AUTO-FIX REVIEW · " + review.files.length + " file(s) +" + review.additions + "/-" + review.deletions,
+    "Change set: " + safeTerminalText(review.changeSetId),
+  ];
+  for (const file of review.files) {
+    lines.push(
+      safeTerminalText(file.path) + " (+" + file.additions + "/-" + file.deletions + ")",
+      file.diff.trim().length > 0
+        ? safeTerminalText(file.diff)
+        : "(no textual changes; existence/hash checks still apply)",
+    );
+  }
+  lines.push("Review the diff, then confirm the Autofix change set below.");
+  return lines.join("\n").slice(0, 16_000);
+}
+
+type AutoFixReviewDecision = "apply" | "reject" | "cancelled";
+
+async function askAutoFixReview(
+  questionBox: QuestionBox,
+  signal: AbortSignal,
+): Promise<AutoFixReviewDecision> {
+  if (signal.aborted) return "cancelled";
+  if (questionBox.ask === undefined) return "reject";
+  try {
+    const answer = await questionBox.ask("Apply this auto-fix change set? [y/N] ", signal);
+    if (signal.aborted) return "cancelled";
+    return answer.trim().toLowerCase().startsWith("y") ? "apply" : "reject";
+  } catch {
+    return signal.aborted ? "cancelled" : "reject";
+  }
+}
+
 function formatCollaborativePlanResult(result: CollaborativePlanResult): string {
   const roleLines = result.roles.map((role) => {
     const status = role.status === "done" ? "done" : `error: ${role.error ?? "failed"}`;
@@ -4084,7 +4118,26 @@ async function interactive(
   ): Promise<T> =>
     scheduleInteractiveTask(ui.tasks, ui.taskStatusBridge, options.run);
 
+  const runAutoFixStage = async (
+    run: (signal: AbortSignal | undefined) => Promise<AgentContext>,
+  ): Promise<AgentContext> => {
+    const scheduled = scheduleTask({ run: ({ signal }) => run(signal) });
+    const taskId = ui.tasks.list().at(-1)?.id;
+    activeTaskId = taskId;
+    try {
+      return await scheduled;
+    } finally {
+      if (activeTaskId === taskId) activeTaskId = undefined;
+    }
+  };
+
   const runAutoFixCommand = async (attempts: number): Promise<void> => {
+    if (pendingPlan !== undefined) {
+      const message = "Finish or clear the waiting plan before starting auto-fix.";
+      if (ui.rich) streaming.withComposerHidden(() => console.log(message));
+      else console.log(message);
+      return;
+    }
     let repairContext = current;
     const autoFixAbort = new AbortController();
     abort = autoFixAbort;
@@ -4146,12 +4199,9 @@ async function interactive(
         onProgress: printMessage,
         onValidation: recordExplicitValidation,
         runRepair: async (repairPrompt): Promise<AutoFixRepairRun> => {
-          const timingContext = {
-            submittedAtMs: performance.now(),
-            queuedAtMs: performance.now(),
-          };
-          const scheduled = scheduleTask({
-            run: ({ signal }) =>
+          ui.consumePlanReview?.();
+          try {
+            const planContext = await runAutoFixStage((signal) =>
               runPrompt(
                 loop,
                 repairContext,
@@ -4162,32 +4212,66 @@ async function interactive(
                 reviews,
                 validations,
                 signal,
-                {},
-                timingContext,
+                { mode: "plan" },
+                {
+                  submittedAtMs: performance.now(),
+                  queuedAtMs: performance.now(),
+                },
               ),
-          });
-          const taskId = ui.tasks.list().at(-1)?.id;
-          activeTaskId = taskId;
-          try {
-            const next = await scheduled;
-            repairContext = next;
-            return next.state.status === "error"
+            );
+            repairContext = planContext;
+            if (planContext.state.status === "error") {
+              return {
+                context: planContext,
+                error: planContext.state.lastError ?? "agent repair planning failed",
+              };
+            }
+            const review = ui.consumePlanReview?.();
+            if (review === undefined) {
+              return {
+                context: planContext,
+                error: "agent repair did not produce a reviewable change set",
+              };
+            }
+            const printReview = (): void => {
+              console.log(formatAutoFixReviewForTerminal(review));
+            };
+            if (ui.rich) streaming.withComposerHidden(printReview);
+            else printReview();
+            const decision = await askAutoFixReview(questionBox, autoFixAbort.signal);
+            if (decision === "cancelled") {
+              return { context: planContext, cancelled: true };
+            }
+            if (decision === "reject") {
+              const printRejected = (): void => {
+                console.log("Auto-fix plan kept. No files were changed.");
+              };
+              if (ui.rich) streaming.withComposerHidden(printRejected);
+              else printRejected();
+              return { context: planContext, declined: true };
+            }
+            const applied = await runAutoFixStage((signal) =>
+              loop.applyPlannedChangeSet(planContext, {
+                prompt: repairPrompt,
+                review,
+                signal,
+              }),
+            );
+            repairContext = applied;
+            return applied.state.status === "error"
               ? {
-                  context: next,
-                  error: next.state.lastError ?? "agent repair run failed",
+                  context: applied,
+                  error: applied.state.lastError ?? "approved auto-fix change set failed",
                 }
-              : { context: next };
+              : { context: applied };
           } catch (error) {
-            const cancelled = interrupted || autoFixAbort.signal.aborted ||
-              (taskId !== undefined && ui.tasks.get(taskId)?.status === "cancelled");
+            const cancelled = interrupted || autoFixAbort.signal.aborted;
             return {
               context: repairContext,
               ...(cancelled
                 ? { cancelled: true }
                 : { error: error instanceof Error ? error.message : String(error) }),
             };
-          } finally {
-            if (activeTaskId === taskId) activeTaskId = undefined;
           }
         },
       });
@@ -5371,6 +5455,10 @@ async function interactiveInk(
   };
 
   const runAutoFixCommand = async (attempts: number): Promise<void> => {
+    if (pendingPlan !== undefined) {
+      ink.store.addNotice("Finish or clear the waiting plan before starting auto-fix.");
+      return;
+    }
     let repairContext = current;
     const autoFixAbort = new AbortController();
     activeAbort = autoFixAbort;
@@ -5406,22 +5494,81 @@ async function interactiveInk(
           );
         },
         runRepair: async (repairPrompt): Promise<AutoFixRepairRun> => {
-          const next = await runInkPrompt(repairPrompt, {}, "Auto-fix");
-          if (next === undefined) {
+          ui.consumePlanReview?.();
+          ink.store.setPlan(undefined);
+          const planContext = await runInkPrompt(
+            repairPrompt,
+            { mode: "plan" },
+            "Auto-fix",
+          );
+          if (planContext === undefined) {
             return {
               context: repairContext,
               ...(autoFixCancelRequested
                 ? { cancelled: true }
-                : { error: "agent repair run failed" }),
+                : { error: "agent repair planning failed" }),
             };
           }
-          repairContext = next;
-          return next.state.status === "error"
+          repairContext = planContext;
+          if (planContext.state.status === "error") {
+            return {
+              context: planContext,
+              error: planContext.state.lastError ?? "agent repair planning failed",
+            };
+          }
+
+          const review = ui.consumePlanReview?.();
+          if (review === undefined) {
+            return {
+              context: planContext,
+              error: "agent repair did not produce a reviewable change set",
+            };
+          }
+          ink.store.setPlan({
+            prompt: repairPrompt,
+            review,
+            status: "ready",
+          });
+          ink.store.addNotice("Auto-fix review ready. Check the diff, then confirm the change set.");
+          const decision = await askAutoFixReview(questionBox, autoFixAbort.signal);
+          if (decision === "cancelled") {
+            ink.store.setPlan(undefined);
+            return { context: planContext, cancelled: true };
+          }
+          if (decision === "reject") {
+            ink.store.setPlan(undefined);
+            ink.store.addNotice("Auto-fix plan kept. No files were changed.");
+            return { context: planContext, declined: true };
+          }
+
+          ink.store.setPlanStatus("applying");
+          const applied = await runInkPrompt(
+            repairPrompt,
+            {},
+            "Auto-fix apply",
+            (signal) =>
+              loop.applyPlannedChangeSet(planContext, {
+                prompt: repairPrompt,
+                review,
+                signal,
+              }),
+          );
+          ink.store.setPlan(undefined);
+          if (applied === undefined) {
+            return {
+              context: planContext,
+              ...(autoFixCancelRequested
+                ? { cancelled: true }
+                : { error: "approved auto-fix change set failed" }),
+            };
+          }
+          repairContext = applied;
+          return applied.state.status === "error"
             ? {
-                context: next,
-                error: next.state.lastError ?? "agent repair run failed",
+                context: applied,
+                error: applied.state.lastError ?? "approved auto-fix change set failed",
               }
-            : { context: next };
+            : { context: applied };
         },
       });
       current = result.context;

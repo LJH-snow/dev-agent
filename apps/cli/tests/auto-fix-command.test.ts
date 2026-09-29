@@ -108,6 +108,29 @@ test("runAutoFixLoop stops after a new passed validation", async () => {
   assert.equal(result.validation.validationId, "validation:fixed");
 });
 
+test("runAutoFixLoop stops before validation when the review is declined", async () => {
+  const failed = validation("failed", "validation:failed");
+  let rerun = false;
+  const result = await runAutoFixLoop({
+    context: context(),
+    validations: [failed],
+    maxAttempts: 2,
+    runRepair: async () => ({
+      context: context("after-review"),
+      declined: true,
+    }),
+    rerunValidation: async () => {
+      rerun = true;
+      return validation("passed", "validation:unexpected");
+    },
+  });
+
+  assert.equal(result.status, "rejected");
+  assert.equal(result.attempts, 1);
+  assert.equal(result.validation.validationId, "validation:failed");
+  assert.equal(rerun, false);
+});
+
 test("runAutoFixLoop reruns the trusted change set when repair created no validation", async () => {
   const failed = validation("failed", "validation:failed");
   const validations: ValidationResult[] = [failed];
