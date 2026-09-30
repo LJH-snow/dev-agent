@@ -302,13 +302,23 @@ export function InkCliApp({
         newOutput: 0,
       }
     : viewport;
+  // While the user is browsing away from live output, pin the latest user
+  // task to the top of the frame like a sticky header (Codex-style). The
+  // pinned row is taken from the transcript viewport so the bottom shell
+  // stays anchored, and it disappears again in follow mode.
+  const stickyTaskTitle = deriveStickyTaskTitle(transcriptEntries);
+  const showStickyTaskHeader = !renderedViewport.followOutput &&
+    stickyTaskTitle !== undefined;
+  const pinnedVisibleRows = showStickyTaskHeader
+    ? Math.max(1, visibleTranscriptRows - 1)
+    : visibleTranscriptRows;
 
   useEffect(() => {
-    const next = viewportModel.setContent(transcriptRows, visibleTranscriptRows);
+    const next = viewportModel.setContent(transcriptRows, pinnedVisibleRows);
     setViewport((current) =>
       sameViewportSnapshot(current, next) ? current : next
     );
-  }, [transcriptRows, viewportModel, visibleTranscriptRows]);
+  }, [transcriptRows, viewportModel, pinnedVisibleRows]);
 
   useEffect(() => {
     setSuggestionIndex(0);
@@ -883,10 +893,13 @@ export function InkCliApp({
   return (
     <InkThemeProvider theme={getInkTheme(inputSnapshot.theme)}>
       <Box flexDirection="column" width={columns} height={stdout.isTTY ? viewportLayout.frameRows : undefined}>
+      {showStickyTaskHeader ? (
+        <StickyTaskHeader title={stickyTaskTitle} columns={columns} />
+      ) : null}
       {/* Non-TTY renders (renderToString) have no fixed viewport to scroll:
           offsetting the content would just amputate its top rows, so the
           scroll offset only applies where the frame is height-constrained. */}
-      <Box height={stdout.isTTY ? visibleTranscriptRows : undefined} flexShrink={0} overflow="hidden" flexDirection="column">
+      <Box height={stdout.isTTY ? pinnedVisibleRows : undefined} flexShrink={0} overflow="hidden" flexDirection="column">
       <Box
         ref={contentRef}
         flexShrink={0}

@@ -285,6 +285,47 @@ test("clicking a palette row selects it and clicking again submits it", async ()
   } finally { screen.dispose(); }
 });
 
+test("browsing pins the latest task title to the top of the frame", async () => {
+  const screen = createScreen(80, 24);
+  // The run projection already paints the prompt text inside the transcript,
+  // so discriminate the pinned header by its full-width dim background.
+  const topRowIsPinned = (): boolean => {
+    const line = screen.terminal.buffer.active.getLine(screen.terminal.buffer.active.viewportY);
+    if (line === undefined) return false;
+    // The Box padding leaves the first cell unpainted; scan into the Text.
+    for (let x = 0; x < 6; x += 1) {
+      const cell = line.getCell(x);
+      if (cell !== undefined && cell.getBgColor() !== -1) return true;
+    }
+    return false;
+  };
+  try {
+    await screen.loadTranscript();
+    // loadTranscript intentionally ends in browsing mode; return to follow
+    // first so the pinned header's absence is actually exercised.
+    screen.stdin.write("\u001b[F");
+    await screen.waitFor(() => screen.button() === undefined, "End returns to follow");
+    await screen.waitFor(
+      () => !topRowIsPinned(),
+      "follow mode paints no pinned header",
+    );
+
+    screen.stdin.write("\u001b[5~");
+    await screen.waitFor(() => screen.button() !== undefined, "PageUp starts browsing");
+    await screen.waitFor(
+      () => topRowIsPinned(),
+      "task title pinned at the top row while browsing",
+    );
+
+    screen.stdin.write("\u001b[F");
+    await screen.waitFor(() => screen.button() === undefined, "End returns to follow again");
+    await screen.waitFor(
+      () => !topRowIsPinned(),
+      "pinned header disappears in follow mode",
+    );
+  } finally { screen.dispose(); }
+});
+
 test("clicking session picker rows selects and then resumes", async () => {
   const screen = createScreen(80, 24);
   try {

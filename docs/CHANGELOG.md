@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-30（CLI TUI pinned task header while browsing）
+
+- Scrolling up into the transcript now pins the latest user task as a
+  one-row header at the top of the frame (Codex-style), so the task that was
+  sent stays visible while browsing earlier output. The pinned row takes one
+  row from the transcript viewport (model and paint stay consistent) and
+  disappears again in follow-at-bottom mode.
+- The previously dead `StickyTaskHeader`/`deriveStickyTaskTitle` scaffolding
+  is now wired into the live frame.
+
 ## 2026-09-30（CLI Autofix review persistence and discoverability）
 
 - Declined or cancelled Autofix reviews now persist bounded, redacted change-set
