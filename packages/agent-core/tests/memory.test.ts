@@ -73,6 +73,53 @@ test("file memory clear removes persisted history", async () => {
   }
 });
 
+test("file memory persists and clears a pending autofix review across instances", async () => {
+  const dir = makeTempDir();
+  try {
+    const filePath = join(dir, "sessions", "autofix-review.json");
+    const pendingReview = {
+      kind: "autofix",
+      sessionId: "autofix-session",
+      workspaceId: "a".repeat(64),
+      prompt: "Repair target.md",
+      review: {
+        changeSetId: "change-set-pending",
+        files: [
+          {
+            path: "target.md",
+            kind: "file",
+            beforeHash: "b".repeat(64),
+            afterHash: "c".repeat(64),
+            diff: "@@ -1 +1 @@\n-keep\n+changed\n",
+            additions: 1,
+            deletions: 1,
+            beforeExists: true,
+            afterExists: true,
+          },
+        ],
+        additions: 1,
+        deletions: 1,
+        createdAt: "2026-09-29T00:00:00.000Z",
+      },
+      createdAt: "2026-09-29T00:00:00.000Z",
+    };
+    type PendingReviewMemory = {
+      recordPendingChangeSetReview(value: typeof pendingReview): Promise<void>;
+      pendingChangeSetReview(): Promise<typeof pendingReview | undefined>;
+      clearPendingChangeSetReview(): Promise<void>;
+    };
+    const first = new FileMemory({ filePath, sessionId: "autofix-session" }) as FileMemory & PendingReviewMemory;
+    await first.recordPendingChangeSetReview(pendingReview);
+
+    const reopened = new FileMemory({ filePath, sessionId: "autofix-session" }) as FileMemory & PendingReviewMemory;
+    assert.deepEqual(await reopened.pendingChangeSetReview(), pendingReview);
+    await reopened.clearPendingChangeSetReview();
+    assert.equal(await reopened.pendingChangeSetReview(), undefined);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("file memory rejects an invalid file", async () => {
   const dir = makeTempDir();
   try {

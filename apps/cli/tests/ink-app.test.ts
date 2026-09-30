@@ -185,9 +185,15 @@ test("Ink command palette advertises plan and apply workflow commands", async ()
     stdin.write(":");
     await new Promise((resolve) => setTimeout(resolve, 50));
 
+    stdin.write("autofix");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
     const output = writes.join("");
     assert.match(output, /:plan <request>/);
     assert.match(output, /:apply/);
+    assert.match(output, /:autofix review/);
+    assert.match(output, /:autofix apply/);
+    assert.match(output, /:autofix discard/);
     assert.match(output, /:history \[count\]/);
   } finally {
     instance.unmount();

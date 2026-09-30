@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-30（CLI Autofix review persistence and discoverability）
+
+- Declined or cancelled Autofix reviews now persist bounded, redacted change-set
+  metadata tied to the original session and workspace. Same-session resume can
+  review or apply the exact live change set, while a restarted CLI can review
+  or discard it and fails closed on apply.
+- Readline help, the Ink command palette, and the interactive banner now list
+  `:autofix review`, `:autofix apply`, and `:autofix discard` alongside the
+  existing `:autofix [1-3]` repair command.
+
 ## 2026-09-30（CLI TUI command palette fuzzy matching and wheel selection）
 
 - Command palette matching now ranks prefix matches above substring matches

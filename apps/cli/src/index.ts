@@ -56,6 +56,7 @@ import {
   type ApprovalPolicy,
   type ApprovalRequest,
   type ChangeSetReview,
+  type PendingChangeSetReview,
   type EvidenceAuditFilters,
   type EvidenceAuditLimits,
   type EvidencePruneOptions,
@@ -267,6 +268,11 @@ import {
   runAutoFixLoop,
   type AutoFixRepairRun,
 } from "./auto-fix-command.js";
+import {
+  createPendingAutoFixReviewRecord,
+  restorePendingAutoFixReview,
+  type PendingAutoFixReviewState,
+} from "./autofix-review-store.js";
 import {
   executeGitWorkflowCommand,
   isGitWorkflowCommand,
@@ -3444,10 +3450,45 @@ interface PendingPlan {
   readonly review?: PlanReview;
 }
 
-interface PendingAutoFixReview {
-  readonly prompt: string;
-  readonly context: AgentContext;
-  readonly review: PlanReview;
+type PendingAutoFixReview = PendingAutoFixReviewState;
+
+async function loadPendingAutoFixReview(
+  context: AgentContext,
+  liveChangeSets: ReadonlySet<string>,
+): Promise<PendingAutoFixReview | undefined> {
+  try {
+    const record = await context.memory.pendingChangeSetReview?.();
+    return record === undefined
+      ? undefined
+      : restorePendingAutoFixReview(
+          context,
+          record,
+          liveChangeSets.has(record.review.changeSetId),
+        );
+  } catch {
+    return undefined;
+  }
+}
+
+async function persistPendingAutoFixReview(
+  pending: PendingAutoFixReview,
+): Promise<void> {
+  const record: PendingChangeSetReview = createPendingAutoFixReviewRecord(
+    pending.context,
+    pending.prompt,
+    pending.review,
+  );
+  await pending.context.memory.recordPendingChangeSetReview?.(record);
+}
+
+async function clearPersistedPendingAutoFixReview(
+  context: AgentContext,
+): Promise<void> {
+  try {
+    await context.memory.clearPendingChangeSetReview?.();
+  } catch {
+    return;
+  }
 }
 
 interface PromptRunOptions {
@@ -4088,7 +4129,7 @@ async function interactive(
       // in callers, so the banner can be observed before a later listener
       // setup.
       console.log(
-        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':route' for automatic model routing, ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, ':autofix [1-3]' to repair the latest validation failure, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
+        "dev-agent CLI. Type 'exit' or 'quit' to stop. Use ':route' for automatic model routing, ':trace' for the latest run summary, ':validate <changeSetId>' to rerun trusted checks, ':autofix [1-3]' to repair the latest validation failure, ':autofix review' to revisit a pending repair, ':autofix apply' to apply it, ':autofix discard' to discard it, or ':cleanup [--remove-rolled-back] [--max-validations N] [--max-change-sets N]'."
       );
       return;
     }
@@ -4117,7 +4158,8 @@ async function interactive(
   // `usage` accumulate across the session instead of restarting every time.
   let current = context;
   let pendingPlan: PendingPlan | undefined;
-  let pendingAutoFixReview: PendingAutoFixReview | undefined;
+  const liveAutoFixChangeSets = new Set<string>();
+  let pendingAutoFixReview = await loadPendingAutoFixReview(context, liveAutoFixChangeSets);
   const scheduleTask = <T>(
     options: {
       run: (task: AgentTaskExecutionContext) => Promise<T> | T;
@@ -4256,11 +4298,22 @@ async function interactive(
                 error: "agent repair did not produce a reviewable change set",
               };
             }
-            pendingAutoFixReview = {
+            const pending: PendingAutoFixReview = {
               prompt: repairPrompt,
               context: planContext,
               review,
+              runtimeAvailable: true,
             };
+            try {
+              await persistPendingAutoFixReview(pending);
+            } catch {
+              return {
+                context: planContext,
+                error: "Autofix review could not be persisted safely.",
+              };
+            }
+            pendingAutoFixReview = pending;
+            liveAutoFixChangeSets.add(review.changeSetId);
             printAutoFixReview(review);
             const decision = await askAutoFixReview(questionBox, autoFixAbort.signal);
             if (decision === "cancelled") {
@@ -4284,6 +4337,8 @@ async function interactive(
                 error: applied.state.lastError ?? "approved auto-fix change set failed",
               };
             }
+            await clearPersistedPendingAutoFixReview(applied);
+            liveAutoFixChangeSets.delete(review.changeSetId);
             pendingAutoFixReview = undefined;
             return { context: applied };
           } catch (error) {
@@ -4312,6 +4367,10 @@ async function interactive(
     const pending = pendingAutoFixReview;
     if (pending === undefined) {
       printAutoFixNotice("No auto-fix review is waiting. Run :autofix [1-3] first.");
+      return;
+    }
+    if (!pending.runtimeAvailable) {
+      printAutoFixNotice("This auto-fix change set is unavailable after the CLI restarted; use :autofix discard.");
       return;
     }
     const autoFixAbort = new AbortController();
@@ -4391,6 +4450,8 @@ async function interactive(
               error: applied.state.lastError ?? "approved auto-fix change set failed",
             };
           }
+          await clearPersistedPendingAutoFixReview(applied);
+          liveAutoFixChangeSets.delete(pending.review.changeSetId);
           pendingAutoFixReview = undefined;
           return { context: applied };
         },
@@ -4681,7 +4742,7 @@ async function interactive(
               current = next;
               currentSessionId = next.sessionId;
               pendingPlan = undefined;
-              pendingAutoFixReview = undefined;
+              pendingAutoFixReview = await loadPendingAutoFixReview(next, liveAutoFixChangeSets);
               sessionMessage = `Resumed session ${safeTerminalText(next.sessionId)}.`;
             } catch (error) {
               const message = error instanceof Error ? error.message : String(error);
@@ -4797,6 +4858,9 @@ async function interactive(
           if (pendingAutoFixReview === undefined) {
             printAutoFixNotice("No auto-fix review is waiting.");
           } else {
+            const discarded = pendingAutoFixReview;
+            await clearPersistedPendingAutoFixReview(discarded.context);
+            liveAutoFixChangeSets.delete(discarded.review.changeSetId);
             pendingAutoFixReview = undefined;
             printAutoFixNotice("Auto-fix review discarded. No files were changed.");
           }
@@ -5123,7 +5187,7 @@ async function interactive(
           });
         } else {
           console.log(
-            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :route [auto|manual], :budget [tokens|cost|duration], :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :agents, :agent <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :security, :marketplace [list|search|install|disable|enable], :cleanup ..., exit, quit"
+            "Commands: :help, :clear, :model, :project [refresh], :instructions [refresh], :mode fast|balanced|deep, :route [auto|manual], :budget [tokens|cost|duration], :bench [prompt], :history [count], :plan <request>, :team <request>, :apply, :trace, :tasks, :task <id>, :agents, :agent <id>, :extensions, :extension <id>, :validate <changeSetId>, :autofix [1-3], :autofix review, :autofix apply, :autofix discard, :branch [create <name>], :commit [--all] <message>, :push [remote] [branch], :pr [--base <branch>] <title>, :memory [add|search|forget], :security, :marketplace [list|search|install|disable|enable], :cleanup ..., exit, quit"
           );
         }
         continue;
@@ -5131,6 +5195,10 @@ async function interactive(
 
       if (command === ":clear") {
         pendingPlan = undefined;
+        if (pendingAutoFixReview !== undefined) {
+          await clearPersistedPendingAutoFixReview(pendingAutoFixReview.context);
+          liveAutoFixChangeSets.delete(pendingAutoFixReview.review.changeSetId);
+        }
         pendingAutoFixReview = undefined;
         if (ui.rich) {
           streaming.withComposerHidden(() => {
@@ -5474,7 +5542,8 @@ async function interactiveInk(
 
   let current = context;
   let pendingPlan: PendingPlan | undefined;
-  let pendingAutoFixReview: PendingAutoFixReview | undefined;
+  const liveAutoFixChangeSets = new Set<string>();
+  let pendingAutoFixReview = await loadPendingAutoFixReview(context, liveAutoFixChangeSets);
   let latestCollaboration: CollaborationExecutionResult | undefined;
   let latestCollaborationContext: string | undefined;
   let activeCollaboration: CollaborationExecutionHandle | undefined;
@@ -5678,11 +5747,22 @@ async function interactiveInk(
               error: "agent repair did not produce a reviewable change set",
             };
           }
-          pendingAutoFixReview = {
+          const pending: PendingAutoFixReview = {
             prompt: repairPrompt,
             context: planContext,
             review,
+            runtimeAvailable: true,
           };
+          try {
+            await persistPendingAutoFixReview(pending);
+          } catch {
+            return {
+              context: planContext,
+              error: "Autofix review could not be persisted safely.",
+            };
+          }
+          pendingAutoFixReview = pending;
+          liveAutoFixChangeSets.add(review.changeSetId);
           ink.store.setPlan({
             prompt: repairPrompt,
             review,
@@ -5727,6 +5807,8 @@ async function interactiveInk(
               error: applied.state.lastError ?? "approved auto-fix change set failed",
             };
           }
+          await clearPersistedPendingAutoFixReview(applied);
+          liveAutoFixChangeSets.delete(review.changeSetId);
           pendingAutoFixReview = undefined;
           ink.store.setPlan(undefined);
           return { context: applied };
@@ -5751,6 +5833,10 @@ async function interactiveInk(
     const pending = pendingAutoFixReview;
     if (pending === undefined) {
       ink.store.addNotice("No auto-fix review is waiting. Run :autofix [1-3] first.");
+      return;
+    }
+    if (!pending.runtimeAvailable) {
+      ink.store.addNotice("This auto-fix change set is unavailable after the CLI restarted; use :autofix discard.");
       return;
     }
     if (pendingPlan !== undefined) {
@@ -5829,6 +5915,8 @@ async function interactiveInk(
               error: applied.state.lastError ?? "approved auto-fix change set failed",
             };
           }
+          await clearPersistedPendingAutoFixReview(applied);
+          liveAutoFixChangeSets.delete(pending.review.changeSetId);
           pendingAutoFixReview = undefined;
           ink.store.setPlan(undefined);
           return { context: applied };
@@ -6016,12 +6104,19 @@ async function interactiveInk(
       return;
     }
     void ui.openSession(candidate.id)
-      .then((next) => {
+      .then(async (next) => {
         current = next;
         pendingPlan = undefined;
-        pendingAutoFixReview = undefined;
+        pendingAutoFixReview = await loadPendingAutoFixReview(next, liveAutoFixChangeSets);
         lastRetry = undefined;
         ink.store.reset();
+        if (pendingAutoFixReview !== undefined) {
+          ink.store.setPlan({
+            prompt: pendingAutoFixReview.prompt,
+            review: pendingAutoFixReview.review,
+            status: "ready",
+          });
+        }
         ink.controller.setSessionId(next.sessionId);
         ink.store.addNotice(`Resumed session ${safeTerminalText(next.sessionId)}.`);
         updateInkSummary(next);
@@ -6277,6 +6372,9 @@ async function interactiveInk(
         if (pendingAutoFixReview === undefined) {
           ink.store.addNotice("No auto-fix review is waiting.");
         } else {
+          const discarded = pendingAutoFixReview;
+          await clearPersistedPendingAutoFixReview(discarded.context);
+          liveAutoFixChangeSets.delete(discarded.review.changeSetId);
           pendingAutoFixReview = undefined;
           ink.store.setPlan(undefined);
           ink.store.addNotice("Auto-fix review discarded. No files were changed.");
@@ -6621,6 +6719,10 @@ async function interactiveInk(
     }
     if (command === ":clear") {
       pendingPlan = undefined;
+      if (pendingAutoFixReview !== undefined) {
+        await clearPersistedPendingAutoFixReview(pendingAutoFixReview.context);
+        liveAutoFixChangeSets.delete(pendingAutoFixReview.review.changeSetId);
+      }
       pendingAutoFixReview = undefined;
       ink.store.reset();
       return true;
