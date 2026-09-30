@@ -285,7 +285,7 @@ test("clicking a palette row selects it and clicking again submits it", async ()
   } finally { screen.dispose(); }
 });
 
-test("browsing pins the latest task title to the top of the frame", async () => {
+test("browsing pins the task that owns the top of the viewport", async () => {
   const screen = createScreen(80, 24);
   // The run projection already paints the prompt text inside the transcript,
   // so discriminate the pinned header by its full-width dim background.
@@ -299,10 +299,13 @@ test("browsing pins the latest task title to the top of the frame", async () => 
     }
     return false;
   };
+  const pinnedTitle = (): string | undefined =>
+    topRowIsPinned() ? screen.lines()[0]!.trimStart() : undefined;
   try {
     await screen.loadTranscript();
-    // loadTranscript intentionally ends in browsing mode; return to follow
-    // first so the pinned header's absence is actually exercised.
+    // loadTranscript intentionally ends in browsing mode; return to follow so
+    // the second task's rows stream into view, and so the pinned header's
+    // absence is actually exercised.
     screen.stdin.write("\u001b[F");
     await screen.waitFor(() => screen.button() === undefined, "End returns to follow");
     await screen.waitFor(
@@ -310,11 +313,44 @@ test("browsing pins the latest task title to the top of the frame", async () => 
       "follow mode paints no pinned header",
     );
 
+    const secondEvents = new RuntimeEventSequence("screen-navigation-session-2");
+    screen.store.apply(secondEvents.create(
+      "run.started",
+      { prompt: "second navigation task", model: "fixture" },
+      { runId: "screen-navigation-run-2" },
+    ));
+    screen.store.apply(secondEvents.create(
+      "assistant.completed",
+      { text: Array.from({ length: 30 }, (_, index) => `second-line-${index + 1}`).join("\n") },
+      { runId: "screen-navigation-run-2" },
+    ));
+    screen.store.apply(secondEvents.create(
+      "run.completed",
+      { turns: 1 },
+      { runId: "screen-navigation-run-2" },
+    ));
+    await screen.waitFor(
+      () => screen.lines().some((line) => line.includes("second-line-30")),
+      "second task rendered",
+    );
+
     screen.stdin.write("\u001b[5~");
     await screen.waitFor(() => screen.button() !== undefined, "PageUp starts browsing");
     await screen.waitFor(
-      () => topRowIsPinned(),
-      "task title pinned at the top row while browsing",
+      () => pinnedTitle()?.startsWith("second navigation task") === true,
+      "current task pinned while browsing its block",
+    );
+
+    // Scroll up past the second task's prompt: the header must switch to the
+    // previous task instead of staying on the latest one.
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      if (pinnedTitle()?.startsWith("screen navigation task") === true) break;
+      screen.stdin.write("\u001b[5~");
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    await screen.waitFor(
+      () => pinnedTitle()?.startsWith("screen navigation task") === true,
+      "header switches to the previous task past its prompt",
     );
 
     screen.stdin.write("\u001b[F");

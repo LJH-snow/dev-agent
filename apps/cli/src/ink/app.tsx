@@ -196,6 +196,16 @@ export function InkCliApp({
   const [paletteLayout, setPaletteLayout] = useState<CommandPaletteLayout | undefined>(undefined);
   const [pathPanelLayout, setPathPanelLayout] = useState<PanelLayout | undefined>(undefined);
   const [sessionPanelLayout, setSessionPanelLayout] = useState<PanelLayout | undefined>(undefined);
+  // Painted row positions of the user prompts, measured after each commit.
+  // The pinned task header picks the prompt that owns the row currently at
+  // the top of the viewport, so scrolling into an older task switches the
+  // pinned title to that task.
+  const userRowNodes = useRef(new Map<string, DOMElement>()).current;
+  const stickyShownRef = useRef(false);
+  const userRowPositionsRef = useRef("");
+  const [userRowPositions, setUserRowPositions] = useState<
+    ReadonlyArray<{ readonly id: string; readonly y: number; readonly text: string }>
+  >([]);
   const dismissedPathKey = useRef<string | undefined>(undefined);
   const [dismissedCommandKey, setDismissedCommandKey] = useState<string | undefined>(undefined);
   const viewportModel = useRef(new InkViewportModel({
@@ -302,13 +312,22 @@ export function InkCliApp({
         newOutput: 0,
       }
     : viewport;
-  // While the user is browsing away from live output, pin the latest user
-  // task to the top of the frame like a sticky header (Codex-style). The
-  // pinned row is taken from the transcript viewport so the bottom shell
-  // stays anchored, and it disappears again in follow mode.
-  const stickyTaskTitle = deriveStickyTaskTitle(transcriptEntries);
+  // While the user is browsing away from live output, pin the prompt that
+  // owns the row currently at the top of the frame (Codex-style). Scrolling
+  // up past a task's prompt switches the pinned title to the previous task;
+  // scrolling into the welcome area hides the header. The threshold shifts by
+  // the header's own row so a prompt sitting exactly at the window top stays
+  // pinned without oscillating.
+  const stickyThreshold = stickyShownRef.current ? 1 : 0;
+  const qualifyingStickyRows = userRowPositions.filter(
+    (row) => row.y <= stickyThreshold,
+  );
+  const stickyTaskTitle = qualifyingStickyRows.length > 0
+    ? qualifyingStickyRows[qualifyingStickyRows.length - 1]!.text
+    : undefined;
   const showStickyTaskHeader = !renderedViewport.followOutput &&
     stickyTaskTitle !== undefined;
+  stickyShownRef.current = showStickyTaskHeader;
   const pinnedVisibleRows = showStickyTaskHeader
     ? Math.max(1, visibleTranscriptRows - 1)
     : visibleTranscriptRows;
@@ -346,6 +365,33 @@ export function InkCliApp({
   useEffect(() => {
     if (snapshot.sessionPicker === undefined) setSessionPanelLayout(undefined);
   }, [snapshot.sessionPicker]);
+
+  const registerUserRow = useCallback((id: string, node: DOMElement | null): void => {
+    if (node) userRowNodes.set(id, node);
+    else userRowNodes.delete(id);
+  }, [userRowNodes]);
+
+  useEffect(() => {
+    const measured: Array<{ id: string; y: number; text: string }> = [];
+    for (const entry of transcriptEntries) {
+      if (entry.role !== "user") continue;
+      const title = normalizeStickyTaskTitle(entry.text);
+      if (title === undefined) continue;
+      const node = userRowNodes.get(entry.id);
+      if (node === undefined) continue;
+      try {
+        const position = measureElement(node);
+        measured.push({ id: entry.id, y: position.y, text: title });
+      } catch {
+        // The node is not attached yet; the next commit measures it.
+      }
+    }
+    const serialized = JSON.stringify(measured);
+    if (serialized !== userRowPositionsRef.current) {
+      userRowPositionsRef.current = serialized;
+      setUserRowPositions(measured);
+    }
+  });
 
   // Keep the 6-row visible window on the selection so every prefix-matched
   // command stays keyboard-reachable; the window never scrolls otherwise.
@@ -914,6 +960,7 @@ export function InkCliApp({
           summary={showRunSummary ? snapshot.summary : undefined}
           columns={columns}
           viewport={{ ...renderedViewport, offset: 0, totalRows: 0, visibleRows: Number.MAX_SAFE_INTEGER, followOutput: false }}
+          registerUserRow={registerUserRow}
         />
         {snapshot.historyView !== undefined ? (
           <HistoryPanel
@@ -1098,14 +1145,19 @@ export function deriveStickyTaskTitle(
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
     if (entry?.role !== "user") continue;
-    const normalized = entry.text
-      .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (normalized.length === 0) continue;
-    return truncateToDisplayWidth(Array.from(normalized).slice(0, 512).join(""), 512);
+    const title = normalizeStickyTaskTitle(entry.text);
+    if (title !== undefined) return title;
   }
   return undefined;
+}
+
+function normalizeStickyTaskTitle(text: string): string | undefined {
+  const normalized = text
+    .replace(/[\u0000-\u001F\u007F-\u009F]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (normalized.length === 0) return undefined;
+  return truncateToDisplayWidth(Array.from(normalized).slice(0, 512).join(""), 512);
 }
 
 function StickyTaskHeader({
@@ -1229,12 +1281,14 @@ function TranscriptViewport({
   summary,
   columns,
   viewport,
+  registerUserRow,
 }: {
   readonly snapshot: InkRuntimeSnapshot;
   readonly entries: readonly TuiStateSnapshot["transcript"][number][];
   readonly summary?: InkRunSummary;
   readonly columns: number;
   readonly viewport: InkViewportSnapshot;
+  readonly registerUserRow?: (id: string, node: DOMElement | null) => void;
 }): React.JSX.Element {
   const theme = useInkTheme();
   const ranges = transcriptRanges(entries, columns, summary);
@@ -1291,6 +1345,7 @@ function TranscriptViewport({
               }
               width={columns}
               rowOffset={-rowOffset}
+              registerUserRow={registerUserRow}
             />
           );
         })}
@@ -1460,15 +1515,23 @@ function TranscriptEntry({
   activeThinking,
   width,
   rowOffset = 0,
+  registerUserRow,
 }: {
   entry: TuiStateSnapshot["transcript"][number];
   activeThinking: boolean;
   width: number;
   rowOffset?: number;
+  registerUserRow?: (id: string, node: DOMElement | null) => void;
 }): React.JSX.Element {
   const theme = useInkTheme();
   return (
-    <Box flexDirection="column" marginTop={1 + rowOffset}>
+    <Box
+      flexDirection="column"
+      marginTop={1 + rowOffset}
+      ref={entry.role === "user"
+        ? (node: DOMElement | null) => registerUserRow?.(entry.id, node)
+        : undefined}
+    >
       {entry.role === "user" ? (
         <Text color={theme.primary}>› {entry.text}</Text>
       ) : entry.role === "reasoning" ? (

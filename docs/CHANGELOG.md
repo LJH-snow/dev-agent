@@ -2,11 +2,13 @@
 
 ## 2026-09-30（CLI TUI pinned task header while browsing）
 
-- Scrolling up into the transcript now pins the latest user task as a
-  one-row header at the top of the frame (Codex-style), so the task that was
-  sent stays visible while browsing earlier output. The pinned row takes one
-  row from the transcript viewport (model and paint stay consistent) and
-  disappears again in follow-at-bottom mode.
+- Scrolling up into the transcript now pins the task that owns the row at the
+  top of the viewport (Codex-style), not always the latest task: user prompts
+  register their painted row position after each commit, and the pinned
+  header switches to the previous task as the viewport scrolls past its
+  prompt. Scrolling into the welcome area hides the header.
+- The pinned row takes one row from the transcript viewport (model and paint
+  stay consistent) and disappears again in follow-at-bottom mode.
 - The previously dead `StickyTaskHeader`/`deriveStickyTaskTitle` scaffolding
   is now wired into the live frame.
 
