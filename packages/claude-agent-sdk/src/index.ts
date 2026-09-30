@@ -549,18 +549,37 @@ export async function runClaudeAgentSdk(
   if (prompt.trim().length === 0) {
     throw new Error("Claude Agent SDK prompt must not be empty");
   }
-
   const context = createClaudeAgentSdkContext(options);
+  // Do not create a provider query after the host has already cancelled the run.
+  // Besides avoiding unnecessary SDK work, this keeps an already-aborted request
+  // from spawning an orphaned CLI process before the first lifecycle callback.
+  // Keep context validation ahead of this check so invalid run options preserve
+  // their existing error precedence.
+  throwIfAborted(options.signal);
   const controller = context.queryOptions.abortController;
   const queryFactory = options.query ?? defaultQuery;
   const query = queryFactory({ prompt, options: context.queryOptions });
   let result: SDKResultMessage | undefined;
   const includePartialMessages = options.includePartialMessages === true;
 
-  const abortQuery = () => {
-    controller?.abort(options.signal?.reason);
+  let queryClosed = false;
+  const closeQuery = () => {
+    if (queryClosed) {
+      return;
+    }
+    queryClosed = true;
     query.close();
   };
+  const abortQuery = () => {
+    controller?.abort(options.signal?.reason);
+    closeQuery();
+  };
+  // AbortSignal does not replay an abort event for listeners added after the
+  // abort. Check once after factory creation so a factory that observes and
+  // triggers cancellation cannot leave its newly-created query running.
+  if (options.signal?.aborted) {
+    abortQuery();
+  }
   options.signal?.addEventListener("abort", abortQuery, { once: true });
 
   try {
@@ -582,7 +601,7 @@ export async function runClaudeAgentSdk(
   } finally {
     options.signal?.removeEventListener("abort", abortQuery);
     context.bridge.clearPendingAuthorizations();
-    query.close();
+    closeQuery();
   }
 }
 

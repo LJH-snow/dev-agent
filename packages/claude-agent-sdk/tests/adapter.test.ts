@@ -434,6 +434,80 @@ test("runs through an injected query and forwards final text", async () => {
   assert.equal(capturedOptions?.strictMcpConfig, true);
 });
 
+test("does not create a query when the host signal is already aborted", async () => {
+  const controller = new AbortController();
+  controller.abort(new Error("already cancelled"));
+  const tools = new AgentToolRegistry();
+  let factoryCalls = 0;
+  const queryFactory: ClaudeAgentSdkQueryFactory = () => {
+    factoryCalls += 1;
+    throw new Error("query factory should not run");
+  };
+
+  await assert.rejects(
+    runClaudeAgentSdk("do not start", {
+      tools,
+      sessionId: "session-pre-abort",
+      workingDirectory: "/tmp/project",
+      signal: controller.signal,
+      query: queryFactory,
+    }),
+    (error: unknown) => error instanceof Error && error.name === "AbortError",
+  );
+  assert.equal(factoryCalls, 0);
+});
+
+test("closes a query when the host aborts during query creation", async () => {
+  const controller = new AbortController();
+  const tools = new AgentToolRegistry();
+  let closeCalls = 0;
+  let done = false;
+  let release!: () => void;
+  const query = {
+    [Symbol.asyncIterator]() {
+      return {
+        next: () => done
+          ? Promise.resolve({ done: true, value: undefined as never })
+          : new Promise<IteratorResult<never>>((resolve) => {
+            release = () => resolve({ done: true, value: undefined as never });
+          }),
+      };
+    },
+    close() {
+      closeCalls += 1;
+      done = true;
+      release?.();
+    },
+  } as never;
+  const queryFactory: ClaudeAgentSdkQueryFactory = () => {
+    controller.abort(new Error("cancelled while creating query"));
+    return query;
+  };
+
+  const running = runClaudeAgentSdk("cancel during create", {
+    tools,
+    sessionId: "session-factory-abort",
+    workingDirectory: "/tmp/project",
+    signal: controller.signal,
+    query: queryFactory,
+  });
+  const settled = running.then(
+    () => undefined,
+    (error: unknown) => error,
+  );
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(closeCalls, 1);
+    const error = await settled;
+    assert.ok(error instanceof Error && /aborted/.test(error.message));
+  } finally {
+    if (closeCalls === 0) {
+      (query as { close: () => void }).close();
+    }
+    await settled;
+  }
+});
+
 test("closes an injected query when the host aborts", async () => {
   const controller = new AbortController();
   const tools = new AgentToolRegistry();
