@@ -153,6 +153,34 @@ test("MCP client receives server notifications via onNotification", async () => 
   }
 });
 
+test("a throwing notification handler does not terminate the shared MCP transport", async () => {
+  const client = new McpStdioClient();
+  let handlerCalls = 0;
+  client.onNotification(() => {
+    handlerCalls += 1;
+    throw new Error("notification consumer failed");
+  });
+
+  try {
+    await client.connect({
+      command: process.execPath,
+      args: [fakeServer],
+    });
+
+    const tools = await client.listTools();
+    const notifyTool = tools.find((tool) => tool.name === "notify");
+    assert.ok(notifyTool, "expected notify tool to be listed");
+    await notifyTool.execute({});
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    assert.equal(handlerCalls, 1);
+    await client.ping();
+    assert.equal(client.isConnected(), true);
+  } finally {
+    await client.close();
+  }
+});
+
 test("MCP server session re-registers tools when the server emits list_changed", async () => {
   const session = new McpServerSession({
     config: { command: process.execPath, args: [fakeServer], name: "fake" },

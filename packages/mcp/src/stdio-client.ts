@@ -550,7 +550,11 @@ export class McpStdioClient implements McpClient {
           }
         }
         for (const handler of this.notificationHandlers) {
-          handler(notification);
+          try {
+            handler(notification);
+          } catch {
+            // A consumer callback must not terminate the shared MCP transport.
+          }
         }
       }
     }
