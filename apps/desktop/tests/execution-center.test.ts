@@ -1,0 +1,172 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  createExecutionCenterSnapshot,
+  normalizeExecutionCenterSnapshot,
+} from "../dist/execution-center.js";
+import { createDesktopServer } from "../dist/server.js";
+import { createDesktopStatus } from "../dist/status.js";
+
+function start(server: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      const address = server.address() as any;
+      resolve("http://" + address.address + ":" + address.port);
+    });
+  });
+}
+
+function close(server: any): Promise<void> {
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+test("execution center snapshot is bounded, ordered, and metadata-only", () => {
+  const snapshot = createExecutionCenterSnapshot(
+    [
+      {
+        sessionId: "done-session",
+        title: "Finished task",
+        lastActiveAt: "2026-09-30T10:00:00.000Z",
+        run: {
+          status: "done",
+          active: false,
+          sequence: 8,
+          startedAt: "2026-09-30T09:59:00.000Z",
+          finishedAt: "2026-09-30T10:00:00.000Z",
+        },
+      },
+      {
+        sessionId: "approval-session",
+        title: "Review change",
+        lastActiveAt: "2026-09-30T11:00:00.000Z",
+        run: {
+          status: "waiting",
+          active: true,
+          runId: "run-approval",
+          sequence: 12,
+          startedAt: "2026-09-30T10:55:00.000Z",
+        },
+        live: {
+          approval: { id: "approval-1", tool: "filesystem.patch", reason: "Review before writing" },
+        },
+      },
+      {
+        sessionId: "../private",
+        title: "should be dropped",
+        run: { status: "running", active: true, sequence: 1 },
+      },
+    ],
+    "approval-session",
+    createDesktopStatus({ sessionId: "approval-session", executorMode: "sandboxed-macos" }),
+    "2026-09-30T11:00:00.000Z",
+  );
+
+  assert.equal(snapshot.schemaVersion, 1);
+  assert.equal(snapshot.metadataOnly, true);
+  assert.equal(snapshot.total, 2);
+  assert.equal(snapshot.active, 1);
+  assert.equal(snapshot.waiting, 1);
+  assert.equal(snapshot.completed, 1);
+  assert.equal(snapshot.currentSessionId, "approval-session");
+  assert.deepEqual(snapshot.runtime?.executor, { mode: "sandboxed-macos" });
+  assert.equal(snapshot.sessions[0]?.sessionId, "approval-session");
+  assert.equal(snapshot.sessions[0]?.stage, "approval");
+  assert.equal(snapshot.sessions[0]?.approvalPending, true);
+  assert.equal(snapshot.sessions[1]?.durationMs, 60_000);
+  assert.doesNotMatch(JSON.stringify(snapshot), /prompt|output|command|args|env|secret|Users|home|tmp/i);
+});
+
+test("execution center normalization fails closed and stays bounded", () => {
+  const normalized = normalizeExecutionCenterSnapshot({
+    schemaVersion: 99,
+    metadataOnly: false,
+    sessions: [
+      { sessionId: "../private", status: "running", active: true },
+      {
+        sessionId: "safe",
+        title: "x".repeat(500),
+        status: "waiting",
+        active: true,
+        sequence: 999999999999,
+        approvalPending: true,
+      },
+    ],
+  });
+
+  assert.equal(normalized.schemaVersion, 1);
+  assert.equal(normalized.metadataOnly, true);
+  assert.equal(normalized.total, 1);
+  assert.equal(normalized.sessions[0]?.sessionId, "safe");
+  assert.equal(normalized.sessions[0]?.sequence, 10_000_000);
+  assert.equal(normalized.sessions[0]?.title.length, 96);
+
+  const sanitizedRuntime = normalizeExecutionCenterSnapshot({
+    runtime: {
+      executor: { mode: "local" },
+      runtime: { version: "/private/runtime", platform: "darwin" },
+      approval: { mode: "ask", guarded: true },
+      validation: { policy: "default", enabled: true, lastResult: "passed" },
+    },
+  });
+  assert.equal(sanitizedRuntime.runtime?.runtime.version, "unknown");
+  assert.equal(sanitizedRuntime.runtime?.runtime.platform, "darwin");
+});
+
+test("GET /api/execution-center returns a safe aggregate and exposes its panel contract", async () => {
+  const server = createDesktopServer({
+    session: {
+      id: "desktop-default",
+      getStatus: () => createDesktopStatus({ sessionId: "desktop-default", executorMode: "local" }),
+      async run() {},
+    },
+  });
+  const base = await start(server);
+  try {
+    const response = await fetch(base + "/api/execution-center");
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("cache-control") ?? "", /no-store/);
+    const payload = await response.json() as any;
+    assert.equal(payload.schemaVersion, 1);
+    assert.equal(payload.metadataOnly, true);
+    assert.equal(payload.currentSessionId, "desktop-default");
+    assert.deepEqual(payload.runtime.executor, { mode: "local" });
+    assert.ok(Array.isArray(payload.sessions));
+    assert.doesNotMatch(JSON.stringify(payload), /prompt|output|command|args|env|secret|Users|home|tmp/i);
+
+    const [html, moduleSource] = await Promise.all([
+      fetch(base + "/").then((response) => response.text()),
+      fetch(base + "/public/execution-center.js").then((response) => response.text()),
+    ]);
+    for (const id of [
+      "execution-center-panel",
+      "execution-center-status",
+      "execution-center-summary",
+      "execution-center-list",
+      "execution-center-refresh",
+      "execution-center-detail",
+      "execution-center-detail-title",
+      "execution-center-detail-meta",
+      "execution-center-stop",
+      "execution-center-trace",
+      "execution-center-validation",
+      "execution-center-autofix",
+    ]) {
+      assert.match(html, new RegExp("id=\\\"" + id + "\\\""));
+    }
+    assert.match(html, /execution-center\.js/);
+    assert.match(moduleSource, /\/api\/execution-center/);
+    assert.match(moduleSource, /createExecutionCenterUI/);
+    assert.match(moduleSource, /requestId !== executionCenterRequestId/);
+    assert.match(moduleSource, /textContent/);
+    assert.match(moduleSource, /stopSession/);
+    assert.match(moduleSource, /openTrace/);
+    assert.match(moduleSource, /openValidation/);
+    assert.match(moduleSource, /startAutofix/);
+    assert.match(moduleSource, /execution-center-detail/);
+  } finally {
+    await close(server);
+  }
+});

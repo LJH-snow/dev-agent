@@ -99,6 +99,11 @@ import {
   type ParallelRunInput,
 } from "./parallel-runs.js";
 import {
+  createExecutionCenterSnapshot,
+  MAX_EXECUTION_CENTER_RESPONSE_BYTES,
+  type ExecutionCenterInput,
+} from "./execution-center.js";
+import {
   loadGitHubPrReview,
   normalizeGitHubPrReviewSnapshot,
   normalizeGitHubPrTarget,
@@ -1160,6 +1165,56 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
         res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+        res.end(serialized);
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/execution-center") {
+        const summaries = await listSessions([...sessions.keys()]);
+        const inputs: ExecutionCenterInput[] = summaries.map((summary) => {
+          const run = runs.summary(summary.sessionId);
+          const active = inFlight.has(summary.sessionId)
+            || taskValidationManager.hasRunning(summary.sessionId)
+            || run.active;
+          return {
+            sessionId: summary.sessionId,
+            ...(typeof summary.presentation?.title === "string" ? { title: summary.presentation.title } : {}),
+            ...(summary.lastActiveAt === undefined ? {} : { lastActiveAt: summary.lastActiveAt }),
+            run: active && !run.active
+              ? { ...run, active: true, status: "running" as const }
+              : run,
+            live: runs.snapshot(summary.sessionId).live,
+          };
+        });
+
+        const currentSessionId = activeSessionId;
+        const currentSession = currentSessionId === undefined
+          ? undefined
+          : sessions.get(currentSessionId)
+            ?? (currentSessionId === defaultSessionId ? defaultSession : undefined);
+        let currentStatus: DesktopStatusSnapshot | undefined;
+        if (currentSessionId !== undefined && currentSession !== undefined) {
+          currentStatus = withDesktopStatusSession(
+            currentSession.getStatus?.()
+              ?? createDesktopStatus({
+                sessionId: currentSessionId,
+                executorMode: currentSession.executorMode,
+              }),
+            currentSessionId,
+            inFlight.has(currentSessionId) || taskValidationManager.hasRunning(currentSessionId),
+          );
+        }
+        const payload = createExecutionCenterSnapshot(inputs, currentSessionId, currentStatus);
+        const serialized = JSON.stringify(payload);
+        if (Buffer.byteLength(serialized, "utf8") > MAX_EXECUTION_CENTER_RESPONSE_BYTES) {
+          res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "execution center response is too large", code: "execution-center-too-large" }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
         res.end(serialized);
         return;
       }

@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-30（Desktop 执行状态中心）
+
+- Added a bounded read-only execution-center snapshot that combines existing
+  session run summaries, live tool/approval metadata, and the active session's
+  allowlisted executor/runtime state.
+- Added a compact bilingual execution panel with stale-response protection,
+  text-only rendering, manual refresh, and session focus actions. Existing Run
+  timeline, Parallel Runs, Runtime Trace, approval, and mutation contracts stay
+  unchanged.
+- The selected execution card now opens a bounded detail view with Stop, Trace,
+  Validation, and Autofix shortcuts. Autofix remains disabled unless the active
+  session has failed or blocked validation evidence.
+
 ## 2026-09-30（CLI TUI pinned task header while browsing）
 
 - Scrolling up into the transcript now pins the task that owns the row at the

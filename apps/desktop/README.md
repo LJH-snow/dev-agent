@@ -110,6 +110,8 @@ are accepted, and validation command fields are deliberately not configurable.
   status panel. It intentionally excludes secrets, absolute paths, source text,
   command arguments, and raw exception details. The managed-runtime summary is
   sanitized before serialization, even when injected by a custom host.
+- src/execution-center.ts — bounded metadata-only aggregation of session run
+  stages, approval waits, tool names, durations, and current runtime state.
 - `src/chat-session.ts` — builds the `AgentLoop` with the default tools and model
   provider, optionally connects configured MCP stdio servers, and bridges its
   `onToken` / `onReasoning` / `onToolCall` / `onToolProgress` / `onToolResult` /
@@ -145,6 +147,10 @@ are accepted, and validation command fields are deliberately not configurable.
   summarize open-PR CI state into a digest record. Schedules are session-free
   (task center rows stay session-scoped); overdue schedules catch up exactly
   once after downtime; the tick timer never keeps the process alive.
+- public/execution-center.js — compact bilingual execution overview over the
+  read-only GET /api/execution-center snapshot. It discards stale responses,
+  renders with text nodes, focuses the selected session, and exposes Stop, Trace,
+  Validation, and Autofix shortcuts by reusing the existing guarded actions.
 
 ## API
 
@@ -214,6 +220,12 @@ ID returns `400` before the approval lookup.
   approval fragments. Pass `?after=<sequence>` to request only later events.
   Retained replay is capped by event count and bytes; tool inputs, raw tool
   output, review diffs, and raw provider errors are never included. Unknown
+- GET /api/execution-center — bounded metadata-only aggregate for up to 256
+  sessions. It reports active, waiting, completed, failed, and aborted counts,
+  per-session stage/tool/approval metadata, and an allowlisted runtime subset
+  for the active session. It never returns prompts, tool output, commands,
+  arguments, environment values, credentials, or absolute paths; oversized
+  snapshots return 413.
   sessions return `404`, and invalid cursors return `400`.
 - `GET /api/sessions/<id>/trace` — returns the bounded, metadata-only run
   trace. The Runtime Inspector `Trace` action renders run/span timing, status,

@@ -309,6 +309,13 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   action expose the same bounded local snapshot as CLI `:trace`. Rendering is
   limited to run/span timing and status metadata; prompt text, tool inputs and
   output, paths, credentials, and raw errors stay outside the panel.
+- **Execution center**: execution-center.ts aggregates the existing bounded
+  run registry, task summaries, approval state, and current executor/runtime
+  metadata into a read-only snapshot. The execution-center.js panel uses
+  stale-response guards and text-only rendering to focus a session. Its Stop,
+  Trace, Validation, and Autofix buttons delegate to existing session-bound
+  lifecycle handlers; the panel adds no shell, network, credential, or mutation
+  capability of its own.
 - **Conversation checkpoints**: ChatSession delegates to the bounded
   FileMemory checkpoint store through `GET /api/sessions/<id>/checkpoints`,
   `POST /api/sessions/<id>/checkpoint`, and

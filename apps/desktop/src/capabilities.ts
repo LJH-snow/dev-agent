@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { homedir } from "node:os";
 import { opendir, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -179,7 +179,7 @@ export async function inspectRepository(workingDirectory: string): Promise<Repos
   }
 
   const branch = await runCommand("git", ["branch", "--show-current"], workingDirectory, maxGitOutputBytes);
-  const status = await runCommand("git", ["status", "--porcelain=v1", "--untracked-files=normal"], workingDirectory, maxGitOutputBytes);
+  const status = await inspectGitStatus(workingDirectory);
   const remote = await runCommand("git", ["config", "--get", "remote.origin.url"], workingDirectory, maxRemoteChars);
   if (!branch.ok || !status.ok) {
     return { provider: "git", state: "invalid", reason: "malformed-output" };
@@ -196,8 +196,8 @@ export async function inspectRepository(workingDirectory: string): Promise<Repos
       provider: "git",
       state: "ready",
       branch: safeBranch,
-      dirty: status.stdout.length > 0,
-      changedFiles: countStatusEntries(status.stdout),
+      dirty: status.dirty,
+      changedFiles: status.changedFiles,
       reason: "remote-unparseable",
     };
   }
@@ -206,8 +206,8 @@ export async function inspectRepository(workingDirectory: string): Promise<Repos
     provider: "git",
     state: "ready",
     branch: safeBranch,
-    dirty: status.stdout.length > 0,
-    changedFiles: countStatusEntries(status.stdout),
+    dirty: status.dirty,
+    changedFiles: status.changedFiles,
     ...(remoteHost === undefined ? {} : {
       remoteHost,
       remoteProvider: remoteHost === "github.com" || remoteHost.endsWith(".github.com") ? "github" as const : "other" as const,
@@ -364,12 +364,77 @@ async function readScheduledJobMetadata(): Promise<readonly ScheduledJobMetadata
   return jobs.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
 }
 
-function countStatusEntries(value: string): number {
-  if (!value) return 0;
-  return Math.min(
-    maxChangedFiles,
-    value.split(/\r?\n/u).filter((entry) => entry.length > 0).length,
-  );
+type GitStatusResult =
+  | { readonly ok: true; readonly dirty: boolean; readonly changedFiles: number }
+  | { readonly ok: false; readonly code?: number | string };
+
+/** Counts status entries without buffering filenames into the metadata process. */
+async function inspectGitStatus(workingDirectory: string): Promise<GitStatusResult> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let changedFiles = 0;
+    let pending = "";
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (result: GitStatusResult): void => {
+      if (settled) return;
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      resolve(result);
+    };
+
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(
+        "git",
+        ["status", "--porcelain=v1", "--untracked-files=normal"],
+        { cwd: workingDirectory, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] },
+      );
+    } catch (error) {
+      const code = error as NodeJS.ErrnoException;
+      finish({ ok: false, ...(code.code === undefined ? {} : { code: code.code }) });
+      return;
+    }
+
+    child.stdout?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk: string | Buffer) => {
+      if (settled) return;
+      const text = pending + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+      const lines = text.split("\n");
+      pending = lines.pop() ?? "";
+      for (const rawLine of lines) {
+        if (rawLine.length === 0 || (rawLine.length === 1 && rawLine[0] === "\r")) continue;
+        changedFiles += 1;
+        if (changedFiles >= maxChangedFiles) {
+          finish({ ok: true, dirty: true, changedFiles: maxChangedFiles });
+          child.kill();
+          return;
+        }
+      }
+      if (pending.length > maxGitOutputBytes) {
+        finish({ ok: false, code: "ERR_GIT_STATUS_LINE_TOO_LARGE" });
+        child.kill();
+      }
+    });
+
+    child.once("error", (error) => {
+      const code = error as NodeJS.ErrnoException;
+      finish({ ok: false, ...(code.code === undefined ? {} : { code: code.code }) });
+    });
+    child.once("close", (code) => {
+      if (settled) return;
+      if (code !== 0) {
+        finish({ ok: false, ...(code === null ? {} : { code }) });
+        return;
+      }
+      if (pending.length > 0 && pending !== "\r") changedFiles = Math.min(maxChangedFiles, changedFiles + 1);
+      finish({ ok: true, dirty: changedFiles > 0, changedFiles });
+    });
+    timer = setTimeout(() => {
+      child.kill();
+      finish({ ok: false, code: "ETIMEDOUT" });
+    }, githubProbeTimeoutMs);
+  });
 }
 
 async function probeCiCapability(
