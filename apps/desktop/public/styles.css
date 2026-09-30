@@ -4975,6 +4975,57 @@ html[data-density="compact"] .settings-card {
   white-space: nowrap;
 }
 
+.execution-center-detail {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.execution-center-detail-header {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.execution-center-detail-title {
+  display: block;
+  overflow: hidden;
+  font: 600 11px/1.3 var(--mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.execution-center-detail-status,
+.execution-center-detail-meta {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.execution-center-detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.execution-center-detail-actions button {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 10px;
+}
+
+.execution-center-detail-actions button:hover:not(:disabled),
+.execution-center-detail-actions button:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+}
+
 /* Task templates and keyboard-driven quick actions. */
 .composer-quick-actions {
   display: inline-flex;

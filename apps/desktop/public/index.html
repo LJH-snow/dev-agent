@@ -747,6 +747,33 @@
           <div id="parallel-runs-summary" class="parallel-runs-summary" role="status"></div>
           <ul id="parallel-runs-list" class="parallel-runs-list" aria-label="Parallel agent runs" data-i18n-aria-label="parallelRuns.list"></ul>
         </section>
+        <section id="execution-center-panel" class="desktop-status-panel parallel-runs-panel" aria-labelledby="execution-center-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="execution-center-title" class="desktop-status-title" data-i18n="executionCenter.title">Execution center</div>
+              <div id="execution-center-status" class="desktop-status-note" role="status" data-i18n="executionCenter.loading">Loading execution state…</div>
+              <div id="execution-center-runtime" class="desktop-status-note"></div>
+            </div>
+            <button type="button" id="execution-center-refresh" class="desktop-status-refresh" data-i18n="executionCenter.refresh">Refresh</button>
+          </div>
+          <div id="execution-center-summary" class="parallel-runs-summary" role="status"></div>
+          <ul id="execution-center-list" class="parallel-runs-list" aria-label="Execution sessions" data-i18n-aria-label="executionCenter.list"></ul>
+          <div id="execution-center-detail" class="execution-center-detail" hidden aria-labelledby="execution-center-detail-title" aria-live="polite">
+            <div class="execution-center-detail-header">
+              <div>
+                <strong id="execution-center-detail-title" class="execution-center-detail-title"></strong>
+                <span id="execution-center-detail-status" class="execution-center-detail-status"></span>
+              </div>
+              <div id="execution-center-detail-meta" class="execution-center-detail-meta"></div>
+            </div>
+            <div class="execution-center-detail-actions">
+              <button type="button" id="execution-center-stop" data-i18n="executionCenter.action.stop">Stop</button>
+              <button type="button" id="execution-center-trace" data-i18n="executionCenter.action.trace">Open trace</button>
+              <button type="button" id="execution-center-validation" data-i18n="executionCenter.action.validation">Open validation</button>
+              <button type="button" id="execution-center-autofix" data-i18n="executionCenter.action.autofix">Start Autofix review</button>
+            </div>
+          </div>
+        </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
           <div class="desktop-status-header">
             <div>
@@ -873,6 +900,7 @@
     import { createGitHubCiDiagnosisUI } from "/public/github-ci-diagnosis-ui.js";
     import { createGitHubDeliveryLoopUI } from "/public/github-delivery-loop-ui.js";
     import { createScheduledTasksUI } from "/public/scheduled-tasks-ui.js";
+    import { createExecutionCenterUI } from "/public/execution-center.js";
     import {
       getTurnActivityForEvent,
       getTurnActivityForState,
@@ -1148,6 +1176,7 @@
     let parallelRunsRequestId = 0;
     let parallelRunsController = null;
     let parallelRunsTimer = null;
+    let executionCenterUI = null;
     let runSnapshotSessionId = null;
     let runSnapshot = null;
     let runRecoveryTimer = null;
@@ -1309,6 +1338,21 @@
         "parallelRuns.duration.minutes": "{count}m",
         "parallelRuns.duration.hours": "{count}h",
         "parallelRuns.focus": "Focus",
+        "executionCenter.title": "Execution center",
+        "executionCenter.loading": "Loading execution state…",
+        "executionCenter.checking": "Checking execution state…",
+        "executionCenter.ready": "{active} active · {waiting} waiting · {failed} failed",
+        "executionCenter.empty": "No tracked execution yet.",
+        "executionCenter.error": "Execution state is temporarily unavailable.",
+        "executionCenter.refresh": "Refresh",
+        "executionCenter.list": "Execution sessions",
+        "executionCenter.summary": "{total} sessions · {completed} complete · {aborted} aborted",
+        "executionCenter.focus": "Focus session",
+        "executionCenter.approval": "Approval pending",
+        "executionCenter.action.stop": "Stop run",
+        "executionCenter.action.trace": "Open trace",
+        "executionCenter.action.validation": "Open validation",
+        "executionCenter.action.autofix": "Start Autofix review",
         "githubPrReview.title": "GitHub PR review",
         "githubCiDiagnosis.title": "PR CI diagnosis",
         "githubCiDiagnosis.repair": "Start isolated repair…",
@@ -2115,6 +2159,21 @@
         "parallelRuns.duration.minutes": "{count} 分钟",
         "parallelRuns.duration.hours": "{count} 小时",
         "parallelRuns.focus": "聚焦",
+        "executionCenter.title": "执行中心",
+        "executionCenter.loading": "正在加载执行状态…",
+        "executionCenter.checking": "正在检查执行状态…",
+        "executionCenter.ready": "{active} 个活跃 · {waiting} 个等待中 · {failed} 个失败",
+        "executionCenter.empty": "暂无可跟踪的执行记录。",
+        "executionCenter.error": "执行状态暂时不可用。",
+        "executionCenter.refresh": "刷新",
+        "executionCenter.list": "执行会话",
+        "executionCenter.summary": "{total} 个会话 · {completed} 个完成 · {aborted} 个中止",
+        "executionCenter.focus": "聚焦会话",
+        "executionCenter.approval": "等待审批",
+        "executionCenter.action.stop": "停止运行",
+        "executionCenter.action.trace": "打开 Trace",
+        "executionCenter.action.validation": "打开验证",
+        "executionCenter.action.autofix": "开始 Autofix 审阅",
         "githubPrReview.title": "GitHub PR 审查",
         "githubCiDiagnosis.title": "PR CI 失败诊断",
         "githubCiDiagnosis.repair": "开始隔离修复…",
@@ -6657,6 +6716,7 @@
       void taskWorkspaceUI?.refresh();
       taskTerminalUI?.sessionChanged();
       taskValidationUI?.sessionChanged();
+      void executionCenterUI?.refresh();
       if (!runSnapshot?.active) setStatus("session " + currentSessionId);
     }
 
@@ -6877,20 +6937,29 @@
         "/api/sessions/" + encodeURIComponent(currentSessionId) + "/export";
     });
 
-    stopButton.addEventListener("click", async () => {
-      if (currentSessionId === null) return;
-      stopButton.disabled = true;
+    async function stopSession(sessionId = currentSessionId) {
+      if (sessionId === null) return false;
+      if (sessionId === currentSessionId) stopButton.disabled = true;
       try {
-        await fetch("/api/chat/cancel", {
+        const response = await fetch("/api/chat/cancel", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ sessionId: currentSessionId }),
+          body: JSON.stringify({ sessionId }),
         });
-        setStatus("stopping");
+        if (!response.ok) {
+          if (sessionId === currentSessionId) setStatus("stop failed");
+          return false;
+        }
+        if (sessionId === currentSessionId) setStatus("stopping");
+        void executionCenterUI?.refresh();
+        return true;
       } catch {
-        setStatus("stop failed");
+        if (sessionId === currentSessionId) setStatus("stop failed");
+        return false;
       }
-    });
+    }
+
+    stopButton.addEventListener("click", () => { void stopSession(); });
 
     input.addEventListener("input", () => {
       resizeComposerInput();
@@ -7667,6 +7736,27 @@
       documentRef: document, fetcher: fetch, translate: t,
     });
     void scheduledTasksUI?.refresh();
+    executionCenterUI = createExecutionCenterUI({
+      documentRef: document,
+      fetcher: fetch,
+      translate: t,
+      activateSession,
+      stopSession,
+      openTrace: async (sessionId) => {
+        await activateSession(sessionId);
+        await loadTraceSnapshot(sessionId);
+        runtimeTracePanel?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      },
+      openValidation: async (sessionId) => {
+        await activateSession(sessionId);
+        await taskValidationUI?.refresh();
+        document.getElementById("task-validation-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      },
+      startAutofix: async (sessionId) => {
+        await activateSession(sessionId);
+        return enqueueAutoFix(sessionId);
+      },
+    });
     taskTerminalUI = createTaskTerminalUI({
       documentRef: document,
       fetcher: fetch,
@@ -7715,9 +7805,13 @@
         void loadMcpHealth(currentSessionId);
       }
       void loadParallelRuns();
+      void executionCenterUI?.refresh();
     })();
     parallelRunsTimer = window.setInterval(() => {
-      if (!document.hidden) void loadParallelRuns();
+      if (!document.hidden) {
+        void loadParallelRuns();
+        void executionCenterUI?.refresh();
+      }
     }, 2500);
     composerModeSelect.value = readComposerModePreference();
     applyDensityPreference(densityPreference);
