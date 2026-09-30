@@ -1,0 +1,112 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createDesktopServer } from "../dist/server.js";
+
+const modulePath = "../dist/delivery-report.js";
+
+const workspace = { sessionId: "task-a", branch: "task/a", baseBranch: "main", state: "dirty", changedFiles: 1, dirty: true, merged: false, createdAt: "2026-09-25T12:00:00Z" };
+const diff = { sessionId: "task-a", files: [{ path: "src/main.ts", status: "modified", groups: ["unstaged"] }], truncated: false, filesTruncated: false };
+const validation = { sessionId: "task-a", state: "failed", policy: "default", changedFiles: 1, summary: "failed", checks: [{ id: "check", label: "Test", state: "failed", durationMs: 12, reason: "exit 1" }] };
+
+test("delivery report separates verified, failed and never-run evidence and contains no raw diff", async () => {
+  const { buildDeliveryReport, renderDeliveryReportMarkdown } = await import(modulePath);
+  const report = buildDeliveryReport("task-a", workspace, diff, validation, { active: false });
+  assert.equal(report.readiness, "blocked");
+  assert.deepEqual(report.files, [{ path: "src/main.ts", status: "modified", groups: ["unstaged"] }]);
+  assert.equal(report.validation.state, "failed");
+  const markdown = renderDeliveryReportMarkdown(report);
+  assert.match(markdown, /failed/i);
+  assert.match(markdown, /src\/main\.ts/);
+  assert.doesNotMatch(markdown, /diff --git/);
+  const notRun = buildDeliveryReport("task-a", workspace, diff, undefined, { active: false });
+  assert.equal(notRun.validation.state, "not-run");
+  assert.notEqual(notRun.readiness, "ready");
+  assert.equal(buildDeliveryReport("task-a", workspace, diff, { ...validation, state: "passed", checks: [{ ...validation.checks[0], state: "passed" }] }, { active: true }).readiness, "running");
+});
+
+test("delivery report classifies actual porcelain file statuses without calling committed files unknown", async () => {
+  const { buildDeliveryReport } = await import(modulePath);
+  const report = buildDeliveryReport("task-a", { ...workspace, dirty: false, state: "ready" }, {
+    ...diff, files: [
+      { path: "src/added.ts", status: "??", groups: ["untracked"] },
+      { path: "src/updated.ts", status: " M", groups: ["unstaged"] },
+      { path: "src/removed.ts", status: "D ", groups: ["staged"] },
+      { path: "src/committed.ts", status: "committed", groups: ["committed"] },
+    ],
+  }, { ...validation, state: "passed", checks: [{ ...validation.checks[0], state: "passed" }] });
+  assert.deepEqual(report.files.map((file: any) => file.status), ["added", "modified", "deleted", "committed"]);
+  assert.equal(report.readiness, "attention"); // Not merged yet; local checks do not prove delivery.
+});
+
+test("delivery report redacts secrets and bounds untrusted metadata", async () => {
+  const { buildDeliveryReport, renderDeliveryReportMarkdown } = await import(modulePath);
+  const report = buildDeliveryReport("task-a", workspace, {
+    ...diff,
+    files: [{ path: "src/" + "a".repeat(2000) + ".ts", status: "modified", groups: ["unstaged"] }],
+  }, {
+    ...validation, summary: "token=ghp_abcdefghijklmnopqrstuv\n# forged heading", checks: [{ ...validation.checks[0], reason: "Bearer ghp_abcdefghijklmnopqrstuv" }],
+  }, { active: false });
+  const markdown = renderDeliveryReportMarkdown(report);
+  assert.ok(Buffer.byteLength(markdown) < 64 * 1024);
+  assert.doesNotMatch(markdown, /ghp_abcdefghijklmnopqrstuv|# forged heading/);
+  assert.ok(report.files[0].path.length <= 512);
+});
+
+test("task delivery endpoint is session-scoped and returns an attachment without inventing validation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dev-agent-delivery-"));
+  const repository = join(root, "repo");
+  await mkdir(repository);
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: repository, encoding: "utf8", env: { ...process.env, GIT_AUTHOR_NAME: "Test", GIT_AUTHOR_EMAIL: "test@example.invalid", GIT_COMMITTER_NAME: "Test", GIT_COMMITTER_EMAIL: "test@example.invalid" } });
+  git("init", "-q");
+  git("config", "user.name", "Test");
+  git("config", "user.email", "test@example.invalid");
+  await writeFile(join(repository, "README.md"), "initial\n");
+  git("add", "README.md");
+  git("commit", "-qm", "initial");
+  const server = createDesktopServer({
+    workspaceRoot: repository,
+    worktreeDirectory: join(root, "worktrees"),
+    workspaceStateFile: join(root, "workspaces.json"),
+    session: { id: "desktop-default", run: async () => undefined },
+    createSession: (sessionId: string) => ({ id: sessionId, run: async () => undefined }),
+  } as any);
+  try {
+    const base: string = await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        assert.ok(address && typeof address !== "string");
+        resolve(`http://127.0.0.1:${address.port}`);
+      });
+    });
+    const create = await fetch(`${base}/api/workspaces`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+    assert.equal(create.status, 201);
+    const { sessionId } = await create.json() as { sessionId: string };
+    const response = await fetch(`${base}/api/sessions/${sessionId}/delivery-report`);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type") ?? "", /text\/markdown/);
+    assert.match(response.headers.get("content-disposition") ?? "", /attachment/);
+    assert.match(await response.text(), /not run/i);
+    const unknown = await fetch(`${base}/api/sessions/unknown-task/delivery-report`);
+    assert.equal(unknown.status, 404);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("task workspace UI links the selected task to delivery export, with bilingual labels", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+  const client = await readFile(new URL("../public/task-workspace-ui.js", import.meta.url), "utf8");
+  assert.match(html, /id="task-workspace-delivery"/);
+  assert.match(html, /"workspace\.delivery": "Download delivery report"/);
+  assert.match(html, /"workspace\.delivery": "下载交付报告"/);
+  assert.match(client, /deliveryButton\.disabled = !workspace/);
+  assert.match(client, /\/delivery-report/);
+  assert.match(client, /encodeURIComponent\(workspace\.sessionId\)/);
+});

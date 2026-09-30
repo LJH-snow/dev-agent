@@ -1,0 +1,54 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createAgentContext, InMemoryMemory, } from "@dev-agent/agent-core";
+import { createPendingAutoFixReviewRecord, restorePendingAutoFixReview, } from "../dist/autofix-review-store.js";
+function context(workingDirectory = "/tmp/autofix-workspace") {
+    return createAgentContext("autofix-session", new InMemoryMemory(), {
+        sessionId: "autofix-session",
+        workingDirectory,
+    });
+}
+function review(path = "/tmp/autofix-workspace/src/file.ts") {
+    return {
+        changeSetId: "change-set-pending",
+        files: [
+            {
+                path,
+                kind: "file",
+                beforeHash: "b".repeat(64),
+                afterHash: "c".repeat(64),
+                diff: "@@ -1 +1 @@\n-password=secret\n+changed\n\u001b[31m",
+                additions: 1,
+                deletions: 1,
+                beforeExists: true,
+                afterExists: true,
+            },
+        ],
+        additions: 1,
+        deletions: 1,
+        createdAt: "2026-09-29T00:00:00.000Z",
+    };
+}
+test("pending Autofix review records are bounded and restore relative paths", () => {
+    const originalContext = context();
+    const record = createPendingAutoFixReviewRecord(originalContext, "Repair /tmp/autofix-workspace; password=secret", review());
+    assert.equal(record.sessionId, "autofix-session");
+    assert.match(record.workspaceId, /^[a-f0-9]{64}$/u);
+    assert.equal(record.review.files[0]?.path, "src/file.ts");
+    assert.doesNotMatch(record.prompt, /secret/u);
+    assert.doesNotMatch(record.prompt, /\/tmp\/autofix-workspace/u);
+    assert.doesNotMatch(record.review.files[0]?.diff ?? "", /secret/u);
+    assert.doesNotMatch(record.review.files[0]?.diff ?? "", /\/tmp\/autofix-workspace/u);
+    assert.doesNotMatch(record.review.files[0]?.diff ?? "", /\u001b/u);
+    const restored = restorePendingAutoFixReview(originalContext, record, true);
+    assert.ok(restored);
+    assert.equal(restored.runtimeAvailable, true);
+    assert.equal(restored.review.files[0]?.path, "/tmp/autofix-workspace/src/file.ts");
+});
+test("pending Autofix review restore fails closed for another workspace", () => {
+    const record = createPendingAutoFixReviewRecord(context(), "Repair target", review());
+    assert.equal(restorePendingAutoFixReview(context("/tmp/other-workspace"), record, false), undefined);
+});
+test("pending Autofix review record rejects paths outside its workspace", () => {
+    assert.throws(() => createPendingAutoFixReviewRecord(context(), "Repair target", review("/tmp/other-workspace/file.ts")), /workspace/i);
+});

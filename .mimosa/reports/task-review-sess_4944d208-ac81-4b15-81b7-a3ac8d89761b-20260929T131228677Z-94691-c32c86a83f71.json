@@ -1,0 +1,286 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20260929T131228677Z-94691-c32c86a83f71",
+  "run_status": "completed",
+  "errors": [],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "complete",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": true,
+      "captured_files": 805,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 12
+    },
+    "change_tracking": {
+      "touched_observed": 0,
+      "touched_retained": 0,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 12,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 12,
+      "selected_files": 12,
+      "limit": 20,
+      "truncated": false
+    },
+    "scanning": {
+      "required_files": 12,
+      "scanned_files": 12,
+      "skipped_files": 0,
+      "failed_files": 0,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {},
+    "reasons": [],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-09-29T13:12:28.677Z",
+  "session_id": "sess_4944d208-ac81-4b15-81b7-a3ac8d89761b",
+  "target": ".",
+  "revision": "5894d516b51475f25eaab9530b435a489067ba5d",
+  "rules_version": "unavailable",
+  "diff_hash": "37d6c5dcd681cf3768f13460176c16d6ea349ddf069a179c8417c3f470523986",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 12,
+    "changed_files": [
+      {
+        "file": "apps/cli/src/index.ts",
+        "ranges": [
+          {
+            "start": 5639,
+            "end": 5641
+          },
+          {
+            "start": 5691,
+            "end": 5691
+          },
+          {
+            "start": 5749,
+            "end": 5751
+          },
+          {
+            "start": 5773,
+            "end": 5789
+          }
+        ],
+        "before_hash": "06f7b52259f075a692ea64e0fa6e59fc3b9cab0a77b2049e50836095f980716c",
+        "after_hash": "361e119a97c70f8b8463c864f49236adddd91f58feb029ba13b17e7866bc2f84"
+      },
+      {
+        "file": "apps/cli/src/ink/alternate-screen.ts",
+        "ranges": [
+          {
+            "start": 7,
+            "end": 10
+          }
+        ],
+        "before_hash": "c0450c4361c596ae488531294ebef3a1a9f953d497a663b8f7f42bcc3f1c08e0",
+        "after_hash": "6229910a5f4d8d27853e414a9664ee17758784f44e069356f1fec3b317fbc1e7"
+      },
+      {
+        "file": "apps/cli/src/ink/app.tsx",
+        "ranges": [
+          {
+            "start": 396,
+            "end": 406
+          }
+        ],
+        "before_hash": "ae1746432a54e7cd00d6d33ee363716982ed42d29cfd94f3495879bdc3aa4bc2",
+        "after_hash": "07341c462bc9dc4a4ea91913af0e173bb36c6ba3bbf7ca8b1e41115d0a660407"
+      },
+      {
+        "file": "apps/cli/src/ink/runtime-store.ts",
+        "ranges": [
+          {
+            "start": 155,
+            "end": 156
+          },
+          {
+            "start": 192,
+            "end": 192
+          },
+          {
+            "start": 338,
+            "end": 343
+          },
+          {
+            "start": 561,
+            "end": 561
+          }
+        ],
+        "before_hash": "8fd8b460a437aa8ce7a80069c08a8606a2644689f76af7ffd0e239e9b6077aa8",
+        "after_hash": "efa8b0a34de04b395365fe1c49c6408ff8a3af137d69313e4789af09573c20b3"
+      },
+      {
+        "file": "apps/cli/tests-dist/ink-alternate-screen.test.js",
+        "ranges": [
+          {
+            "start": 3,
+            "end": 3
+          },
+          {
+            "start": 7,
+            "end": 8
+          },
+          {
+            "start": 44,
+            "end": 85
+          }
+        ],
+        "before_hash": "7dd88b9de66db03992ce09372630ce47c00d4431423fc21ce97fe614ed642868",
+        "after_hash": "77c0e16dced56dd23b27feea344ee8d1cc5483cf81d368c7b3df363e27f145dc"
+      },
+      {
+        "file": "apps/cli/tests-dist/ink-composer-input.test.js",
+        "ranges": [
+          {
+            "start": 52,
+            "end": 73
+          }
+        ],
+        "before_hash": "6e3be23fafac1b8af1c0fa9745554a47130de1a7f622e4816a62c814a82f1f38",
+        "after_hash": "dd1a5452865c9c0a71b03b2fce0c84fd87043a79ef4cab4b5418d6f445829168"
+      },
+      {
+        "file": "apps/cli/tests-dist/ink-editor-suspend.test.js",
+        "ranges": [
+          {
+            "start": 39,
+            "end": 64
+          }
+        ],
+        "before_hash": "f729a857825e1352b81978f1df2134899d2b39643adce141d8eed97b22b3a426",
+        "after_hash": "7e81c84071d9421cd45b84f7045f0f21caea6bf517f0dbb7f9f3f0e2eff685e9"
+      },
+      {
+        "file": "apps/cli/tests-dist/interactive.test.js",
+        "ranges": [
+          {
+            "start": 853,
+            "end": 856
+          }
+        ],
+        "before_hash": "fc61a8a8a7a76187e76f4eb49f3585fcd2b60b55cf052746fbd163c15341045b",
+        "after_hash": "d370d5853832f7860a3071ef839fefd57fba7b3c41b1301c3991c0497a5a11d8"
+      },
+      {
+        "file": "apps/cli/tests/ink-alternate-screen.test.ts",
+        "ranges": [
+          {
+            "start": 3,
+            "end": 3
+          },
+          {
+            "start": 7,
+            "end": 8
+          },
+          {
+            "start": 56,
+            "end": 100
+          }
+        ],
+        "before_hash": "2097a9df7e8d44b2a40ad4d5a820ccf9998741af38c14308cbf9f024fae4ae90",
+        "after_hash": "0e1809576b0082224b43df55239ebfd9bd09fe50e216c04d4904c37c7336cb80"
+      },
+      {
+        "file": "apps/cli/tests/ink-composer-input.test.ts",
+        "ranges": [
+          {
+            "start": 69,
+            "end": 92
+          }
+        ],
+        "before_hash": "a238696e288b482851aa79fed0dbf48d163eb46a8612cf80d30035deed815570",
+        "after_hash": "1dc20181c07a8546c31570174f76e91e8f259bff79a4213810d55e7a34beac58"
+      },
+      {
+        "file": "apps/cli/tests/ink-editor-suspend.test.ts",
+        "ranges": [
+          {
+            "start": 59,
+            "end": 86
+          }
+        ],
+        "before_hash": "fbc190404f7970a2bd7b62a132c6228d288015892ff8d3f8287860e1c6df5f19",
+        "after_hash": "b3ff5896bfe47f234f3715b9f1a8fce1abad38f7691c2bc6f8bcf3bc583c7702"
+      },
+      {
+        "file": "apps/cli/tests/interactive.test.ts",
+        "ranges": [
+          {
+            "start": 965,
+            "end": 968
+          }
+        ],
+        "before_hash": "a750540d874ce5681f9a6b2dc44577ba0d2e4c75b81f52a25d3768775756ee86",
+        "after_hash": "f65d6b7bfe3798ac101f230431476107ba9af117b0137d3e9dcb5a33c9e83d7d"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-09-29T13:12:26.796Z",
+    "completed_at": "2026-09-29T13:12:28.677Z",
+    "duration_ms": 1881,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "complete",
+    "latencyMs": 1881,
+    "peakMemoryBytes": 292700160,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 12,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260929T131228677Z-94691-c32c86a83f71.json",
+    "latest_report": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b.json",
+    "history_summary": ".mimosa/history/run-20260929T131228677Z-94691-c32c86a83f71.json"
+  }
+}

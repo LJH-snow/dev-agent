@@ -1,0 +1,32 @@
+{
+  "name": "@dev-agent/acp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ACP v1 bridge for the dev-agent runtime.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "dependencies": {
+    "@agentclientprotocol/sdk": "^1.4.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node --test --test-concurrency=1 tests-dist/*.test.js",
+    "clean": "rm -rf dist tests-dist"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.9.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

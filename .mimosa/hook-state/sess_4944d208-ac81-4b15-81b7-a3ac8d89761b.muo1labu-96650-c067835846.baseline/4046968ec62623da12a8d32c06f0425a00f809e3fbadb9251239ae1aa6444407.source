@@ -1,0 +1,279 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { MOUSE_TRACKING_DISABLE, MOUSE_TRACKING_ENABLE, MouseInputParser, mouseWheelDirections, } from "../dist/ink/mouse-wheel.js";
+test("mouse wheel parser recognizes SGR up and down events", () => {
+    assert.deepEqual(mouseWheelDirections("\u001b[<64;14;9M\u001b[<65;14;9M"), ["up", "down"]);
+});
+test("mouse wheel parser recognizes Ink's ESC-stripped SGR input", () => {
+    assert.deepEqual(mouseWheelDirections("[<64;14;9M[<65;14;9M"), ["up", "down"]);
+});
+test("mouse wheel parser recognizes legacy X10 events and ignores clicks", () => {
+    const up = `\u001b[M${String.fromCharCode(96)}${String.fromCharCode(42)}${String.fromCharCode(18)}`;
+    const down = `\u001b[M${String.fromCharCode(97)}${String.fromCharCode(42)}${String.fromCharCode(18)}`;
+    const click = `\u001b[M${String.fromCharCode(0)}${String.fromCharCode(42)}${String.fromCharCode(18)}`;
+    assert.deepEqual(mouseWheelDirections(up + click + down), ["up", "down"]);
+});
+test("mouse input parser consumes SGR button and release events", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    assert.deepEqual(parser.push("[<0;38;9M"), {
+        consumed: true,
+        directions: [],
+        clicks: [{ button: 0, x: 38, y: 9, action: "press" }],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push("\u001b[<0;38;9m"), {
+        consumed: true,
+        directions: [],
+        clicks: [{ button: 0, x: 38, y: 9, action: "release" }],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push("hello"), {
+        consumed: false,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "hello",
+    });
+});
+test("mouse input parser reports SGR click coordinates and action", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    assert.deepEqual(parser.push("\u001b[<0;12;17M"), {
+        consumed: true,
+        directions: [],
+        clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push("[<0;12;17m"), {
+        consumed: true,
+        directions: [],
+        clicks: [{ button: 0, x: 12, y: 17, action: "release" }],
+        moves: [],
+        remaining: "",
+    });
+});
+test("mouse input parser reports SGR hover motion separately from clicks", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    assert.deepEqual(parser.push("\u001b[<35;12;17M"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [{ x: 12, y: 17 }],
+        remaining: "",
+    });
+});
+test("mouse input parser reports coordinates for Ink-split X10 clicks", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    const payload = `${String.fromCharCode(32)}${String.fromCharCode(44)}${String.fromCharCode(49)}`;
+    assert.deepEqual(parser.push("[M"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push(payload), {
+        consumed: true,
+        directions: [],
+        clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+        moves: [],
+        remaining: "",
+    });
+});
+test("mouse input parser consumes Ink-split X10 packets and preserves following text", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    const payload = `${String.fromCharCode(96)}${String.fromCharCode(42)}${String.fromCharCode(18)}`;
+    assert.deepEqual(parser.push("[M"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push(`${payload}x`), {
+        consumed: true,
+        directions: ["up"],
+        clicks: [],
+        moves: [],
+        remaining: "x",
+    });
+});
+test("mouse tracking control sequences are symmetric", () => {
+    assert.equal(MOUSE_TRACKING_ENABLE, "\u001b[?1003h\u001b[?1006h");
+    assert.equal(MOUSE_TRACKING_DISABLE, "\u001b[?1006l\u001b[?1003l");
+});
+test("mouse input parser expires an incomplete X10 prefix and restores it", () => {
+    let now = 10;
+    const parser = new MouseInputParser({
+        now: () => now,
+        pendingTimeoutMs: 25,
+        allowEscStrippedX10: true,
+    });
+    assert.deepEqual(parser.push("[M"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "",
+    });
+    now = 36;
+    assert.deepEqual(parser.push("hello"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "[Mhello",
+    });
+});
+test("mouse input parser does not decode bare X10-looking text", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    assert.deepEqual(parser.push("[Mhello"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "[Mhello",
+    });
+});
+test("mouse input parser keeps a control byte after a pending prefix", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    parser.push("[M");
+    assert.deepEqual(parser.push("\r"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "[M\r",
+    });
+});
+test("mouse input parser preserves malformed X10 packets", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    assert.deepEqual(parser.push("[M\u0001\u0002\u0003"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "[M\u0001\u0002\u0003",
+    });
+});
+test("mouse input parser reset drops pending protocol state", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    parser.push("[M");
+    parser.reset();
+    assert.deepEqual(parser.push("abc"), {
+        consumed: false,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "abc",
+    });
+});
+test("mouse input parser accepts X10 payload split one byte at a time", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    const payload = [32, 44, 49].map((code) => String.fromCharCode(code));
+    assert.equal(parser.push("[M").remaining, "");
+    assert.equal(parser.push(payload[0]).remaining, "");
+    assert.equal(parser.push(payload[1]).remaining, "");
+    assert.deepEqual(parser.push(payload[2]), {
+        consumed: true,
+        directions: [],
+        clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+        moves: [],
+        remaining: "",
+    });
+});
+test("mouse input parser accepts X10 payload bytes that share an ESC-framed chunk", () => {
+    const parser = new MouseInputParser();
+    const payload = [32, 44, 49].map((code) => String.fromCharCode(code));
+    assert.deepEqual(parser.push(`\u001b[M${payload[0]}`), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push(`${payload[1]}${payload[2]}`), {
+        consumed: true,
+        directions: [],
+        clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+        moves: [],
+        remaining: "",
+    });
+});
+test("mouse input parser preserves text after a complete ESC-framed X10 packet", () => {
+    const parser = new MouseInputParser();
+    const payload = [32, 44, 49].map((code) => String.fromCharCode(code)).join("");
+    assert.deepEqual(parser.push(`\u001b[M${payload}xy`), {
+        consumed: true,
+        directions: [],
+        clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+        moves: [],
+        remaining: "xy",
+    });
+});
+test("mouse input parser buffers SGR marker fragments but not ordinary brackets", () => {
+    const parser = new MouseInputParser();
+    assert.deepEqual(parser.push("[<"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push("64;14;9M"), {
+        consumed: true,
+        directions: ["up"],
+        clicks: [],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push("["), {
+        consumed: false,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "[",
+    });
+});
+test("mouse input parser accepts SGR split across pushes", () => {
+    const parser = new MouseInputParser({ allowEscStrippedX10: true });
+    assert.deepEqual(parser.push("[<64;14;"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "",
+    });
+    assert.deepEqual(parser.push("9M"), {
+        consumed: true,
+        directions: ["up"],
+        clicks: [],
+        moves: [],
+        remaining: "",
+    });
+});
+test("mouse input parser does not enable ambiguous bare X10 by default", () => {
+    const parser = new MouseInputParser();
+    assert.deepEqual(parser.push("[M"), {
+        consumed: false,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "[M",
+    });
+});
+test("mouse input parser expires an incomplete SGR candidate", () => {
+    let now = 0;
+    const parser = new MouseInputParser({ now: () => now, pendingTimeoutMs: 20 });
+    parser.push("[<64;14;");
+    now = 21;
+    assert.deepEqual(parser.push("9M"), {
+        consumed: true,
+        directions: [],
+        clicks: [],
+        moves: [],
+        remaining: "[<64;14;9M",
+    });
+});

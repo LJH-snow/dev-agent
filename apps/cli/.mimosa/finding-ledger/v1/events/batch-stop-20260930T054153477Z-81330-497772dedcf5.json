@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260930T054153477Z-81330-497772dedcf5",
+  "runId": "20260930T054153477Z-81330-497772dedcf5",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "dc6aa0bfd656a301473e2281967d91283474cce0",
+  "diffHash": "885eac4000d9258857e39414daf5b32c2d142f0c16b2e85fed3eb2f134b78b6e",
+  "rulesVersion": "unavailable",
+  "sessionHash": "3a3eaf13a24842bcd49998f1835e43b1a1df747c74d176770a91b563501e85ef",
+  "reportRef": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260930T054153477Z-81330-497772dedcf5.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "src/ink/panel-hitbox.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/ink/command-palette.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/ink/session-picker.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "src/ink/app.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "tests/ink-navigation-screen.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "tests/ink-app.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "tests-dist/ink-app.test.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "tests-dist/ink-navigation-screen.test.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-30T05:41:53.823Z"
+}

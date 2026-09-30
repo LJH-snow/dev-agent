@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-09-30T11:54:17.930Z",
+  "sessionId": "sess_4944d208-ac81-4b15-81b7-a3ac8d89761b",
+  "event": "PostToolUse",
+  "toolName": "Edit",
+  "file": ".planning/2026-09-30-overnight-mouse-input-hardening/progress.md",
+  "outcome": "clear",
+  "coverage": "complete",
+  "findingCount": 0,
+  "durationMs": 4,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "posttooluse-51b60c42e597764893e23b5dda7f16c7",
+  "runId": null,
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "PostToolUse"
+  },
+  "revision": null,
+  "diffHash": null,
+  "rulesVersion": null,
+  "sessionHash": "3a3eaf13a24842bcd49998f1835e43b1a1df747c74d176770a91b563501e85ef",
+  "reportRef": null,
+  "events": [
+    {
+      "eventId": "hook-a665f91c7e6f2073b15b01abe28f668e",
+      "findingId": "mimosa-da4345fb4ff8899ee9dfa272",
+      "type": "static_fix_verified",
+      "at": "2026-09-30T10:06:53.239Z",
+      "identity": {
+        "projectRelativeFile": "apps/cli/src/ink/mouse-wheel.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "e3b7746301f67f7e4c83734c54e801fdc2faaf08ff73b7358e185fb8a0048eb3",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 129,
+      "endLine": 129,
+      "reasonCode": "static_rescan_passed",
+      "reportedToAgent": false,
+      "evidence": {
+        "kind": "static_scan",
+        "boundary": "observed",
+        "producer": "deterministic",
+        "evidenceHash": "e3b7746301f67f7e4c83734c54e801fdc2faaf08ff73b7358e185fb8a0048eb3"
+      },
+      "sequence": 0
+    }
+  ],
+  "observedFindingIds": [],
+  "verifiedFiles": [],
+  "recordedAt": "2026-09-30T10:06:53.552Z"
+}

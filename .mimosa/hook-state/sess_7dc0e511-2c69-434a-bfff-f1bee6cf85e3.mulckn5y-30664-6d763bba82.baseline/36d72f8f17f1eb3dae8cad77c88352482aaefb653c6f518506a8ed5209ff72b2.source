@@ -1,0 +1,137 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createDesktopServer } from "../dist/server.js";
+const modulePath = "../dist/github-ci-diagnosis.js";
+const url = "https://github.com/acme/demo/pull/42";
+const sha = "a".repeat(40);
+function fixture() {
+    const calls = [];
+    const runCommand = async (command, args) => {
+        assert.equal(command, "gh");
+        calls.push([...args]);
+        if (args[1] === "view" && args[0] === "pr")
+            return { ok: true, stdout: JSON.stringify({ headRefOid: sha, title: "Fix parser", url }) };
+        if (args[1] === "checks")
+            return { ok: true, stdout: JSON.stringify([{ name: "build", state: "FAILURE", bucket: "fail", link: "https://github.com/acme/demo/actions/runs/13", workflow: "CI" }]) };
+        if (args[1] === "list")
+            return { ok: true, stdout: JSON.stringify([
+                    { databaseId: 13, headSha: sha, conclusion: "failure", status: "completed", name: "CI", url: "https://github.com/acme/demo/actions/runs/13" },
+                    { databaseId: 14, headSha: "b".repeat(40), conclusion: "failure", status: "completed", name: "Other", url: "https://github.com/acme/demo/actions/runs/14" },
+                ]) };
+        if (args[1] === "view" && args[0] === "run")
+            return { ok: true, stdout: "Build\tFAILED\tTest failed token=ghp_abcdefghijklmnopqrstuv\n" };
+        throw new Error("unexpected command");
+    };
+    return { calls, runCommand };
+}
+test("CI diagnosis is opt-in and does not execute remote commands while disabled", async () => {
+    const { loadGitHubCiDiagnosis } = await import(modulePath);
+    const { calls, runCommand } = fixture();
+    const result = await loadGitHubCiDiagnosis(url, { enabled: false, runCommand });
+    assert.deepEqual(result, { ok: false, code: "opt-in-required" });
+    assert.equal(calls.length, 0);
+});
+test("CI diagnosis binds runs and evidence to the PR head SHA and redacts logs", async () => {
+    const { loadGitHubCiDiagnosis } = await import(modulePath);
+    const { calls, runCommand } = fixture();
+    const result = await loadGitHubCiDiagnosis(url, { enabled: true, runCommand });
+    assert.equal(result.ok, true);
+    assert.equal(result.snapshot.headSha, sha);
+    assert.equal(result.snapshot.checks[0].state, "failed");
+    assert.equal(result.snapshot.runs.length, 1);
+    assert.match(result.snapshot.runs[0].failedLog, /Test failed/);
+    assert.doesNotMatch(result.snapshot.runs[0].failedLog, /ghp_abcdefghijklmnopqrstuv/);
+    assert.equal(result.snapshot.evidence, "failure-log");
+    assert.equal(result.snapshot.readOnly, true);
+    assert.deepEqual(calls.map((args) => args.slice(0, 2)), [["pr", "view"], ["pr", "checks"], ["run", "list"], ["run", "view"], ["pr", "view"]]);
+    assert.equal(calls.some((args) => args.includes("rerun") || args.includes("cancel")), false);
+});
+test("failed or pending PR checks preserve machine-readable JSON despite gh nonzero exit", async () => {
+    const { loadGitHubCiDiagnosis } = await import(modulePath);
+    for (const code of [1, 8]) {
+        const { runCommand } = fixture();
+        const result = await loadGitHubCiDiagnosis(url, {
+            enabled: true,
+            runCommand: async (command, args) => args[0] === "pr" && args[1] === "checks"
+                ? { ok: false, code, stdout: JSON.stringify([{ name: "unit", bucket: code === 1 ? "fail" : "pending", workflow: "CI" }]) }
+                : runCommand(command, args),
+        });
+        assert.equal(result.ok, true);
+        assert.equal(result.snapshot.checks[0].state, code === 1 ? "failed" : "pending");
+    }
+});
+test("oversized failed-run logs are presented as incomplete bounded evidence", async () => {
+    const { loadGitHubCiDiagnosis } = await import(modulePath);
+    const { runCommand } = fixture();
+    const result = await loadGitHubCiDiagnosis(url, { enabled: true,
+        runCommand: (command, args) => args[0] === "run" && args[1] === "view"
+            ? Promise.resolve({ ok: false, code: "ERR_CHILD_PROCESS_STDIO_MAXBUFFER", stdout: "failure ".repeat(20_000) })
+            : runCommand(command, args),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.snapshot.truncated, true);
+    assert.equal(result.snapshot.runs[0].logTruncated, true);
+    assert.equal(result.snapshot.evidence, "failure-log");
+    assert.ok(result.snapshot.runs[0].failedLog.length <= 24 * 1024);
+});
+test("CI diagnosis invalidates fetched logs if the PR head moves during collection", async () => {
+    const { loadGitHubCiDiagnosis } = await import(modulePath);
+    const { runCommand } = fixture();
+    let views = 0;
+    const result = await loadGitHubCiDiagnosis(url, { enabled: true,
+        runCommand: (command, args) => {
+            if (args[0] === "pr" && args[1] === "view" && ++views === 2)
+                return Promise.resolve({ ok: true, stdout: JSON.stringify({ headRefOid: "b".repeat(40), url }) });
+            return runCommand(command, args);
+        },
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.snapshot.stale, true);
+    assert.equal(result.snapshot.headSha, "b".repeat(40));
+    assert.deepEqual(result.snapshot.runs, []);
+    assert.equal(result.snapshot.evidence, "stale");
+});
+test("CI diagnosis marks stale commits without reading failed logs", async () => {
+    const { loadGitHubCiDiagnosis } = await import(modulePath);
+    const { calls, runCommand } = fixture();
+    const result = await loadGitHubCiDiagnosis(url, { enabled: true, expectedSha: "b".repeat(40), runCommand });
+    assert.equal(result.ok, true);
+    assert.equal(result.snapshot.stale, true);
+    assert.equal(result.snapshot.evidence, "stale");
+    assert.deepEqual(calls.map((args) => args.slice(0, 2)), [["pr", "view"]]);
+});
+test("CI diagnosis route refuses invalid and non-loopback origin and stays read-only", async () => {
+    const server = createDesktopServer({
+        session: { id: "desktop-default", run: async () => undefined },
+        githubCiDiagnosis: async () => ({ ok: true, snapshot: {
+                readOnly: true, target: { owner: "acme", repo: "demo", number: 42, url }, headSha: sha, stale: false,
+                evidence: "none", checks: [], runs: [], truncated: false,
+            } }),
+    });
+    const base = await new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            const address = server.address();
+            assert.ok(address && typeof address !== "string");
+            resolve(`http://127.0.0.1:${address.port}`);
+        });
+    });
+    try {
+        const accepted = await fetch(base + "/api/github/ci-diagnosis", {
+            method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }),
+        });
+        assert.equal(accepted.status, 200);
+        assert.equal((await accepted.json()).snapshot.headSha, sha);
+        const untrusted = await fetch(base + "/api/github/ci-diagnosis", {
+            method: "POST", headers: { origin: "https://evil.example", "content-type": "application/json" }, body: JSON.stringify({ url }),
+        });
+        assert.equal(untrusted.status, 403);
+        const mutation = await fetch(base + "/api/github/ci-diagnosis", {
+            method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, rerun: true }),
+        });
+        assert.equal(mutation.status, 400);
+    }
+    finally {
+        await new Promise((resolve) => server.close(() => resolve()));
+    }
+});

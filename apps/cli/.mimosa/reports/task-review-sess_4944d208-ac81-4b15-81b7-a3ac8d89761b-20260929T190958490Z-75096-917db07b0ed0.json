@@ -1,0 +1,718 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20260929T190958490Z-75096-917db07b0ed0",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "candidate-select",
+      "target": "src/auto-fix-command.ts",
+      "reason": "candidate_limit_exceeded: 4 changed reviewable file(s) were not scanned because the limit is 20"
+    },
+    {
+      "stage": "baseline-read",
+      "target": "tests-dist/ink-focus-router.test.js",
+      "reason": "baseline_snapshot_unreadable: file is missing from task baseline"
+    },
+    {
+      "stage": "baseline-read",
+      "target": "tests-dist/ink-kitty-query-response.test.js",
+      "reason": "baseline_snapshot_unreadable: file is missing from task baseline"
+    },
+    {
+      "stage": "baseline-read",
+      "target": "tests-dist/ink-visual-regression.test.js",
+      "reason": "baseline_snapshot_unreadable: file is missing from task baseline"
+    },
+    {
+      "stage": "baseline-read",
+      "target": "tests/ink-focus-router.test.ts",
+      "reason": "baseline_snapshot_unreadable: file is missing from task baseline"
+    },
+    {
+      "stage": "baseline-read",
+      "target": "tests/ink-visual-regression.test.ts",
+      "reason": "baseline_snapshot_unreadable: file is missing from task baseline"
+    }
+  ],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "partial",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": true,
+      "captured_files": 348,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 18
+    },
+    "change_tracking": {
+      "touched_observed": 3,
+      "touched_retained": 3,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 24,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 24,
+      "selected_files": 20,
+      "limit": 20,
+      "truncated": true
+    },
+    "scanning": {
+      "required_files": 20,
+      "scanned_files": 20,
+      "skipped_files": 0,
+      "failed_files": 0,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {
+      "candidate_limit_exceeded": 1,
+      "baseline_snapshot_unreadable": 5,
+      "project_check_failed": 6
+    },
+    "reasons": [
+      {
+        "code": "candidate_limit_exceeded",
+        "stage": "candidate-select",
+        "target": "src/auto-fix-command.ts",
+        "detail": "4 changed reviewable file(s) were not scanned because the limit is 20",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests-dist/ink-focus-router.test.js",
+        "detail": "file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests-dist/ink-kitty-query-response.test.js",
+        "detail": "file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests-dist/ink-visual-regression.test.js",
+        "detail": "file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests/ink-focus-router.test.ts",
+        "detail": "file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests/ink-visual-regression.test.ts",
+        "detail": "file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "src/auto-fix-command.ts",
+        "detail": "candidate_limit_exceeded: 4 changed reviewable file(s) were not scanned because the limit is 20",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests-dist/ink-focus-router.test.js",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests-dist/ink-kitty-query-response.test.js",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests-dist/ink-visual-regression.test.js",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests/ink-focus-router.test.ts",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests/ink-visual-regression.test.ts",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affects_completion": true
+      }
+    ],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-09-29T19:09:58.490Z",
+  "session_id": "sess_4944d208-ac81-4b15-81b7-a3ac8d89761b",
+  "target": ".",
+  "revision": "9065aa1761860089fc6cb784ee62716c4e3432a7",
+  "rules_version": "unavailable",
+  "diff_hash": "0ba8c22c33fe346133d878f70098099010341bc2cd77e5d1ca597e6c76eb0cb4",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 20,
+    "changed_files": [
+      {
+        "file": "src/ink/app.tsx",
+        "ranges": [
+          {
+            "start": 18,
+            "end": 18
+          },
+          {
+            "start": 30,
+            "end": 30
+          },
+          {
+            "start": 48,
+            "end": 48
+          },
+          {
+            "start": 93,
+            "end": 93
+          },
+          {
+            "start": 146,
+            "end": 148
+          },
+          {
+            "start": 150,
+            "end": 150
+          },
+          {
+            "start": 152,
+            "end": 154
+          },
+          {
+            "start": 156,
+            "end": 156
+          },
+          {
+            "start": 196,
+            "end": 196
+          },
+          {
+            "start": 202,
+            "end": 205
+          },
+          {
+            "start": 207,
+            "end": 214
+          },
+          {
+            "start": 259,
+            "end": 265
+          },
+          {
+            "start": 417,
+            "end": 421
+          },
+          {
+            "start": 466,
+            "end": 466
+          },
+          {
+            "start": 470,
+            "end": 470
+          },
+          {
+            "start": 481,
+            "end": 506
+          },
+          {
+            "start": 510,
+            "end": 510
+          },
+          {
+            "start": 512,
+            "end": 512
+          },
+          {
+            "start": 514,
+            "end": 514
+          },
+          {
+            "start": 519,
+            "end": 519
+          },
+          {
+            "start": 521,
+            "end": 521
+          },
+          {
+            "start": 526,
+            "end": 526
+          },
+          {
+            "start": 532,
+            "end": 532
+          },
+          {
+            "start": 539,
+            "end": 539
+          },
+          {
+            "start": 546,
+            "end": 546
+          },
+          {
+            "start": 557,
+            "end": 557
+          },
+          {
+            "start": 568,
+            "end": 568
+          },
+          {
+            "start": 595,
+            "end": 611
+          },
+          {
+            "start": 625,
+            "end": 625
+          },
+          {
+            "start": 629,
+            "end": 629
+          },
+          {
+            "start": 636,
+            "end": 636
+          },
+          {
+            "start": 642,
+            "end": 642
+          },
+          {
+            "start": 648,
+            "end": 648
+          },
+          {
+            "start": 656,
+            "end": 656
+          },
+          {
+            "start": 729,
+            "end": 729
+          },
+          {
+            "start": 734,
+            "end": 740
+          },
+          {
+            "start": 839,
+            "end": 839
+          },
+          {
+            "start": 862,
+            "end": 873
+          },
+          {
+            "start": 1592,
+            "end": 1596
+          }
+        ],
+        "before_hash": "07341c462bc9dc4a4ea91913af0e173bb36c6ba3bbf7ca8b1e41115d0a660407",
+        "after_hash": "64b543b7712c875e9b8a98999deaa938cc94cb74d9ca14ea39043c3f1bfcc095"
+      },
+      {
+        "file": "src/ink/kitty-query-response.ts",
+        "ranges": [
+          {
+            "start": 4,
+            "end": 8
+          },
+          {
+            "start": 12,
+            "end": 12
+          },
+          {
+            "start": 16,
+            "end": 17
+          },
+          {
+            "start": 20,
+            "end": 42
+          },
+          {
+            "start": 44,
+            "end": 52
+          },
+          {
+            "start": 54,
+            "end": 59
+          },
+          {
+            "start": 62,
+            "end": 66
+          },
+          {
+            "start": 68,
+            "end": 84
+          },
+          {
+            "start": 87,
+            "end": 87
+          },
+          {
+            "start": 95,
+            "end": 98
+          },
+          {
+            "start": 108,
+            "end": 113
+          }
+        ],
+        "before_hash": "31f644d346b961e79744c2c7eee4ea99e5a251c301c12f88fd3842823841d688",
+        "after_hash": "64c54d5b01c3e516380549696432d1bbf8b6a1fd7d8e3985af00570f1b77fb05"
+      },
+      {
+        "file": "tests-dist/auto-fix-cli.test.js",
+        "ranges": [
+          {
+            "start": 72,
+            "end": 72
+          },
+          {
+            "start": 77,
+            "end": 84
+          },
+          {
+            "start": 133,
+            "end": 134
+          }
+        ],
+        "before_hash": "d6dc5220483c723f7e196c3fce870468fcc7cf3617ef8af1a8bb369c4ca68e34",
+        "after_hash": "184fb3126ade119fc6532fb8dce118292f6d4b0515189555bcf73db25b229196"
+      },
+      {
+        "file": "tests-dist/auto-fix-command.test.js",
+        "ranges": [
+          {
+            "start": 88,
+            "end": 108
+          },
+          {
+            "start": 160,
+            "end": 255
+          }
+        ],
+        "before_hash": "bb3df1df87885d6ce8ce0e2427d9121d71e315e8af59980a41b3796d1ce99f72",
+        "after_hash": "86110c44b0f2777af5d275448c056a5d86e00826960c1ba767e2f85be46ab037"
+      },
+      {
+        "file": "tests-dist/ink-app.test.js",
+        "ranges": [
+          {
+            "start": 184,
+            "end": 233
+          }
+        ],
+        "before_hash": "1253096cace62a2d9ac7a940145b7a8fa9b85886fc9bc63788ffd1a4d5bcdc0c",
+        "after_hash": "7f3d16c0c6cb86c1002f7951d01b12006fb15b1b104cec171682a2b9181b845d"
+      },
+      {
+        "file": "tests-dist/ink-composer-input.test.js",
+        "ranges": [
+          {
+            "start": 8,
+            "end": 8
+          },
+          {
+            "start": 10,
+            "end": 10
+          },
+          {
+            "start": 20,
+            "end": 33
+          },
+          {
+            "start": 44,
+            "end": 44
+          },
+          {
+            "start": 63,
+            "end": 63
+          },
+          {
+            "start": 195,
+            "end": 237
+          }
+        ],
+        "before_hash": "dd1a5452865c9c0a71b03b2fce0c84fd87043a79ef4cab4b5418d6f445829168",
+        "after_hash": "9ddbc39226fd3378c4342b62c5629207a34916d012cf668ef8bd11d15e015d13"
+      },
+      {
+        "file": "tests-dist/ink-focus-router.test.js",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 81
+          }
+        ],
+        "before_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after_hash": "cc33e5402202088c42ff3bb33141594c3a63a02a64c2d18f2bb0a5a14f090d02"
+      },
+      {
+        "file": "tests-dist/ink-kitty-query-response.test.js",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 54
+          }
+        ],
+        "before_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after_hash": "7b9bea3fa0e67b18bfcc48629362a67ba3c004a00c13dd315ee15ddb5ad08a78"
+      },
+      {
+        "file": "tests-dist/ink-navigation-screen.test.js",
+        "ranges": [
+          {
+            "start": 100,
+            "end": 100
+          }
+        ],
+        "before_hash": "a5e14e9ab13b0189ae037638ad71797fbef07c4663806275cc06cf5bcc55d92a",
+        "after_hash": "01bf504e9b5f7f5a8a1df26a2a6c406cdf51a1c1790882ed55d6fdc842e41b4b"
+      },
+      {
+        "file": "tests-dist/ink-viewport.test.js",
+        "ranges": [
+          {
+            "start": 3,
+            "end": 15
+          }
+        ],
+        "before_hash": "b1a7ebc0fefb245d942f3f7ec4ded154ad2960562b61974ee72b50b854742f25",
+        "after_hash": "4ca4ab1e3d87906a7bf481ddaa47a8a9684ed2570b68048f7bc9425173fbd161"
+      },
+      {
+        "file": "tests-dist/ink-visual-regression.test.js",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 215
+          }
+        ],
+        "before_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after_hash": "23f7fcd8362ee7a1f6237a9a0374dc8cf10b75bf084557ae3ec84ef027cac233"
+      },
+      {
+        "file": "tests/auto-fix-cli.test.ts",
+        "ranges": [
+          {
+            "start": 76,
+            "end": 76
+          },
+          {
+            "start": 81,
+            "end": 88
+          },
+          {
+            "start": 140,
+            "end": 141
+          }
+        ],
+        "before_hash": "901b54e45407dc69f53a0d81a638fa81cbfc7fbf9cd7591f323ca3d5a5524453",
+        "after_hash": "1ac099bbf6d4ecd1eda2d2a012211689497d9e3edbe3a400bfdf63279204f1d4"
+      },
+      {
+        "file": "tests/auto-fix-command.test.ts",
+        "ranges": [
+          {
+            "start": 111,
+            "end": 133
+          },
+          {
+            "start": 189,
+            "end": 294
+          }
+        ],
+        "before_hash": "5d51c4f82259296575e0e1616e073fd53d3c77d119891c157a81e587a124f270",
+        "after_hash": "6e0f91bc36df964024b8d6b8be8ae54cef2283436a12bd6f14d0b92384df9562"
+      },
+      {
+        "file": "tests/ink-app.test.ts",
+        "ranges": [
+          {
+            "start": 232,
+            "end": 298
+          }
+        ],
+        "before_hash": "33e14360b6f222c80bc6840e565d0e674a298e85d6363451d5ef5da15484767c",
+        "after_hash": "cc5b9e1a73158b93da94a56c491cf95e49e491664d46a2873f10af259502f420"
+      },
+      {
+        "file": "tests/ink-composer-input.test.ts",
+        "ranges": [
+          {
+            "start": 5,
+            "end": 5
+          },
+          {
+            "start": 10,
+            "end": 10
+          },
+          {
+            "start": 16,
+            "end": 16
+          },
+          {
+            "start": 26,
+            "end": 36
+          },
+          {
+            "start": 53,
+            "end": 53
+          },
+          {
+            "start": 75,
+            "end": 75
+          },
+          {
+            "start": 221,
+            "end": 277
+          }
+        ],
+        "before_hash": "1dc20181c07a8546c31570174f76e91e8f259bff79a4213810d55e7a34beac58",
+        "after_hash": "60f358bb4795c114e80aed75c485df0899881c45e8f32434a550e49f14673bad"
+      },
+      {
+        "file": "tests/ink-focus-router.test.ts",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 106
+          }
+        ],
+        "before_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after_hash": "0d96879f739e776afc930e41d541757db7344ee93ef5f5e282c475dd538c4054"
+      },
+      {
+        "file": "tests/ink-kitty-query-response.test.ts",
+        "ranges": [
+          {
+            "start": 23,
+            "end": 41
+          },
+          {
+            "start": 52,
+            "end": 55
+          }
+        ],
+        "before_hash": "9e162fcbfc0f1dad049e2518cde22ce18c11317a527cbcc01d46d4bcfc61f91f",
+        "after_hash": "9a1970e01438b67b135ca3e0cf0a8d6e5a7964bada1484b3df4a75cf2f3d885c"
+      },
+      {
+        "file": "tests/ink-navigation-screen.test.ts",
+        "ranges": [
+          {
+            "start": 103,
+            "end": 103
+          }
+        ],
+        "before_hash": "766daeece8614d237b1ebdd4edcb2cd0aba09adefbecefde08321443537ca3e9",
+        "after_hash": "28764f92e36cfb750748361c8bcd7f36b0992962c35535abb6b4de2021a2c313"
+      },
+      {
+        "file": "tests/ink-viewport.test.ts",
+        "ranges": [
+          {
+            "start": 4,
+            "end": 20
+          }
+        ],
+        "before_hash": "bce301d2ef990fc568395d639e4f8822366bb8796c9030bdc80ac99512f5e867",
+        "after_hash": "3db643c6b95590e41bc0e8d6f85776e2b3a5e0e3aba0e253842ecf3f8efc5991"
+      },
+      {
+        "file": "tests/ink-visual-regression.test.ts",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 252
+          }
+        ],
+        "before_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after_hash": "87a6b42ffceb9f2030a955e7fc3222d348e0a70587a9f121a2d2e30dffc350c5"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-09-29T19:09:57.083Z",
+    "completed_at": "2026-09-29T19:09:58.490Z",
+    "duration_ms": 1407,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 1407,
+    "peakMemoryBytes": 235995136,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 20,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260929T190958490Z-75096-917db07b0ed0.json",
+    "latest_report": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b.json",
+    "history_summary": ".mimosa/history/run-20260929T190958490Z-75096-917db07b0ed0.json"
+  }
+}

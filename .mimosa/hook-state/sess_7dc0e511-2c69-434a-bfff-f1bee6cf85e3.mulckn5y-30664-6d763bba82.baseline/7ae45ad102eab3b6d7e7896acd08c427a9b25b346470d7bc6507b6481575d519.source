@@ -1,0 +1,34 @@
+{
+  "name": "dev-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI coding agent for developers, built with TypeScript and Node.js.",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r run build",
+    "typecheck": "pnpm -r run typecheck",
+    "test": "pnpm -r --workspace-concurrency=1 run test",
+    "verify": "node scripts/release-gate.mjs",
+    "verify:typescript": "node scripts/release-gate.mjs --typescript",
+    "verify:rust": "node scripts/release-gate.mjs --rust",
+    "verify:integration": "node scripts/release-gate.mjs --integration",
+    "check": "node scripts/check.mjs",
+    "clean": "pnpm -r run clean",
+    "cli": "pnpm --filter @agent_cli/cli run build && pnpm --filter @agent_cli/cli run start",
+    "benchmark:evidence": "pnpm --filter @dev-agent/agent-core run build && node --expose-gc scripts/evidence-preview-benchmark.mjs",
+    "test:benchmark": "pnpm --filter @dev-agent/agent-core run build && node --test tests/evidence-preview-benchmark.test.mjs",
+    "test:preview-parity": "pnpm --filter @dev-agent/agent-core run build && pnpm --filter @agent_cli/cli run build && pnpm --filter @dev-agent/desktop run build && node --test tests/evidence-preview-parity.test.mjs",
+    "package:smoke": "node scripts/cli-package-smoke.mjs",
+    "test:evals": "pnpm --filter @agent_cli/cli build && node evals/cli-rich-tui.evals.mjs",
+    "runtime:smoke": "node scripts/runtime-install-smoke.mjs",
+    "release:preflight": "node scripts/npm-release-preflight.mjs",
+    "release:publish": "node scripts/npm-release-publish.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "typescript": "^5.9.0"
+  }
+}

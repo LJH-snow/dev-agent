@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "mimosa-finding-history/v1",
+  "runId": "20260929T064810409Z-23555-962ae83eee67",
+  "runStatus": "inconclusive",
+  "errors": [
+    "baseline-read:apps/cli/tests-dist/ink-editor-suspend.test.js: baseline_snapshot_unreadable: file is missing from task baseline",
+    "baseline-read:apps/cli/src/ink/editor-suspend.ts: baseline_snapshot_unreadable: file is missing from task baseline"
+  ],
+  "target": ".",
+  "revision": "50cef5ff43f452d85212b7209dc4f8da12c9ea96",
+  "diffHash": "cc38d4df5f75cac7b9cc4a42b243abf2fe4abd59e5fa66ba2b554f4c4640c2d8",
+  "rulesVersion": "unavailable",
+  "recordedAt": "2026-09-29T06:48:10.409Z",
+  "timing": {
+    "startedAt": "2026-09-29T06:48:08.577Z",
+    "completedAt": "2026-09-29T06:48:10.409Z",
+    "durationMs": 1832
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "modelCalls": 0,
+    "measurement": "known-zero"
+  },
+  "findings": {
+    "total": 0,
+    "bySeverity": {},
+    "byStatus": {}
+  },
+  "coverage": {
+    "status": "partial",
+    "reasonCounts": {
+      "baseline_snapshot_unreadable": 2,
+      "project_check_failed": 2
+    }
+  },
+  "evidenceBoundary": "static_only",
+  "immutableReport": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260929T064810409Z-23555-962ae83eee67.json"
+}

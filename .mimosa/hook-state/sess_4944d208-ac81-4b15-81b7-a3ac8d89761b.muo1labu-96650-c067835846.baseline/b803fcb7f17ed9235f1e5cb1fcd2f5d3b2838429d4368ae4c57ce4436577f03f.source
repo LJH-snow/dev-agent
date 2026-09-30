@@ -1,0 +1,249 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      # Rich TTY tests use expect for the controlling pty and pgrep from procps
+      # to signal the child process during the Ctrl-C scenario.
+      - name: Install PTY test dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq expect procps
+
+      - name: Validate CI workflow contracts
+        run: node --test tests/ci-workflow.test.mjs
+
+      # The search tool's tests shell out to ripgrep.
+      - name: Install ripgrep
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq ripgrep
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Verify the installable tarball from a clean npm prefix and an external
+      # project directory before the broader TypeScript gate.
+      - name: CLI package install smoke test
+        run: pnpm package:smoke
+
+      # This fixed runner keeps the local TypeScript gate and CI in sync.
+      - name: TypeScript release gate
+        run: pnpm verify:typescript
+
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime/rust
+
+      # prost-build (via the build script) requires the protoc compiler.
+      - name: Install protobuf compiler
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq protobuf-compiler
+
+      # The fixed runner owns the Rust working directory and command order.
+      - name: Rust release gate
+        run: pnpm verify:rust
+
+  linux-integration:
+    name: Linux integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      # A hosted integration job must fail if the real restricted backend is unavailable.
+      DEV_AGENT_REQUIRE_LIVE_SANDBOX: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Linux sandbox prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap protobuf-compiler
+
+      # Ubuntu 24.04 may restrict unprivileged user namespaces through AppArmor.
+      # This runner is ephemeral; make the CI-only capability explicit instead of
+      # allowing bwrap live tests to fail or silently skip later.
+      - name: Configure hosted user namespace prerequisites
+        run: |
+          set -euo pipefail
+          userns_clone="$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || true)"
+          if [[ -n "$userns_clone" && "$userns_clone" != "1" ]]; then
+            sudo sysctl -w kernel.unprivileged_userns_clone=1
+          fi
+          apparmor_userns="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true)"
+          if [[ -n "$apparmor_userns" && "$apparmor_userns" != "0" ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Rust release gate
+        run: pnpm verify:rust
+
+      - name: Build debug Rust runtime
+        run: cargo build --bin dev-agent-executor
+        working-directory: runtime/rust
+
+      # Keep each capability check independent so a hosted-runner regression
+      # cannot be hidden behind a skipped integration test.
+      - name: Check Rust binary prerequisite
+        run: test -x runtime/rust/target/debug/dev-agent-executor
+
+      - name: Check bwrap prerequisite
+        run: command -v bwrap && bwrap --version
+
+      - name: Check bwrap user namespace prerequisite
+        run: |
+          set -euo pipefail
+          bwrap \
+            --unshare-user \
+            --uid 0 \
+            --gid 0 \
+            --unshare-net \
+            --unshare-pid \
+            --ro-bind / / \
+            --proc /proc \
+            --dev /dev \
+            --die-with-parent \
+            -- /usr/bin/true
+
+      - name: Check Python network fixture prerequisite
+        run: python3 -c "import socket"
+
+      - name: Build executor package
+        run: pnpm --filter @dev-agent/executor build
+
+      - name: Real Rust integration gate
+        run: pnpm verify:integration
+
+  macos-integration:
+    name: macOS integration
+    # Pin the image while the live tests depend on Apple's sandbox-exec boundary.
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime/rust
+
+      - name: Install protobuf compiler
+        run: brew list protobuf >/dev/null 2>&1 || brew install protobuf
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The fixed Rust gate runs cargo tests, but cargo test does not place the
+      # production binary at target/debug/dev-agent-executor. Build it explicitly
+      # before checking the integration harness prerequisite.
+      - name: Rust release gate
+        run: pnpm verify:rust
+
+      - name: Build debug Rust runtime
+        run: cargo build --bin dev-agent-executor
+        working-directory: runtime/rust
+
+      # Do not let missing host capabilities turn live sandbox coverage into skips.
+      # Keep each check in its own step so a hosted-runner failure identifies the
+      # missing capability instead of hiding it behind one fail-fast shell block.
+      - name: Check Rust binary prerequisite
+        run: test -x runtime/rust/target/debug/dev-agent-executor
+
+      - name: Check sandbox-exec prerequisite
+        run: test -x /usr/bin/sandbox-exec
+
+      - name: Check Python network fixture prerequisite
+        run: python3 -c "import socket"
+
+      # The integration test compiles against the executor package's dist artifacts.
+      - name: Build executor package
+        run: pnpm --filter @dev-agent/executor build
+
+      - name: Real Rust integration gate
+        run: pnpm verify:integration

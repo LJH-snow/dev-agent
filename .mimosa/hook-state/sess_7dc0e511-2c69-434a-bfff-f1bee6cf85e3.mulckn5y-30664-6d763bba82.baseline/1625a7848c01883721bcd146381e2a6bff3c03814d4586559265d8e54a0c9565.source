@@ -1,0 +1,64 @@
+{
+  "name": "@agent_cli/cli",
+  "version": "0.1.8",
+  "private": false,
+  "description": "Primary command-line entry point for dev-agent.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LJH-snow/dev-agent.git"
+  },
+  "homepage": "https://github.com/LJH-snow/dev-agent#readme",
+  "bugs": {
+    "url": "https://github.com/LJH-snow/dev-agent/issues"
+  },
+  "type": "module",
+  "main": "dist/cli.js",
+  "exports": {
+    ".": {
+      "import": "./dist/cli.js"
+    }
+  },
+  "bin": {
+    "dev-agent": "dist/cli.js"
+  },
+  "files": [
+    "dist/cli.js",
+    "dist/cli.js.map",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "ink": "^6.8.0",
+    "react": "^19.3.0",
+    "signal-exit": "^3.0.7",
+    "typescript": "^5.9.0"
+  },
+  "scripts": {
+    "pretest": "rm -rf tests-dist",
+    "build": "tsc -p tsconfig.json",
+    "build:package": "node build-package.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli-entry.js",
+    "test": "tsc -p tsconfig.json && tsc -p tsconfig.test.json && node build-package.mjs && node --test --test-concurrency=1 tests-dist/*.test.js",
+    "clean": "rm -rf dist tests-dist"
+  },
+  "devDependencies": {
+    "@dev-agent/a2a": "workspace:*",
+    "@dev-agent/acp": "workspace:*",
+    "@dev-agent/agent-core": "workspace:*",
+    "@dev-agent/code-intelligence": "workspace:*",
+    "@dev-agent/executor": "workspace:*",
+    "@dev-agent/mcp": "workspace:*",
+    "@dev-agent/model": "workspace:*",
+    "@dev-agent/runtime-manager": "workspace:*",
+    "@dev-agent/tools": "workspace:*",
+    "@types/node": "^26.0.0",
+    "@types/react": "^19.3.0",
+    "@xterm/headless": "^6.0.0",
+    "esbuild": "^0.28.2",
+    "zod": "^4.6.5"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

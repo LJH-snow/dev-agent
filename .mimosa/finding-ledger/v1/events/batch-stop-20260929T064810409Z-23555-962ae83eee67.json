@@ -1,0 +1,114 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260929T064810409Z-23555-962ae83eee67",
+  "runId": "20260929T064810409Z-23555-962ae83eee67",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "apps/cli/tests-dist/ink-editor-suspend.test.js",
+        "detail": "file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "apps/cli/src/ink/editor-suspend.ts",
+        "detail": "file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "apps/cli/tests-dist/ink-editor-suspend.test.js",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "apps/cli/src/ink/editor-suspend.ts",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "50cef5ff43f452d85212b7209dc4f8da12c9ea96",
+  "diffHash": "cc38d4df5f75cac7b9cc4a42b243abf2fe4abd59e5fa66ba2b554f4c4640c2d8",
+  "rulesVersion": "unavailable",
+  "sessionHash": "3a3eaf13a24842bcd49998f1835e43b1a1df747c74d176770a91b563501e85ef",
+  "reportRef": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260929T064810409Z-23555-962ae83eee67.json",
+  "events": [],
+  "observedFindingIds": [
+    "mimosa-664ecf9686e25e99d54954ae",
+    "mimosa-ea0679ecf8ceed474872dfbb",
+    "mimosa-38291abfa805e440130fe978",
+    "mimosa-16fb0478e1bac34dcdbf1cde",
+    "mimosa-7ec27771173496c653c84ecc"
+  ],
+  "verifiedFiles": [
+    {
+      "file": "apps/cli/tests/ink-editor-suspend.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/tests/ink-app.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/tests/interactive.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/tests-dist/ink-app.test.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/tests-dist/ink-editor-suspend.test.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/tests-dist/interactive.test.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/src/index.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/src/tui-renderer.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/src/ink/app.tsx",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/src/ink/editor-suspend.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/src/ink/runtime-store.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-29T06:48:10.702Z"
+}

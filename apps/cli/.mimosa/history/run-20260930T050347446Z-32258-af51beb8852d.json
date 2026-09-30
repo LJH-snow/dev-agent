@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "mimosa-finding-history/v1",
+  "runId": "20260930T050347446Z-32258-af51beb8852d",
+  "runStatus": "inconclusive",
+  "errors": [
+    "candidate-select:tests/tmp-debug-path-enter.test.ts: changed_file_unreadable: observed changed file no longer exists or cannot be read",
+    "candidate-select:src/index.ts: candidate_limit_exceeded: 2 changed reviewable file(s) were not scanned because the limit is 20",
+    "baseline-read:tests-dist/autofix-review-store.test.js: baseline_snapshot_unreadable: file is missing from task baseline",
+    "baseline-read:tests/autofix-review-store.test.ts: baseline_snapshot_unreadable: file is missing from task baseline",
+    "baseline-read:src/autofix-review-store.ts: baseline_snapshot_unreadable: file is missing from task baseline",
+    "scan:src/ink/app.tsx: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:src/ink/command-palette.tsx: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests/ink-visual-regression.test.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests/ink-navigation-screen.test.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests/ink-app.test.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:src/path-completion.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests/path-completion.test.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests-dist/auto-fix-cli.test.js: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests-dist/autofix-review-store.test.js: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests-dist/command-palette.test.js: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests-dist/ink-app.test.js: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests-dist/ink-navigation-screen.test.js: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests-dist/ink-visual-regression.test.js: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests-dist/path-completion.test.js: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests-dist/tui-renderer.test.js: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests/auto-fix-cli.test.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests/autofix-review-store.test.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests/command-palette.test.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:tests/tui-renderer.test.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+    "scan:src/autofix-review-store.ts: scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+  ],
+  "target": ".",
+  "revision": "fdb257220e0e890d218fc7924bacdbd2285939ef",
+  "diffHash": "57405ad58bfb482557e0028582b17885b95c5ed277aead60c4afdd991017413d",
+  "rulesVersion": "unavailable",
+  "recordedAt": "2026-09-30T05:03:47.446Z",
+  "timing": {
+    "startedAt": "2026-09-30T05:03:44.866Z",
+    "completedAt": "2026-09-30T05:03:47.446Z",
+    "durationMs": 2580
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "modelCalls": 0,
+    "measurement": "known-zero"
+  },
+  "findings": {
+    "total": 0,
+    "bySeverity": {},
+    "byStatus": {}
+  },
+  "coverage": {
+    "status": "partial",
+    "reasonCounts": {
+      "changed_file_unreadable": 1,
+      "candidate_limit_exceeded": 1,
+      "baseline_snapshot_unreadable": 3,
+      "scanner_failed": 20,
+      "project_check_failed": 25
+    }
+  },
+  "evidenceBoundary": "static_only",
+  "immutableReport": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260930T050347446Z-32258-af51beb8852d.json"
+}

@@ -1,0 +1,42 @@
+import assert from "node:assert/strict";
+import { createServer, type Server } from "node:http";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawn } from "node:child_process";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const cliPath = join(fileURLToPath(new URL("..", import.meta.url)), "dist", "index.js");
+async function provider(): Promise<{ server: Server; url: string }> {
+  const server = createServer((request, response) => {
+    request.resume();
+    request.on("end", () => { response.writeHead(200, { "content-type": "application/json" }); response.end(JSON.stringify({ choices: [{ message: { content: "ok" } }] })); });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address(); assert.ok(address && typeof address === "object");
+  return { server, url: `http://127.0.0.1:${address.port}/v1` };
+}
+function waitFor(get: () => string, value: string): Promise<void> { return new Promise((resolve, reject) => { const started = Date.now(); const loop = (): void => { if (get().includes(value)) resolve(); else if (Date.now() - started > 10_000) reject(new Error(`missing ${value}; output=${get()}`)); else setTimeout(loop, 25); }; loop(); }); }
+
+test("interactive CLI exposes read-only Security Center and local marketplace commands", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dev-agent-security-marketplace-cli-"));
+  const fake = await provider();
+  await mkdir(join(root, ".dev-agent"), { recursive: true });
+  await writeFile(join(root, ".env"), "TOKEN=cli-secret-value\n", "utf8");
+  await writeFile(join(root, ".dev-agent", "skill-marketplace.json"), JSON.stringify({ entries: [] }), "utf8");
+  const child = spawn(process.execPath, [cliPath, "--no-stream"], { cwd: root, env: { ...process.env, DEV_AGENT_MCP_SERVERS: "[]", DEV_AGENT_MODEL_PROVIDER: "openai", OPENAI_API_KEY: "test-key", OPENAI_BASE_URL: fake.url, INIT_CWD: root }, stdio: ["pipe", "pipe", "pipe"] });
+  let output = ""; child.stdout.setEncoding("utf8"); child.stdout.on("data", (chunk) => { output += chunk; });
+  try {
+    await waitFor(() => output, "Type 'exit' or 'quit' to stop.");
+    child.stdin.write(":security\n"); await waitFor(() => output, "Security Center · findings");
+    assert.doesNotMatch(output, /cli-secret-value/);
+    child.stdin.write(":marketplace\n"); await waitFor(() => output, "Skill Marketplace: no skills found.");
+    child.stdin.write("exit\n");
+    assert.equal(await new Promise<number | null>((resolve) => child.on("close", resolve)), 0);
+  } finally {
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    fake.server.closeAllConnections?.(); await new Promise<void>((resolve) => fake.server.close(() => resolve()));
+    await rm(root, { recursive: true, force: true });
+  }
+});

@@ -1,0 +1,6 @@
+function a(result) { if (!result.ok)
+    return result.code; return ""; }
+function b(result) { const c = !result.ok ? result.code : ""; return c; }
+const direct = (r) => r.code ?? "";
+console.log(a({ ok: false, code: "bad" }), b({ ok: true, schedule: "s" }), direct);
+export {};

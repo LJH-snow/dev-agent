@@ -1,0 +1,313 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag to validate for this non-publishing run
+        required: true
+        default: v0.2.0
+        type: string
+      release_version:
+        description: Optional release version assertion without the v prefix
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # Build every target even if one fails, so a single platform cannot hide
+      # the state of the others.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            cross: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install protobuf compiler (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq protobuf-compiler
+
+      - name: Install protobuf compiler (macOS)
+        if: runner.os == 'macOS'
+        run: brew list protobuf >/dev/null 2>&1 || brew install protobuf
+
+      - name: Install cross linker (Linux arm64)
+        if: matrix.cross
+        run: |
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> "$GITHUB_ENV"
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime/rust
+          key: ${{ matrix.target }}
+
+      - name: Build dev-agent-executor
+        working-directory: runtime/rust
+        run: cargo build --release --bin dev-agent-executor --target ${{ matrix.target }}
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="dev-agent-executor-${{ matrix.target }}"
+          mkdir -p "dist/${asset}"
+          cp "runtime/rust/target/${{ matrix.target }}/release/dev-agent-executor" "dist/${asset}/"
+          cp runtime/rust/README.md "dist/${asset}/README.md"
+          tar -C dist -czf "dist/${asset}.tar.gz" "${asset}"
+          # Record only the file name so the checksum is verifiable next to the
+          # downloaded archive, not against this job's build directory.
+          (
+            cd dist
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 "${asset}.tar.gz" > "${asset}.tar.gz.sha256"
+            else
+              sha256sum "${asset}.tar.gz" > "${asset}.tar.gz.sha256"
+            fi
+            cat "${asset}.tar.gz.sha256"
+          )
+
+      - name: Verify packaged release artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          asset="dev-agent-executor-${{ matrix.target }}"
+          test -x "dist/${asset}/dev-agent-executor"
+          test -f "dist/${asset}/README.md"
+          test -f "dist/${asset}.tar.gz"
+          test -f "dist/${asset}.tar.gz.sha256"
+          tar -tzf "dist/${asset}.tar.gz" | grep -Fx "${asset}/dev-agent-executor"
+          tar -tzf "dist/${asset}.tar.gz" | grep -Fx "${asset}/README.md"
+          (
+            cd dist
+            if command -v shasum >/dev/null 2>&1; then
+              shasum -a 256 -c "${asset}.tar.gz.sha256"
+            else
+              sha256sum -c "${asset}.tar.gz.sha256"
+            fi
+          )
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-agent-executor-${{ matrix.target }}
+          path: |
+            dist/dev-agent-executor-${{ matrix.target }}.tar.gz
+            dist/dev-agent-executor-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+
+  cli-package:
+    name: Build CLI npm package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # This builds, packs, installs into an isolated prefix, and exercises the
+      # installed bin from an external project directory without publishing.
+      - name: CLI package install smoke test
+        run: pnpm package:smoke
+
+      - name: Pack CLI npm artifact
+        run: |
+          mkdir -p dist
+          pnpm --filter @agent_cli/cli pack --pack-destination dist
+
+      - name: Verify CLI npm artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          package_count="$(find dist -maxdepth 1 -type f -name 'agent_cli-cli-*.tgz' | wc -l)"
+          test "${package_count//[[:space:]]/}" -eq 1
+          tarball="$(find dist -maxdepth 1 -type f -name 'agent_cli-cli-*.tgz' -print -quit)"
+          tar -tzf "${tarball}" | grep -Fx 'package/dist/cli.js'
+          tar -tzf "${tarball}" | grep -Fx 'package/dist/cli.js.map'
+
+      - name: Upload CLI package
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-agent-cli-npm
+          path: dist/agent_cli-cli-*.tgz
+          if-no-files-found: error
+
+  manifest:
+    name: Build runtime manifest (checksum-only)
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download runtime build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      # The v0.2.0 release contract is checksum-only; no signature is asserted
+      # or fabricated until a signing key and verification policy exist.
+      - name: Verify release version source
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(--tag "${RELEASE_TAG}")
+          if [ -n "${RELEASE_VERSION}" ]; then
+            args+=(--version "${RELEASE_VERSION}")
+          fi
+          node scripts/verify-release-version.mjs "${args[@]}"
+
+      - name: Build checksum-only runtime manifest
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.release_tag }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          args=(
+            --input-dir dist
+            --output dist/dev-agent-runtime-manifest.json
+            --tag "${RELEASE_TAG}"
+            --repository "${REPOSITORY}"
+          )
+          if [ -n "${RELEASE_VERSION}" ]; then
+            args+=(--version "${RELEASE_VERSION}")
+          fi
+          node scripts/build-runtime-manifest.mjs "${args[@]}"
+          test -s dist/dev-agent-runtime-manifest.json
+
+      - name: Upload runtime manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: dev-agent-runtime-manifest
+          path: dist/dev-agent-runtime-manifest.json
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [build, cli-package, manifest]
+    permissions:
+      contents: write
+    # Only tag pushes publish; manual runs just verify the builds.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Verify downloaded release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s dist/dev-agent-runtime-manifest.json
+          node -e 'JSON.parse(require("node:fs").readFileSync("dist/dev-agent-runtime-manifest.json", "utf8"))'
+          tag_sha="$(git rev-list -n 1 "${GITHUB_REF_NAME}")"
+          test "${tag_sha}" = "${GITHUB_SHA}"
+
+          targets=(
+            aarch64-apple-darwin
+            x86_64-apple-darwin
+            x86_64-unknown-linux-gnu
+            aarch64-unknown-linux-gnu
+          )
+          for target in "${targets[@]}"; do
+            archive="dist/dev-agent-executor-${target}.tar.gz"
+            checksum="${archive}.sha256"
+            test -f "${archive}"
+            test -f "${checksum}"
+            (cd dist && sha256sum -c "$(basename "${checksum}")")
+          done
+
+          archive_count="$(find dist -maxdepth 1 -type f -name '*.tar.gz' | wc -l)"
+          checksum_count="$(find dist -maxdepth 1 -type f -name '*.tar.gz.sha256' | wc -l)"
+          cli_package_count="$(find dist -maxdepth 1 -type f -name 'agent_cli-cli-*.tgz' | wc -l)"
+          test "${archive_count//[[:space:]]/}" -eq "${#targets[@]}"
+          test "${checksum_count//[[:space:]]/}" -eq "${#targets[@]}"
+          test "${cli_package_count//[[:space:]]/}" -eq 1
+          for artifact in dist/*; do
+            case "${artifact##*/}" in
+              dev-agent-executor-aarch64-apple-darwin.tar.gz|dev-agent-executor-aarch64-apple-darwin.tar.gz.sha256|\
+              dev-agent-executor-x86_64-apple-darwin.tar.gz|dev-agent-executor-x86_64-apple-darwin.tar.gz.sha256|\
+              dev-agent-executor-x86_64-unknown-linux-gnu.tar.gz|dev-agent-executor-x86_64-unknown-linux-gnu.tar.gz.sha256|\
+              dev-agent-executor-aarch64-unknown-linux-gnu.tar.gz|dev-agent-executor-aarch64-unknown-linux-gnu.tar.gz.sha256|agent_cli-cli-*.tgz|dev-agent-runtime-manifest.json) ;;
+              *) echo "unexpected release artifact: ${artifact}" >&2; exit 1 ;;
+            esac
+          done
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          ls -l dist
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/*.tar.gz dist/*.sha256 dist/*.tgz dist/dev-agent-runtime-manifest.json \
+            --verify-tag \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
