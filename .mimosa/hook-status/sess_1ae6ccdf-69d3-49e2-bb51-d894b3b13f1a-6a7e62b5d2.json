@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "mimosa-hook-status/v1",
+  "recordedAt": "2026-09-29T04:02:39.635Z",
+  "sessionId": "sess_1ae6ccdf-69d3-49e2-bb51-d894b3b13f1a",
+  "event": "PostToolUse",
+  "toolName": "Edit",
+  "file": ".planning/2026-09-28-ink-tui-input-and-rendering/task_plan.md",
+  "outcome": "clear",
+  "coverage": "complete",
+  "findingCount": 0,
+  "durationMs": 2,
+  "hostState": "hook_complete",
+  "reportHint": ".mimosa/reports/"
+}

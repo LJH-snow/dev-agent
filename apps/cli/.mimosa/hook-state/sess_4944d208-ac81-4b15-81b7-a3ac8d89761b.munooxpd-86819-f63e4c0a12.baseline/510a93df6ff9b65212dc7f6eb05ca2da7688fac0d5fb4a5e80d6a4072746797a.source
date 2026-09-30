@@ -1,0 +1,61 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { KittyQueryResponseFilter, filterKittyQueryResponse, } from "../dist/ink/kitty-query-response.js";
+test("filters a complete raw Kitty query response", () => {
+    assert.equal(filterKittyQueryResponse("\u001b[?0u"), "");
+    assert.equal(filterKittyQueryResponse("[?1u"), "");
+});
+test("filters query responses split across input events", () => {
+    const filter = new KittyQueryResponseFilter();
+    assert.deepEqual(filter.push("\u001b"), { input: "", consumed: true });
+    assert.deepEqual(filter.push("[?"), { input: "", consumed: true });
+    assert.deepEqual(filter.push("0"), { input: "", consumed: true });
+    assert.deepEqual(filter.push("u"), { input: "", consumed: true });
+});
+test("filters a raw response split between the escape introducer bytes", () => {
+    const filter = new KittyQueryResponseFilter();
+    assert.deepEqual(filter.push("\u001b["), { input: "", consumed: true });
+    assert.deepEqual(filter.push("?0uhello"), {
+        input: "hello",
+        consumed: true,
+    });
+});
+test("filters adjacent query responses in one input event", () => {
+    const filter = new KittyQueryResponseFilter();
+    assert.deepEqual(filter.push("[?0u\u001b[?1uhello"), {
+        input: "hello",
+        consumed: true,
+    });
+});
+test("preserves malformed and ordinary Kitty input", () => {
+    const filter = new KittyQueryResponseFilter();
+    assert.deepEqual(filter.push("[?"), { input: "", consumed: true });
+    assert.deepEqual(filter.push("x"), { input: "[?x", consumed: false });
+    assert.deepEqual(filter.push("\u001b[13;2u"), {
+        input: "\u001b[13;2u",
+        consumed: false,
+    });
+    assert.deepEqual(filter.push("\u001b[A"), { input: "\u001b[A", consumed: false });
+    assert.deepEqual(filter.push("note [?0u"), {
+        input: "note [?0u",
+        consumed: false,
+    });
+});
+test("preserves ordinary text adjacent to a query response", () => {
+    const filter = new KittyQueryResponseFilter();
+    assert.deepEqual(filter.push("[?"), { input: "", consumed: true });
+    assert.deepEqual(filter.push("0uhello"), { input: "hello", consumed: true });
+});
+test("reset drops a buffered partial prefix at a turn boundary", () => {
+    const filter = new KittyQueryResponseFilter();
+    assert.deepEqual(filter.push("\u001b[?0"), { input: "", consumed: true });
+    filter.reset();
+    assert.deepEqual(filter.push("u"), { input: "u", consumed: false });
+    assert.deepEqual(filter.push("\u001b[?1u"), { input: "", consumed: true });
+});
+test("does not retain an oversized query-like prefix", () => {
+    const filter = new KittyQueryResponseFilter();
+    const input = `[?${"1".repeat(40)}`;
+    assert.deepEqual(filter.push(input), { input, consumed: false });
+    assert.deepEqual(filter.push("u"), { input: "u", consumed: false });
+});

@@ -1,0 +1,46 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+test("validation contract describes an auditable plan and result", async () => {
+    const check = {
+        id: "package:tools:typecheck",
+        label: "Typecheck @dev-agent/tools",
+        command: {
+            executable: "pnpm",
+            args: ["--filter", "@dev-agent/tools", "typecheck"],
+            cwd: "/workspace",
+            timeoutMs: 120_000,
+        },
+    };
+    const plan = {
+        validationId: "validation:cs-test",
+        changeSetId: "cs-test",
+        status: "ready",
+        checks: [check],
+        summary: "1 validation check planned",
+    };
+    const result = {
+        validationId: plan.validationId,
+        changeSetId: plan.changeSetId,
+        status: "passed",
+        checks: [
+            {
+                ...check,
+                status: "passed",
+                durationMs: 12,
+                exitCode: 0,
+                output: "ok",
+            },
+        ],
+        durationMs: 12,
+        summary: "1 validation check passed",
+    };
+    const runner = {
+        async run(receivedPlan) {
+            assert.equal(receivedPlan.validationId, plan.validationId);
+            return result;
+        },
+    };
+    const returned = await runner.run(plan);
+    assert.equal(result.status, "passed");
+    assert.equal(returned.checks[0]?.command.args[0], "--filter");
+});

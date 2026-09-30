@@ -1,0 +1,1243 @@
+import { randomUUID } from "node:crypto";
+import { Buffer } from "node:buffer";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, win32 } from "node:path";
+
+import type { ChatMessage, ChatUsage, ToolCall } from "@dev-agent/model";
+import type { ChangeSetReview } from "./approval.js";
+import type {
+  ValidationRecord,
+  ValidationResult,
+  ValidationStatus,
+} from "./validation.js";
+import type { AgentCheckpoint } from "./checkpoint.js";
+
+const MAX_MEMORY_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
+const MAX_CHECKPOINT_RECORDS = 100;
+const MAX_PENDING_REVIEW_FILES = 128;
+const MAX_PENDING_REVIEW_PROMPT_CHARS = 8_000;
+const MAX_PENDING_REVIEW_DIFF_CHARS = 64 * 1024;
+const MAX_PENDING_REVIEW_TEXT_CHARS = 8_192;
+
+async function assertMemoryFileSize(path: string, maxBytes: number): Promise<void> {
+  const fileStat = await stat(path);
+  if (fileStat.size > maxBytes) {
+    throw new Error(
+      `memory file exceeds the ${maxBytes / (1024 * 1024)} MiB read limit`
+    );
+  }
+}
+import { addUsage } from "./usage.js";
+
+export interface MemoryEntry extends ChatMessage {
+  readonly id: string;
+  readonly createdAt: string;
+}
+
+export interface MemoryEntryOptions {
+  readonly toolCallId?: string;
+  readonly toolName?: string;
+  readonly toolCalls?: readonly ToolCall[];
+}
+
+export interface ChangeSetEvidenceFile {
+  readonly path: string;
+  readonly kind: "file" | "directory";
+  readonly beforeHash?: string;
+  readonly afterHash: string;
+  readonly additions: number;
+  readonly deletions: number;
+  readonly beforeExists: boolean;
+  readonly afterExists: boolean;
+}
+
+/** Minimal, non-executable evidence for a change set that was applied locally. */
+export interface AppliedChangeSetRecord {
+  readonly changeSetId: string;
+  readonly sessionId: string;
+  readonly workingDirectory: string;
+  readonly files: readonly ChangeSetEvidenceFile[];
+  readonly additions: number;
+  readonly deletions: number;
+  readonly createdAt: string;
+  readonly recordedAt: string;
+  readonly state: "applied" | "rolled-back";
+}
+
+/** Bounded, non-executable metadata for a pending Autofix review. */
+export interface PendingChangeSetReview {
+  readonly kind: "autofix";
+  readonly sessionId: string;
+  /** Hash of the resolved workspace path; the path itself is not persisted. */
+  readonly workspaceId: string;
+  readonly prompt: string;
+  readonly review: ChangeSetReview;
+  readonly createdAt: string;
+}
+
+export interface EvidenceRetentionOptions {
+  /** Maximum validation attempts retained automatically. */
+  readonly maxValidations?: number;
+  /** Soft maximum for change-set records; applied records are always protected. */
+  readonly maxChangeSets?: number;
+}
+
+export interface EvidencePruneOptions extends EvidenceRetentionOptions {
+  /** Explicitly remove every non-active (rolled-back) change-set record. */
+  readonly removeRolledBack?: boolean;
+}
+
+export interface EvidencePruneResult {
+  readonly validationsRemoved: number;
+  readonly changeSetsRemoved: number;
+  readonly protectedChangeSets: number;
+  readonly remainingValidations: number;
+  readonly remainingChangeSets: number;
+}
+
+/** Non-executable counts and limits shown to operators and clients. */
+export interface EvidenceSummary {
+  readonly validations: number;
+  readonly changeSets: number;
+  readonly protectedChangeSets: number;
+  readonly rolledBackChangeSets: number;
+  readonly retention: Required<EvidenceRetentionOptions>;
+  readonly protectedChangeSetsReason: "applied change-set guards are retained for validation";
+}
+
+export const DEFAULT_EVIDENCE_RETENTION = {
+  maxValidations: 100,
+  maxChangeSets: 100,
+} as const;
+
+const MAX_EVIDENCE_RECORDS = 10_000;
+
+export interface AgentMemory {
+  append(entry: MemoryEntry): Promise<void>;
+  entries(): Promise<readonly MemoryEntry[]>;
+  clear(): Promise<void>;
+  getMetadata?(): Promise<SessionMetadata | undefined>;
+  /** Adds one provider usage report to the session total, when supported. */
+  recordUsage?(usage: ChatUsage): Promise<void>;
+  compact?(keepRecentTurns: number): Promise<number>;
+  /** Digest of entries that were trimmed off the front of the history. */
+  getSummary?(): Promise<ContextSummary | undefined>;
+  setSummary?(summary: ContextSummary): Promise<void>;
+  /** Persists a structured validation result without adding it to model context. */
+  recordValidation?(result: ValidationResult): Promise<void>;
+  /** Returns structured validation evidence in recording order. */
+  validations?(): Promise<readonly ValidationRecord[]>;
+  /** Persists non-executable evidence for a successfully applied change set. */
+  recordChangeSet?(record: AppliedChangeSetRecord): Promise<void>;
+  /** Returns change-set evidence in recording order. */
+  changeSets?(): Promise<readonly AppliedChangeSetRecord[]>;
+  /** Persists one bounded, non-executable pending Autofix review. */
+  recordPendingChangeSetReview?(review: PendingChangeSetReview): Promise<void>;
+  /** Returns the pending Autofix review, if one exists. */
+  pendingChangeSetReview?(): Promise<PendingChangeSetReview | undefined>;
+  /** Removes the pending Autofix review without touching other session data. */
+  clearPendingChangeSetReview?(): Promise<void>;
+  /** Persists a bounded, metadata-only memory checkpoint. */
+  recordCheckpoint?(checkpoint: AgentCheckpoint): Promise<void>;
+  /** Returns checkpoints in creation order. */
+  checkpoints?(): Promise<readonly AgentCheckpoint[]>;
+  /** Truncates conversation history at a validated checkpoint anchor. */
+  rewindToCheckpoint?(checkpoint: AgentCheckpoint): Promise<MemoryRewindResult>;
+  /** Marks a successfully rolled-back change set without reviving its before-image. */
+  markChangeSetRolledBack?(changeSetId: string): Promise<boolean>;
+  /** Prunes metadata-only evidence without touching the working directory. */
+  pruneEvidence?(options?: EvidencePruneOptions): Promise<EvidencePruneResult>;
+  /** Returns non-executable evidence counts and the effective retention limits. */
+  evidenceSummary?(): Promise<EvidenceSummary>;
+}
+
+export interface ContextSummary {
+  /** Id of the last entry the digest covers, used to re-anchor after a reload. */
+  readonly lastEntryId: string;
+  /** How many entries the digest covered when it was written. */
+  readonly entriesCovered: number;
+  readonly text: string;
+}
+
+export interface MemoryRewindResult {
+  readonly removedEntryCount: number;
+  readonly remainingEntryCount: number;
+  readonly retainedCheckpointIds: readonly string[];
+}
+
+export class InMemoryMemory implements AgentMemory {
+  private readonly items: MemoryEntry[] = [];
+  private summary?: ContextSummary;
+  private usage?: ChatUsage;
+  private readonly validationRecords: ValidationRecord[] = [];
+  private readonly changeSetRecords: AppliedChangeSetRecord[] = [];
+  private readonly checkpointRecords: AgentCheckpoint[] = [];
+  private pendingReview?: PendingChangeSetReview;
+  private readonly evidenceRetention: Required<EvidenceRetentionOptions>;
+  private readonly createdAt = new Date().toISOString();
+  private lastActiveAt = this.createdAt;
+
+  constructor(options: { readonly evidenceRetention?: EvidenceRetentionOptions } = {}) {
+    this.evidenceRetention = normalizeEvidenceRetention(options.evidenceRetention);
+  }
+
+  async append(entry: MemoryEntry): Promise<void> {
+    this.items.push(entry);
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async entries(): Promise<readonly MemoryEntry[]> {
+    return [...this.items];
+  }
+
+  async clear(): Promise<void> {
+    this.items.length = 0;
+    this.summary = undefined;
+    this.usage = undefined;
+    this.validationRecords.length = 0;
+    this.changeSetRecords.length = 0;
+    this.checkpointRecords.length = 0;
+    this.pendingReview = undefined;
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async getMetadata(): Promise<SessionMetadata> {
+    return {
+      sessionId: "in-memory",
+      createdAt: this.createdAt,
+      lastActiveAt: this.lastActiveAt,
+      entryCount: this.items.length,
+      usage: this.usage,
+    };
+  }
+
+  async recordUsage(usage: ChatUsage): Promise<void> {
+    this.usage = addUsage(this.usage, usage);
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async getSummary(): Promise<ContextSummary | undefined> {
+    return this.summary;
+  }
+
+  async setSummary(summary: ContextSummary): Promise<void> {
+    this.summary = summary;
+  }
+
+  async recordValidation(result: ValidationResult): Promise<void> {
+    this.validationRecords.push({
+      ...result,
+      recordedAt: new Date().toISOString(),
+    });
+    trimValidationRecordsInPlace(this.validationRecords, this.evidenceRetention.maxValidations);
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async validations(): Promise<readonly ValidationRecord[]> {
+    return [...this.validationRecords];
+  }
+
+  async recordChangeSet(record: AppliedChangeSetRecord): Promise<void> {
+    const index = this.changeSetRecords.findIndex(
+      (candidate) => candidate.changeSetId === record.changeSetId
+    );
+    if (index >= 0) {
+      assertChangeSetStateTransition(this.changeSetRecords[index], record);
+      this.changeSetRecords[index] = record;
+    } else {
+      this.changeSetRecords.push(record);
+    }
+    trimChangeSetRecordsInPlace(this.changeSetRecords, this.evidenceRetention.maxChangeSets);
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async changeSets(): Promise<readonly AppliedChangeSetRecord[]> {
+    return [...this.changeSetRecords];
+  }
+
+  async recordPendingChangeSetReview(review: PendingChangeSetReview): Promise<void> {
+    assertPendingChangeSetReview(review);
+    this.pendingReview = review;
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async pendingChangeSetReview(): Promise<PendingChangeSetReview | undefined> {
+    return this.pendingReview;
+  }
+
+  async clearPendingChangeSetReview(): Promise<void> {
+    this.pendingReview = undefined;
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async recordCheckpoint(checkpoint: AgentCheckpoint): Promise<void> {
+    const index = this.checkpointRecords.findIndex((candidate) => candidate.id === checkpoint.id);
+    if (index >= 0) {
+      this.checkpointRecords[index] = checkpoint;
+    } else {
+      this.checkpointRecords.push(checkpoint);
+    }
+    trimCheckpointsInPlace(this.checkpointRecords);
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async checkpoints(): Promise<readonly AgentCheckpoint[]> {
+    return [...this.checkpointRecords];
+  }
+
+  async rewindToCheckpoint(checkpoint: AgentCheckpoint): Promise<MemoryRewindResult> {
+    validateRewindAnchor(this.items, checkpoint, "in-memory");
+    const removedEntryCount = this.items.length - checkpoint.entryCount;
+    this.items.splice(checkpoint.entryCount);
+    if (this.summary && this.summary.entriesCovered > checkpoint.entryCount) {
+      this.summary = undefined;
+    }
+    const retainedCheckpoints = retainCheckpointsAtAnchor(
+      this.checkpointRecords,
+      checkpoint
+    );
+    this.checkpointRecords.splice(
+      0,
+      this.checkpointRecords.length,
+      ...retainedCheckpoints
+    );
+    this.lastActiveAt = new Date().toISOString();
+    return {
+      removedEntryCount,
+      remainingEntryCount: this.items.length,
+      retainedCheckpointIds: retainedCheckpoints.map((candidate) => candidate.id),
+    };
+  }
+
+  async evidenceSummary(): Promise<EvidenceSummary> {
+    return summarizeEvidence(
+      this.validationRecords,
+      this.changeSetRecords,
+      this.evidenceRetention
+    );
+  }
+
+  async markChangeSetRolledBack(changeSetId: string): Promise<boolean> {
+    const index = this.changeSetRecords.findIndex(
+      (candidate) => candidate.changeSetId === changeSetId
+    );
+    if (index < 0 || this.changeSetRecords[index]?.state !== "applied") {
+      return false;
+    }
+    this.changeSetRecords[index] = { ...this.changeSetRecords[index], state: "rolled-back" };
+    trimChangeSetRecordsInPlace(this.changeSetRecords, this.evidenceRetention.maxChangeSets);
+    this.lastActiveAt = new Date().toISOString();
+    return true;
+  }
+
+  async pruneEvidence(options: EvidencePruneOptions = {}): Promise<EvidencePruneResult> {
+    const retention = normalizeEvidenceRetention(options, this.evidenceRetention);
+    const validationCount = this.validationRecords.length;
+    const changeSetCount = this.changeSetRecords.length;
+    const protectedChangeSets = this.changeSetRecords.filter(
+      (record) => record.state === "applied"
+    ).length;
+    const validationsRemoved = trimValidationRecordsInPlace(
+      this.validationRecords,
+      retention.maxValidations
+    );
+    const changeSetsRemoved = trimChangeSetRecordsInPlace(
+      this.changeSetRecords,
+      retention.maxChangeSets,
+      options.removeRolledBack === true
+    );
+    if (validationsRemoved > 0 || changeSetsRemoved > 0) {
+      this.lastActiveAt = new Date().toISOString();
+    }
+    return {
+      validationsRemoved,
+      changeSetsRemoved,
+      protectedChangeSets,
+      remainingValidations: validationCount - validationsRemoved,
+      remainingChangeSets: changeSetCount - changeSetsRemoved,
+    };
+  }
+}
+
+export interface FileMemoryOptions {
+  readonly filePath: string;
+  /** Session id to persist when the file does not already contain metadata. */
+  readonly sessionId?: string;
+  readonly evidenceRetention?: EvidenceRetentionOptions;
+}
+
+export interface SessionMetadata {
+  readonly sessionId: string;
+  readonly createdAt: string;
+  readonly lastActiveAt: string;
+  readonly entryCount: number;
+  /** Tokens reported by the provider across every run in this session. */
+  readonly usage?: ChatUsage;
+}
+
+interface MemoryFile {
+  readonly version: 1;
+  readonly metadata?: SessionMetadata;
+  readonly entries: MemoryEntry[];
+  readonly summary?: ContextSummary;
+  readonly validations?: ValidationRecord[];
+  readonly changeSets?: AppliedChangeSetRecord[];
+  readonly checkpoints?: AgentCheckpoint[];
+  readonly pendingChangeSetReview?: PendingChangeSetReview;
+}
+
+export class FileMemory implements AgentMemory {
+  private readonly filePath: string;
+  private readonly sessionId: string;
+  private readonly evidenceRetention: Required<EvidenceRetentionOptions>;
+  private chain: Promise<void> = Promise.resolve();
+
+  constructor(options: FileMemoryOptions) {
+    this.filePath = options.filePath;
+    this.sessionId = options.sessionId ?? "default";
+    this.evidenceRetention = normalizeEvidenceRetention(options.evidenceRetention);
+  }
+
+  async getMetadata(): Promise<SessionMetadata | undefined> {
+    try {
+      const file = await this.readMemoryFile();
+      return file.metadata;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async compact(keepRecentTurns: number): Promise<number> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      const keepEntries = keepRecentTurns * 4;
+      if (entries.length <= keepEntries) {
+        return 0;
+      }
+      const removed = entries.length - keepEntries;
+      const compacted = entries.slice(-keepEntries);
+      await this.persist(compacted);
+      return removed;
+    });
+  }
+
+  append(entry: MemoryEntry): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      entries.push(entry);
+      await this.persist(entries);
+    });
+  }
+
+  entries(): Promise<readonly MemoryEntry[]> {
+    return this.enqueue(async () => [...(await this.readEntries())]);
+  }
+
+  clear(): Promise<void> {
+    return this.enqueue(() => rm(this.filePath, { force: true }));
+  }
+
+  async getSummary(): Promise<ContextSummary | undefined> {
+    try {
+      const file = await this.readMemoryFile();
+      return file.summary;
+    } catch {
+      return undefined;
+    }
+  }
+
+  setSummary(summary: ContextSummary): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      await this.persist(entries, summary);
+    });
+  }
+
+  recordValidation(result: ValidationResult): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const validations = [
+        ...(existing?.validations ?? []),
+        {
+          ...result,
+          recordedAt: new Date().toISOString(),
+        },
+      ];
+      trimValidationRecordsInPlace(validations, this.evidenceRetention.maxValidations);
+      await this.persist(entries, undefined, undefined, validations);
+    });
+  }
+
+  validations(): Promise<readonly ValidationRecord[]> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return [...(file.validations ?? [])];
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return [];
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error(`Invalid memory file: ${this.filePath}`);
+      }
+    });
+  }
+
+  recordChangeSet(record: AppliedChangeSetRecord): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const changeSets = [
+        ...(existing?.changeSets ?? []).filter(
+          (candidate) => candidate.changeSetId !== record.changeSetId
+        ),
+        record,
+      ];
+      const previous = existing?.changeSets?.find(
+        (candidate) => candidate.changeSetId === record.changeSetId
+      );
+      assertChangeSetStateTransition(previous, record);
+      trimChangeSetRecordsInPlace(changeSets, this.evidenceRetention.maxChangeSets);
+      await this.persist(entries, undefined, undefined, undefined, changeSets);
+    });
+  }
+
+  changeSets(): Promise<readonly AppliedChangeSetRecord[]> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return [...(file.changeSets ?? [])];
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return [];
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error(`Invalid memory file: ${this.filePath}`);
+      }
+    });
+  }
+
+  recordPendingChangeSetReview(review: PendingChangeSetReview): Promise<void> {
+    return this.enqueue(async () => {
+      assertPendingChangeSetReview(review);
+      const entries = await this.readEntries();
+      await this.persist(entries, undefined, undefined, undefined, undefined, undefined, review);
+    });
+  }
+
+  pendingChangeSetReview(): Promise<PendingChangeSetReview | undefined> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return file.pendingChangeSetReview;
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error("Invalid memory file: " + this.filePath);
+      }
+    });
+  }
+
+  clearPendingChangeSetReview(): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      await this.persist(entries, undefined, undefined, undefined, undefined, undefined, null);
+    });
+  }
+
+  recordCheckpoint(checkpoint: AgentCheckpoint): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const checkpoints = [
+        ...(existing?.checkpoints ?? []).filter((candidate) => candidate.id !== checkpoint.id),
+        checkpoint,
+      ];
+      trimCheckpointsInPlace(checkpoints);
+      await this.persist(entries, undefined, undefined, undefined, undefined, checkpoints);
+    });
+  }
+
+  checkpoints(): Promise<readonly AgentCheckpoint[]> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return [...(file.checkpoints ?? [])];
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return [];
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error(`Invalid memory file: ${this.filePath}`);
+      }
+    });
+  }
+
+  rewindToCheckpoint(checkpoint: AgentCheckpoint): Promise<MemoryRewindResult> {
+    return this.enqueue(async () => {
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const entries = [...(existing?.entries ?? [])];
+      validateRewindAnchor(
+        entries,
+        checkpoint,
+        existing?.metadata?.sessionId ?? this.sessionId
+      );
+      const rewoundEntries = entries.slice(0, checkpoint.entryCount);
+      const retainedCheckpoints = retainCheckpointsAtAnchor(
+        existing?.checkpoints ?? [],
+        checkpoint
+      );
+      await this.persist(
+        rewoundEntries,
+        existing?.summary !== undefined &&
+          existing.summary.entriesCovered <= checkpoint.entryCount
+          ? existing.summary
+          : null,
+        undefined,
+        undefined,
+        undefined,
+        retainedCheckpoints
+      );
+      return {
+        removedEntryCount: entries.length - rewoundEntries.length,
+        remainingEntryCount: rewoundEntries.length,
+        retainedCheckpointIds: retainedCheckpoints.map((candidate) => candidate.id),
+      };
+    });
+  }
+
+  evidenceSummary(): Promise<EvidenceSummary> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return summarizeEvidence(
+          file.validations ?? [],
+          file.changeSets ?? [],
+          this.evidenceRetention
+        );
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return summarizeEvidence([], [], this.evidenceRetention);
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error(`Invalid memory file: ${this.filePath}`);
+      }
+    });
+  }
+
+  markChangeSetRolledBack(changeSetId: string): Promise<boolean> {
+    return this.enqueue(async () => {
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      const records = [...(existing?.changeSets ?? [])];
+      const index = records.findIndex((record) => record.changeSetId === changeSetId);
+      if (index < 0 || records[index]?.state !== "applied") {
+        return false;
+      }
+      records[index] = { ...records[index], state: "rolled-back" };
+      trimChangeSetRecordsInPlace(records, this.evidenceRetention.maxChangeSets);
+      await this.persist(existing?.entries ?? [], undefined, undefined, undefined, records);
+      return true;
+    });
+  }
+
+  pruneEvidence(options: EvidencePruneOptions = {}): Promise<EvidencePruneResult> {
+    return this.enqueue(async () => {
+      const existing = await this.readMemoryFile().catch((error) => {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        throw error;
+      });
+      if (!existing) {
+        return emptyEvidencePruneResult();
+      }
+
+      const retention = normalizeEvidenceRetention(options, this.evidenceRetention);
+      const validations = [...(existing.validations ?? [])];
+      const changeSets = [...(existing.changeSets ?? [])];
+      const protectedChangeSets = changeSets.filter(
+        (record) => record.state === "applied"
+      ).length;
+      const validationsRemoved = trimValidationRecordsInPlace(
+        validations,
+        retention.maxValidations
+      );
+      const changeSetsRemoved = trimChangeSetRecordsInPlace(
+        changeSets,
+        retention.maxChangeSets,
+        options.removeRolledBack === true
+      );
+      if (validationsRemoved > 0 || changeSetsRemoved > 0) {
+        await this.persist(existing.entries, undefined, undefined, validations, changeSets);
+      }
+      return {
+        validationsRemoved,
+        changeSetsRemoved,
+        protectedChangeSets,
+        remainingValidations: validations.length,
+        remainingChangeSets: changeSets.length,
+      };
+    });
+  }
+
+  recordUsage(usage: ChatUsage): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      await this.persist(entries, undefined, usage);
+    });
+  }
+
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const result = this.chain.then(task, task);
+    this.chain = result.then(
+      () => undefined,
+      () => undefined
+    );
+    return result;
+  }
+
+  private async readEntries(): Promise<MemoryEntry[]> {
+    let raw: string;
+    try {
+      await assertMemoryFileSize(this.filePath, MAX_MEMORY_FILE_BYTES);
+      raw = await readFile(this.filePath, "utf8");
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      throw new Error(`Invalid memory file: ${this.filePath}`);
+    }
+    if (!isMemoryFile(parsed)) {
+      throw new Error(`Invalid memory file: ${this.filePath}`);
+    }
+    return parsed.entries;
+  }
+
+  private async persist(
+    entries: readonly MemoryEntry[],
+    summary?: ContextSummary | null,
+    usage?: ChatUsage,
+    validations?: readonly ValidationRecord[],
+    changeSets?: readonly AppliedChangeSetRecord[],
+    checkpoints?: readonly AgentCheckpoint[],
+    pendingChangeSetReview?: PendingChangeSetReview | null
+  ): Promise<void> {
+    await mkdir(dirname(this.filePath), { recursive: true });
+    const existing = await this.readMemoryFile().catch(() => undefined);
+    const now = new Date().toISOString();
+    const metadata: SessionMetadata = {
+      sessionId: existing?.metadata?.sessionId ?? this.sessionId,
+      createdAt: existing?.metadata?.createdAt ?? now,
+      lastActiveAt: now,
+      entryCount: entries.length,
+      usage: usage === undefined ? existing?.metadata?.usage : addUsage(existing?.metadata?.usage, usage),
+    };
+    const payload: MemoryFile = {
+      version: 1,
+      metadata,
+      entries: [...entries],
+      // Keep an existing digest unless this write replaces it.
+      summary: summary === null ? undefined : summary ?? existing?.summary,
+      validations: validations === undefined ? existing?.validations : [...validations],
+      changeSets: changeSets === undefined ? existing?.changeSets : [...changeSets],
+      checkpoints: checkpoints === undefined ? existing?.checkpoints : [...checkpoints],
+      pendingChangeSetReview: pendingChangeSetReview === null
+        ? undefined
+        : pendingChangeSetReview ?? existing?.pendingChangeSetReview,
+    };
+    const serialized = `${JSON.stringify(payload, null, 2)}\n`;
+    if (Buffer.byteLength(serialized, "utf8") > MAX_MEMORY_FILE_BYTES) {
+      throw new Error(
+        `memory file exceeds the ${MAX_MEMORY_FILE_BYTES / (1024 * 1024)} MiB write limit`
+      );
+    }
+    await writeFile(this.filePath, serialized, "utf8");
+  }
+
+  private async readMemoryFile(): Promise<MemoryFile> {
+    await assertMemoryFileSize(this.filePath, MAX_MEMORY_FILE_BYTES);
+    const raw = await readFile(this.filePath, "utf8");
+    const parsed: unknown = JSON.parse(raw);
+    if (!isMemoryFile(parsed)) {
+      throw new Error(`Invalid memory file: ${this.filePath}`);
+    }
+    return parsed;
+  }
+}
+
+export function createMemoryEntry(
+  role: ChatMessage["role"],
+  content: string,
+  options: MemoryEntryOptions = {}
+): MemoryEntry {
+  return {
+    id: randomUUID(),
+    role,
+    content,
+    createdAt: new Date().toISOString(),
+    toolCallId: options.toolCallId,
+    toolName: options.toolName,
+    toolCalls: options.toolCalls,
+  };
+}
+
+function normalizeEvidenceRetention(
+  options: EvidenceRetentionOptions | undefined,
+  fallback: Required<EvidenceRetentionOptions> = DEFAULT_EVIDENCE_RETENTION
+): Required<EvidenceRetentionOptions> {
+  const maxValidations = options?.maxValidations ?? fallback.maxValidations;
+  const maxChangeSets = options?.maxChangeSets ?? fallback.maxChangeSets;
+  for (const [name, value] of [
+    ["maxValidations", maxValidations],
+    ["maxChangeSets", maxChangeSets],
+  ] as const) {
+    if (
+      !Number.isSafeInteger(value) ||
+      value <= 0 ||
+      value > MAX_EVIDENCE_RECORDS
+    ) {
+      throw new Error(`${name} must be a positive integer no greater than ${MAX_EVIDENCE_RECORDS}`);
+    }
+  }
+  return { maxValidations, maxChangeSets };
+}
+
+function trimValidationRecordsInPlace(
+  records: ValidationRecord[],
+  maxValidations: number
+): number {
+  const removed = Math.max(0, records.length - maxValidations);
+  if (removed > 0) {
+    records.splice(0, removed);
+  }
+  return removed;
+}
+
+function trimChangeSetRecordsInPlace(
+  records: AppliedChangeSetRecord[],
+  maxChangeSets: number,
+  removeRolledBack = false
+): number {
+  let removed = 0;
+  if (removeRolledBack) {
+    for (let index = records.length - 1; index >= 0; index -= 1) {
+      if (records[index]?.state !== "applied") {
+        records.splice(index, 1);
+        removed += 1;
+      }
+    }
+  }
+  while (records.length > maxChangeSets) {
+    const removableIndex = records.findIndex((record) => record.state !== "applied");
+    if (removableIndex < 0) {
+      break;
+    }
+    records.splice(removableIndex, 1);
+    removed += 1;
+  }
+  return removed;
+}
+
+function summarizeEvidence(
+  validations: readonly ValidationRecord[],
+  changeSets: readonly AppliedChangeSetRecord[],
+  retention: Required<EvidenceRetentionOptions>
+): EvidenceSummary {
+  return {
+    validations: validations.length,
+    changeSets: changeSets.length,
+    protectedChangeSets: changeSets.filter((record) => record.state === "applied").length,
+    rolledBackChangeSets: changeSets.filter((record) => record.state === "rolled-back").length,
+    retention: { ...retention },
+    protectedChangeSetsReason: "applied change-set guards are retained for validation",
+  };
+}
+
+function emptyEvidencePruneResult(): EvidencePruneResult {
+  return {
+    validationsRemoved: 0,
+    changeSetsRemoved: 0,
+    protectedChangeSets: 0,
+    remainingValidations: 0,
+    remainingChangeSets: 0,
+  };
+}
+
+function assertChangeSetStateTransition(
+  previous: AppliedChangeSetRecord | undefined,
+  next: AppliedChangeSetRecord
+): void {
+  if (previous?.state === "rolled-back" && next.state === "applied") {
+    throw new Error(
+      `cannot reactivate rolled-back change set evidence: ${next.changeSetId}`
+    );
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
+function isMemoryFile(value: unknown): value is MemoryFile {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.version === 1 &&
+    Array.isArray(candidate.entries) &&
+    candidate.entries.every(isMemoryEntry) &&
+    (candidate.summary === undefined || isContextSummary(candidate.summary)) &&
+    (candidate.metadata === undefined || isSessionMetadataValue(candidate.metadata)) &&
+    (candidate.validations === undefined ||
+      (Array.isArray(candidate.validations) && candidate.validations.every(isValidationRecord))) &&
+    (candidate.changeSets === undefined ||
+      (Array.isArray(candidate.changeSets) && candidate.changeSets.every(isAppliedChangeSetRecord))) &&
+    (candidate.checkpoints === undefined ||
+      (Array.isArray(candidate.checkpoints) && candidate.checkpoints.every(isAgentCheckpoint))) &&
+    (candidate.pendingChangeSetReview === undefined ||
+      isPendingChangeSetReview(candidate.pendingChangeSetReview))
+  );
+}
+
+function assertPendingChangeSetReview(review: PendingChangeSetReview): void {
+  if (!isPendingChangeSetReview(review)) {
+    throw new Error("invalid pending change-set review");
+  }
+}
+
+function isPendingChangeSetReview(value: unknown): value is PendingChangeSetReview {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.kind === "autofix" &&
+    isBoundedReviewText(candidate.sessionId, 160) &&
+    isSha256(candidate.workspaceId) &&
+    isBoundedReviewText(candidate.prompt, MAX_PENDING_REVIEW_PROMPT_CHARS) &&
+    isChangeSetReview(candidate.review) &&
+    isBoundedReviewText(candidate.createdAt, 128)
+  );
+}
+
+function isChangeSetReview(value: unknown): value is ChangeSetReview {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    isBoundedReviewText(candidate.changeSetId, 256) &&
+    Array.isArray(candidate.files) &&
+    candidate.files.length > 0 &&
+    candidate.files.length <= MAX_PENDING_REVIEW_FILES &&
+    candidate.files.every(isPendingChangeSetFileReview) &&
+    isNonNegativeInteger(candidate.additions) &&
+    isNonNegativeInteger(candidate.deletions) &&
+    isBoundedReviewText(candidate.createdAt, 128)
+  );
+}
+
+function isPendingChangeSetFileReview(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.path === "string" &&
+    candidate.path.length <= 4096 &&
+    isSafeRelativePath(candidate.path) &&
+    (candidate.kind === "file" || candidate.kind === "directory") &&
+    isSha256(candidate.afterHash) &&
+    (candidate.beforeHash === undefined || isSha256(candidate.beforeHash)) &&
+    typeof candidate.diff === "string" &&
+    candidate.diff.length <= MAX_PENDING_REVIEW_DIFF_CHARS &&
+    isSafeReviewText(candidate.diff, MAX_PENDING_REVIEW_DIFF_CHARS, true) &&
+    isNonNegativeInteger(candidate.additions) &&
+    isNonNegativeInteger(candidate.deletions) &&
+    typeof candidate.beforeExists === "boolean" &&
+    typeof candidate.afterExists === "boolean"
+  );
+}
+
+function isBoundedReviewText(value: unknown, maxChars: number): value is string {
+  return isSafeReviewText(value, maxChars, false);
+}
+
+function isSafeReviewText(value: unknown, maxChars: number, allowEmpty: boolean): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= maxChars &&
+    (allowEmpty || value.length > 0) &&
+    !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(value)
+  );
+}
+
+/** Only the parts a reader relies on are validated; unknown keys are allowed. */
+function isSessionMetadataValue(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const usage = (value as Record<string, unknown>).usage;
+  return usage === undefined || isChatUsage(usage);
+}
+
+function isChatUsage(value: unknown): value is ChatUsage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Record<string, unknown>).promptTokens === "number" &&
+    typeof (value as Record<string, unknown>).completionTokens === "number" &&
+    typeof (value as Record<string, unknown>).totalTokens === "number"
+  );
+}
+
+function isAppliedChangeSetRecord(value: unknown): value is AppliedChangeSetRecord {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.changeSetId === "string" &&
+    candidate.changeSetId.length > 0 &&
+    typeof candidate.sessionId === "string" &&
+    candidate.sessionId.length > 0 &&
+    typeof candidate.workingDirectory === "string" &&
+    (isAbsolute(candidate.workingDirectory) || win32.isAbsolute(candidate.workingDirectory)) &&
+    Array.isArray(candidate.files) &&
+    candidate.files.length > 0 &&
+    candidate.files.every(isChangeSetEvidenceFile) &&
+    isNonNegativeInteger(candidate.additions) &&
+    isNonNegativeInteger(candidate.deletions) &&
+    typeof candidate.createdAt === "string" &&
+    candidate.createdAt.length > 0 &&
+    typeof candidate.recordedAt === "string" &&
+    candidate.recordedAt.length > 0 &&
+    (candidate.state === "applied" || candidate.state === "rolled-back")
+  );
+}
+
+function isChangeSetEvidenceFile(value: unknown): value is ChangeSetEvidenceFile {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.path === "string" &&
+    isSafeRelativePath(candidate.path) &&
+    (candidate.kind === "file" || candidate.kind === "directory") &&
+    isSha256(candidate.afterHash) &&
+    (candidate.beforeHash === undefined || isSha256(candidate.beforeHash)) &&
+    isNonNegativeInteger(candidate.additions) &&
+    isNonNegativeInteger(candidate.deletions) &&
+    typeof candidate.beforeExists === "boolean" &&
+    typeof candidate.afterExists === "boolean"
+  );
+}
+
+function isSafeRelativePath(value: string): boolean {
+  if (value.length === 0 || value.includes("\0") || isAbsolute(value) || win32.isAbsolute(value)) {
+    return false;
+  }
+  const normalized = value.replaceAll("\\", "/");
+  return normalized !== "." && normalized !== ".." && !normalized.split("/").includes("..");
+}
+
+function isSha256(value: unknown): value is string {
+  return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isValidationRecord(value: unknown): value is ValidationRecord {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.recordedAt === "string" &&
+    typeof candidate.validationId === "string" &&
+    typeof candidate.changeSetId === "string" &&
+    isValidationStatus(candidate.status) &&
+    Array.isArray(candidate.checks) &&
+    candidate.checks.every(isValidationCheckResult) &&
+    typeof candidate.durationMs === "number" &&
+    typeof candidate.summary === "string" &&
+    (candidate.reason === undefined || typeof candidate.reason === "string")
+  );
+}
+
+function isValidationCheckResult(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  const command = candidate.command;
+  if (typeof command !== "object" || command === null) {
+    return false;
+  }
+  const commandValue = command as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.label === "string" &&
+    typeof commandValue.executable === "string" &&
+    Array.isArray(commandValue.args) &&
+    commandValue.args.every((arg) => typeof arg === "string") &&
+    typeof commandValue.cwd === "string" &&
+    typeof commandValue.timeoutMs === "number" &&
+    isValidationStatus(candidate.status) &&
+    typeof candidate.durationMs === "number" &&
+    (candidate.exitCode === undefined || typeof candidate.exitCode === "number") &&
+    (candidate.output === undefined || typeof candidate.output === "string") &&
+    (candidate.error === undefined || typeof candidate.error === "string") &&
+    (candidate.reason === undefined || typeof candidate.reason === "string")
+  );
+}
+
+function isValidationStatus(value: unknown): value is ValidationStatus {
+  return value === "passed" || value === "failed" || value === "skipped" || value === "blocked";
+}
+
+function trimCheckpointsInPlace(records: AgentCheckpoint[]): number {
+  const removed = Math.max(0, records.length - MAX_CHECKPOINT_RECORDS);
+  if (removed > 0) {
+    records.splice(0, removed);
+  }
+  return removed;
+}
+
+function validateRewindAnchor(
+  entries: readonly MemoryEntry[],
+  checkpoint: AgentCheckpoint,
+  currentSessionId: string
+): void {
+  if (
+    checkpoint.sessionId !== "unknown" &&
+    checkpoint.sessionId !== currentSessionId
+  ) {
+    throw new Error("checkpoint belongs to another session");
+  }
+  if (checkpoint.entryCount > entries.length) {
+    throw new Error("checkpoint is ahead of current memory");
+  }
+  const anchorEntry = checkpoint.entryCount === 0
+    ? undefined
+    : entries[checkpoint.entryCount - 1];
+  if (
+    checkpoint.lastEntryId !== undefined &&
+    anchorEntry?.id !== checkpoint.lastEntryId
+  ) {
+    throw new Error("checkpoint anchor does not match current memory");
+  }
+  if (checkpoint.entryCount === 0 && checkpoint.lastEntryId !== undefined) {
+    throw new Error("checkpoint anchor does not match current memory");
+  }
+}
+
+function retainCheckpointsAtAnchor(
+  checkpoints: readonly AgentCheckpoint[],
+  target: AgentCheckpoint
+): AgentCheckpoint[] {
+  return checkpoints.filter((candidate) =>
+    candidate.entryCount < target.entryCount ||
+    (
+      candidate.entryCount === target.entryCount &&
+      candidate.lastEntryId === target.lastEntryId
+    )
+  );
+}
+
+function isAgentCheckpoint(value: unknown): value is AgentCheckpoint {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    candidate.id.length > 0 &&
+    typeof candidate.sessionId === "string" &&
+    candidate.sessionId.length > 0 &&
+    typeof candidate.createdAt === "string" &&
+    candidate.createdAt.length > 0 &&
+    (candidate.lastEntryId === undefined || typeof candidate.lastEntryId === "string") &&
+    isNonNegativeInteger(candidate.entryCount) &&
+    Array.isArray(candidate.changeSetIds) &&
+    candidate.changeSetIds.every((id) => typeof id === "string" && id.length > 0)
+  );
+}
+
+function isContextSummary(value: unknown): value is ContextSummary {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.lastEntryId === "string" &&
+    typeof candidate.entriesCovered === "number" &&
+    typeof candidate.text === "string"
+  );
+}
+
+function isMemoryEntry(value: unknown): value is MemoryEntry {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === "string" &&
+    isChatMessageRole(candidate.role) &&
+    typeof candidate.content === "string" &&
+    typeof candidate.createdAt === "string"
+  );
+}
+
+function isChatMessageRole(value: unknown): value is ChatMessage["role"] {
+  return value === "system" || value === "user" || value === "assistant" || value === "tool";
+}

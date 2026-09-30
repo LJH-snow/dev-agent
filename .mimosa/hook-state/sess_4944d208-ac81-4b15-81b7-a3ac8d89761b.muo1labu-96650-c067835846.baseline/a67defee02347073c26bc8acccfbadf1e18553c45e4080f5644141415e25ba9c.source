@@ -1,0 +1,116 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createDesktopServer } from "../dist/server.js";
+const stateFile = () => join(mkdtempSync(), "schedules.json");
+function mkdtempSync() {
+    // mkdtempSync keeps per-test directories distinct without async plumbing.
+    return join(tmpdir(), `schedules-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+}
+function serverFor(stateFilePath, overrides = {}) {
+    return createDesktopServer({
+        session: { id: "desktop-default", async run() { } },
+        scheduledTasksStateFile: stateFilePath,
+        capabilityToken: "schedule-test-token",
+        ...overrides,
+    });
+}
+async function start(server) {
+    return new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            const addr = server.address();
+            assert.ok(addr && typeof addr !== "string");
+            resolve(`http://127.0.0.1:${addr.port}`);
+        });
+    });
+}
+function headers(token = "schedule-test-token") {
+    return token ? { "content-type": "application/json", "x-dev-agent-capability": token } : { "content-type": "application/json" };
+}
+test("schedules CRUD and manual run work end-to-end with an injected runner", async () => {
+    const stateFilePath = stateFile();
+    const calls = [];
+    const server = serverFor(stateFilePath, {
+        scheduledJobRunner: async (definition) => { calls.push(definition.id); return { ok: true, summary: { repo: definition.repo, failingCount: 2 } }; },
+    });
+    const base = await start(server);
+    try {
+        const created = await fetch(base + "/api/schedules", { method: "POST", headers: headers(),
+            body: JSON.stringify({ title: "Morning watch", job: "ci-watch", repo: "acme/demo", kind: "daily", timeOfDay: "09:00" }) });
+        assert.equal(created.status, 201);
+        const { schedule } = await created.json();
+        assert.equal(schedule.job, "ci-watch");
+        assert.equal(schedule.enabled, true);
+        assert.ok(schedule.nextRunAt);
+        const listed = await (await fetch(base + "/api/schedules")).json();
+        assert.equal(listed.schedules.length, 1);
+        assert.equal(listed.schedules[0].running, false);
+        const runNow = await fetch(`${base}/api/schedules/${schedule.id}/run`, { method: "POST", headers: headers(), body: "{}" });
+        assert.equal(runNow.status, 200);
+        const runPayload = await runNow.json();
+        assert.equal(runPayload.record.ok, true);
+        assert.equal(runPayload.record.trigger, "manual");
+        assert.deepEqual(calls, [schedule.id]);
+        const runs = await (await fetch(`${base}/api/schedules/${schedule.id}/runs`)).json();
+        assert.equal(runs.id, schedule.id);
+        assert.equal(runs.runs.length, 1);
+        assert.deepEqual(runs.runs[0].summary, { repo: "acme/demo", failingCount: 2 });
+        const disabled = await fetch(`${base}/api/schedules/${schedule.id}`, { method: "POST", headers: headers(), body: JSON.stringify({ enabled: false }) });
+        assert.equal(disabled.status, 200);
+        assert.equal((await disabled.json()).schedule.enabled, false);
+        const removed = await fetch(`${base}/api/schedules/${schedule.id}`, { method: "DELETE", headers: headers() });
+        assert.equal(removed.status, 200);
+        assert.equal((await (await fetch(`${base}/api/schedules/${schedule.id}/runs`)).status), 404);
+        const persisted = new (await import("../dist/scheduled-tasks.js")).ScheduledTaskManager({ stateFile: stateFilePath });
+        assert.equal(persisted.list().length, 0);
+    }
+    finally {
+        await new Promise((resolve) => server.close(() => resolve()));
+        await rm(stateFilePath, { force: true });
+    }
+});
+test("schedule routes gate mutations behind the capability token and loopback origin", async () => {
+    const stateFilePath = stateFile();
+    const server = serverFor(stateFilePath);
+    const base = await start(server);
+    try {
+        const noToken = await fetch(base + "/api/schedules", { method: "POST", headers: headers(null),
+            body: JSON.stringify({ title: "watch", job: "ci-watch", repo: "acme/demo", kind: "interval", intervalMinutes: 15 }) });
+        assert.equal(noToken.status, 403);
+        const untrusted = await fetch(base + "/api/schedules", { method: "POST", headers: { ...headers(), origin: "https://evil.example" },
+            body: JSON.stringify({ title: "watch", job: "ci-watch", repo: "acme/demo", kind: "interval", intervalMinutes: 15 }) });
+        assert.equal(untrusted.status, 403);
+        const invalid = await fetch(base + "/api/schedules", { method: "POST", headers: headers(),
+            body: JSON.stringify({ title: "watch", job: "ci-watch", repo: "acme/demo", kind: "interval", intervalMinutes: 5 }) });
+        assert.equal(invalid.status, 400);
+        assert.equal((await invalid.json()).code, "invalid-cadence");
+        const listed = await (await fetch(base + "/api/schedules")).json();
+        assert.equal(listed.schedules.length, 0);
+    }
+    finally {
+        await new Promise((resolve) => server.close(() => resolve()));
+        await rm(stateFilePath, { force: true });
+    }
+});
+test("the default ci-watch runner records the GitHub opt-in gate as a failed run", async () => {
+    const stateFilePath = stateFile();
+    const server = serverFor(stateFilePath);
+    const base = await start(server);
+    try {
+        const created = await fetch(base + "/api/schedules", { method: "POST", headers: headers(),
+            body: JSON.stringify({ title: "watch", job: "ci-watch", repo: "acme/demo", kind: "interval", intervalMinutes: 15 }) });
+        const { schedule } = await created.json();
+        const runNow = await fetch(`${base}/api/schedules/${schedule.id}/run`, { method: "POST", headers: headers(), body: "{}" });
+        assert.equal(runNow.status, 200);
+        const payload = await runNow.json();
+        assert.equal(payload.record.ok, false);
+        assert.equal(payload.record.summary.code, "opt-in-required");
+    }
+    finally {
+        await new Promise((resolve) => server.close(() => resolve()));
+        await rm(stateFilePath, { force: true });
+    }
+});

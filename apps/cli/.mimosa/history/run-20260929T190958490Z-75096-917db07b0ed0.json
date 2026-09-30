@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "mimosa-finding-history/v1",
+  "runId": "20260929T190958490Z-75096-917db07b0ed0",
+  "runStatus": "inconclusive",
+  "errors": [
+    "candidate-select:src/auto-fix-command.ts: candidate_limit_exceeded: 4 changed reviewable file(s) were not scanned because the limit is 20",
+    "baseline-read:tests-dist/ink-focus-router.test.js: baseline_snapshot_unreadable: file is missing from task baseline",
+    "baseline-read:tests-dist/ink-kitty-query-response.test.js: baseline_snapshot_unreadable: file is missing from task baseline",
+    "baseline-read:tests-dist/ink-visual-regression.test.js: baseline_snapshot_unreadable: file is missing from task baseline",
+    "baseline-read:tests/ink-focus-router.test.ts: baseline_snapshot_unreadable: file is missing from task baseline",
+    "baseline-read:tests/ink-visual-regression.test.ts: baseline_snapshot_unreadable: file is missing from task baseline"
+  ],
+  "target": ".",
+  "revision": "9065aa1761860089fc6cb784ee62716c4e3432a7",
+  "diffHash": "0ba8c22c33fe346133d878f70098099010341bc2cd77e5d1ca597e6c76eb0cb4",
+  "rulesVersion": "unavailable",
+  "recordedAt": "2026-09-29T19:09:58.490Z",
+  "timing": {
+    "startedAt": "2026-09-29T19:09:57.083Z",
+    "completedAt": "2026-09-29T19:09:58.490Z",
+    "durationMs": 1407
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "modelCalls": 0,
+    "measurement": "known-zero"
+  },
+  "findings": {
+    "total": 0,
+    "bySeverity": {},
+    "byStatus": {}
+  },
+  "coverage": {
+    "status": "partial",
+    "reasonCounts": {
+      "candidate_limit_exceeded": 1,
+      "baseline_snapshot_unreadable": 5,
+      "project_check_failed": 6
+    }
+  },
+  "evidenceBoundary": "static_only",
+  "immutableReport": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260929T190958490Z-75096-917db07b0ed0.json"
+}

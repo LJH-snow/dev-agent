@@ -1,0 +1,146 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { createDesktopServer } from "../dist/server.js";
+const url = "https://github.com/acme/demo/pull/42";
+function git(cwd, ...args) {
+    return execFileSync("git", args, { cwd, encoding: "utf8", env: { ...process.env,
+            GIT_AUTHOR_NAME: "CI repair tests", GIT_AUTHOR_EMAIL: "repair@example.invalid",
+            GIT_COMMITTER_NAME: "CI repair tests", GIT_COMMITTER_EMAIL: "repair@example.invalid" } }).trim();
+}
+async function repo() {
+    const container = await mkdtemp(join(tmpdir(), "desktop-ci-repair-"));
+    const root = join(container, "repo");
+    await mkdir(root);
+    git(root, "init", "-q");
+    git(root, "config", "user.name", "CI repair tests");
+    git(root, "config", "user.email", "repair@example.invalid");
+    await writeFile(join(root, "README.md"), "base\n");
+    git(root, "add", ".");
+    git(root, "commit", "-qm", "base");
+    return { container, root, sha: git(root, "rev-parse", "HEAD") };
+}
+function snapshot(sha, overrides = {}) {
+    return { readOnly: true, target: { owner: "acme", repo: "demo", number: 42, url }, headSha: sha,
+        stale: false, evidence: "checks-only", checks: [{ name: "build", state: "failed", workflow: "CI", url: "" }],
+        runs: [], truncated: false, ...overrides };
+}
+function serverFor(root, container, diagnosis) {
+    const server = createDesktopServer({ session: { id: "desktop-default", async run() { } }, workspaceRoot: root,
+        worktreeDirectory: join(container, "worktrees"), workspaceStateFile: join(container, "state.json"),
+        createSession: (sessionId, workingDirectory) => ({ id: sessionId, workingDirectory, async run() { } }),
+        capabilityToken: "repair-test-token", githubCiDiagnosis: diagnosis });
+    return server;
+}
+async function start(server) {
+    return new Promise((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(0, "127.0.0.1", () => {
+            const addr = server.address();
+            assert.ok(addr && typeof addr !== "string");
+            resolve(`http://127.0.0.1:${addr.port}`);
+        });
+    });
+}
+function post(base, body, token = "repair-test-token") {
+    return fetch(base + "/api/github/ci-repair", { method: "POST", headers: { "content-type": "application/json", "x-dev-agent-capability": token }, body: JSON.stringify(body) });
+}
+test("repair creation requires explicit confirmation and an exact local PR head", async () => {
+    const { root, container, sha } = await repo();
+    let remoteReads = 0;
+    let remoteSha = sha;
+    const server = serverFor(root, container, async () => { remoteReads++; return { ok: true, snapshot: snapshot(remoteSha) }; });
+    const base = await start(server);
+    try {
+        const missingConfirmation = await post(base, { url, expectedSha: sha });
+        assert.equal(missingConfirmation.status, 400);
+        assert.equal(remoteReads, 0);
+        const wrongCapability = await post(base, { url, expectedSha: sha, confirm: true }, "wrong");
+        assert.equal(wrongCapability.status, 403);
+        assert.equal(remoteReads, 0);
+        remoteSha = "b".repeat(40);
+        const badSha = await post(base, { url, expectedSha: remoteSha, confirm: true });
+        assert.equal(badSha.status, 409);
+        assert.equal((await badSha.json()).code, "local-head-mismatch");
+        assert.deepEqual((await (await fetch(base + "/api/workspaces")).json()).workspaces, []);
+        remoteSha = sha;
+        const accepted = await post(base, { url, expectedSha: sha, confirm: true });
+        assert.equal(accepted.status, 201);
+        const task = await accepted.json();
+        assert.match(task.sessionId, /^task-/);
+        assert.equal(task.headSha, sha);
+        assert.equal(git(root, "rev-parse", "HEAD"), sha);
+        assert.equal(git(join(container, "worktrees", task.sessionId), "rev-parse", "HEAD"), sha);
+        assert.equal(task.localValidation, "not-run");
+        assert.equal(task.remoteCi, "failed-at-confirmed-head");
+        const taskDiff = await (await fetch(`${base}/api/workspaces/${task.sessionId}/diff`)).json();
+        assert.deepEqual(taskDiff.files, []);
+        const validation = await (await fetch(`${base}/api/task-validation?sessionId=${task.sessionId}`)).json();
+        assert.equal(validation.state, "idle");
+        const delivery = await fetch(`${base}/api/sessions/${task.sessionId}/delivery-report`);
+        assert.equal(delivery.status, 200);
+        assert.match(await delivery.text(), /not run/i);
+        assert.ok(remoteReads >= 2);
+    }
+    finally {
+        await new Promise((resolve) => server.close(() => resolve()));
+        await rm(container, { recursive: true, force: true });
+    }
+});
+test("repair endpoint denies untrusted origin and reports disabled GitHub integration before touching workspaces", async () => {
+    const { root, container, sha } = await repo();
+    let calls = 0;
+    const server = serverFor(root, container, async () => { calls++; return { ok: false, code: "opt-in-required" }; });
+    const base = await start(server);
+    try {
+        const origin = await fetch(base + "/api/github/ci-repair", { method: "POST", headers: {
+                "content-type": "application/json", "x-dev-agent-capability": "repair-test-token", origin: "https://evil.example",
+            }, body: JSON.stringify({ url, expectedSha: sha, confirm: true }) });
+        assert.equal(origin.status, 403);
+        assert.equal(calls, 0);
+        const disabled = await post(base, { url, expectedSha: sha, confirm: true });
+        assert.equal(disabled.status, 403);
+        assert.equal((await disabled.json()).code, "opt-in-required");
+        assert.deepEqual((await (await fetch(base + "/api/workspaces")).json()).workspaces, []);
+    }
+    finally {
+        await new Promise((resolve) => server.close(() => resolve()));
+        await rm(container, { recursive: true, force: true });
+    }
+});
+test("repair creation fails closed for stale PRs, missing failed checks, and head changes mid-creation", async () => {
+    const { root, container, sha } = await repo();
+    let mode = "stale";
+    let remoteReads = 0;
+    const server = serverFor(root, container, async () => {
+        remoteReads++;
+        if (mode === "stale")
+            return { ok: true, snapshot: snapshot("b".repeat(40), { stale: true, checks: [], evidence: "stale" }) };
+        if (mode === "passed")
+            return { ok: true, snapshot: snapshot(sha, { checks: [], evidence: "none" }) };
+        return { ok: true, snapshot: remoteReads > 1 ? snapshot("b".repeat(40), { stale: true, checks: [], evidence: "stale" }) : snapshot(sha) };
+    });
+    const base = await start(server);
+    try {
+        const first = await post(base, { url, expectedSha: sha, confirm: true });
+        assert.equal(first.status, 409);
+        assert.equal((await first.json()).code, "stale-head");
+        mode = "passed";
+        const second = await post(base, { url, expectedSha: sha, confirm: true });
+        assert.equal(second.status, 409);
+        assert.equal((await second.json()).code, "no-failed-check");
+        mode = "moved";
+        remoteReads = 0;
+        const third = await post(base, { url, expectedSha: sha, confirm: true });
+        assert.equal(third.status, 409);
+        assert.equal((await third.json()).code, "stale-head");
+        assert.deepEqual((await (await fetch(base + "/api/workspaces")).json()).workspaces.filter((item) => !item.merged && item.state !== "cleaned"), []);
+    }
+    finally {
+        await new Promise((resolve) => server.close(() => resolve()));
+        await rm(container, { recursive: true, force: true });
+    }
+});

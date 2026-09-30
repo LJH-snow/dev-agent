@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-30（CLI TUI pinned task header while browsing）
+
+- Scrolling up into the transcript now pins the task that owns the row at the
+  top of the viewport (Codex-style), not always the latest task: user prompts
+  register their painted row position after each commit, and the pinned
+  header switches to the previous task as the viewport scrolls past its
+  prompt. Scrolling into the welcome area hides the header.
+- The pinned row takes one row from the transcript viewport (model and paint
+  stay consistent) and disappears again in follow-at-bottom mode.
+- The previously dead `StickyTaskHeader`/`deriveStickyTaskTitle` scaffolding
+  is now wired into the live frame.
+
 ## 2026-09-30（CLI Autofix review persistence and discoverability）
 
 - Declined or cancelled Autofix reviews now persist bounded, redacted change-set
@@ -9,6 +21,38 @@
 - Readline help, the Ink command palette, and the interactive banner now list
   `:autofix review`, `:autofix apply`, and `:autofix discard` alongside the
   existing `:autofix [1-3]` repair command.
+- Review cleanup now fails closed: a failed discard/clear is reported without
+  claiming success, and an applied change set whose review metadata cannot be
+  cleared remains explicitly unavailable for re-apply until discarded.
+
+- Declined or cancelled Autofix reviews now persist bounded, redacted change-set
+  metadata tied to the original session and workspace. Same-session resume can
+  review or apply the exact live change set, while a restarted CLI can review
+  or discard it and fails closed on apply.
+- Readline help, the Ink command palette, and the interactive banner now list
+  `:autofix review`, `:autofix apply`, and `:autofix discard` alongside the
+  existing `:autofix [1-3]` repair command.
+
+## 2026-09-30（CLI @file completion fuzzy fallback）
+
+- `@file` path completion now falls back to a bounded cross-directory fuzzy
+  match when the typed reference has no prefix match at its own directory
+  level: `@utl` discovers `src/utils.ts` (substring) and `@rdm` finds
+  `README.md` (in-order subsequence).
+- The fallback scans at most 3 directory levels under the existing 2,000-entry
+  cap, is skipped while navigating an existing directory (`@src/`), and never
+  changes normal prefix completion.
+- With the path completion panel open, Enter now accepts the highlighted
+  suggestion into the composer instead of submitting the bare `@` draft; the
+  next Enter submits the full reference. The fuzzy fallback also never echoes
+  the exact typed path back, so a fully typed reference still closes the
+  panel.
+- Path completion and session picker rows are now clickable and wheel-scroll
+  like the command palette: a measured panel layout drives hit testing, the
+  first click selects a row, and clicking the selected row accepts/resumes
+  it. Accepting a suggestion ignores a panel whose token span or caret no
+  longer matches the current draft, so a fast second click after acceptance
+  can no longer duplicate the path.
 
 ## 2026-09-30（CLI TUI command palette fuzzy matching and wheel selection）
 

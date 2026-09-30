@@ -1,0 +1,973 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20260930T050347446Z-32258-af51beb8852d",
+  "run_status": "inconclusive",
+  "errors": [
+    {
+      "stage": "candidate-select",
+      "target": "tests/tmp-debug-path-enter.test.ts",
+      "reason": "changed_file_unreadable: observed changed file no longer exists or cannot be read"
+    },
+    {
+      "stage": "candidate-select",
+      "target": "src/index.ts",
+      "reason": "candidate_limit_exceeded: 2 changed reviewable file(s) were not scanned because the limit is 20"
+    },
+    {
+      "stage": "baseline-read",
+      "target": "tests-dist/autofix-review-store.test.js",
+      "reason": "baseline_snapshot_unreadable: file is missing from task baseline"
+    },
+    {
+      "stage": "baseline-read",
+      "target": "tests/autofix-review-store.test.ts",
+      "reason": "baseline_snapshot_unreadable: file is missing from task baseline"
+    },
+    {
+      "stage": "baseline-read",
+      "target": "src/autofix-review-store.ts",
+      "reason": "baseline_snapshot_unreadable: file is missing from task baseline"
+    },
+    {
+      "stage": "scan",
+      "target": "src/ink/app.tsx",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "src/ink/command-palette.tsx",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests/ink-visual-regression.test.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests/ink-navigation-screen.test.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests/ink-app.test.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "src/path-completion.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests/path-completion.test.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests-dist/auto-fix-cli.test.js",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests-dist/autofix-review-store.test.js",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests-dist/command-palette.test.js",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests-dist/ink-app.test.js",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests-dist/ink-navigation-screen.test.js",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests-dist/ink-visual-regression.test.js",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests-dist/path-completion.test.js",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests-dist/tui-renderer.test.js",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests/auto-fix-cli.test.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests/autofix-review-store.test.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests/command-palette.test.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "tests/tui-renderer.test.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    },
+    {
+      "stage": "scan",
+      "target": "src/autofix-review-store.ts",
+      "reason": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT"
+    }
+  ],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "partial",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": true,
+      "captured_files": 355,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 19
+    },
+    "change_tracking": {
+      "touched_observed": 8,
+      "touched_retained": 8,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 22,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 22,
+      "selected_files": 20,
+      "limit": 20,
+      "truncated": true
+    },
+    "scanning": {
+      "required_files": 20,
+      "scanned_files": 0,
+      "skipped_files": 0,
+      "failed_files": 20,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 0,
+      "detailed_findings": 0,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {
+      "changed_file_unreadable": 1,
+      "candidate_limit_exceeded": 1,
+      "baseline_snapshot_unreadable": 3,
+      "scanner_failed": 20,
+      "project_check_failed": 25
+    },
+    "reasons": [
+      {
+        "code": "changed_file_unreadable",
+        "stage": "candidate-select",
+        "target": "tests/tmp-debug-path-enter.test.ts",
+        "detail": "observed changed file no longer exists or cannot be read",
+        "affects_completion": true
+      },
+      {
+        "code": "candidate_limit_exceeded",
+        "stage": "candidate-select",
+        "target": "src/index.ts",
+        "detail": "2 changed reviewable file(s) were not scanned because the limit is 20",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests-dist/autofix-review-store.test.js",
+        "detail": "file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests/autofix-review-store.test.ts",
+        "detail": "file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "src/autofix-review-store.ts",
+        "detail": "file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "src/ink/app.tsx",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "src/ink/command-palette.tsx",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/ink-visual-regression.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/ink-navigation-screen.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/ink-app.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "src/path-completion.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/path-completion.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/auto-fix-cli.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/autofix-review-store.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/command-palette.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-app.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-navigation-screen.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-visual-regression.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/path-completion.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/tui-renderer.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/auto-fix-cli.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/autofix-review-store.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/command-palette.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/tui-renderer.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "src/autofix-review-store.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "tests/tmp-debug-path-enter.test.ts",
+        "detail": "changed_file_unreadable: observed changed file no longer exists or cannot be read",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "src/index.ts",
+        "detail": "candidate_limit_exceeded: 2 changed reviewable file(s) were not scanned because the limit is 20",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests-dist/autofix-review-store.test.js",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests/autofix-review-store.test.ts",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "src/autofix-review-store.ts",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "src/ink/app.tsx",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "src/ink/command-palette.tsx",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/ink-visual-regression.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/ink-navigation-screen.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/ink-app.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "src/path-completion.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/path-completion.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/auto-fix-cli.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/autofix-review-store.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/command-palette.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-app.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-navigation-screen.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-visual-regression.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/path-completion.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/tui-renderer.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/auto-fix-cli.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/autofix-review-store.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/command-palette.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/tui-renderer.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "src/autofix-review-store.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affects_completion": true
+      }
+    ],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-09-30T05:03:47.446Z",
+  "session_id": "sess_4944d208-ac81-4b15-81b7-a3ac8d89761b",
+  "target": ".",
+  "revision": "fdb257220e0e890d218fc7924bacdbd2285939ef",
+  "rules_version": "unavailable",
+  "diff_hash": "57405ad58bfb482557e0028582b17885b95c5ed277aead60c4afdd991017413d",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 20,
+    "changed_files": [
+      {
+        "file": "src/autofix-review-store.ts",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 104
+          }
+        ],
+        "before_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after_hash": "11d5d512086810596c79ea8e7a07cd50c24dc1f34fb78a0a8235eaa06a630af5"
+      },
+      {
+        "file": "src/ink/app.tsx",
+        "ranges": [
+          {
+            "start": 194,
+            "end": 194
+          },
+          {
+            "start": 318,
+            "end": 318
+          },
+          {
+            "start": 320,
+            "end": 324
+          },
+          {
+            "start": 327,
+            "end": 340
+          },
+          {
+            "start": 418,
+            "end": 419
+          },
+          {
+            "start": 476,
+            "end": 486
+          },
+          {
+            "start": 498,
+            "end": 501
+          },
+          {
+            "start": 504,
+            "end": 504
+          },
+          {
+            "start": 506,
+            "end": 507
+          },
+          {
+            "start": 509,
+            "end": 509
+          },
+          {
+            "start": 682,
+            "end": 693
+          },
+          {
+            "start": 712,
+            "end": 712
+          },
+          {
+            "start": 730,
+            "end": 732
+          },
+          {
+            "start": 737,
+            "end": 737
+          },
+          {
+            "start": 876,
+            "end": 876
+          },
+          {
+            "start": 1668,
+            "end": 1676
+          },
+          {
+            "start": 1691,
+            "end": 1695
+          },
+          {
+            "start": 1697,
+            "end": 1705
+          }
+        ],
+        "before_hash": "b00538f78d0b99c7b2dfa4ed466702cc40f5789053936edaf2b06b8198618cf9",
+        "after_hash": "be0a1e8f89711037a9cc26dec39104ddb5c02c4c36b9a6f82d74596f3961968b"
+      },
+      {
+        "file": "src/ink/command-palette.tsx",
+        "ranges": [
+          {
+            "start": 59,
+            "end": 59
+          },
+          {
+            "start": 66,
+            "end": 67
+          },
+          {
+            "start": 76,
+            "end": 76
+          },
+          {
+            "start": 79,
+            "end": 79
+          },
+          {
+            "start": 151,
+            "end": 151
+          }
+        ],
+        "before_hash": "1941a76c50adba49b5387cbec2f503a78c495f20df682cd4d7b26f18105585f5",
+        "after_hash": "45536f9cf166d09c134a3bccfa8902ba4a5a2ce656571b7d15bcd170ac987dc8"
+      },
+      {
+        "file": "src/path-completion.ts",
+        "ranges": [
+          {
+            "start": 15,
+            "end": 18
+          },
+          {
+            "start": 125,
+            "end": 140
+          },
+          {
+            "start": 149,
+            "end": 208
+          }
+        ],
+        "before_hash": "ccad1efc3e1efcfcca24d79b39bf191b23b196d2421c3e93873cc48e9fef8f79",
+        "after_hash": "bac2ba5b35b3eba976c5afe424855dc2bd403af9390319e47ad792f922da8001"
+      },
+      {
+        "file": "tests-dist/auto-fix-cli.test.js",
+        "ranges": [
+          {
+            "start": 10,
+            "end": 11
+          },
+          {
+            "start": 29,
+            "end": 75
+          },
+          {
+            "start": 349,
+            "end": 656
+          }
+        ],
+        "before_hash": "51746fdbec3b3ac7efd7b23bbb4de9657b3eccbc3b9ec615ea10e089286a6f63",
+        "after_hash": "2697d07d8caac321c967ce2284eaa3c2ab9e9f89b7fd3971fcfc953d7cc25c46"
+      },
+      {
+        "file": "tests-dist/autofix-review-store.test.js",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 54
+          }
+        ],
+        "before_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after_hash": "e24b20997b56fc5cd0d1b07b6fb7aed4c68165d29a340521539d4ff47c463e9a"
+      },
+      {
+        "file": "tests-dist/command-palette.test.js",
+        "ranges": [
+          {
+            "start": 37,
+            "end": 37
+          }
+        ],
+        "before_hash": "2b8af4c204ea2e4e5c14c56b952e60e6bd422b78993661c4fb71164c5ddc2bff",
+        "after_hash": "5fe391f2005c66fb5f59cf57f95849b207be4f2e576c9160dccb19e15b3fcc43"
+      },
+      {
+        "file": "tests-dist/ink-app.test.js",
+        "ranges": [
+          {
+            "start": 2,
+            "end": 2
+          },
+          {
+            "start": 146,
+            "end": 147
+          },
+          {
+            "start": 151,
+            "end": 153
+          },
+          {
+            "start": 285,
+            "end": 396
+          }
+        ],
+        "before_hash": "c852209d80ab7b9984eed9bc3b1dc138b6b96c61bcf25b1509e0ce5ddc3e516d",
+        "after_hash": "a01a0a929d5c29e4a09080062496a88a0d4432a40fdac0c68abe628ec8f88e12"
+      },
+      {
+        "file": "tests-dist/ink-navigation-screen.test.js",
+        "ranges": [
+          {
+            "start": 16,
+            "end": 16
+          },
+          {
+            "start": 41,
+            "end": 41
+          },
+          {
+            "start": 218,
+            "end": 238
+          },
+          {
+            "start": 259,
+            "end": 287
+          }
+        ],
+        "before_hash": "fc758190136463cfd80c6065909908824b0d84291f109f72a17d8c131f8c7ef1",
+        "after_hash": "7f3bbf3a770398c02efd6b99057ff95deedc07733278bd2d356b9bd1cf46a1b2"
+      },
+      {
+        "file": "tests-dist/ink-visual-regression.test.js",
+        "ranges": [
+          {
+            "start": 127,
+            "end": 158
+          }
+        ],
+        "before_hash": "23f7fcd8362ee7a1f6237a9a0374dc8cf10b75bf084557ae3ec84ef027cac233",
+        "after_hash": "d60543e9028bac6518a6d9f58680e680ff7e9c5104a2d8f95e45bbc449e34c71"
+      },
+      {
+        "file": "tests-dist/path-completion.test.js",
+        "ranges": [
+          {
+            "start": 54,
+            "end": 69
+          }
+        ],
+        "before_hash": "948c20b151f9a346953edc4e2f66c1a5852af3d2684a5a3671f5e3d27e5e694b",
+        "after_hash": "9e9b5c67e9b75d7b9ad59fb44746997ce6bd37e8d26c007f888bf3a318c5999d"
+      },
+      {
+        "file": "tests-dist/tui-renderer.test.js",
+        "ranges": [
+          {
+            "start": 170,
+            "end": 172
+          }
+        ],
+        "before_hash": "ebfdce6e2b7b5159cded62a49929c4860ab9f86453d897abf0d9fd3879c9b487",
+        "after_hash": "6e422be610a6cfdd45b3a8a81635c643844b799348343027df49aafe2878feac"
+      },
+      {
+        "file": "tests/auto-fix-cli.test.ts",
+        "ranges": [
+          {
+            "start": 10,
+            "end": 15
+          },
+          {
+            "start": 35,
+            "end": 82
+          },
+          {
+            "start": 365,
+            "end": 689
+          }
+        ],
+        "before_hash": "1a47d762c3453edbcc10ff12328c61752f11a9b4a80cddbeaf82db847ccfa7ac",
+        "after_hash": "74a77793f33764575f737625d99721ad59d9176ac007eb6469c667decd73b4ab"
+      },
+      {
+        "file": "tests/autofix-review-store.test.ts",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 88
+          }
+        ],
+        "before_hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "after_hash": "55979fa3e1068dde564639481e2b304d835d075c9fb8cfe1ce9466a6467bddf7"
+      },
+      {
+        "file": "tests/command-palette.test.ts",
+        "ranges": [
+          {
+            "start": 57,
+            "end": 57
+          }
+        ],
+        "before_hash": "7cc86509fedcc28a6622755a9fd7f352bdcef0989f7503a805ac36cb633d31db",
+        "after_hash": "c49db31d522149634e0457ac6ef89b67e8f9329da2b7c8edd1b6371a952211e7"
+      },
+      {
+        "file": "tests/ink-app.test.ts",
+        "ranges": [
+          {
+            "start": 2,
+            "end": 2
+          },
+          {
+            "start": 188,
+            "end": 190
+          },
+          {
+            "start": 194,
+            "end": 196
+          },
+          {
+            "start": 402,
+            "end": 537
+          }
+        ],
+        "before_hash": "e743e8807a503b06476ccaa9bbfd542a9270da266aa2d30cc4997d45fa7f7aae",
+        "after_hash": "eae8b8f91657579f60c8c959cc0eec888fe6f1161cc6c58c2453debbecb23b97"
+      },
+      {
+        "file": "tests/ink-navigation-screen.test.ts",
+        "ranges": [
+          {
+            "start": 19,
+            "end": 23
+          },
+          {
+            "start": 48,
+            "end": 48
+          },
+          {
+            "start": 235,
+            "end": 258
+          },
+          {
+            "start": 282,
+            "end": 311
+          }
+        ],
+        "before_hash": "ce8989ab54c5b546246168fcf77b1a4d0d25e8748495ea8eb9f5b7b2cfc1355d",
+        "after_hash": "539801a8ac73c50808a393811fb93594e3590fd0c4e8f810dbed2e61b801c176"
+      },
+      {
+        "file": "tests/ink-visual-regression.test.ts",
+        "ranges": [
+          {
+            "start": 150,
+            "end": 186
+          }
+        ],
+        "before_hash": "87a6b42ffceb9f2030a955e7fc3222d348e0a70587a9f121a2d2e30dffc350c5",
+        "after_hash": "0978b25f73f33d3b7072d8a464db09af216b55a83708e8fc007d3bffbf414541"
+      },
+      {
+        "file": "tests/path-completion.test.ts",
+        "ranges": [
+          {
+            "start": 70,
+            "end": 98
+          }
+        ],
+        "before_hash": "d6a891967403549ac21642c32b5ffb42f4e571fbc5820a125589ebe7a73aa5bd",
+        "after_hash": "07efb2630f478fa88dbc12b9b6ddd99e996dc00e2694208f8db9692bbf5eebbb"
+      },
+      {
+        "file": "tests/tui-renderer.test.ts",
+        "ranges": [
+          {
+            "start": 220,
+            "end": 222
+          }
+        ],
+        "before_hash": "401e9a97ac5e2860533c0e2309a630f27acb125df1eb1b4f1b1a7a079c8f6867",
+        "after_hash": "0edd46d79ebcb47f66ebcb009274fb26d3e088af390830210d1d9117e13a6d77"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-09-30T05:03:44.866Z",
+    "completed_at": "2026-09-30T05:03:47.446Z",
+    "duration_ms": 2580,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "partial/INCONCLUSIVE",
+    "latencyMs": 2580,
+    "peakMemoryBytes": 117850112,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 0,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 0,
+  "rewake_finding_count": 0,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [],
+  "findings": [],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260930T050347446Z-32258-af51beb8852d.json",
+    "latest_report": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b.json",
+    "history_summary": ".mimosa/history/run-20260930T050347446Z-32258-af51beb8852d.json"
+  }
+}

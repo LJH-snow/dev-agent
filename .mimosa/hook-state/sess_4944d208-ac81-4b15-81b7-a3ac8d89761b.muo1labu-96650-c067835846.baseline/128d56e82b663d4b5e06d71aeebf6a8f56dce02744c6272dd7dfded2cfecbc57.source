@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import test from "node:test";
+import { LocalSkillMarketplace } from "../dist/skill-marketplace.js";
+test("local marketplace searches metadata and installs only after confirmation", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dev-agent-marketplace-"));
+    try {
+        const source = join(root, "catalog-source.md");
+        const catalog = join(root, "catalog.json");
+        const state = join(root, "state.json");
+        const project = join(root, "project");
+        await mkdir(project, { recursive: true });
+        await writeFile(source, "---\nname: docs-helper\ndescription: Documentation helper\n---\nOnly review docs.", "utf8");
+        await writeFile(catalog, JSON.stringify({ entries: [{ name: "docs-helper", version: "1.2.0", description: "Documentation helper", source, permissions: ["prompt-only"] }] }), "utf8");
+        const marketplace = new LocalSkillMarketplace({ workingDirectory: project, catalogPath: catalog, statePath: state });
+        assert.equal((await marketplace.search("docs"))[0]?.name, "docs-helper");
+        assert.equal(await marketplace.install("docs-helper", async () => false), false);
+        assert.equal(await marketplace.install("docs-helper", async (prompt) => prompt.includes("prompt-only")), true);
+        assert.match(await readFile(join(project, ".dev-agent", "skills", "docs-helper", "SKILL.md"), "utf8"), /Only review docs/);
+        const installed = (await marketplace.list()).find((entry) => entry.name === "docs-helper");
+        assert.equal(installed?.installedVersion, "1.2.0");
+        assert.equal(await marketplace.disable("docs-helper", async () => true), true);
+        await assert.rejects(readFile(join(project, ".dev-agent", "skills", "docs-helper", "SKILL.md")));
+        assert.equal(await marketplace.enable("docs-helper"), true);
+        assert.match(await readFile(join(project, ".dev-agent", "skills", "docs-helper", "SKILL.md"), "utf8"), /Only review docs/);
+    }
+    finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});
+test("marketplace refuses remote sources, path escapes, malformed catalogs, and unconfirmed mutations", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dev-agent-marketplace-safe-"));
+    try {
+        const catalog = join(root, "catalog.json");
+        await writeFile(catalog, JSON.stringify({ entries: [
+                { name: "remote", version: "1", description: "remote", source: "https://example.com/SKILL.md", permissions: [] },
+                { name: "escape", version: "1", description: "escape", source: join(root, "..", "outside.md"), permissions: [] },
+            ] }), "utf8");
+        const marketplace = new LocalSkillMarketplace({ workingDirectory: join(root, "project"), catalogPath: catalog, statePath: join(root, "state.json") });
+        assert.equal(await marketplace.install("remote", async () => true), false);
+        assert.equal(await marketplace.install("escape", async () => true), false);
+        assert.equal(await marketplace.install("missing", async () => true), false);
+        assert.equal(await marketplace.disable("remote", async () => true), false);
+    }
+    finally {
+        await rm(root, { recursive: true, force: true });
+    }
+});

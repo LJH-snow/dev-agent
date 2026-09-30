@@ -1958,6 +1958,10 @@
         "validation.unavailable": "Rerun is unavailable for this session",
         "validation.rerunFailed": "Rerun failed",
         "validation.commandUnavailable": "command unavailable",
+        "validation.autofix": "Repair with Autofix",
+        "validation.autofixPrompt": "Autofix repair preview",
+        "validation.autofixStarted": "Autofix review queued",
+        "validation.autofixUnavailable": "Autofix is unavailable",
         "state.running": "running",
         "state.idle": "idle",
         "state.guarded": "guarded",
@@ -2749,6 +2753,10 @@
         "validation.unavailable": "此会话不支持重新运行",
         "validation.rerunFailed": "重新运行失败",
         "validation.commandUnavailable": "命令不可用",
+        "validation.autofix": "使用 Autofix 修复",
+        "validation.autofixPrompt": "Autofix 修复预览",
+        "validation.autofixStarted": "Autofix 审查已排队",
+        "validation.autofixUnavailable": "Autofix 当前不可用",
         "state.running": "运行中",
         "state.idle": "空闲",
         "state.guarded": "受保护",
@@ -3211,6 +3219,7 @@
         queueId: item.queueId,
         turnId: item.turnId,
         message: item.message,
+        kind: item.kind === "autofix" ? "autofix" : "prompt",
         mode: item.mode === "plan" ? "plan" : "normal",
         status: initialState,
         outcome: null,
@@ -6937,6 +6946,33 @@
       return true;
     }
 
+    function enqueueAutoFix(sessionId) {
+      const state = getSessionClientState(sessionId);
+      if (!state || sessionId !== currentSessionId || state.pausedReason) {
+        setStatus(t("validation.autofixUnavailable"));
+        return false;
+      }
+      const result = state.queue.enqueue(t("validation.autofixPrompt"), {
+        mode: "plan",
+        kind: "autofix",
+      });
+      if (!result.ok) {
+        setStatus(result.reason === "queue_full" ? "queue full" : "Autofix unavailable");
+        return false;
+      }
+      const turn = createTurnRecord(sessionId, result.item, "queued");
+      if (sessionId === currentSessionId) {
+        messages.querySelector(".empty")?.remove();
+        ensureTurnView(turn);
+      }
+      renderQueueState(sessionId);
+      updateComposerAvailability(sessionId);
+      if (!state.active && !state.pausedReason && sessionId === currentSessionId) {
+        void drainSessionQueue(sessionId);
+      }
+      return true;
+    }
+
     async function drainSessionQueue(sessionId) {
       const state = getSessionClientState(sessionId);
       if (
@@ -7021,14 +7057,14 @@
       }
 
       try {
-        const res = await fetch("/api/chat", {
+        const res = await fetch(turn.kind === "autofix" ? "/api/autofix" : "/api/chat", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({
-            message: turn.message,
-            sessionId: requestSessionId,
-            mode: turn.mode,
-          }),
+          body: JSON.stringify(
+            turn.kind === "autofix"
+              ? { sessionId: requestSessionId }
+              : { message: turn.message, sessionId: requestSessionId, mode: turn.mode },
+          ),
           signal: controller.signal,
         });
         if (!res.ok || !res.body) {
@@ -7447,6 +7483,23 @@
             }
           }
         });
+        if (statusValue === "failed" || statusValue === "blocked") {
+          const autofix = document.createElement("button");
+          autofix.type = "button";
+          setLocalizedNode(autofix, "validation.autofix");
+          const autofixStatus = document.createElement("span");
+          autofixStatus.className = "undo-status autofix-status";
+          autofix.addEventListener("click", () => {
+            autofix.disabled = true;
+            if (enqueueAutoFix(sessionId)) {
+              setLocalizedNode(autofixStatus, "validation.autofixStarted");
+            } else {
+              autofix.disabled = false;
+              setLocalizedNode(autofixStatus, "validation.autofixUnavailable");
+            }
+          });
+          actions.append(autofix, autofixStatus);
+        }
         actions.append(rerun, rerunStatus);
         div.appendChild(actions);
       }

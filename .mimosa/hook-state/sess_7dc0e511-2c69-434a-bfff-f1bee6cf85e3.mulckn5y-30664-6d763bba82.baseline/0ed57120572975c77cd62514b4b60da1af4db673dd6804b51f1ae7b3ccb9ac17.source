@@ -1,0 +1,226 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { readFile } from "node:fs/promises";
+const uiModulePath = "../public/github-delivery-loop-ui.js";
+const repoUrl = "https://github.com/acme/demo";
+const sha = "a".repeat(40);
+const prListSnapshot = {
+    readOnly: true,
+    repo: { owner: "acme", repo: "demo", url: repoUrl },
+    prs: [{
+            number: 42, title: "Fix parser", isDraft: false, state: "open", author: "octocat",
+            headRefName: "feature/parser", headRefOid: sha, url: `${repoUrl}/pull/42`,
+            updatedAt: "2026-09-27T10:00:00Z",
+            checks: { passed: 2, failed: 1, pending: 1, unknown: 0, total: 4, verdict: "failing" },
+        }, {
+            number: 43, title: "Docs refresh", isDraft: true, state: "open", author: "octo",
+            headRefName: "docs", headRefOid: "b".repeat(40), url: `${repoUrl}/pull/43`,
+            updatedAt: "2026-09-26T10:00:00Z",
+            checks: { passed: 3, failed: 0, pending: 0, unknown: 0, total: 3, verdict: "passing" },
+        }],
+    truncated: false,
+};
+class Element {
+    value = "";
+    textContent = "";
+    disabled = false;
+    hidden = false;
+    className = "";
+    type = "";
+    children = [];
+    dataset = {};
+    listeners = new Map();
+    addEventListener(type, listener) { this.listeners.set(type, listener); }
+    replaceChildren(...nodes) { this.children = nodes; }
+    append(...nodes) { this.children.push(...nodes); }
+    trigger(type) { this.listeners.get(type)?.({ preventDefault() { } }); }
+}
+class Document {
+    nodes = new Map();
+    constructor() {
+        for (const id of ["github-delivery-loop-panel", "github-delivery-loop-repo", "github-delivery-loop-form",
+            "github-delivery-loop-load", "github-delivery-loop-status", "github-delivery-loop-prs", "github-delivery-loop-verify",
+            "github-delivery-loop-lineage", "github-delivery-loop-verification"])
+            this.nodes.set(id, new Element());
+    }
+    getElementById(id) { return this.nodes.get(id); }
+    createElement() { return new Element(); }
+}
+function deferred() { let resolve; const promise = new Promise((done) => { resolve = done; }); return { promise, resolve }; }
+const response = (body) => ({ ok: true, json: async () => body });
+test("delivery loop panel exists beside the PR review panel and is wired read-only", async () => {
+    const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+    assert.match(html, /id="github-delivery-loop-panel"/);
+    assert.match(html, /createGitHubDeliveryLoopUI.*github-delivery-loop-ui\.js/s);
+    assert.match(html, /id="github-delivery-loop-load"/);
+    assert.match(html, /id="github-delivery-loop-prs"/);
+});
+test("delivery loop loads bounded PR rows with verdict labels and no mutations", async () => {
+    const { createGitHubDeliveryLoopUI } = await import(uiModulePath);
+    const documentRef = new Document();
+    documentRef.getElementById("github-delivery-loop-repo").value = repoUrl;
+    const requests = [];
+    const ui = createGitHubDeliveryLoopUI({
+        documentRef, getSessionId: () => "session-1", translate: (key) => key,
+        fetcher: async (path, init) => { requests.push({ path, body: JSON.parse(init.body) }); return response({ snapshot: prListSnapshot }); },
+    });
+    assert.equal(await ui.load(), true);
+    assert.deepEqual(requests[0], { path: "/api/github/pr-list", body: { url: repoUrl } });
+    const rows = documentRef.getElementById("github-delivery-loop-prs").children;
+    assert.equal(rows.length, 2);
+    const firstRow = rows[0].children[0].textContent;
+    const secondRow = rows[1].children[0].textContent;
+    assert.match(firstRow, /#42 Fix parser/);
+    assert.match(firstRow, /feature\/parser/);
+    assert.match(firstRow, /verdict\.failing/);
+    assert.match(secondRow, /draft/);
+    assert.equal(ui.getSnapshot()?.prs.length, 2);
+});
+test("delivery loop derives the repo from the PR review URL when its input is empty", async () => {
+    const { createGitHubDeliveryLoopUI } = await import(uiModulePath);
+    const documentRef = new Document();
+    const requests = [];
+    const ui = createGitHubDeliveryLoopUI({
+        documentRef, getSessionId: () => "session-1", translate: (key) => key,
+        getFallbackRepo: () => "https://github.com/acme/demo/pull/42",
+        fetcher: async (path, init) => { requests.push(JSON.parse(init.body)); return response({ snapshot: prListSnapshot }); },
+    });
+    assert.equal(await ui.load(), true);
+    assert.deepEqual(requests[0], { url: "https://github.com/acme/demo/pull/42" });
+});
+test("selecting a row hands the PR to the callback and marks it selected", async () => {
+    const { createGitHubDeliveryLoopUI } = await import(uiModulePath);
+    const documentRef = new Document();
+    documentRef.getElementById("github-delivery-loop-repo").value = repoUrl;
+    let picked = null;
+    const ui = createGitHubDeliveryLoopUI({
+        documentRef, translate: (key) => key, getSessionId: () => "session-1",
+        fetcher: async () => response({ snapshot: prListSnapshot }),
+        onPrSelected: (entry) => { picked = entry; },
+    });
+    await ui.load();
+    const row = documentRef.getElementById("github-delivery-loop-prs").children[0].children[0];
+    row.trigger("click");
+    assert.equal(picked?.number, 42);
+    assert.equal(picked?.url, `${repoUrl}/pull/42`);
+    const rendered = documentRef.getElementById("github-delivery-loop-prs").children[0].children[0];
+    assert.equal(rendered.dataset.selected, "true");
+    assert.equal(ui.selectPr({ number: 1, url: "" }), false);
+    assert.equal(picked?.number, 42);
+});
+test("delivery loop discards late responses after session switch or repo change", async () => {
+    const { createGitHubDeliveryLoopUI } = await import(uiModulePath);
+    const documentRef = new Document();
+    documentRef.getElementById("github-delivery-loop-repo").value = repoUrl;
+    let sessionId = "session-1";
+    const first = deferred();
+    const ui = createGitHubDeliveryLoopUI({ documentRef, getSessionId: () => sessionId, fetcher: async () => first.promise });
+    const loading = ui.load();
+    sessionId = "session-2";
+    ui.sessionChanged();
+    first.resolve(response({ snapshot: prListSnapshot }));
+    assert.equal(await loading, false);
+    assert.equal(ui.getSnapshot(), undefined);
+    const next = deferred();
+    const pending = ui.load();
+    documentRef.getElementById("github-delivery-loop-repo").value = "https://github.com/other/repo";
+    next.resolve(response({ snapshot: prListSnapshot }));
+    assert.equal(await pending, false);
+    assert.equal(ui.getSnapshot(), undefined);
+});
+test("delivery loop maps loader failures to bounded statuses and never calls gh mutations", async () => {
+    const { createGitHubDeliveryLoopUI } = await import(uiModulePath);
+    const documentRef = new Document();
+    documentRef.getElementById("github-delivery-loop-repo").value = repoUrl;
+    const ui = createGitHubDeliveryLoopUI({
+        documentRef, translate: (key) => key, getSessionId: () => "session-1",
+        fetcher: async () => ({ ok: false, json: async () => ({ code: "opt-in-required" }) }),
+    });
+    assert.equal(await ui.load(), false);
+    assert.equal(ui.getSnapshot(), undefined);
+    assert.equal(documentRef.getElementById("github-delivery-loop-status").textContent, "githubDeliveryLoop.optIn");
+    const failing = createGitHubDeliveryLoopUI({
+        documentRef, translate: (key) => key, getSessionId: () => "session-1",
+        fetcher: async () => { throw new Error("network down"); },
+    });
+    assert.equal(await failing.load(), false);
+    assert.equal(documentRef.getElementById("github-delivery-loop-status").textContent, "githubDeliveryLoop.error");
+});
+test("delivery loop shows the empty state only after a successful load", async () => {
+    const { createGitHubDeliveryLoopUI } = await import(uiModulePath);
+    const documentRef = new Document();
+    documentRef.getElementById("github-delivery-loop-repo").value = repoUrl;
+    const ui = createGitHubDeliveryLoopUI({
+        documentRef, translate: (key) => key, getSessionId: () => "session-1",
+        fetcher: async () => response({ snapshot: { ...prListSnapshot, prs: [] } }),
+    });
+    assert.match(documentRef.getElementById("github-delivery-loop-prs").children[0].textContent, /githubDeliveryLoop\.empty/);
+    assert.equal(await ui.load(), true);
+    assert.match(documentRef.getElementById("github-delivery-loop-prs").children[0].textContent, /githubDeliveryLoop\.noPulls/);
+});
+const verification = {
+    verdict: "repaired", stale: false, beforeHeadSha: sha, afterHeadSha: "b".repeat(40),
+    before: { failed: 1, total: 2 }, after: { failed: 0, total: 2 },
+    rows: [{ key: "ci/build", workflow: "CI", name: "build", before: "failed", after: "passed" }],
+};
+test("verify repair probes lineage, enables the action, and renders the verdict", async () => {
+    const { createGitHubDeliveryLoopUI } = await import(uiModulePath);
+    const documentRef = new Document();
+    let sessionId = "session-1";
+    const requests = [];
+    const ui = createGitHubDeliveryLoopUI({
+        documentRef, translate: (key) => key, getSessionId: () => sessionId,
+        fetcher: async (path, init) => {
+            requests.push({ path, body: init?.body ? JSON.parse(init.body) : undefined });
+            if (path.includes("/repair-lineage")) {
+                return sessionId === "session-1" ? response({ sessionId, prUrl: `${repoUrl}/pull/42`, failedSha: sha, branch: "dev-agent/task-1" })
+                    : { ok: false, json: async () => ({ code: "no-lineage" }) };
+            }
+            return response({ sessionId, prUrl: `${repoUrl}/pull/42`, failedSha: sha, verifiedAt: "2026-09-28T09:00:00Z", verification });
+        },
+    });
+    assert.equal(documentRef.getElementById("github-delivery-loop-verify").disabled, true);
+    await ui.refreshLineage();
+    assert.equal(documentRef.getElementById("github-delivery-loop-verify").disabled, false);
+    assert.match(documentRef.getElementById("github-delivery-loop-lineage").textContent, /pull\/42/);
+    assert.equal(await ui.verify(), true);
+    const verifyRequest = requests.find((request) => request.path === "/api/github/repair-verify");
+    assert.deepEqual(verifyRequest?.body, { sessionId: "session-1" });
+    const rendered = documentRef.getElementById("github-delivery-loop-verification").children;
+    assert.match(rendered[0].textContent, /verification\.repaired/);
+    assert.match(rendered[1].textContent, /CI\/build/);
+    assert.match(rendered[1].textContent, /failed/);
+    assert.match(rendered[1].textContent, /passed/);
+    assert.match(rendered[2].textContent, /2026-09-28T09:00:00Z/);
+    sessionId = "session-2";
+    ui.sessionChanged();
+    await Promise.resolve();
+    assert.equal(documentRef.getElementById("github-delivery-loop-verify").disabled, true);
+    assert.equal(ui.getVerification(), undefined);
+});
+test("verify repair discards late responses and maps failures to bounded statuses", async () => {
+    const { createGitHubDeliveryLoopUI } = await import(uiModulePath);
+    const documentRef = new Document();
+    const deferredResponse = deferred();
+    const ui = createGitHubDeliveryLoopUI({
+        documentRef, translate: (key) => key, getSessionId: () => "session-1",
+        fetcher: async (path) => path.includes("/repair-lineage")
+            ? response({ sessionId: "session-1", prUrl: `${repoUrl}/pull/42`, failedSha: sha })
+            : deferredResponse.promise,
+    });
+    await ui.refreshLineage();
+    const pending = ui.verify();
+    deferredResponse.resolve({ ok: false, json: async () => ({ code: "request-failed" }) });
+    assert.equal(await pending, false);
+    assert.equal(documentRef.getElementById("github-delivery-loop-status").textContent, "githubDeliveryLoop.verifyError");
+    assert.equal(ui.getVerification(), undefined);
+    const failing = createGitHubDeliveryLoopUI({
+        documentRef, translate: (key) => key, getSessionId: () => "session-1",
+        fetcher: async (path) => path.includes("/repair-lineage")
+            ? response({ sessionId: "session-1", prUrl: `${repoUrl}/pull/42`, failedSha: sha })
+            : Promise.reject(new Error("down")),
+    });
+    await failing.refreshLineage();
+    assert.equal(await failing.verify(), false);
+    assert.equal(documentRef.getElementById("github-delivery-loop-status").textContent, "githubDeliveryLoop.verifyError");
+});

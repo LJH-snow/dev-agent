@@ -1,0 +1,83 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260929T193529591Z-10430-8f2c470c7f14",
+  "runId": "20260929T193529591Z-10430-8f2c470c7f14",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "9065aa1761860089fc6cb784ee62716c4e3432a7",
+  "diffHash": "1b808b106441d0f00f2c3876c78cb3014ba18d4d7a7c475b836b7ab089bcb2d7",
+  "rulesVersion": "unavailable",
+  "sessionHash": "3a3eaf13a24842bcd49998f1835e43b1a1df747c74d176770a91b563501e85ef",
+  "reportRef": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260929T193529591Z-10430-8f2c470c7f14.json",
+  "events": [
+    {
+      "eventId": "hook-2d730ca6ce83978480a0be84d5272b52",
+      "findingId": "mimosa-a81545b11e06381973fd2dee",
+      "type": "finding_blocked",
+      "at": "2026-09-29T19:30:12.328Z",
+      "identity": {
+        "projectRelativeFile": "tests/auto-fix-cli.test.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "070945f310d693e9a1101c87a61f6b5a19269bfc4e3f5d104a07070731f30711",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1,
+      "endLine": 1,
+      "reasonCode": "deny",
+      "reportedToAgent": true,
+      "evidence": {
+        "kind": "source",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "evidenceHash": "070945f310d693e9a1101c87a61f6b5a19269bfc4e3f5d104a07070731f30711"
+      },
+      "sequence": 0
+    },
+    {
+      "eventId": "hook-610442f37efb5ee3cff16fb2ae9fe07f",
+      "findingId": "mimosa-a81545b11e06381973fd2dee",
+      "type": "static_fix_verified",
+      "at": "2026-09-29T19:30:27.318Z",
+      "identity": {
+        "projectRelativeFile": "tests/auto-fix-cli.test.ts",
+        "ruleId": "security",
+        "codeEvidenceHash": "070945f310d693e9a1101c87a61f6b5a19269bfc4e3f5d104a07070731f30711",
+        "confidence": "stable"
+      },
+      "scope": "direct",
+      "line": 1,
+      "endLine": 1,
+      "reasonCode": "static_rescan_passed",
+      "reportedToAgent": false,
+      "evidence": {
+        "kind": "static_scan",
+        "boundary": "observed",
+        "producer": "deterministic",
+        "evidenceHash": "070945f310d693e9a1101c87a61f6b5a19269bfc4e3f5d104a07070731f30711"
+      },
+      "sequence": 1
+    }
+  ],
+  "observedFindingIds": [],
+  "verifiedFiles": [
+    {
+      "file": "tests/auto-fix-cli.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "tests-dist/auto-fix-cli.test.js",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-09-29T19:35:29.925Z"
+}

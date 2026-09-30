@@ -1,0 +1,374 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20260930T050347446Z-32258-af51beb8852d",
+  "runId": "20260930T050347446Z-32258-af51beb8852d",
+  "runStatus": "inconclusive",
+  "coverage": {
+    "status": "partial",
+    "reasons": [
+      {
+        "code": "changed_file_unreadable",
+        "stage": "candidate-select",
+        "target": "tests/tmp-debug-path-enter.test.ts",
+        "detail": "observed changed file no longer exists or cannot be read",
+        "affectsCompletion": true
+      },
+      {
+        "code": "candidate_limit_exceeded",
+        "stage": "candidate-select",
+        "target": "src/index.ts",
+        "detail": "2 changed reviewable file(s) were not scanned because the limit is 20",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests-dist/autofix-review-store.test.js",
+        "detail": "file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "tests/autofix-review-store.test.ts",
+        "detail": "file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "baseline_snapshot_unreadable",
+        "stage": "baseline-read",
+        "target": "src/autofix-review-store.ts",
+        "detail": "file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "src/ink/app.tsx",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "src/ink/command-palette.tsx",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/ink-visual-regression.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/ink-navigation-screen.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/ink-app.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "src/path-completion.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/path-completion.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/auto-fix-cli.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/autofix-review-store.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/command-palette.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-app.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-navigation-screen.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-visual-regression.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/path-completion.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests-dist/tui-renderer.test.js",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/auto-fix-cli.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/autofix-review-store.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/command-palette.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "tests/tui-renderer.test.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "scanner_failed",
+        "stage": "scan",
+        "target": "src/autofix-review-store.ts",
+        "detail": "spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "tests/tmp-debug-path-enter.test.ts",
+        "detail": "changed_file_unreadable: observed changed file no longer exists or cannot be read",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "candidate-select",
+        "target": "src/index.ts",
+        "detail": "candidate_limit_exceeded: 2 changed reviewable file(s) were not scanned because the limit is 20",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests-dist/autofix-review-store.test.js",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "tests/autofix-review-store.test.ts",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "baseline-read",
+        "target": "src/autofix-review-store.ts",
+        "detail": "baseline_snapshot_unreadable: file is missing from task baseline",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "src/ink/app.tsx",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "src/ink/command-palette.tsx",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/ink-visual-regression.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/ink-navigation-screen.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/ink-app.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "src/path-completion.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/path-completion.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/auto-fix-cli.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/autofix-review-store.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/command-palette.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-app.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-navigation-screen.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/ink-visual-regression.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/path-completion.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests-dist/tui-renderer.test.js",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/auto-fix-cli.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/autofix-review-store.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/command-palette.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "tests/tui-renderer.test.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      },
+      {
+        "code": "project_check_failed",
+        "stage": "scan",
+        "target": "src/autofix-review-store.ts",
+        "detail": "scanner_failed: spawnSync /opt/homebrew/Cellar/node/26.4.0/bin/node ETIMEDOUT",
+        "affectsCompletion": true
+      }
+    ]
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "fdb257220e0e890d218fc7924bacdbd2285939ef",
+  "diffHash": "57405ad58bfb482557e0028582b17885b95c5ed277aead60c4afdd991017413d",
+  "rulesVersion": "unavailable",
+  "sessionHash": "3a3eaf13a24842bcd49998f1835e43b1a1df747c74d176770a91b563501e85ef",
+  "reportRef": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260930T050347446Z-32258-af51beb8852d.json",
+  "events": [],
+  "observedFindingIds": [],
+  "verifiedFiles": [],
+  "recordedAt": "2026-09-30T05:03:47.900Z"
+}

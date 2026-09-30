@@ -1,0 +1,585 @@
+{
+  "schema_version": "mimosa-task-review/v2",
+  "run_id": "20260929T192824905Z-97424-fa084917eca2",
+  "run_status": "completed",
+  "errors": [],
+  "coverage": {
+    "schema_version": "mimosa-hook-coverage/v1",
+    "status": "complete",
+    "scope": "hook_observed_diff",
+    "baseline": {
+      "complete": true,
+      "captured_files": 354,
+      "candidate_limit": 5000,
+      "truncated": false,
+      "enumeration_error_count": 0,
+      "snapshot_error_count": 0,
+      "compensated_target_count": 15
+    },
+    "change_tracking": {
+      "touched_observed": 6,
+      "touched_retained": 6,
+      "truncated": false,
+      "bash_mutation": true,
+      "bash_discovered": 15,
+      "bash_discovery_limit": 80,
+      "bash_discovery_truncated": false
+    },
+    "candidates": {
+      "eligible_files": 15,
+      "selected_files": 15,
+      "limit": 20,
+      "truncated": false
+    },
+    "scanning": {
+      "required_files": 15,
+      "scanned_files": 15,
+      "skipped_files": 0,
+      "failed_files": 0,
+      "project_checks_required": 0,
+      "project_checks_completed": 0
+    },
+    "notification": {
+      "eligible_findings": 2,
+      "detailed_findings": 2,
+      "detail_limit": 3,
+      "truncated": false
+    },
+    "reason_counts": {},
+    "reasons": [],
+    "reasons_truncated": false
+  },
+  "generated_at": "2026-09-29T19:28:24.905Z",
+  "session_id": "sess_4944d208-ac81-4b15-81b7-a3ac8d89761b",
+  "target": ".",
+  "revision": "9065aa1761860089fc6cb784ee62716c4e3432a7",
+  "rules_version": "unavailable",
+  "diff_hash": "3f76b9dce81e0dedad43bc258f12df42d50cc33754cb3246a6227ae0f58af1bf",
+  "diff": {
+    "algorithm": "sha256",
+    "changed_file_count": 15,
+    "changed_files": [
+      {
+        "file": "src/auto-fix-command.ts",
+        "ranges": [
+          {
+            "start": 15,
+            "end": 16
+          },
+          {
+            "start": 21,
+            "end": 21
+          },
+          {
+            "start": 85,
+            "end": 88
+          }
+        ],
+        "before_hash": "212817c985484a9388fec7959b71a28da3baf7625a8ee4c0a938d264485df501",
+        "after_hash": "91be98c36f4c2447eb8fa73f8c78d3e6d14e0860673fbb9568cd3e0ad11fe685"
+      },
+      {
+        "file": "src/index.ts",
+        "ranges": [
+          {
+            "start": 3447,
+            "end": 3452
+          },
+          {
+            "start": 4120,
+            "end": 4120
+          },
+          {
+            "start": 4128,
+            "end": 4130
+          },
+          {
+            "start": 4141,
+            "end": 4152
+          },
+          {
+            "start": 4160,
+            "end": 4163
+          },
+          {
+            "start": 4259,
+            "end": 4262
+          },
+          {
+            "start": 4264,
+            "end": 4264
+          },
+          {
+            "start": 4270,
+            "end": 4270
+          },
+          {
+            "start": 4281,
+            "end": 4288
+          },
+          {
+            "start": 4311,
+            "end": 4408
+          },
+          {
+            "start": 4684,
+            "end": 4684
+          },
+          {
+            "start": 4784,
+            "end": 4802
+          },
+          {
+            "start": 4936,
+            "end": 4939
+          },
+          {
+            "start": 5024,
+            "end": 5027
+          },
+          {
+            "start": 5134,
+            "end": 5134
+          },
+          {
+            "start": 5477,
+            "end": 5477
+          },
+          {
+            "start": 5612,
+            "end": 5615
+          },
+          {
+            "start": 5681,
+            "end": 5685
+          },
+          {
+            "start": 5714,
+            "end": 5714
+          },
+          {
+            "start": 5723,
+            "end": 5732
+          },
+          {
+            "start": 5750,
+            "end": 5851
+          },
+          {
+            "start": 6022,
+            "end": 6022
+          },
+          {
+            "start": 6263,
+            "end": 6283
+          },
+          {
+            "start": 6505,
+            "end": 6508
+          },
+          {
+            "start": 6554,
+            "end": 6557
+          },
+          {
+            "start": 6624,
+            "end": 6624
+          }
+        ],
+        "before_hash": "3b98376e83491433e9d456bd15ef9805c9e0d365e74e1a5a7b9a555489cfe168",
+        "after_hash": "aef1c40d77fa202d879e2cea20374ae6cac528941f01caacd5cebbd1ee036d66"
+      },
+      {
+        "file": "src/ink/app.tsx",
+        "ranges": [
+          {
+            "start": 41,
+            "end": 42
+          },
+          {
+            "start": 194,
+            "end": 194
+          },
+          {
+            "start": 253,
+            "end": 253
+          },
+          {
+            "start": 321,
+            "end": 321
+          },
+          {
+            "start": 357,
+            "end": 359
+          },
+          {
+            "start": 396,
+            "end": 412
+          },
+          {
+            "start": 467,
+            "end": 483
+          },
+          {
+            "start": 639,
+            "end": 650
+          },
+          {
+            "start": 840,
+            "end": 840
+          },
+          {
+            "start": 1626,
+            "end": 1629
+          }
+        ],
+        "before_hash": "64b543b7712c875e9b8a98999deaa938cc94cb74d9ca14ea39043c3f1bfcc095",
+        "after_hash": "b00538f78d0b99c7b2dfa4ed466702cc40f5789053936edaf2b06b8198618cf9"
+      },
+      {
+        "file": "src/ink/command-palette.tsx",
+        "ranges": [
+          {
+            "start": 1,
+            "end": 8
+          },
+          {
+            "start": 19,
+            "end": 48
+          },
+          {
+            "start": 60,
+            "end": 60
+          },
+          {
+            "start": 66,
+            "end": 66
+          },
+          {
+            "start": 71,
+            "end": 72
+          },
+          {
+            "start": 91,
+            "end": 111
+          },
+          {
+            "start": 116,
+            "end": 116
+          }
+        ],
+        "before_hash": "466cda9c917751dcf9b618aa0d0d038165b40b7bd41418ab8df9baf6368de542",
+        "after_hash": "1941a76c50adba49b5387cbec2f503a78c495f20df682cd4d7b26f18105585f5"
+      },
+      {
+        "file": "src/ink/kitty-query-response.ts",
+        "ranges": [
+          {
+            "start": 116,
+            "end": 121
+          }
+        ],
+        "before_hash": "64c54d5b01c3e516380549696432d1bbf8b6a1fd7d8e3985af00570f1b77fb05",
+        "after_hash": "1905b1f7b42831c4df327a3d2f7de5bd4b0f4e06d8bf08f8b23914be63df830c"
+      },
+      {
+        "file": "tests-dist/auto-fix-cli.test.js",
+        "ranges": [
+          {
+            "start": 141,
+            "end": 141
+          },
+          {
+            "start": 156,
+            "end": 295
+          }
+        ],
+        "before_hash": "184fb3126ade119fc6532fb8dce118292f6d4b0515189555bcf73db25b229196",
+        "after_hash": "b345ecc274a5beabc1ae96c77dc4fc08bbc1e93a8f1620bc931f49b4f19c5364"
+      },
+      {
+        "file": "tests-dist/auto-fix-command.test.js",
+        "ranges": [
+          {
+            "start": 41,
+            "end": 52
+          }
+        ],
+        "before_hash": "86110c44b0f2777af5d275448c056a5d86e00826960c1ba767e2f85be46ab037",
+        "after_hash": "702754d011131206e69c340c1e4307d01056c2962301b53c90496c89d88dc11f"
+      },
+      {
+        "file": "tests-dist/ink-app.test.js",
+        "ranges": [
+          {
+            "start": 11,
+            "end": 11
+          },
+          {
+            "start": 185,
+            "end": 197
+          },
+          {
+            "start": 248,
+            "end": 279
+          }
+        ],
+        "before_hash": "7f3d16c0c6cb86c1002f7951d01b12006fb15b1b104cec171682a2b9181b845d",
+        "after_hash": "c852209d80ab7b9984eed9bc3b1dc138b6b96c61bcf25b1509e0ce5ddc3e516d"
+      },
+      {
+        "file": "tests-dist/ink-kitty-query-response.test.js",
+        "ranges": [
+          {
+            "start": 49,
+            "end": 55
+          }
+        ],
+        "before_hash": "7b9bea3fa0e67b18bfcc48629362a67ba3c004a00c13dd315ee15ddb5ad08a78",
+        "after_hash": "b518ebdd17e0783bfb08b22e2fa92b2e0e30685a5a53082aea705015cdf3ac3c"
+      },
+      {
+        "file": "tests-dist/ink-navigation-screen.test.js",
+        "ranges": [
+          {
+            "start": 32,
+            "end": 32
+          },
+          {
+            "start": 41,
+            "end": 41
+          },
+          {
+            "start": 99,
+            "end": 106
+          },
+          {
+            "start": 217,
+            "end": 258
+          }
+        ],
+        "before_hash": "01bf504e9b5f7f5a8a1df26a2a6c406cdf51a1c1790882ed55d6fdc842e41b4b",
+        "after_hash": "fc758190136463cfd80c6065909908824b0d84291f109f72a17d8c131f8c7ef1"
+      },
+      {
+        "file": "tests/auto-fix-cli.test.ts",
+        "ranges": [
+          {
+            "start": 147,
+            "end": 147
+          },
+          {
+            "start": 162,
+            "end": 306
+          }
+        ],
+        "before_hash": "1ac099bbf6d4ecd1eda2d2a012211689497d9e3edbe3a400bfdf63279204f1d4",
+        "after_hash": "791eba30878f8385b96c0fedeb834ca24e303a3caf7bfc98a675642f793d7ac7"
+      },
+      {
+        "file": "tests/auto-fix-command.test.ts",
+        "ranges": [
+          {
+            "start": 59,
+            "end": 70
+          }
+        ],
+        "before_hash": "6e0f91bc36df964024b8d6b8be8ae54cef2283436a12bd6f14d0b92384df9562",
+        "after_hash": "2071c7c2d29e800917308c4b11d8470acf3877b3fa2e6041def8d5ec79afc2d8"
+      },
+      {
+        "file": "tests/ink-app.test.ts",
+        "ranges": [
+          {
+            "start": 17,
+            "end": 20
+          },
+          {
+            "start": 236,
+            "end": 285
+          },
+          {
+            "start": 353,
+            "end": 395
+          }
+        ],
+        "before_hash": "cc5b9e1a73158b93da94a56c491cf95e49e491664d46a2873f10af259502f420",
+        "after_hash": "e743e8807a503b06476ccaa9bbfd542a9270da266aa2d30cc4997d45fa7f7aae"
+      },
+      {
+        "file": "tests/ink-kitty-query-response.test.ts",
+        "ranges": [
+          {
+            "start": 65,
+            "end": 73
+          }
+        ],
+        "before_hash": "9a1970e01438b67b135ca3e0cf0a8d6e5a7964bada1484b3df4a75cf2f3d885c",
+        "after_hash": "b15b99a43e080b9f0a4fa507b66bd6944b5d7542df76b244d4e86ced342ba2b8"
+      },
+      {
+        "file": "tests/ink-navigation-screen.test.ts",
+        "ranges": [
+          {
+            "start": 35,
+            "end": 35
+          },
+          {
+            "start": 44,
+            "end": 44
+          },
+          {
+            "start": 101,
+            "end": 108
+          },
+          {
+            "start": 229,
+            "end": 277
+          }
+        ],
+        "before_hash": "28764f92e36cfb750748361c8bcd7f36b0992962c35535abb6b4de2021a2c313",
+        "after_hash": "ce8989ab54c5b546246168fcf77b1a4d0d25e8748495ea8eb9f5b7b2cfc1355d"
+      }
+    ]
+  },
+  "timing": {
+    "started_at": "2026-09-29T19:28:22.925Z",
+    "completed_at": "2026-09-29T19:28:24.905Z",
+    "duration_ms": 1980,
+    "measurement": "hook_wall_clock"
+  },
+  "tokens": {
+    "input": 0,
+    "output": 0,
+    "total": 0,
+    "model_calls": 0,
+    "measurement": "known-zero"
+  },
+  "telemetry": {
+    "schemaVersion": "mimosa-gate-telemetry/v1",
+    "profile": "gate",
+    "operation": "Stop",
+    "outcome": "complete",
+    "latencyMs": 1980,
+    "peakMemoryBytes": 296157184,
+    "memoryMeasurement": "max-observed-process-rss",
+    "scannedFiles": 15,
+    "cache": {
+      "hits": 0,
+      "misses": 0,
+      "measurement": "not-applicable"
+    },
+    "denyCount": 0,
+    "tokens": {
+      "input": 0,
+      "output": 0,
+      "total": 0,
+      "modelCalls": 0,
+      "measurement": "known-zero"
+    }
+  },
+  "finding_count": 2,
+  "rewake_finding_count": 2,
+  "evidence_boundary": {
+    "scan": "candidate",
+    "static_fix_verification": "observed_static_only",
+    "runtime_verification": "not_performed"
+  },
+  "finding_events": [
+    {
+      "finding_id": "mimosa-ad7879b1c0cc425ee6396e8d",
+      "file": "tests-dist/auto-fix-cli.test.js",
+      "line": 244,
+      "severity": "high",
+      "category": "硬编码凭据",
+      "status": "blocked",
+      "decision": "stop_rewake",
+      "at": "2026-09-29T19:28:24.905Z",
+      "evidence": {
+        "kind": "static_scan",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "source": "semgrep",
+        "evidence_hash": "39cf0171fed9135ddb9c7b3ca7a33e5edbdd904f39350df682df336778d505c4",
+        "runtime_oracle": false
+      }
+    },
+    {
+      "finding_id": "mimosa-5810a08cb60b58dccf6dae4e",
+      "file": "tests/auto-fix-cli.test.ts",
+      "line": 255,
+      "severity": "high",
+      "category": "硬编码凭据",
+      "status": "blocked",
+      "decision": "stop_rewake",
+      "at": "2026-09-29T19:28:24.905Z",
+      "evidence": {
+        "kind": "static_scan",
+        "boundary": "candidate",
+        "producer": "deterministic",
+        "source": "semgrep",
+        "evidence_hash": "39cf0171fed9135ddb9c7b3ca7a33e5edbdd904f39350df682df336778d505c4",
+        "runtime_oracle": false
+      }
+    }
+  ],
+  "findings": [
+    {
+      "finding_id": "mimosa-ad7879b1c0cc425ee6396e8d",
+      "file": "tests-dist/auto-fix-cli.test.js",
+      "line": 244,
+      "end_line": 244,
+      "severity": "high",
+      "category": "硬编码凭据",
+      "kind": "semgrep",
+      "advisory": false,
+      "status": "blocked",
+      "evidence_boundary": "candidate",
+      "evidence": [
+        {
+          "kind": "static_scan",
+          "boundary": "candidate",
+          "producer": "deterministic",
+          "source": "semgrep",
+          "file": "tests-dist/auto-fix-cli.test.js",
+          "line": 244,
+          "evidence_hash": "39cf0171fed9135ddb9c7b3ca7a33e5edbdd904f39350df682df336778d505c4",
+          "runtime_oracle": false
+        }
+      ],
+      "already_reported_to_agent": false,
+      "selected_for_rewake": true
+    },
+    {
+      "finding_id": "mimosa-5810a08cb60b58dccf6dae4e",
+      "file": "tests/auto-fix-cli.test.ts",
+      "line": 255,
+      "end_line": 255,
+      "severity": "high",
+      "category": "硬编码凭据",
+      "kind": "semgrep",
+      "advisory": false,
+      "status": "blocked",
+      "evidence_boundary": "candidate",
+      "evidence": [
+        {
+          "kind": "static_scan",
+          "boundary": "candidate",
+          "producer": "deterministic",
+          "source": "semgrep",
+          "file": "tests/auto-fix-cli.test.ts",
+          "line": 255,
+          "evidence_hash": "39cf0171fed9135ddb9c7b3ca7a33e5edbdd904f39350df682df336778d505c4",
+          "runtime_oracle": false
+        }
+      ],
+      "already_reported_to_agent": false,
+      "selected_for_rewake": true
+    }
+  ],
+  "artifacts": {
+    "immutable_report": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20260929T192824905Z-97424-fa084917eca2.json",
+    "latest_report": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b.json",
+    "history_summary": ".mimosa/history/run-20260929T192824905Z-97424-fa084917eca2.json"
+  }
+}
