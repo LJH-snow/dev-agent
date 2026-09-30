@@ -4,7 +4,8 @@
 Enable the Ink 7.1.1 built-in capabilities the CLI does not use yet, in priority order — composer input experience (paste/IME/kitty keyboard), screen-reader support, shared-clock render performance, and alternate-screen full-screen modes — without new runtime dependencies and with each phase independently shippable.
 
 ## Current Phase
-Phase 4 (complete; Ink 7.1.1 native APIs adopted and verified)
+Phase 7 complete: measured transcript viewport geometry (2026-09-29).
+Phases 1–6 are complete and verified against Ink 7.1.1.
 
 ## Phases
 
@@ -43,12 +44,37 @@ Phase 4 (complete; Ink 7.1.1 native APIs adopted and verified)
 - [x] Updated the `:editor` path to use Ink 7.1.1 `suspendTerminal`, and `usePaste` handles bracketed paste without the old custom event-emitter access.
 - **Status:** complete; the local alternate-screen module remains only as a bounded compatibility/test helper.
 
-### Phase 5: Deferred backlog (not scheduled)
+### Phase 5: Visual regression baseline (complete, 2026-09-29)
+- [x] Add dependency-free `renderToString` inline snapshots for the launch
+      surface, composer, command palette, approval card, and tool timeline.
+- [x] Add a live Ink screen-reader snapshot using the existing terminal
+      capture path, without making animation timing part of the contract.
+- [x] Verify the new visual contract alongside the existing CLI suite.
+
+**Status:** complete. The baseline uses native `renderToString` and one live
+Ink capture; it intentionally avoids adding `ink-testing-library` because the
+existing test harness already supplies the required terminal lifecycle.
+
+### Later backlog (not scheduled)
 - [x] `suspendTerminal`-backed `:editor` command (compose long prompts in $EDITOR) — implemented 2026-09-29 as `src/ink/editor-suspend.ts` + the `:editor` command; production suspension now delegates to Ink 7.1.1 while the helper remains independently testable. Plan: `.planning/2026-09-29-editor-command/`
-- [ ] `renderToString` + ink-testing-library snapshot tests for cards
-- [ ] `useFocus`/`useFocusManager` refactor of the single global `useInput` key router
-- [ ] `useBoxMetrics`/`measureElement` scrollable transcript viewport
-- **Status:** first backlog item done; the rest remain pending
+- [x] Dependency-free `renderToString` + live Ink visual regression baseline — implemented in `tests/ink-visual-regression.test.ts`; an additional `ink-testing-library` dependency is not required for the current contracts
+- [x] `useFocus`/`useFocusManager` focus-aware ownership for the single global `useInput` key router — completed in Phase 6 below
+- [x] `measureElement`-driven scrollable transcript viewport geometry
+- **Status:** visual baseline, focus ownership, and measured viewport geometry
+  complete; the next backlog item should be selected separately
+
+### Phase 6: Focus-aware input ownership (complete, 2026-09-29)
+- [x] Add a single focus-owner resolver for composer, command palette, path
+      completion, session picker, retry, and approval/text prompts.
+- [x] Register the owners with Ink 7.1.1 `useFocus` and synchronize the active
+      owner with `useFocusManager` without changing Tab completion semantics.
+- [x] Route the global input handler through the resolved owner while keeping
+      Ctrl-C, mouse reports, paste, and editor-resume suppression global.
+- [x] Add resolver and live keyboard regression coverage; run the focus suite
+      and an isolated CLI verification pass.
+
+**Status:** complete. Modal priority is explicit and the existing single input
+stream remains responsible for cross-cutting terminal events.
 
 ## Decisions Made
 | Decision | Rationale |
@@ -67,3 +93,19 @@ Phase 4 (complete; Ink 7.1.1 native APIs adopted and verified)
 ## Errors Encountered
 | Error | Resolution |
 |-------|------------|
+
+### Phase 7: Measured transcript viewport geometry (complete, 2026-09-29)
+- [x] Centralize the one-row Ink frame guard, measured bottom-shell subtraction,
+      clamped visible viewport height, and one-based navigation row.
+- [x] Keep the complete welcome/transcript/panel frame measured with
+      `measureElement`; dynamic command palette, retry, approval, composer,
+      and terminal-resize changes feed the same viewport model.
+- [x] Add narrow-terminal screen coverage and geometry unit coverage while
+      preserving streaming follow, manual browsing, Home/End, PageUp/PageDown,
+      and Back-to-bottom behavior.
+
+### Phase 7 verification (complete, 2026-09-29)
+- Targeted viewport/app/navigation suite: **64/64 passed**; broader Ink/input/editor/visual regression set: **93/93 passed**.
+- Isolated CLI suite excluding the concurrent `auto-fix-cli.test.js` and environment-sensitive `package-install.test.js`: **780/780 passed**.
+- Added a 20x12 headless terminal case for navigation hover/click behavior.
+- `git diff --check` and CLI source/test TypeScript checks passed.

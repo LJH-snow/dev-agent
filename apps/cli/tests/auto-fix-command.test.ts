@@ -56,6 +56,18 @@ test("parseAutoFixCommand accepts bounded attempts and slash aliases", () => {
   assert.deepEqual(parseAutoFixCommand(":autofix"), { handled: true, attempts: 2 });
   assert.deepEqual(parseAutoFixCommand("/autofix 1"), { handled: true, attempts: 1 });
   assert.deepEqual(parseAutoFixCommand(":autofix 3"), { handled: true, attempts: 3 });
+  assert.deepEqual(parseAutoFixCommand(":autofix review"), {
+    handled: true,
+    action: "review",
+  });
+  assert.deepEqual(parseAutoFixCommand("/autofix apply"), {
+    handled: true,
+    action: "apply",
+  });
+  assert.deepEqual(parseAutoFixCommand(":autofix discard"), {
+    handled: true,
+    action: "discard",
+  });
   assert.deepEqual(parseAutoFixCommand(":autofixer"), { handled: false });
   assert.deepEqual(parseAutoFixCommand(":autofix 0"), {
     handled: true,
@@ -106,6 +118,29 @@ test("runAutoFixLoop stops after a new passed validation", async () => {
   assert.equal(result.attempts, 1);
   assert.equal(prompts.length, 1);
   assert.equal(result.validation.validationId, "validation:fixed");
+});
+
+test("runAutoFixLoop stops before validation when the review is declined", async () => {
+  const failed = validation("failed", "validation:failed");
+  let rerun = false;
+  const result = await runAutoFixLoop({
+    context: context(),
+    validations: [failed],
+    maxAttempts: 2,
+    runRepair: async () => ({
+      context: context("after-review"),
+      declined: true,
+    }),
+    rerunValidation: async () => {
+      rerun = true;
+      return validation("passed", "validation:unexpected");
+    },
+  });
+
+  assert.equal(result.status, "rejected");
+  assert.equal(result.attempts, 1);
+  assert.equal(result.validation.validationId, "validation:failed");
+  assert.equal(rerun, false);
 });
 
 test("runAutoFixLoop reruns the trusted change set when repair created no validation", async () => {

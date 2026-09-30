@@ -1,5 +1,72 @@
 # Changelog
 
+## 2026-09-30（CLI Autofix review persistence and discoverability）
+
+- Declined or cancelled Autofix reviews now persist bounded, redacted change-set
+  metadata tied to the original session and workspace. Same-session resume can
+  review or apply the exact live change set, while a restarted CLI can review
+  or discard it and fails closed on apply.
+- Readline help, the Ink command palette, and the interactive banner now list
+  `:autofix review`, `:autofix apply`, and `:autofix discard` alongside the
+  existing `:autofix [1-3]` repair command.
+
+## 2026-09-30（CLI TUI command palette fuzzy matching and wheel selection）
+
+- Command palette matching now ranks prefix matches above substring matches
+  above in-order subsequence matches, so `:story` finds `:history` and `:edt`
+  finds `:editor` while exact prefixes still win. Unmatched input closes the
+  palette; equal ranks keep the declared command order.
+- With the palette open, mouse wheel notches move the highlighted row
+  (bounded at the list ends, no wrap) instead of scrolling the transcript.
+
+## 2026-09-30（CLI TUI command palette scrolling window）
+
+- Every prefix-matched command is now keyboard-reachable: arrow keys move
+  across the full suggestion list (wrapping at its bounds) and the 6-row
+  visible window follows the selection, instead of wrapping inside the first
+  six entries.
+- Click mapping follows the scrolled window (`offset + row`), so clicking a
+  painted row selects and accepts the command that is actually painted.
+- Palette footer hint now advertises click support.
+
+## 2026-09-30（CLI TUI command palette pointer and Enter acceptance）
+
+- With the command palette open, Enter now acts on the highlighted row instead
+  of submitting the raw composer prefix: complete commands submit directly and
+  template commands with argument placeholders are filled into the composer
+  for completion. A fully typed or accepted command closes the palette so the
+  next Enter submits it.
+- Palette rows are clickable: the palette measures its painted position with
+  Ink `measureElement`, the first click selects a row, and clicking the
+  already-selected row accepts it. Wheel, motion, and non-primary buttons
+  never select rows.
+- Enter right after a click-accept no longer re-accepts the stale palette;
+  the branch recomputes suggestions from the ref-backed composer draft.
+- The Kitty query response filter drops any buffered partial prefix when a
+  turn is submitted, and the unused `flush()` API was removed.
+
+## 2026-09-29（CLI TUI measured transcript viewport geometry）
+
+- Transcript scrolling now derives its live frame from Ink `measureElement`
+  measurements of the complete scroll content and bottom shell. Command
+  palette, retry, approval, wrapped composer, and resize changes all update the
+  same viewport geometry instead of relying on fixed row estimates.
+- The one-row Ink frame guard and clamped visible height are centralized in the
+  viewport model; the navigation hit row follows the actual painted frame even
+  on narrow or short terminals.
+- Added 20x12 headless terminal coverage for Back-to-bottom hover/click
+  behavior while retaining streaming follow and manual navigation contracts.
+
+## 2026-09-29（CLI TUI focus-aware input ownership）
+
+- Ink TUI modal input ownership is now explicit through Ink 7.1.1's
+  `useFocus`/`useFocusManager` APIs. Approval/text prompts, session picker,
+  path completion, command palette, retry actions, and the composer follow a
+  deterministic priority without changing existing Tab completion behavior.
+- Cross-cutting terminal handling remains global: Ctrl-C cancellation, mouse
+  reports, bracketed paste, Kitty protocol filtering, and the post-editor input
+  replay guard are not captured by a modal focus owner.
+
 ## 2026-09-29（CLI 升级 Ink 7.1.1）
 
 - CLI rich TTY rendering upgraded from Ink 6.8.0 to Ink 7.1.1. The minimum

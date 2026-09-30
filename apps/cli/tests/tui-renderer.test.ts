@@ -217,6 +217,9 @@ test("default command hints use the CLI's colon commands", () => {
   assert.match(output, /:collapse/);
   assert.match(output, /:expand/);
   assert.match(output, /:validate/);
+  assert.match(output, /:autofix review/);
+  assert.match(output, /:autofix apply/);
+  assert.match(output, /:autofix discard/);
   assert.match(output, /:cleanup/);
   assert.match(output, /:quit/);
   assert.match(output, /exit \/ quit/);

@@ -4,6 +4,7 @@ import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, win32 } from "node:path";
 
 import type { ChatMessage, ChatUsage, ToolCall } from "@dev-agent/model";
+import type { ChangeSetReview } from "./approval.js";
 import type {
   ValidationRecord,
   ValidationResult,
@@ -13,6 +14,10 @@ import type { AgentCheckpoint } from "./checkpoint.js";
 
 const MAX_MEMORY_FILE_BYTES = 16 * 1024 * 1024; // 16 MiB
 const MAX_CHECKPOINT_RECORDS = 100;
+const MAX_PENDING_REVIEW_FILES = 128;
+const MAX_PENDING_REVIEW_PROMPT_CHARS = 8_000;
+const MAX_PENDING_REVIEW_DIFF_CHARS = 64 * 1024;
+const MAX_PENDING_REVIEW_TEXT_CHARS = 8_192;
 
 async function assertMemoryFileSize(path: string, maxBytes: number): Promise<void> {
   const fileStat = await stat(path);
@@ -57,6 +62,17 @@ export interface AppliedChangeSetRecord {
   readonly createdAt: string;
   readonly recordedAt: string;
   readonly state: "applied" | "rolled-back";
+}
+
+/** Bounded, non-executable metadata for a pending Autofix review. */
+export interface PendingChangeSetReview {
+  readonly kind: "autofix";
+  readonly sessionId: string;
+  /** Hash of the resolved workspace path; the path itself is not persisted. */
+  readonly workspaceId: string;
+  readonly prompt: string;
+  readonly review: ChangeSetReview;
+  readonly createdAt: string;
 }
 
 export interface EvidenceRetentionOptions {
@@ -115,6 +131,12 @@ export interface AgentMemory {
   recordChangeSet?(record: AppliedChangeSetRecord): Promise<void>;
   /** Returns change-set evidence in recording order. */
   changeSets?(): Promise<readonly AppliedChangeSetRecord[]>;
+  /** Persists one bounded, non-executable pending Autofix review. */
+  recordPendingChangeSetReview?(review: PendingChangeSetReview): Promise<void>;
+  /** Returns the pending Autofix review, if one exists. */
+  pendingChangeSetReview?(): Promise<PendingChangeSetReview | undefined>;
+  /** Removes the pending Autofix review without touching other session data. */
+  clearPendingChangeSetReview?(): Promise<void>;
   /** Persists a bounded, metadata-only memory checkpoint. */
   recordCheckpoint?(checkpoint: AgentCheckpoint): Promise<void>;
   /** Returns checkpoints in creation order. */
@@ -150,6 +172,7 @@ export class InMemoryMemory implements AgentMemory {
   private readonly validationRecords: ValidationRecord[] = [];
   private readonly changeSetRecords: AppliedChangeSetRecord[] = [];
   private readonly checkpointRecords: AgentCheckpoint[] = [];
+  private pendingReview?: PendingChangeSetReview;
   private readonly evidenceRetention: Required<EvidenceRetentionOptions>;
   private readonly createdAt = new Date().toISOString();
   private lastActiveAt = this.createdAt;
@@ -174,6 +197,7 @@ export class InMemoryMemory implements AgentMemory {
     this.validationRecords.length = 0;
     this.changeSetRecords.length = 0;
     this.checkpointRecords.length = 0;
+    this.pendingReview = undefined;
     this.lastActiveAt = new Date().toISOString();
   }
 
@@ -229,6 +253,21 @@ export class InMemoryMemory implements AgentMemory {
 
   async changeSets(): Promise<readonly AppliedChangeSetRecord[]> {
     return [...this.changeSetRecords];
+  }
+
+  async recordPendingChangeSetReview(review: PendingChangeSetReview): Promise<void> {
+    assertPendingChangeSetReview(review);
+    this.pendingReview = review;
+    this.lastActiveAt = new Date().toISOString();
+  }
+
+  async pendingChangeSetReview(): Promise<PendingChangeSetReview | undefined> {
+    return this.pendingReview;
+  }
+
+  async clearPendingChangeSetReview(): Promise<void> {
+    this.pendingReview = undefined;
+    this.lastActiveAt = new Date().toISOString();
   }
 
   async recordCheckpoint(checkpoint: AgentCheckpoint): Promise<void> {
@@ -344,6 +383,7 @@ interface MemoryFile {
   readonly validations?: ValidationRecord[];
   readonly changeSets?: AppliedChangeSetRecord[];
   readonly checkpoints?: AgentCheckpoint[];
+  readonly pendingChangeSetReview?: PendingChangeSetReview;
 }
 
 export class FileMemory implements AgentMemory {
@@ -489,6 +529,38 @@ export class FileMemory implements AgentMemory {
         }
         throw new Error(`Invalid memory file: ${this.filePath}`);
       }
+    });
+  }
+
+  recordPendingChangeSetReview(review: PendingChangeSetReview): Promise<void> {
+    return this.enqueue(async () => {
+      assertPendingChangeSetReview(review);
+      const entries = await this.readEntries();
+      await this.persist(entries, undefined, undefined, undefined, undefined, undefined, review);
+    });
+  }
+
+  pendingChangeSetReview(): Promise<PendingChangeSetReview | undefined> {
+    return this.enqueue(async () => {
+      try {
+        const file = await this.readMemoryFile();
+        return file.pendingChangeSetReview;
+      } catch (error) {
+        if (isNodeError(error) && error.code === "ENOENT") {
+          return undefined;
+        }
+        if (error instanceof Error && error.message.startsWith("Invalid memory file:")) {
+          throw error;
+        }
+        throw new Error("Invalid memory file: " + this.filePath);
+      }
+    });
+  }
+
+  clearPendingChangeSetReview(): Promise<void> {
+    return this.enqueue(async () => {
+      const entries = await this.readEntries();
+      await this.persist(entries, undefined, undefined, undefined, undefined, undefined, null);
     });
   }
 
@@ -692,7 +764,8 @@ export class FileMemory implements AgentMemory {
     usage?: ChatUsage,
     validations?: readonly ValidationRecord[],
     changeSets?: readonly AppliedChangeSetRecord[],
-    checkpoints?: readonly AgentCheckpoint[]
+    checkpoints?: readonly AgentCheckpoint[],
+    pendingChangeSetReview?: PendingChangeSetReview | null
   ): Promise<void> {
     await mkdir(dirname(this.filePath), { recursive: true });
     const existing = await this.readMemoryFile().catch(() => undefined);
@@ -713,6 +786,9 @@ export class FileMemory implements AgentMemory {
       validations: validations === undefined ? existing?.validations : [...validations],
       changeSets: changeSets === undefined ? existing?.changeSets : [...changeSets],
       checkpoints: checkpoints === undefined ? existing?.checkpoints : [...checkpoints],
+      pendingChangeSetReview: pendingChangeSetReview === null
+        ? undefined
+        : pendingChangeSetReview ?? existing?.pendingChangeSetReview,
     };
     const serialized = `${JSON.stringify(payload, null, 2)}\n`;
     if (Buffer.byteLength(serialized, "utf8") > MAX_MEMORY_FILE_BYTES) {
@@ -863,7 +939,82 @@ function isMemoryFile(value: unknown): value is MemoryFile {
     (candidate.changeSets === undefined ||
       (Array.isArray(candidate.changeSets) && candidate.changeSets.every(isAppliedChangeSetRecord))) &&
     (candidate.checkpoints === undefined ||
-      (Array.isArray(candidate.checkpoints) && candidate.checkpoints.every(isAgentCheckpoint)))
+      (Array.isArray(candidate.checkpoints) && candidate.checkpoints.every(isAgentCheckpoint))) &&
+    (candidate.pendingChangeSetReview === undefined ||
+      isPendingChangeSetReview(candidate.pendingChangeSetReview))
+  );
+}
+
+function assertPendingChangeSetReview(review: PendingChangeSetReview): void {
+  if (!isPendingChangeSetReview(review)) {
+    throw new Error("invalid pending change-set review");
+  }
+}
+
+function isPendingChangeSetReview(value: unknown): value is PendingChangeSetReview {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.kind === "autofix" &&
+    isBoundedReviewText(candidate.sessionId, 160) &&
+    isSha256(candidate.workspaceId) &&
+    isBoundedReviewText(candidate.prompt, MAX_PENDING_REVIEW_PROMPT_CHARS) &&
+    isChangeSetReview(candidate.review) &&
+    isBoundedReviewText(candidate.createdAt, 128)
+  );
+}
+
+function isChangeSetReview(value: unknown): value is ChangeSetReview {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    isBoundedReviewText(candidate.changeSetId, 256) &&
+    Array.isArray(candidate.files) &&
+    candidate.files.length > 0 &&
+    candidate.files.length <= MAX_PENDING_REVIEW_FILES &&
+    candidate.files.every(isPendingChangeSetFileReview) &&
+    isNonNegativeInteger(candidate.additions) &&
+    isNonNegativeInteger(candidate.deletions) &&
+    isBoundedReviewText(candidate.createdAt, 128)
+  );
+}
+
+function isPendingChangeSetFileReview(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.path === "string" &&
+    candidate.path.length <= 4096 &&
+    isSafeRelativePath(candidate.path) &&
+    (candidate.kind === "file" || candidate.kind === "directory") &&
+    isSha256(candidate.afterHash) &&
+    (candidate.beforeHash === undefined || isSha256(candidate.beforeHash)) &&
+    typeof candidate.diff === "string" &&
+    candidate.diff.length <= MAX_PENDING_REVIEW_DIFF_CHARS &&
+    isSafeReviewText(candidate.diff, MAX_PENDING_REVIEW_DIFF_CHARS, true) &&
+    isNonNegativeInteger(candidate.additions) &&
+    isNonNegativeInteger(candidate.deletions) &&
+    typeof candidate.beforeExists === "boolean" &&
+    typeof candidate.afterExists === "boolean"
+  );
+}
+
+function isBoundedReviewText(value: unknown, maxChars: number): value is string {
+  return isSafeReviewText(value, maxChars, false);
+}
+
+function isSafeReviewText(value: unknown, maxChars: number, allowEmpty: boolean): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= maxChars &&
+    (allowEmpty || value.length > 0) &&
+    !/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/u.test(value)
   );
 }
 

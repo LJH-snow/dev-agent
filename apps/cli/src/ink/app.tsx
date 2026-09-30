@@ -15,6 +15,7 @@ import {
   type InkRuntimeSnapshot,
 } from "./runtime-store.js";
 import {
+  deriveInkViewportLayout,
   InkViewportModel,
   type InkViewportSnapshot,
 } from "./viewport.js";
@@ -26,6 +27,7 @@ import {
   type MouseMove,
   type MouseWheelDirection,
 } from "./mouse-wheel.js";
+import { KittyQueryResponseFilter } from "./kitty-query-response.js";
 import { RetryPanel } from "./retry-panel.js";
 import { ThinkingIndicator } from "./thinking-indicator.js";
 import { ThoughtLine } from "./thought-line.js";
@@ -36,6 +38,8 @@ import { MAX_EDITOR_CHARS } from "./editor-suspend.js";
 import {
   COMMAND_PALETTE_VISIBLE,
   CommandPalette,
+  commandPaletteRowAt,
+  type CommandPaletteLayout,
 } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
 import { SessionPicker } from "./session-picker.js";
@@ -43,6 +47,7 @@ import { PlanReviewPanel } from "./plan-review-panel.js";
 import { CollaborationPanel } from "./collaboration-panel.js";
 import { McpPanel } from "./mcp-panel.js";
 import { InkThemeProvider, getInkTheme, useInkTheme } from "./theme.js";
+import { useInkFocusRouter } from "./focus-router.js";
 import {
   completeWorkspacePath,
   type PathCompletionResult,
@@ -87,6 +92,7 @@ export const MAX_PASTE_CHARS = 8_000;
 // CJK composition windows open in the right place. Off by default because the
 // absolute row depends on the terminal honoring the frame-height contract.
 const IME_CURSOR_ENABLED = process.env.DEV_AGENT_IME_CURSOR === "1";
+const DEFAULT_BOTTOM_SHELL_ROWS = 8;
 
 export function InkCliApp({
   store,
@@ -139,12 +145,17 @@ export function InkCliApp({
     (stdout.rows ?? process.stdout.rows ?? 24) - Math.max(0, terminalRowsOffset),
   );
   const shellRef = useRef<DOMElement>(null);
+  // This is the complete scrollable frame (welcome, transcript, and dynamic
+  // panels), not just the currently visible transcript rows. Its measured
+  // height is the source of truth for totalRows.
   const contentRef = useRef<DOMElement>(null);
-  const [shellRows, setShellRows] = useState(8);
+  const [shellRows, setShellRows] = useState(DEFAULT_BOTTOM_SHELL_ROWS);
   const [contentRows, setContentRows] = useState(0);
-  const baseTranscriptRows = Math.max(1, terminalRows - 1 - shellRows);
-  const navigationRow = terminalRows - shellRows;
+  const viewportLayout = deriveInkViewportLayout(terminalRows, shellRows);
+  const visibleTranscriptRows = viewportLayout.visibleRows;
+  const navigationRow = viewportLayout.navigationRow;
   const viewportMouseInput = useRef(new MouseInputParser()).current;
+  const kittyQueryResponseFilter = useRef(new KittyQueryResponseFilter()).current;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
   const [pasteTruncated, setPasteTruncated] = useState(false);
@@ -180,23 +191,31 @@ export function InkCliApp({
   const [pathCompletion, setPathCompletion] = useState<PathCompletionResult | undefined>(undefined);
   const [pathCompletionIndex, setPathCompletionIndex] = useState(0);
   const [suggestionIndex, setSuggestionIndex] = useState(0);
+  const [paletteOffset, setPaletteOffset] = useState(0);
+  const [paletteLayout, setPaletteLayout] = useState<CommandPaletteLayout | undefined>(undefined);
   const dismissedPathKey = useRef<string | undefined>(undefined);
   const [dismissedCommandKey, setDismissedCommandKey] = useState<string | undefined>(undefined);
   const viewportModel = useRef(new InkViewportModel({
     totalRows: 0,
-    visibleRows: baseTranscriptRows,
+    visibleRows: visibleTranscriptRows,
   })).current;
   const [viewport, setViewport] = useState<InkViewportSnapshot>(() =>
     viewportModel.snapshot(),
   );
   // Measure on every commit: panels rendered from component state (path
-  // completion, command palette, queued prompts) change the content height
-  // without touching these deps, and a stale height would clip them.
+  // completion, command palette, queued prompts) change the scroll-content
+  // height, while approval text and wrapped composer input change the bottom
+  // shell height. The next render derives the clipped viewport from the
+  // measured shell instead of relying on fixed row estimates.
   useLayoutEffect(() => {
-    const shellHeight = shellRef.current === null ? 0 : measureElement(shellRef.current).height;
-    const contentHeight = contentRef.current === null ? 0 : measureElement(contentRef.current).height;
-    if (shellHeight > 0 && shellHeight !== shellRows) setShellRows(shellHeight);
-    if (contentHeight > 0 && contentHeight !== contentRows) setContentRows(contentHeight);
+    const shellHeight = measureBoxHeight(shellRef.current);
+    const contentHeight = measureBoxHeight(contentRef.current);
+    if (shellHeight !== undefined && shellHeight > 0 && shellHeight !== shellRows) {
+      setShellRows(shellHeight);
+    }
+    if (contentHeight !== undefined && contentHeight !== contentRows) {
+      setContentRows(contentHeight);
+    }
   });
   const rememberMousePosition = useCallback((position: MouseMove): void => {
     const previous = lastMousePosition.current;
@@ -232,6 +251,7 @@ export function InkCliApp({
   const suggestions = dismissedCommandKey === commandPaletteKey
     ? []
     : rawSuggestions;
+  const activePaletteLayout = suggestions.length > 0 ? paletteLayout : undefined;
   const busy = inputSnapshot.busy ||
     (snapshot.state !== "ready" && snapshot.state !== "done" &&
       snapshot.state !== "error" && snapshot.state !== "interrupted");
@@ -241,6 +261,13 @@ export function InkCliApp({
   const activeApprovalPrompt = inputSnapshot.approvalPrompt ?? approvalPrompt;
   const activeTextPrompt = inputSnapshot.textPrompt ?? textPrompt;
   const activeInputPrompt = activeTextPrompt ?? activeApprovalPrompt;
+  const { owner: focusOwner } = useInkFocusRouter({
+    activeInputPrompt: activeInputPrompt !== undefined,
+    sessionPicker: snapshot.sessionPicker !== undefined,
+    pathCompletion: pathCompletion !== undefined,
+    commandPalette: suggestions.length > 0,
+    retry: snapshot.retry !== undefined,
+  });
   const displayedSessionId = inputSnapshot.sessionId ?? sessionId;
   const pathCompletionKey = `${value}\u0000${cursor}`;
   const allTranscriptEntries = visibleTranscriptEntries(snapshot);
@@ -254,7 +281,6 @@ export function InkCliApp({
   // from the live answer viewport.
   const navigationHovered = mousePosition !== undefined &&
     isNavigationBarHovered(mousePosition, navigationRow, viewport, columns);
-  const visibleTranscriptRows = baseTranscriptRows;
   const transcriptRows = contentRows;
   // The run summary is a post-run diagnostic: show it once the run has
   // actually settled through the event stream (or under explicit debug), so
@@ -289,11 +315,28 @@ export function InkCliApp({
   }, [commandPaletteKey]);
 
   useEffect(() => {
-    const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
-    setSuggestionIndex((current) => visibleCount === 0
+    setSuggestionIndex((current) => suggestions.length === 0
       ? 0
-      : Math.min(current, visibleCount - 1));
+      : Math.min(current, suggestions.length - 1));
+    if (suggestions.length === 0) {
+      setPaletteLayout(undefined);
+      setPaletteOffset(0);
+    }
   }, [suggestions.length]);
+
+  // Keep the 6-row visible window on the selection so every prefix-matched
+  // command stays keyboard-reachable; the window never scrolls otherwise.
+  useEffect(() => {
+    setPaletteOffset((current) => {
+      const maxOffset = Math.max(0, suggestions.length - COMMAND_PALETTE_VISIBLE);
+      const clamped = Math.min(current, maxOffset);
+      if (suggestionIndex < clamped) return suggestionIndex;
+      if (suggestionIndex >= clamped + COMMAND_PALETTE_VISIBLE) {
+        return Math.max(0, suggestionIndex - COMMAND_PALETTE_VISIBLE + 1);
+      }
+      return clamped;
+    });
+  }, [suggestionIndex, suggestions.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -328,6 +371,9 @@ export function InkCliApp({
   ]);
 
   const submitPrompt = (submitted: string): void => {
+    // A partial protocol prefix can never complete once the turn ends; drop
+    // it so it cannot leak into the next turn's input.
+    kittyQueryResponseFilter.reset();
     applyComposer("", 0);
     setPasteTruncated(false);
     setHistoryIndex(-1);
@@ -364,6 +410,22 @@ export function InkCliApp({
     applyComposer(chars.join(""), composerRef.current.cursor + capped.length);
   };
 
+  // Acts on one highlighted palette row: complete commands submit directly,
+  // template commands with an argument placeholder are filled into the
+  // composer so the user can complete the argument (which also closes the
+  // palette because the filled text no longer prefix-matches any command).
+  const acceptCommandSuggestion = (index: number): void => {
+    if (suggestions.length === 0) return;
+    const selected = Math.min(Math.max(index, 0), suggestions.length - 1);
+    const suggestion = suggestions[selected];
+    if (suggestion === undefined) return;
+    if (commandSuggestionNeedsInput(suggestion.command)) {
+      applyComposer(suggestion.command, Array.from(suggestion.command).length);
+    } else {
+      submitPrompt(suggestion.command);
+    }
+  };
+
   const choosePathSuggestion = (index: number): void => {
     const suggestion = pathCompletion?.suggestions[index];
     if (!suggestion || pathCompletion === undefined) return;
@@ -393,6 +455,11 @@ export function InkCliApp({
   });
 
   useInput((input, key) => {
+    const kittyQuery = kittyQueryResponseFilter.push(input);
+    if (kittyQuery.consumed) {
+      if (kittyQuery.input.length === 0) return;
+      input = kittyQuery.input;
+    }
     // Ink 7 detaches its readable listener during suspendTerminal(). A PTY
     // can replay the command bytes that were buffered at the handoff when the
     // listener is reattached; consume one such event before it can submit the
@@ -406,6 +473,17 @@ export function InkCliApp({
     }
     const mouseInput = viewportMouseInput.push(input);
     for (const direction of mouseInput.directions) {
+      if (focusOwner === "commandPalette" && suggestions.length > 0) {
+        // With the palette open the wheel moves the highlighted row instead
+        // of the transcript, bounded at the list ends without wrapping.
+        setSuggestionIndex((index) => {
+          const current = Math.min(Math.max(index, 0), suggestions.length - 1);
+          return direction === "up"
+            ? Math.max(0, current - 1)
+            : Math.min(suggestions.length - 1, current + 1);
+        });
+        continue;
+      }
       moveViewport(direction, "wheel");
     }
     for (const move of mouseInput.moves) {
@@ -413,6 +491,25 @@ export function InkCliApp({
     }
     for (const click of mouseInput.clicks) {
       rememberMousePosition({ x: click.x, y: click.y });
+      const paletteRow = focusOwner === "commandPalette"
+        ? commandPaletteRowAt(click, activePaletteLayout, suggestions.length)
+        : undefined;
+      if (paletteRow !== undefined) {
+        // Rows are window-relative; the offset maps them onto the full
+        // suggestion list. The first click selects the row; clicking the
+        // already-selected row accepts it, mirroring the Enter behavior.
+        const absoluteRow = paletteRow + paletteOffset;
+        const currentSelection = Math.min(
+          Math.max(suggestionIndex, 0),
+          suggestions.length - 1,
+        );
+        if (absoluteRow === currentSelection) {
+          acceptCommandSuggestion(absoluteRow);
+        } else {
+          setSuggestionIndex(absoluteRow);
+        }
+        continue;
+      }
       if (isBackToBottomClick(
         click,
         navigationRow,
@@ -437,11 +534,11 @@ export function InkCliApp({
     // Some terminals expose Home/End as raw escape sequences without Ink's
     // parsed key flags. Handle those sequences before the generic Escape path.
     const draft = composerRef.current;
+    const sessionPicker = snapshot.sessionPicker;
     const rawHome = input === "\u001b[H" || input === "\u001b[1~";
     const rawEnd = input === "\u001b[F" || input === "\u001b[4~";
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
@@ -452,68 +549,72 @@ export function InkCliApp({
       return;
     }
     if (key.escape) {
-      if (activeInputPrompt !== undefined) {
-        onApprovalAnswer?.("");
-      } else if (snapshot.sessionPicker !== undefined) {
-        onDismissSessionPicker?.();
-      } else if (pathCompletion !== undefined) {
-        dismissedPathKey.current = pathCompletionKey;
-        setPathCompletion(undefined);
-        setPathCompletionIndex(0);
-      } else if (suggestions.length > 0) {
-        setDismissedCommandKey(commandPaletteKey);
-        setSuggestionIndex(0);
-      } else if (snapshot.retry !== undefined) {
-        if (onDismissRetry) {
-          onDismissRetry();
-        } else {
-          store.setRetry(undefined);
-        }
-      } else {
-        onCancel();
+      switch (focusOwner) {
+        case "prompt":
+          onApprovalAnswer?.("");
+          break;
+        case "sessionPicker":
+          onDismissSessionPicker?.();
+          break;
+        case "pathCompletion":
+          dismissedPathKey.current = pathCompletionKey;
+          setPathCompletion(undefined);
+          setPathCompletionIndex(0);
+          break;
+        case "commandPalette":
+          setDismissedCommandKey(commandPaletteKey);
+          setSuggestionIndex(0);
+          break;
+        case "retry":
+          if (onDismissRetry) {
+            onDismissRetry();
+          } else {
+            store.setRetry(undefined);
+          }
+          break;
+        case "composer":
+          onCancel();
+          break;
       }
       return;
     }
-    if (snapshot.sessionPicker !== undefined) {
+    if (focusOwner === "sessionPicker" && sessionPicker !== undefined) {
       if (key.upArrow) {
-        const next = snapshot.sessionPicker.selectedIndex - 1;
+        const next = sessionPicker.selectedIndex - 1;
         store.setSessionPickerIndex(
-          next < 0 ? snapshot.sessionPicker.rows.length - 1 : next,
+          next < 0 ? sessionPicker.rows.length - 1 : next,
         );
         return;
       }
       if (key.downArrow) {
-        const next = snapshot.sessionPicker.selectedIndex + 1;
+        const next = sessionPicker.selectedIndex + 1;
         store.setSessionPickerIndex(
-          next >= snapshot.sessionPicker.rows.length ? 0 : next,
+          next >= sessionPicker.rows.length ? 0 : next,
         );
         return;
       }
       if (key.return) {
-        onSessionResume?.(snapshot.sessionPicker.selectedIndex);
+        onSessionResume?.(sessionPicker.selectedIndex);
         return;
       }
       return;
     }
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       key.pageUp
     ) {
       moveViewport("up");
       return;
     }
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       key.pageDown
     ) {
       moveViewport("down");
       return;
     }
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
@@ -524,8 +625,7 @@ export function InkCliApp({
       return;
     }
     if (
-      snapshot.sessionPicker === undefined &&
-      activeInputPrompt === undefined &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
       draft.value.length === 0 &&
       pathCompletion === undefined &&
       suggestions.length === 0 &&
@@ -536,9 +636,8 @@ export function InkCliApp({
       return;
     }
     if (
-      snapshot.retry !== undefined &&
+      focusOwner === "retry" &&
       !busy &&
-      activeInputPrompt === undefined &&
       draft.value.length === 0 &&
       input.toLowerCase() === "r"
     ) {
@@ -564,6 +663,22 @@ export function InkCliApp({
       insertText(normalized.slice(0, MAX_PASTE_CHARS).join(""));
       return;
     }
+    // With the command palette open, Enter acts on the highlighted row instead
+    // of submitting the raw composer draft (which is just the typed prefix,
+    // e.g. "/"). The suggestions are recomputed from the ref-backed draft so a
+    // key event that arrives right after a click accepted a row (before the
+    // next render) falls through to the normal submit path instead of
+    // re-accepting the stale palette.
+    if (
+      focusOwner === "commandPalette" &&
+      key.return &&
+      !key.shift &&
+      suggestions.length > 0 &&
+      commandSuggestions(draft.value, commands).length > 0
+    ) {
+      acceptCommandSuggestion(suggestionIndex);
+      return;
+    }
     // Some PTYs normalize carriage return to line feed while Ink is in raw
     // mode. Treat both forms as submit so Enter never leaves text stranded in
     // the composer.
@@ -577,41 +692,37 @@ export function InkCliApp({
       submitPrompt(chars.join(""));
       return;
     }
-    if (key.tab && pathCompletion?.suggestions.length) {
+    if (focusOwner === "pathCompletion" && key.tab && pathCompletion?.suggestions.length) {
       choosePathSuggestion(pathCompletionIndex);
       return;
     }
-    if (key.tab && suggestions.length > 0) {
-      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
-      const selected = Math.min(suggestionIndex, visibleCount - 1);
+    if (focusOwner === "commandPalette" && key.tab && suggestions.length > 0) {
+      const selected = Math.min(Math.max(suggestionIndex, 0), suggestions.length - 1);
       const suggestion = suggestions[selected]?.command ?? "";
       applyComposer(suggestion, Array.from(suggestion).length);
       return;
     }
-    if (pathCompletion?.suggestions.length && key.upArrow) {
+    if (focusOwner === "pathCompletion" && pathCompletion?.suggestions.length && key.upArrow) {
       setPathCompletionIndex((index) =>
         index <= 0 ? pathCompletion.suggestions.length - 1 : index - 1,
       );
       return;
     }
-    if (pathCompletion?.suggestions.length && key.downArrow) {
+    if (focusOwner === "pathCompletion" && pathCompletion?.suggestions.length && key.downArrow) {
       setPathCompletionIndex((index) =>
         index >= pathCompletion.suggestions.length - 1 ? 0 : index + 1,
       );
       return;
     }
-    if (suggestions.length > 0 && key.upArrow) {
-      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
-      setSuggestionIndex((index) => {
-        const current = Math.min(Math.max(index, 0), visibleCount - 1);
-        return current === 0 ? visibleCount - 1 : current - 1;
-      });
+    if (focusOwner === "commandPalette" && suggestions.length > 0 && key.upArrow) {
+      setSuggestionIndex((index) =>
+        index <= 0 ? suggestions.length - 1 : index - 1,
+      );
       return;
     }
-    if (suggestions.length > 0 && key.downArrow) {
-      const visibleCount = Math.min(COMMAND_PALETTE_VISIBLE, suggestions.length);
+    if (focusOwner === "commandPalette" && suggestions.length > 0 && key.downArrow) {
       setSuggestionIndex((index) =>
-        index >= visibleCount - 1 ? 0 : index + 1,
+        index >= suggestions.length - 1 ? 0 : index + 1,
       );
       return;
     }
@@ -681,12 +792,18 @@ export function InkCliApp({
       : "Type your message or @path/to/file";
   return (
     <InkThemeProvider theme={getInkTheme(inputSnapshot.theme)}>
-      <Box flexDirection="column" width={columns} height={stdout.isTTY ? terminalRows - 1 : undefined}>
+      <Box flexDirection="column" width={columns} height={stdout.isTTY ? viewportLayout.frameRows : undefined}>
       {/* Non-TTY renders (renderToString) have no fixed viewport to scroll:
           offsetting the content would just amputate its top rows, so the
           scroll offset only applies where the frame is height-constrained. */}
       <Box height={stdout.isTTY ? visibleTranscriptRows : undefined} flexShrink={0} overflow="hidden" flexDirection="column">
-      <Box ref={contentRef} flexShrink={0} flexDirection="column" width={columns} marginTop={stdout.isTTY ? -renderedViewport.offset : undefined}>
+      <Box
+        ref={contentRef}
+        flexShrink={0}
+        flexDirection="column"
+        width={columns}
+        marginTop={stdout.isTTY ? -renderedViewport.offset : undefined}
+      >
         <WelcomePanel provider={provider} model={model} sessionId={displayedSessionId}
           workingDirectory={workingDirectory} executor={executor} mcpCount={mcpCount} columns={columns} />
         <TranscriptViewport
@@ -744,7 +861,9 @@ export function InkCliApp({
           <CommandPalette
             suggestions={suggestions}
             selectedIndex={suggestionIndex}
+            offset={paletteOffset}
             columns={columns}
+            onLayout={setPaletteLayout}
           />
         ) : null}
         {pathCompletion?.suggestions.length ? (
@@ -785,7 +904,7 @@ export function InkCliApp({
               ? `Editor draft truncated to ${MAX_EDITOR_CHARS} characters`
               : undefined}
           imeCursor={IME_CURSOR_ENABLED}
-          terminalRows={terminalRows - 1}
+          terminalRows={viewportLayout.frameRows}
         />
         <Footer
           workingDirectory={workingDirectory}
@@ -806,6 +925,18 @@ export function InkCliApp({
       </Box>
     </InkThemeProvider>
   );
+}
+
+function measureBoxHeight(node: DOMElement | null): number | undefined {
+  if (node === null) return undefined;
+  try {
+    const height = measureElement(node).height;
+    return Number.isFinite(height) ? Math.max(0, Math.floor(height)) : undefined;
+  } catch {
+    // Ink may detach a ref while a render is being replaced. The next commit
+    // will measure the newly attached node.
+    return undefined;
+  }
 }
 
 function WelcomePanel(props: {
@@ -1518,6 +1649,19 @@ function Footer({
   );
 }
 
+function commandSuggestionNeedsInput(command: string): boolean {
+  return /<[^>\r\n]+>|\[[^\r\n\]]+\]|\|/u.test(command);
+}
+
+function isSubsequence(needle: string, haystack: string): boolean {
+  let index = 0;
+  for (const character of haystack) {
+    if (character === needle[index]) index += 1;
+    if (index >= needle.length) return true;
+  }
+  return false;
+}
+
 function commandSuggestions(
   value: string,
   commands: readonly CommandHint[],
@@ -1526,11 +1670,27 @@ function commandSuggestions(
   if (!prefix.startsWith(":") && !prefix.startsWith("/")) {
     return [];
   }
+  // A fully typed or accepted command closes the palette; otherwise it would
+  // keep prefix-matching itself and Enter could never submit it.
+  if (commands.some((command) => command.command === prefix)) {
+    return [];
+  }
   const normalized = prefix.slice(1).toLowerCase();
-  return commands.filter((command) => {
+  if (normalized.length === 0) return commands;
+  // Rank prefix matches above substring matches above subsequence matches so
+  // typing "ed" surfaces :editor first while "story" still finds :history.
+  // Equal ranks keep the declared command order (Array.sort is stable).
+  const rank = (command: CommandHint): number => {
     const name = command.command.replace(/^[:/]/, "").toLowerCase();
-    return normalized.length === 0 || name.startsWith(normalized);
-  });
+    if (name.startsWith(normalized)) return 0;
+    if (name.includes(normalized)) return 1;
+    return isSubsequence(normalized, name) ? 2 : 3;
+  };
+  return commands
+    .map((command) => ({ command, score: rank(command) }))
+    .filter((entry) => entry.score < 3)
+    .sort((a, b) => a.score - b.score)
+    .map((entry) => entry.command);
 }
 
 function statusLabel(state: TuiStateSnapshot["state"]): string {

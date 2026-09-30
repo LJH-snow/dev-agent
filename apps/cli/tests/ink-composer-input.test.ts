@@ -2,17 +2,18 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { PassThrough, Writable } from "node:stream";
 import { createElement } from "react";
-import { render } from "ink";
+import { render, type KittyKeyboardOptions } from "ink";
 import { InkCliApp } from "../dist/ink/app.js";
 import { InkRuntimeStore } from "../dist/ink/runtime-store.js";
 import { DEFAULT_COMMAND_HINTS, type CommandHint } from "../dist/tui-renderer.js";
 
-function createInkTerminal(): {
+function createInkTerminal(options: { readonly kittyResponseDelayMs?: number } = {}): {
   stdin: PassThrough & NodeJS.ReadStream;
   stdout: Writable & NodeJS.WriteStream;
   writes: string[];
 } {
   const stdin = new PassThrough() as PassThrough & NodeJS.ReadStream;
+  let kittyResponseSent = false;
   Object.assign(stdin, {
     isTTY: true,
     setRawMode: () => stdin,
@@ -22,7 +23,17 @@ function createInkTerminal(): {
   const writes: string[] = [];
   const stdout = new Writable({
     write(chunk, _encoding, callback) {
-      writes.push(String(chunk));
+      const text = String(chunk);
+      writes.push(text);
+      if (!kittyResponseSent && text.includes("\u001b[?u")) {
+        kittyResponseSent = true;
+        const sendResponse = (): void => {
+          if (!stdin.destroyed) stdin.write("\u001b[?0u");
+        };
+        const delay = options.kittyResponseDelayMs ?? 0;
+        if (delay > 0) setTimeout(sendResponse, delay);
+        else queueMicrotask(sendResponse);
+      }
       callback();
     },
   }) as Writable & NodeJS.WriteStream;
@@ -39,6 +50,7 @@ function renderComposerApp(
   stdout: Writable & NodeJS.WriteStream,
   onSubmit: (value: string) => void,
   commands: readonly CommandHint[] = [],
+  kittyKeyboard?: KittyKeyboardOptions,
 ) {
   return render(
     createElement(InkCliApp, {
@@ -60,6 +72,7 @@ function renderComposerApp(
       debug: true,
       incrementalRendering: false,
       exitOnCtrlC: false,
+      ...(kittyKeyboard === undefined ? {} : { kittyKeyboard }),
     },
   );
 }
@@ -198,6 +211,63 @@ test("plain Enter still submits and bare Shift+Enter inserts a newline", async (
     stdin.write("\r");
     await pause();
     assert.deepEqual(submitted, ["hello\nworld"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("Kitty query responses do not leak into the composer", async () => {
+  const { stdin, stdout, writes } = createInkTerminal({ kittyResponseDelayMs: 20 });
+  const submitted: string[] = [];
+  const instance = renderComposerApp(
+    stdin,
+    stdout,
+    (value) => submitted.push(value),
+    [],
+    { mode: "auto", flags: ["disambiguateEscapeCodes"] },
+  );
+
+  try {
+    await pause();
+    stdin.write("hello");
+    await pause();
+    stdin.write("\r");
+    await pause();
+    assert.deepEqual(submitted, ["hello"]);
+    assert.doesNotMatch(writes.join(""), /\[\?0u/);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("a delayed and split Kitty query response is consumed without losing text", async () => {
+  const { stdin, stdout, writes } = createInkTerminal({ kittyResponseDelayMs: 250 });
+  const submitted: string[] = [];
+  const instance = renderComposerApp(
+    stdin,
+    stdout,
+    (value) => submitted.push(value),
+    [],
+    { mode: "auto", flags: ["disambiguateEscapeCodes"] },
+  );
+
+  try {
+    await pause();
+    await new Promise((resolve) => setTimeout(resolve, 270));
+    stdin.write("\u001b[?");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    stdin.write("0");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    stdin.write("uhello");
+    await pause();
+    stdin.write("\r");
+    await pause();
+    assert.deepEqual(submitted, ["hello"]);
+    assert.doesNotMatch(writes.join(""), /\[\?0u/);
   } finally {
     instance.unmount();
     stdin.destroy();

@@ -13,13 +13,18 @@
 
 Recon done 2026-09-28 from the Ink repository (github.com/vadimdemedes/ink, README + docs) and a usage inventory of `apps/cli/src`.
 
-## Requirements
+## Historical pre-Ink 7 requirements (2026-09-28)
+
+The audit below was performed before the dependency upgrade. Its dependency
+constraints and API inventory are historical evidence, not the current
+implementation contract.
+
 - Adopt Ink capabilities that improve the CLI composer, accessibility, streaming render cost, and full-screen interactions.
 - Everything targeted ships inside the pinned `ink ^6.8.0` (apps/cli/package.json) — no version bump, no new runtime deps.
 
 ## Research Findings
 
-### Current Ink usage in dev-agent CLI (checked)
+### Current Ink usage in dev-agent CLI at audit time (pre-Ink 7)
 - Deps: `ink ^6.8.0` + `react ^19.3.0` (apps/cli/package.json).
 - Imports across `apps/cli/src`: `Text` ×15, `Box` ×13, `useStdout` ×1, `useStdin` ×1, `useInput` ×1, `render` ×1, `Static` ×1.
 - `Static` scrollback transcript: `apps/cli/src/ink/app.tsx:574`.
