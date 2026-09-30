@@ -138,6 +138,32 @@ test("project capability stays ready when an untracked tree exceeds the Git outp
   }
 });
 
+test("project capability counts tracked changes without buffering the Git status output", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dev-agent-project-large-tracked-"));
+  try {
+    await runGit(["init", "--quiet"], root);
+    await runGit(["symbolic-ref", "HEAD", "refs/heads/main"], root);
+    const directory = join(root, "tracked");
+    await mkdir(directory, { recursive: true });
+    const files = Array.from({ length: 1200 }, (_, index) => join(directory, `file-${String(index).padStart(5, "0")}.txt`));
+    await Promise.all(files.map((path) => writeFile(path, "before\n", "utf8")));
+    await runGit(["add", "."], root);
+    await runGit(["-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "baseline"], root);
+    await Promise.all(files.map((path) => writeFile(path, "after\n", "utf8")));
+
+    const snapshot = await loadProjectCapabilityMetadata(root);
+    assert.deepEqual(snapshot, {
+      provider: "git",
+      state: "ready",
+      branch: "main",
+      dirty: true,
+      changedFiles: 1200,
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("custom capability metadata is sanitized and never grants mutation", () => {
   const github = normalizeGitHubCapabilitySnapshot({
     provider: "github",
