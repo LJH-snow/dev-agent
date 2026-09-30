@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { PassThrough, Writable } from "node:stream";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import test from "node:test";
 import { createElement } from "react";
 import headless from "@xterm/headless";
@@ -20,6 +23,7 @@ function createScreen(
   columns: number,
   rows: number,
   commands?: readonly { command: string; description: string }[],
+  workingDirectory = "/tmp",
 ) {
   const terminal = new Terminal({ cols: columns, rows, convertEol: true, allowProposedApi: true, scrollback: 1000 });
   const stdin = new PassThrough() as PassThrough & NodeJS.ReadStream;
@@ -37,16 +41,18 @@ function createScreen(
   Object.assign(physicalOutput, { isTTY: true, columns, rows });
   const store = new InkRuntimeStore();
   const submitted: string[] = [];
+  const resumed: number[] = [];
   const instance = render(createElement(InkCliApp, {
     store,
     provider: "fixture",
     model: "fixture",
     sessionId: "fixture",
-    workingDirectory: "/tmp",
+    workingDirectory,
     executor: "local",
     terminalRowsOffset: 1,
     ...(commands === undefined ? {} : { commands }),
     onSubmit: (value: string) => submitted.push(value),
+    onSessionResume: (index: number) => resumed.push(index),
     onCancel: () => undefined,
     onExit: () => undefined,
   }), {
@@ -110,7 +116,7 @@ function createScreen(
     const row = lines().findIndex((line) => line.includes(needle));
     return row < 0 ? undefined : row + 1;
   };
-  return { store, resize, terminal, stdin, lines, button, buttonBackground, waitFor, loadTranscript, click, paintedRow, submitted, dispose };
+  return { store, resize, terminal, stdin, lines, button, buttonBackground, waitFor, loadTranscript, click, paintedRow, submitted, resumed, dispose };
 }
 
 for (const [columns, rows] of [[20, 12], [80, 24], [120, 40], [160, 50]] as const) {
@@ -277,6 +283,59 @@ test("clicking a palette row selects it and clicking again submits it", async ()
       "palette closes after submit",
     );
   } finally { screen.dispose(); }
+});
+
+test("clicking session picker rows selects and then resumes", async () => {
+  const screen = createScreen(80, 24);
+  try {
+    screen.store.setSessionPicker({
+      title: "SESSIONS",
+      rows: ["session-one", "session-two"],
+      selectedIndex: 0,
+    });
+    await screen.waitFor(() => screen.paintedRow("SESSIONS") !== undefined, "picker open");
+    const secondRow = screen.paintedRow("session-two");
+    assert.ok(secondRow !== undefined, "second row painted");
+
+    screen.click(2, secondRow);
+    await screen.waitFor(() => screen.paintedRow("› session-two") !== undefined, "click selects second row");
+    assert.deepEqual(screen.resumed, []);
+
+    screen.click(2, secondRow);
+    await screen.waitFor(() => screen.resumed.length === 1, "second click resumes");
+    assert.deepEqual(screen.resumed, [1]);
+  } finally { screen.dispose(); }
+});
+
+test("clicking path completion rows selects and then accepts", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "dev-agent-click-path-"));
+  await writeFile(join(workspace, "notes.md"), "notes\n", "utf8");
+  const screen = createScreen(80, 24, undefined, workspace);
+  try {
+    screen.stdin.write("@");
+    await screen.waitFor(() => screen.paintedRow("PATH COMPLETION") !== undefined, "panel open");
+    const row = screen.paintedRow("notes.md");
+    assert.ok(row !== undefined, "notes row painted");
+
+    screen.click(2, row);
+    await screen.waitFor(() => screen.paintedRow("› notes.md") !== undefined, "click selects notes.md");
+    assert.deepEqual(screen.submitted, []);
+
+    screen.click(2, row);
+    await screen.waitFor(
+      () => screen.paintedRow("PATH COMPLETION") === undefined &&
+        screen.lines().some((line) => line.includes("@notes.md")),
+      "second click accepts the path",
+    );
+    assert.deepEqual(screen.submitted, []);
+
+    screen.stdin.write("\r");
+    await screen.waitFor(() => screen.submitted.length === 1, "Enter submits the accepted path");
+    assert.deepEqual(screen.submitted, ["@notes.md"]);
+  } finally {
+    screen.dispose();
+    await rm(workspace, { recursive: true, force: true });
+  }
 });
 
 test("clicking a scrolled palette window row maps to the absolute command", async () => {

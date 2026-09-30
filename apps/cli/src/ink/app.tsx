@@ -42,7 +42,8 @@ import {
   type CommandPaletteLayout,
 } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
-import { SessionPicker } from "./session-picker.js";
+import { SessionPicker, SESSION_PICKER_HEADER_ROWS } from "./session-picker.js";
+import { panelRowAt, type PanelLayout } from "./panel-hitbox.js";
 import { PlanReviewPanel } from "./plan-review-panel.js";
 import { CollaborationPanel } from "./collaboration-panel.js";
 import { McpPanel } from "./mcp-panel.js";
@@ -193,6 +194,8 @@ export function InkCliApp({
   const [suggestionIndex, setSuggestionIndex] = useState(0);
   const [paletteOffset, setPaletteOffset] = useState(0);
   const [paletteLayout, setPaletteLayout] = useState<CommandPaletteLayout | undefined>(undefined);
+  const [pathPanelLayout, setPathPanelLayout] = useState<PanelLayout | undefined>(undefined);
+  const [sessionPanelLayout, setSessionPanelLayout] = useState<PanelLayout | undefined>(undefined);
   const dismissedPathKey = useRef<string | undefined>(undefined);
   const [dismissedCommandKey, setDismissedCommandKey] = useState<string | undefined>(undefined);
   const viewportModel = useRef(new InkViewportModel({
@@ -324,6 +327,16 @@ export function InkCliApp({
     }
   }, [suggestions.length]);
 
+  // Stale layouts from a previous panel instance must never map clicks onto
+  // a newly opened panel before it reports its own measured position.
+  useEffect(() => {
+    if (pathCompletion === undefined) setPathPanelLayout(undefined);
+  }, [pathCompletion]);
+
+  useEffect(() => {
+    if (snapshot.sessionPicker === undefined) setSessionPanelLayout(undefined);
+  }, [snapshot.sessionPicker]);
+
   // Keep the 6-row visible window on the selection so every prefix-matched
   // command stays keyboard-reachable; the window never scrolls otherwise.
   useEffect(() => {
@@ -427,18 +440,34 @@ export function InkCliApp({
   };
 
   const choosePathSuggestion = (index: number): void => {
-    const suggestion = pathCompletion?.suggestions[index];
-    if (!suggestion || pathCompletion === undefined) return;
+    const panel = pathCompletion;
+    if (panel === undefined) return;
+    const suggestion = panel.suggestions[index];
+    if (!suggestion) return;
     const chars = Array.from(composerRef.current.value);
+    // Ignore a panel that no longer matches the current draft: the async
+    // rescan can still be in flight after the composer changed (e.g. a click
+    // accepted a suggestion moments ago), and applying its stale token span
+    // would duplicate or corrupt the draft. The token must still be present
+    // verbatim and the caret must sit inside the panel's replacement span.
+    if (chars.slice(panel.tokenStart, panel.tokenEnd).join("") !== panel.token) {
+      return;
+    }
+    if (
+      composerRef.current.cursor < panel.tokenStart ||
+      composerRef.current.cursor > panel.tokenEnd
+    ) {
+      return;
+    }
     const replacement = `@${suggestion.path}`;
     chars.splice(
-      pathCompletion.tokenStart,
-      pathCompletion.tokenEnd - pathCompletion.tokenStart,
+      panel.tokenStart,
+      panel.tokenEnd - panel.tokenStart,
       replacement,
     );
     applyComposer(
       chars.join(""),
-      pathCompletion.tokenStart + Array.from(replacement).length,
+      panel.tokenStart + Array.from(replacement).length,
     );
     setPathCompletion(undefined);
     setPathCompletionIndex(0);
@@ -484,6 +513,25 @@ export function InkCliApp({
         });
         continue;
       }
+      if (focusOwner === "pathCompletion" && pathCompletion?.suggestions.length) {
+        const max = pathCompletion.suggestions.length - 1;
+        setPathCompletionIndex((index) => {
+          const current = Math.min(Math.max(index, 0), max);
+          return direction === "up"
+            ? Math.max(0, current - 1)
+            : Math.min(max, current + 1);
+        });
+        continue;
+      }
+      const wheelPicker = snapshot.sessionPicker;
+      if (focusOwner === "sessionPicker" && wheelPicker !== undefined) {
+        const max = wheelPicker.rows.length - 1;
+        const current = Math.min(Math.max(wheelPicker.selectedIndex, 0), max);
+        store.setSessionPickerIndex(direction === "up"
+          ? Math.max(0, current - 1)
+          : Math.min(max, current + 1));
+        continue;
+      }
       moveViewport(direction, "wheel");
     }
     for (const move of mouseInput.moves) {
@@ -507,6 +555,36 @@ export function InkCliApp({
           acceptCommandSuggestion(absoluteRow);
         } else {
           setSuggestionIndex(absoluteRow);
+        }
+        continue;
+      }
+      const activePathPanel = focusOwner === "pathCompletion" ? pathCompletion : undefined;
+      const pathRow = activePathPanel !== undefined && activePathPanel.suggestions.length > 0
+        ? panelRowAt(click, pathPanelLayout, PATH_COMPLETION_HEADER_ROWS, activePathPanel.suggestions.length)
+        : undefined;
+      if (pathRow !== undefined && activePathPanel !== undefined) {
+        // Same contract as the palette: first click selects, clicking the
+        // already-selected row accepts it (mirroring Enter/Tab).
+        const current = Math.min(
+          Math.max(pathCompletionIndex, 0),
+          activePathPanel.suggestions.length - 1,
+        );
+        if (pathRow === current) {
+          choosePathSuggestion(pathRow);
+        } else {
+          setPathCompletionIndex(pathRow);
+        }
+        continue;
+      }
+      const clickedPicker = focusOwner === "sessionPicker" ? snapshot.sessionPicker : undefined;
+      const sessionRow = clickedPicker !== undefined
+        ? panelRowAt(click, sessionPanelLayout, SESSION_PICKER_HEADER_ROWS, clickedPicker.rows.length)
+        : undefined;
+      if (sessionRow !== undefined && clickedPicker !== undefined) {
+        if (sessionRow === clickedPicker.selectedIndex) {
+          onSessionResume?.(sessionRow);
+        } else {
+          store.setSessionPickerIndex(sessionRow);
         }
         continue;
       }
@@ -837,6 +915,7 @@ export function InkCliApp({
             rows={snapshot.sessionPicker.rows}
             selectedIndex={snapshot.sessionPicker.selectedIndex}
             columns={columns}
+            onLayout={setSessionPanelLayout}
           />
         ) : null}
         {snapshot.plan !== undefined ? (
@@ -883,6 +962,7 @@ export function InkCliApp({
             completion={pathCompletion}
             selectedIndex={pathCompletionIndex}
             columns={columns}
+            onLayout={setPathPanelLayout}
           />
         ) : null}
         {queuedPrompts.length > 0 ? (
@@ -1416,18 +1496,44 @@ function NoticePanel({
   );
 }
 
+/** Rows painted above the first completion row: top border + header. */
+const PATH_COMPLETION_HEADER_ROWS = 2;
+
 function PathCompletionPanel({
   completion,
   selectedIndex,
   columns,
+  onLayout,
 }: {
   completion: PathCompletionResult;
   selectedIndex: number;
   columns: number;
+  onLayout?: (layout: PanelLayout) => void;
 }): React.JSX.Element {
   const theme = useInkTheme();
+  const boxRef = useRef<DOMElement | null>(null);
+  const reportedLayoutRef = useRef("");
+  // Same measured-layout contract as the command palette so click hit-testing
+  // stays aligned with what is painted; the change guard keeps re-measures
+  // from re-rendering the whole app.
+  useEffect(() => {
+    const node = boxRef.current;
+    if (!node) return;
+    try {
+      const measured = measureElement(node);
+      if (measured.height <= 0) return;
+      const key = `${measured.y}:${measured.height}`;
+      if (key !== reportedLayoutRef.current) {
+        reportedLayoutRef.current = key;
+        onLayout?.({ top: measured.y, height: measured.height });
+      }
+    } catch {
+      // The node is not attached yet; the next commit measures it.
+    }
+  });
   return (
     <Box
+      ref={boxRef}
       flexDirection="column"
       borderStyle="round"
       borderColor={theme.border}
@@ -1446,7 +1552,7 @@ function PathCompletionPanel({
           </Text>
         </Text>
       ))}
-      <Text color={theme.muted}>Tab select · ↑↓ move · esc close</Text>
+      <Text color={theme.muted}>Tab select · ↑↓ move · click accept · esc close</Text>
     </Box>
   );
 }

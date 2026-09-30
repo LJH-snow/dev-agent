@@ -1228,7 +1228,7 @@ test("Ink app renders the session picker with a selected row", () => {
 
   assert.match(output, /SESSIONS/);
   assert.match(output, /default · 2 entries/);
-  assert.match(output, /Enter resume · esc close/);
+  assert.match(output, /Enter resume · click select · esc close/);
 });
 
 test("Ink session picker uses arrows, Enter, and Escape without submitting a prompt", async () => {

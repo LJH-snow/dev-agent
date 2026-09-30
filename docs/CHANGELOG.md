@@ -35,6 +35,12 @@
   next Enter submits the full reference. The fuzzy fallback also never echoes
   the exact typed path back, so a fully typed reference still closes the
   panel.
+- Path completion and session picker rows are now clickable and wheel-scroll
+  like the command palette: a measured panel layout drives hit testing, the
+  first click selects a row, and clicking the selected row accepts/resumes
+  it. Accepting a suggestion ignores a panel whose token span or caret no
+  longer matches the current draft, so a fast second click after acceptance
+  can no longer duplicate the path.
 
 ## 2026-09-30（CLI TUI command palette fuzzy matching and wheel selection）
 

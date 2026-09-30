@@ -8,6 +8,7 @@ import {
 } from "ink";
 
 import { useAnimationTicks } from "./animation-clock.js";
+import { panelRowAt, type PanelLayout } from "./panel-hitbox.js";
 
 import type { CommandHint } from "../tui-renderer.js";
 import { useInkTheme } from "./theme.js";
@@ -17,33 +18,26 @@ export const COMMAND_PALETTE_VISIBLE = 6;
 const COMMAND_PALETTE_SELECTED_INK = "#131923";
 
 /** Painted position of the bordered palette box, in 0-based live-frame rows. */
-export interface CommandPaletteLayout {
-  readonly top: number;
-  readonly height: number;
-}
+export type CommandPaletteLayout = PanelLayout;
 
 /** Rows painted above the first command row: top border + header. */
 export const COMMAND_PALETTE_HEADER_ROWS = 2;
 
 /**
  * Maps a mouse press onto the painted command row index, or undefined when
- * the click misses the palette. Wheel, motion, and non-primary buttons never
- * select a row.
+ * the click misses the palette's visible window.
  */
 export function commandPaletteRowAt(
   click: { readonly button: number; readonly y: number; readonly action: string },
   layout: CommandPaletteLayout | undefined,
   suggestionCount: number,
 ): number | undefined {
-  if (layout === undefined || suggestionCount <= 0) return undefined;
-  if (click.action !== "press") return undefined;
-  if ((click.button & 64) !== 0 || (click.button & 32) !== 0) return undefined;
-  if ((click.button & 3) !== 0) return undefined;
-  const row = click.y - (layout.top + COMMAND_PALETTE_HEADER_ROWS + 1);
-  if (row < 0 || row >= Math.min(COMMAND_PALETTE_VISIBLE, suggestionCount)) {
-    return undefined;
-  }
-  return row;
+  return panelRowAt(
+    click,
+    layout,
+    COMMAND_PALETTE_HEADER_ROWS,
+    Math.min(COMMAND_PALETTE_VISIBLE, suggestionCount),
+  );
 }
 
 export function commandPaletteFrame(index: number): string {
