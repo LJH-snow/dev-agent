@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { PassThrough, Writable } from "node:stream";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -484,6 +484,54 @@ test("Ink command palette matches commands beyond a strict prefix", async () => 
     instance.unmount();
     stdin.destroy();
     stdout.destroy();
+  }
+});
+
+test("Ink path completion Enter accepts the highlighted file into the composer", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "dev-agent-ink-path-enter-"));
+  const { stdin, stdout } = createInkTerminal();
+  const submitted: string[] = [];
+  await writeFile(join(workspace, "notes.md"), "notes\n", "utf8");
+  const instance = render(
+    createElement(InkCliApp, {
+      store: new InkRuntimeStore(),
+      provider: "ollama",
+      model: "qwen3:4b-instruct",
+      sessionId: "default",
+      workingDirectory: workspace,
+      executor: "local",
+      commands: [],
+      onSubmit: (value: string) => submitted.push(value),
+      onCancel: () => undefined,
+      onExit: () => undefined,
+    }),
+    {
+      stdin,
+      stdout,
+      stderr: stdout,
+      debug: true,
+      incrementalRendering: false,
+      exitOnCtrlC: false,
+    },
+  );
+
+  try {
+    stdin.write("@");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.deepEqual(submitted, [], "Enter must not submit the bare @ token");
+
+    // The highlighted file was accepted; the next Enter submits the full
+    // reference.
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.deepEqual(submitted, ["@notes.md"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+    await rm(workspace, { recursive: true, force: true });
   }
 });
 

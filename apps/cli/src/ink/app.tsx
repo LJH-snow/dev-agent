@@ -679,6 +679,18 @@ export function InkCliApp({
       acceptCommandSuggestion(suggestionIndex);
       return;
     }
+    // With the path completion panel open, Enter accepts the highlighted
+    // suggestion into the composer instead of submitting the raw @ token
+    // draft. Directories keep their trailing slash so the panel reopens on
+    // their children, mirroring Tab.
+    if (
+      focusOwner === "pathCompletion" &&
+      key.return &&
+      pathCompletion?.suggestions.length
+    ) {
+      choosePathSuggestion(pathCompletionIndex);
+      return;
+    }
     // Some PTYs normalize carriage return to line feed while Ink is in raw
     // mode. Treat both forms as submit so Enter never leaves text stranded in
     // the composer.

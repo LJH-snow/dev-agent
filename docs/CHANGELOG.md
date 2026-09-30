@@ -30,6 +30,11 @@
 - The fallback scans at most 3 directory levels under the existing 2,000-entry
   cap, is skipped while navigating an existing directory (`@src/`), and never
   changes normal prefix completion.
+- With the path completion panel open, Enter now accepts the highlighted
+  suggestion into the composer instead of submitting the bare `@` draft; the
+  next Enter submits the full reference. The fuzzy fallback also never echoes
+  the exact typed path back, so a fully typed reference still closes the
+  panel.
 
 ## 2026-09-30（CLI TUI command palette fuzzy matching and wheel selection）
 

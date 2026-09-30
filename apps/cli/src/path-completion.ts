@@ -183,7 +183,9 @@ async function fuzzyWorkspacePaths(
   };
   return results
     .map((candidate) => ({ candidate, score: rank(candidate) }))
-    .filter((entry) => entry.score < 4)
+    // A fully typed reference must close the panel, so the fallback never
+    // echoes the exact same path back (mirrors the prefix filter).
+    .filter((entry) => entry.score < 4 && entry.candidate.path !== reference)
     .sort((left, right) =>
       left.score - right.score ||
       left.candidate.path.split("/").length - right.candidate.path.split("/").length ||
