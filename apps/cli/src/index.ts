@@ -3483,11 +3483,12 @@ async function persistPendingAutoFixReview(
 
 async function clearPersistedPendingAutoFixReview(
   context: AgentContext,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await context.memory.clearPendingChangeSetReview?.();
+    return true;
   } catch {
-    return;
+    return false;
   }
 }
 
@@ -4337,9 +4338,20 @@ async function interactive(
                 error: applied.state.lastError ?? "approved auto-fix change set failed",
               };
             }
-            await clearPersistedPendingAutoFixReview(applied);
+            const cleared = await clearPersistedPendingAutoFixReview(applied);
             liveAutoFixChangeSets.delete(review.changeSetId);
-            pendingAutoFixReview = undefined;
+            if (!cleared) {
+              pendingAutoFixReview = {
+                ...pending,
+                context: applied,
+                runtimeAvailable: false,
+              };
+              printAutoFixNotice(
+                "Auto-fix applied, but its review could not be cleared safely; use :autofix discard.",
+              );
+            } else {
+              pendingAutoFixReview = undefined;
+            }
             return { context: applied };
           } catch (error) {
             const cancelled = interrupted || autoFixAbort.signal.aborted;
@@ -4450,9 +4462,20 @@ async function interactive(
               error: applied.state.lastError ?? "approved auto-fix change set failed",
             };
           }
-          await clearPersistedPendingAutoFixReview(applied);
+          const cleared = await clearPersistedPendingAutoFixReview(applied);
           liveAutoFixChangeSets.delete(pending.review.changeSetId);
-          pendingAutoFixReview = undefined;
+          if (!cleared) {
+            pendingAutoFixReview = {
+              ...pending,
+              context: applied,
+              runtimeAvailable: false,
+            };
+            printAutoFixNotice(
+              "Auto-fix applied, but its review could not be cleared safely; use :autofix discard.",
+            );
+          } else {
+            pendingAutoFixReview = undefined;
+          }
           return { context: applied };
         },
       });
@@ -4859,10 +4882,16 @@ async function interactive(
             printAutoFixNotice("No auto-fix review is waiting.");
           } else {
             const discarded = pendingAutoFixReview;
-            await clearPersistedPendingAutoFixReview(discarded.context);
-            liveAutoFixChangeSets.delete(discarded.review.changeSetId);
-            pendingAutoFixReview = undefined;
-            printAutoFixNotice("Auto-fix review discarded. No files were changed.");
+            const cleared = await clearPersistedPendingAutoFixReview(discarded.context);
+            if (!cleared) {
+              printAutoFixNotice(
+                "Auto-fix review could not be discarded safely; no files were changed. Retry :autofix discard.",
+              );
+            } else {
+              liveAutoFixChangeSets.delete(discarded.review.changeSetId);
+              pendingAutoFixReview = undefined;
+              printAutoFixNotice("Auto-fix review discarded. No files were changed.");
+            }
           }
         } else {
           await runAutoFixCommand(autoFixCommand.attempts ?? 2);
@@ -5195,11 +5224,16 @@ async function interactive(
 
       if (command === ":clear") {
         pendingPlan = undefined;
+        let autoFixReviewClearFailed = false;
         if (pendingAutoFixReview !== undefined) {
-          await clearPersistedPendingAutoFixReview(pendingAutoFixReview.context);
-          liveAutoFixChangeSets.delete(pendingAutoFixReview.review.changeSetId);
+          const cleared = await clearPersistedPendingAutoFixReview(pendingAutoFixReview.context);
+          if (cleared) {
+            liveAutoFixChangeSets.delete(pendingAutoFixReview.review.changeSetId);
+            pendingAutoFixReview = undefined;
+          } else {
+            autoFixReviewClearFailed = true;
+          }
         }
-        pendingAutoFixReview = undefined;
         if (ui.rich) {
           streaming.withComposerHidden(() => {
             process.stdout.write("\u001b[2J\u001b[H");
@@ -5207,6 +5241,11 @@ async function interactive(
           });
         } else {
           console.log("Clear is available only in an interactive terminal.");
+        }
+        if (autoFixReviewClearFailed) {
+          printAutoFixNotice(
+            "Auto-fix review could not be cleared safely; it is still waiting. Retry :autofix discard.",
+          );
         }
         continue;
       }
@@ -5807,10 +5846,26 @@ async function interactiveInk(
               error: applied.state.lastError ?? "approved auto-fix change set failed",
             };
           }
-          await clearPersistedPendingAutoFixReview(applied);
+          const cleared = await clearPersistedPendingAutoFixReview(applied);
           liveAutoFixChangeSets.delete(review.changeSetId);
-          pendingAutoFixReview = undefined;
-          ink.store.setPlan(undefined);
+          if (!cleared) {
+            pendingAutoFixReview = {
+              ...pending,
+              context: applied,
+              runtimeAvailable: false,
+            };
+            ink.store.setPlan({
+              prompt: pending.prompt,
+              review: pending.review,
+              status: "ready",
+            });
+            ink.store.addNotice(
+              "Auto-fix applied, but its review could not be cleared safely; use :autofix discard.",
+            );
+          } else {
+            pendingAutoFixReview = undefined;
+            ink.store.setPlan(undefined);
+          }
           return { context: applied };
         },
       });
@@ -5915,10 +5970,22 @@ async function interactiveInk(
               error: applied.state.lastError ?? "approved auto-fix change set failed",
             };
           }
-          await clearPersistedPendingAutoFixReview(applied);
+          const cleared = await clearPersistedPendingAutoFixReview(applied);
           liveAutoFixChangeSets.delete(pending.review.changeSetId);
-          pendingAutoFixReview = undefined;
-          ink.store.setPlan(undefined);
+          if (!cleared) {
+            pendingAutoFixReview = {
+              ...pending,
+              context: applied,
+              runtimeAvailable: false,
+            };
+            ink.store.setPlanStatus("ready");
+            ink.store.addNotice(
+              "Auto-fix applied, but its review could not be cleared safely; use :autofix discard.",
+            );
+          } else {
+            pendingAutoFixReview = undefined;
+            ink.store.setPlan(undefined);
+          }
           return { context: applied };
         },
       });
@@ -6373,11 +6440,17 @@ async function interactiveInk(
           ink.store.addNotice("No auto-fix review is waiting.");
         } else {
           const discarded = pendingAutoFixReview;
-          await clearPersistedPendingAutoFixReview(discarded.context);
-          liveAutoFixChangeSets.delete(discarded.review.changeSetId);
-          pendingAutoFixReview = undefined;
-          ink.store.setPlan(undefined);
-          ink.store.addNotice("Auto-fix review discarded. No files were changed.");
+          const cleared = await clearPersistedPendingAutoFixReview(discarded.context);
+          if (!cleared) {
+            ink.store.addNotice(
+              "Auto-fix review could not be discarded safely; no files were changed. Retry :autofix discard.",
+            );
+          } else {
+            liveAutoFixChangeSets.delete(discarded.review.changeSetId);
+            pendingAutoFixReview = undefined;
+            ink.store.setPlan(undefined);
+            ink.store.addNotice("Auto-fix review discarded. No files were changed.");
+          }
         }
       } else {
         await runAutoFixCommand(autoFixCommand.attempts ?? 2);
@@ -6719,12 +6792,28 @@ async function interactiveInk(
     }
     if (command === ":clear") {
       pendingPlan = undefined;
-      if (pendingAutoFixReview !== undefined) {
-        await clearPersistedPendingAutoFixReview(pendingAutoFixReview.context);
-        liveAutoFixChangeSets.delete(pendingAutoFixReview.review.changeSetId);
+      const pendingReviewBeforeClear = pendingAutoFixReview;
+      let autoFixReviewClearFailed = false;
+      if (pendingReviewBeforeClear !== undefined) {
+        const cleared = await clearPersistedPendingAutoFixReview(pendingReviewBeforeClear.context);
+        if (cleared) {
+          liveAutoFixChangeSets.delete(pendingReviewBeforeClear.review.changeSetId);
+          pendingAutoFixReview = undefined;
+        } else {
+          autoFixReviewClearFailed = true;
+        }
       }
-      pendingAutoFixReview = undefined;
       ink.store.reset();
+      if (autoFixReviewClearFailed && pendingReviewBeforeClear !== undefined) {
+        ink.store.setPlan({
+          prompt: pendingReviewBeforeClear.prompt,
+          review: pendingReviewBeforeClear.review,
+          status: "ready",
+        });
+        ink.store.addNotice(
+          "Auto-fix review could not be cleared safely; it is still waiting. Retry :autofix discard.",
+        );
+      }
       return true;
     }
     if (command === ":model") {

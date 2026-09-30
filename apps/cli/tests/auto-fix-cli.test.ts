@@ -527,6 +527,83 @@ test("interactive CLI restores a declined Autofix review after switching session
   }
 });
 
+test("Autofix discard reports a persistence failure instead of claiming success", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "dev-agent-autofix-discard-failure-cli-"));
+  const sessionDir = await mkdtemp(join(tmpdir(), "dev-agent-autofix-discard-failure-session-"));
+  const memoryPath = join(sessionDir, "default.json");
+  const target = join(workspace, "target.md");
+  await writeFile(target, "keep\n", "utf8");
+  const memory = new FileMemory({ filePath: memoryPath, sessionId: "default" });
+  const context = createAgentContext("default", memory, {
+    sessionId: "default",
+    workingDirectory: workspace,
+  });
+  await memory.recordPendingChangeSetReview?.(
+    createPendingAutoFixReviewRecord(context, "Repair target", {
+      changeSetId: "change-set-discard-failure",
+      files: [{
+        path: target,
+        kind: "file",
+        beforeHash: "b".repeat(64),
+        afterHash: "c".repeat(64),
+        diff: "@@ -1 +1 @@\n-keep\n+changed\n",
+        additions: 1,
+        deletions: 1,
+        beforeExists: true,
+        afterExists: true,
+      }],
+      additions: 1,
+      deletions: 1,
+      createdAt: "2026-09-30T00:00:00.000Z",
+    }),
+  );
+
+  try {
+    const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve, reject) => {
+      const child = spawn("node", [cliPath, "--no-stream", "--session", "default"], {
+        cwd: workspace,
+        env: {
+          ...process.env,
+          DEV_AGENT_MCP_SERVERS: "[]",
+          DEV_AGENT_SESSION_DIR: sessionDir,
+          DEV_AGENT_MEMORY_FILE: memoryPath,
+          DEV_AGENT_MODEL_PROVIDER: "ollama",
+          INIT_CWD: workspace,
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.stderr.on("data", (chunk) => { stderr += chunk; });
+      child.on("error", reject);
+      child.on("close", (code) => resolve({ code, stdout, stderr }));
+
+      void (async () => {
+        try {
+          await waitFor(() => stdout.includes("Type 'exit' or 'quit' to stop."));
+          await rm(sessionDir, { recursive: true, force: true });
+          await writeFile(sessionDir, "blocked", "utf8");
+          child.stdin.write(":autofix discard\n");
+          await waitFor(() => stdout.includes("Auto-fix review could not be discarded safely"));
+          assert.doesNotMatch(stdout, /Auto-fix review discarded\. No files were changed\./u);
+          child.stdin.write("exit\n");
+        } catch (error) {
+          child.kill("SIGKILL");
+          reject(error);
+        }
+      })();
+    });
+
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+    await rm(sessionDir, { recursive: true, force: true });
+  }
+});
+
 test("restarted CLI reviews a persisted Autofix change set but fails closed on apply", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "dev-agent-autofix-restart-cli-"));
   const sessionDir = join(workspace, "sessions");
