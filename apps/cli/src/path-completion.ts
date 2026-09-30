@@ -12,6 +12,10 @@ const DEFAULT_MAX_ENTRIES = 2_000;
 const DEFAULT_MAX_DEPTH = 8;
 const DEFAULT_MAX_RESULTS = 12;
 const MAX_TOKEN_CHARS = 160;
+// The fuzzy fallback scans a few directory levels so `@utl` can discover
+// `src/utils.ts`; it only runs when the current directory level has no
+// prefix match, and the entry cap keeps large trees bounded.
+const FUZZY_MAX_DEPTH = 3;
 
 const IGNORED_DIRECTORY_NAMES = new Set([
   ".git",
@@ -118,13 +122,86 @@ export async function completeWorkspacePath(
     .sort((left, right) => compareMatches(left, right, normalizedReference))
     .slice(0, positiveLimit(options.maxResults, DEFAULT_MAX_RESULTS));
 
-  if (suggestions.length === 0) return undefined;
+  if (suggestions.length === 0) {
+    const fuzzySuggestions = await fuzzyWorkspacePaths(
+      root,
+      normalizedReference,
+      options,
+    );
+    if (fuzzySuggestions.length > 0) {
+      return {
+        tokenStart: token.tokenStart,
+        tokenEnd: token.tokenEnd,
+        token: token.token,
+        suggestions: fuzzySuggestions,
+      };
+    }
+    return undefined;
+  }
   return {
     tokenStart: token.tokenStart,
     tokenEnd: token.tokenEnd,
     token: token.token,
     suggestions,
   };
+}
+
+/**
+ * Bounded cross-directory fallback for references with no prefix match at
+ * their own directory level. `@utl` still finds `src/utils.ts`. The scan is
+ * depth- and entry-capped, runs only after an empty prefix result, and is
+ * skipped while the user is navigating an existing directory (`@src/`).
+ */
+async function fuzzyWorkspacePaths(
+  root: string,
+  reference: string,
+  options: PathCompletionOptions,
+): Promise<readonly PathSuggestion[]> {
+  if (reference === "" || reference.endsWith("/")) return [];
+
+  const results: PathSuggestion[] = [];
+  await collectWorkspacePaths(
+    root,
+    "",
+    0,
+    {
+      root,
+      maxEntries: positiveLimit(options.maxEntries, DEFAULT_MAX_ENTRIES),
+      maxDepth: FUZZY_MAX_DEPTH,
+    },
+    results,
+  );
+
+  const needle = reference.toLowerCase();
+  const rank = (candidate: PathSuggestion): number => {
+    const path = candidate.path.toLowerCase();
+    if (path.startsWith(needle)) return 0;
+    const base = path.slice(path.lastIndexOf("/") + 1);
+    if (base.startsWith(needle)) return 1;
+    if (path.includes(needle)) return 2;
+    return isSubsequence(needle, path) ? 3 : 4;
+  };
+  return results
+    .map((candidate) => ({ candidate, score: rank(candidate) }))
+    .filter((entry) => entry.score < 4)
+    .sort((left, right) =>
+      left.score - right.score ||
+      left.candidate.path.split("/").length - right.candidate.path.split("/").length ||
+      left.candidate.path.localeCompare(right.candidate.path, undefined, {
+        sensitivity: "base",
+      })
+    )
+    .slice(0, positiveLimit(options.maxResults, DEFAULT_MAX_RESULTS))
+    .map((entry) => entry.candidate);
+}
+
+function isSubsequence(needle: string, haystack: string): boolean {
+  let index = 0;
+  for (const character of haystack) {
+    if (character === needle[index]) index += 1;
+    if (index >= needle.length) return true;
+  }
+  return false;
 }
 
 async function scanCompletionPaths(

@@ -67,6 +67,35 @@ test("keeps replacement bounded to the full token when the caret is inside it", 
   });
 });
 
+test("falls back to bounded fuzzy matches across directories", async () => {
+  await withWorkspace(async (workingDirectory) => {
+    await mkdir(join(workingDirectory, "src", "nested"), { recursive: true });
+    await writeFile(join(workingDirectory, "src", "nested", "utils.ts"), "export {};\n", "utf8");
+    await writeFile(join(workingDirectory, "README.md"), "# readme\n", "utf8");
+
+    // "utl" has no prefix match at the workspace root; the fuzzy fallback
+    // discovers the deeper file via substring.
+    const substring = await completeWorkspacePath("inspect @utl", "inspect @utl".length, workingDirectory);
+    assert.deepEqual(
+      substring?.suggestions.map((item) => item.path),
+      ["src/nested/utils.ts"],
+    );
+
+    // "rdm" is an in-order subsequence of README.md's basename.
+    const subsequence = await completeWorkspacePath("inspect @rdm", "inspect @rdm".length, workingDirectory);
+    assert.deepEqual(
+      subsequence?.suggestions.map((item) => item.path),
+      ["README.md"],
+    );
+
+    // Nothing matches at all.
+    assert.equal(
+      await completeWorkspacePath("inspect @zzz", "inspect @zzz".length, workingDirectory),
+      undefined,
+    );
+  });
+});
+
 test("rejects absolute, parent-escaping, and symlink-escaping references", async () => {
   await withWorkspace(async (workingDirectory) => {
     const outside = await mkdtemp(join(tmpdir(), "dev-agent-path-outside-"));

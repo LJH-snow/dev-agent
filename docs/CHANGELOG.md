@@ -9,6 +9,27 @@
 - Readline help, the Ink command palette, and the interactive banner now list
   `:autofix review`, `:autofix apply`, and `:autofix discard` alongside the
   existing `:autofix [1-3]` repair command.
+- Review cleanup now fails closed: a failed discard/clear is reported without
+  claiming success, and an applied change set whose review metadata cannot be
+  cleared remains explicitly unavailable for re-apply until discarded.
+
+- Declined or cancelled Autofix reviews now persist bounded, redacted change-set
+  metadata tied to the original session and workspace. Same-session resume can
+  review or apply the exact live change set, while a restarted CLI can review
+  or discard it and fails closed on apply.
+- Readline help, the Ink command palette, and the interactive banner now list
+  `:autofix review`, `:autofix apply`, and `:autofix discard` alongside the
+  existing `:autofix [1-3]` repair command.
+
+## 2026-09-30（CLI @file completion fuzzy fallback）
+
+- `@file` path completion now falls back to a bounded cross-directory fuzzy
+  match when the typed reference has no prefix match at its own directory
+  level: `@utl` discovers `src/utils.ts` (substring) and `@rdm` finds
+  `README.md` (in-order subsequence).
+- The fallback scans at most 3 directory levels under the existing 2,000-entry
+  cap, is skipped while navigating an existing directory (`@src/`), and never
+  changes normal prefix completion.
 
 ## 2026-09-30（CLI TUI command palette fuzzy matching and wheel selection）
 
