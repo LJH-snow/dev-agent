@@ -473,6 +473,17 @@ export function InkCliApp({
     }
     const mouseInput = viewportMouseInput.push(input);
     for (const direction of mouseInput.directions) {
+      if (focusOwner === "commandPalette" && suggestions.length > 0) {
+        // With the palette open the wheel moves the highlighted row instead
+        // of the transcript, bounded at the list ends without wrapping.
+        setSuggestionIndex((index) => {
+          const current = Math.min(Math.max(index, 0), suggestions.length - 1);
+          return direction === "up"
+            ? Math.max(0, current - 1)
+            : Math.min(suggestions.length - 1, current + 1);
+        });
+        continue;
+      }
       moveViewport(direction, "wheel");
     }
     for (const move of mouseInput.moves) {
@@ -1642,6 +1653,15 @@ function commandSuggestionNeedsInput(command: string): boolean {
   return /<[^>\r\n]+>|\[[^\r\n\]]+\]|\|/u.test(command);
 }
 
+function isSubsequence(needle: string, haystack: string): boolean {
+  let index = 0;
+  for (const character of haystack) {
+    if (character === needle[index]) index += 1;
+    if (index >= needle.length) return true;
+  }
+  return false;
+}
+
 function commandSuggestions(
   value: string,
   commands: readonly CommandHint[],
@@ -1656,10 +1676,21 @@ function commandSuggestions(
     return [];
   }
   const normalized = prefix.slice(1).toLowerCase();
-  return commands.filter((command) => {
+  if (normalized.length === 0) return commands;
+  // Rank prefix matches above substring matches above subsequence matches so
+  // typing "ed" surfaces :editor first while "story" still finds :history.
+  // Equal ranks keep the declared command order (Array.sort is stable).
+  const rank = (command: CommandHint): number => {
     const name = command.command.replace(/^[:/]/, "").toLowerCase();
-    return normalized.length === 0 || name.startsWith(normalized);
-  });
+    if (name.startsWith(normalized)) return 0;
+    if (name.includes(normalized)) return 1;
+    return isSubsequence(normalized, name) ? 2 : 3;
+  };
+  return commands
+    .map((command) => ({ command, score: rank(command) }))
+    .filter((entry) => entry.score < 3)
+    .sort((a, b) => a.score - b.score)
+    .map((entry) => entry.command);
 }
 
 function statusLabel(state: TuiStateSnapshot["state"]): string {

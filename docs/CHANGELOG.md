@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-30（CLI TUI command palette fuzzy matching and wheel selection）
+
+- Command palette matching now ranks prefix matches above substring matches
+  above in-order subsequence matches, so `:story` finds `:history` and `:edt`
+  finds `:editor` while exact prefixes still win. Unmatched input closes the
+  palette; equal ranks keep the declared command order.
+- With the palette open, mouse wheel notches move the highlighted row
+  (bounded at the list ends, no wrap) instead of scrolling the transcript.
+
 ## 2026-09-30（CLI TUI command palette scrolling window）
 
 - Every prefix-matched command is now keyboard-reachable: arrow keys move

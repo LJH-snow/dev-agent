@@ -443,6 +443,44 @@ test("Ink command palette scrolls so every command stays keyboard-reachable", as
   }
 });
 
+test("Ink command palette matches commands beyond a strict prefix", async () => {
+  const { stdin, stdout } = createInkTerminal();
+  const submitted: string[] = [];
+  const commands = [
+    { command: ":alpha", description: "Alpha" },
+    { command: ":history", description: "History" },
+    { command: ":editor", description: "Editor" },
+  ];
+  const instance = renderInkApp(
+    stdin,
+    stdout,
+    (value) => submitted.push(value),
+    undefined,
+    true,
+    commands,
+  );
+
+  try {
+    // "story" is a substring of :history, not a prefix.
+    stdin.write(":story");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, [":history"]);
+
+    // "edt" is an in-order subsequence of :editor.
+    stdin.write(":edt");
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, [":history", ":editor"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
 test("Ink command palette Escape closes suggestions without cancelling the app", async () => {
   const { stdin, stdout, writes } = createInkTerminal();
   let cancelled = 0;

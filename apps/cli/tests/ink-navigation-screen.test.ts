@@ -232,6 +232,30 @@ test("oversized paste notice leaves resized navigation and status usable", async
   } finally { screen.dispose(); }
 });
 
+test("unmatched fuzzy input closes the palette and the wheel moves its selection", async () => {
+  const screen = createScreen(80, 24);
+  try {
+    screen.stdin.write(":zzz");
+    await screen.waitFor(
+      () => screen.paintedRow("COMMANDS // DECK") === undefined,
+      "no command matches :zzz",
+    );
+
+    screen.stdin.write("\u007f".repeat(4));
+    screen.stdin.write(":");
+    await screen.waitFor(() => screen.paintedRow("COMMANDS // DECK") !== undefined, "palette open");
+    assert.ok(screen.paintedRow("› :help") !== undefined, "first row starts selected");
+
+    // Wheel down moves the highlight; the transcript viewport stays put.
+    screen.stdin.write("\u001b[<65;10;10M");
+    await screen.waitFor(() => screen.paintedRow("› :editor") !== undefined, "wheel down selects :editor");
+    screen.stdin.write("\u001b[<64;10;10M");
+    await screen.waitFor(() => screen.paintedRow("› :help") !== undefined, "wheel up returns to :help");
+    screen.stdin.write("\u001b[<64;10;10M");
+    await screen.waitFor(() => screen.paintedRow("› :help") !== undefined, "wheel up is bounded at the top");
+  } finally { screen.dispose(); }
+});
+
 test("clicking a palette row selects it and clicking again submits it", async () => {
   const screen = createScreen(80, 24);
   try {
