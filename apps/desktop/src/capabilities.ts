@@ -179,7 +179,7 @@ export async function inspectRepository(workingDirectory: string): Promise<Repos
   }
 
   const branch = await runCommand("git", ["branch", "--show-current"], workingDirectory, maxGitOutputBytes);
-  const status = await runCommand("git", ["status", "--porcelain=v1", "--untracked-files=all"], workingDirectory, maxGitOutputBytes);
+  const status = await runCommand("git", ["status", "--porcelain=v1", "--untracked-files=normal"], workingDirectory, maxGitOutputBytes);
   const remote = await runCommand("git", ["config", "--get", "remote.origin.url"], workingDirectory, maxRemoteChars);
   if (!branch.ok || !status.ok) {
     return { provider: "git", state: "invalid", reason: "malformed-output" };

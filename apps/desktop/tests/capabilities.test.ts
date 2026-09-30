@@ -116,6 +116,28 @@ test("project capability metadata distinguishes non-repositories and malformed r
   }
 });
 
+test("project capability stays ready when an untracked tree exceeds the Git output budget", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dev-agent-project-large-untracked-"));
+  try {
+    await runGit(["init", "--quiet"], root);
+    await runGit(["symbolic-ref", "HEAD", "refs/heads/main"], root);
+    const directory = join(root, ".mimosa", "events");
+    await mkdir(directory, { recursive: true });
+    await Promise.all(
+      Array.from({ length: 1200 }, (_, index) =>
+        writeFile(join(directory, "event-" + String(index).padStart(5, "0") + ".json"), "{}", "utf8"),
+      ),
+    );
+
+    const snapshot = await loadProjectCapabilityMetadata(root);
+    assert.equal(snapshot.state, "ready");
+    assert.equal(snapshot.dirty, true);
+    assert.ok((snapshot.changedFiles ?? 0) >= 1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("custom capability metadata is sanitized and never grants mutation", () => {
   const github = normalizeGitHubCapabilitySnapshot({
     provider: "github",
