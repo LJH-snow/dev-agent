@@ -1,0 +1,77 @@
+# Progress — 超长期开发路线
+
+## 2026-10-01：计划建立
+
+- 已完成一次目标清晰度检查；用户选择保留原始长期目标，由本路线把它落成阶段化、可验收计划。
+- 已创建新的 active goal，并保护并行 Autofix、.mimosa/、本地凭据和提交/推送边界。
+- 已完成仓库基线扫描：Execution Center 的运行结束入口为统一 done event，历史检索/筛选/对比/复制已存在。
+- 已写入 13 个阶段的路线、完成门槛和故障边界。
+- 阶段 1 首个切片已完成：新增 bounded execution notification store，支持终态去重、session 隔离、数量上限、单条/全部已读；Execution Center 首次加载历史不误报，后续新运行显示未读并可标记已读。
+- 阶段 1 RED→GREEN focused 证据已扩展为历史模块 17/17；Desktop 全量 403/403；build、测试类型编译和 git diff --check 通过。
+- 阶段 1 新增 bounded execution-notifications public module：终态去重、session 隔离、上限、move/clear、首次历史基线、后续新运行未读、单条/全部已读。
+- 已完成隔离浏览器验收：虚构历史首次加载不显示未读；触发第二个虚构运行后显示 1 unread；点击 Mark read 后徽标消失、按钮禁用。报告已移到临时目录，不进入工作区。
+- 阶段 1 已封口：store/UI 覆盖终态去重、session move/clear、首次基线、后续新运行、stale refresh；隔离 fixture 真实触发 chat done 后显示未读，浏览器点击 Mark read 验收通过。
+- 阶段 1 最终证据：历史模块 17/17、Desktop 全量 403/403、build/type compilation、git diff --check，以及隔离浏览器通知流程通过。
+- 阶段 2 已开始并完成首片：新增 metadata-only JSON/Markdown export helper，固定 allowlist、最多 50 条、64 KiB 上限，并接入当前筛选结果的格式选择和下载按钮。
+- 阶段 2 新增 bounded filter persistence：仅保存 search/status/validation/format，非法、超长、损坏 storage fail-closed；UI 重建后恢复并应用筛选。
+- 阶段 2 focused 证据已扩展为历史模块 24/24；Desktop 全量 410/410；build、测试类型编译和 git diff --check 通过。
+- 阶段 2 已完成：metadata-only JSON/Markdown 导出、空/超量上限、当前筛选 projection、bounded filter persistence、20 条窗口与 Load more、导出提示保留和维护文档契约。
+- 阶段 2 隔离浏览器验收通过：Markdown 导出显示 History exported.；25 条虚构历史先显示 20 条，点击 Load more 后显示 25 recent runs 且按钮消失。
+- 阶段 3 已开始：服务端已有 rename/delete 的 runtime state、pending plan 和 execution history 迁移/清理；新增 UI 回归确认重命名历史建立已读基线、删除 session 清理未读。
+- 阶段 3 当前 focused 入口：run replay UI contract、session isolation、queue persistence、pending plan rename 和 task workspace reload；新增历史模块 UI rename/delete 基线回归。
+- 新增 run replay route 级 truncated cursor gap 回归，确认 retained events 被截断时返回 truncated=true 且首事件序号高于请求 cursor。
+- 阶段 3 focused 证据：历史模块 25/25、run replay 3/3；新增 truncated cursor gap route 测试。
+- Desktop 全量最新为 412/412，build、测试类型编译和 git diff --check 通过。
+- 恢复审计确认：pollRunSnapshot 对 done 会 resume 并 drain queue，对 failed/aborted 会 complete 并保留 pausedReason；loadSessionView 对已完成 snapshot 也会在恢复后尝试 drain。
+- 阶段 3 仍需补交叉行为测试：取消/失败后持久化 queue、重复 replay event、恢复后 drain 的组合路径。
+- 新增 queue/replay 组合 contract：活动项断线回队，单次 terminal replay 恢复 FIFO drain，重复 terminal sequence 不会二次 drain；chat-queue focused 8/8 通过。
+- Desktop 全量最新为 413/413，包含 queue/replay 组合 contract，build、测试类型编译和 git diff --check 通过。
+- 已运行 TypeScript release gate：workspace build/typecheck/tests、CLI package smoke、npm/release/preview/CI contracts、documentation 60/60、native Desktop contracts 均通过；report 写入 .dev-agent/release-gate-report.json。
+- 阶段 3 的 queue/replay 组合 contract 已纳入 release-gate 当前测试路径。
+- 阶段 3 下一步：将失败/中止后的持久化 queue 与页面 reload 的恢复路径做更高层集成，再继续阶段 4 的审批/计划执行可靠性审计。
+- 发现并修复页面 reload 恢复 bug：新增 run-recovery policy，completed snapshot 才 drain queue，failed/aborted snapshot 设置 pausedReason 并保留持久化 waiting items，避免失败后自动执行队列。
+- run-recovery policy focused 6/6、run-replay UI contract 1/1、chat-queue focused 8/8 通过；Desktop 全量最新为 414/414。
+- 阶段 3 已封口当前范围：rename/delete UI 基线、stale cursor gap、queue/replay terminal 去重、reload 失败队列暂停策略均有测试证据。
+- 下一步：进入阶段 4，审计审批/plan apply/cancellation 与证据边界交叉路径；release gate 在阶段 4 收敛后重跑。
+- 阶段 4 首轮审计：确认 apply/reject/cancel、session 隔离、rename/delete 清理和 done.status 终态映射已有覆盖；发现计划应用的 validation 事件与 pending review 的 changeSet 关联尚未形成明确 contract，下一步先补 RED 测试。
+- 阶段 4 首个切片已完成：新增 plan-workflow RED 回归，证明 apply 会转发 foreign validation evidence；服务端现在只转发与待审 review 的 changeSetId 完全一致的 validation，foreign evidence 不进入 SSE 或 run replay。focused plan-workflow 已从 6/7 RED 变为 7/7 GREEN。
+- 本轮验证：Desktop 全量测试 415/415 通过；其中 plan-workflow 7/7 通过，包含 foreign validation evidence 隔离回归。此前 414/414 基线新增 1 条测试，无新增失败。
+- 阶段 4 第二个切片进入 RED：新增通用 plan apply timeout 回归，当前结果为 plan-workflow 7/8，证明现有实现会在 50ms 后转发 done，而不是在 10ms deadline 后 abort 并清理 review；下一步实现独立的 bounded timeout。
+- 阶段 4 第二个切片已完成：新增通用 deadline helper 与 planApplyTimeoutMs 配置；超时先 abort、输出稳定错误、运行状态为 aborted、清理 pending review，并忽略迟到 done。取消仍保留协作式 aborted done 和 review retry。plan-workflow focused 已从 7/8 RED 变为 8/8 GREEN。
+- 本轮第二次验证：Desktop 全量测试 416/416 通过；Autofix deadline、审批、队列、运行恢复、历史和验证相关回归均通过，新增超时切片未引入失败。
+- 阶段 4 第三个切片已完成：超时错误在 Desktop UI 映射为 expired 终态，新增中英文文案并隐藏 Retry/Reject，避免服务端已丢弃 review 后客户端继续发起失效操作；plan-workflow focused 已扩展为 9/9 GREEN。
+- 本轮第三次验证：Desktop 全量测试 417/417 通过；新增 plan expired UI 契约后，历史、审批、Autofix、队列、恢复、MCP、任务工作区、终端、验证等回归均保持绿色。
+- 保护边界复核后再次验证：deadline helper 迁移到新增的 apps/desktop/src/deadline.ts，focused plan-workflow 9/9、Desktop 全量 417/417、build 与测试类型编译均通过；未提交、未推送，长期路线仍停留在阶段 4。
+- 阶段 4 第四个切片进入 RED：新增 pending-plan 与第二次 /api/chat 的交叉回归，当前 plan-workflow 为 9/10，证明服务端返回 200 而不是稳定的 409 pending-plan；下一步在 chat 入口加 session-scoped guard。
+- 阶段 4 第四个切片已完成：/api/chat 在 session 归一化后阻断 pending plan，避免旧 review 与新 run 并存；plan-workflow focused 已从 9/10 RED 变为 10/10 GREEN。
+- 本轮第四次验证：Desktop 全量测试 418/418 通过；pending-plan guard 未影响审批、Autofix、队列、恢复、历史、MCP、任务工作区、终端和验证回归。
+- 阶段 4 第五个切片已完成：stale plan apply 的 preimage/expired/重复应用冲突被统一脱敏并丢弃 review，Desktop UI 显示 discarded 终态；plan-workflow focused 已扩展为 12/12 GREEN。
+- 本轮第五次验证：Desktop 全量测试 420/420 通过；stale plan 的脱敏、review 清理和 UI discarded 契约与所有既有 Desktop 回归保持绿色。
+- 阶段 4 当前验收证据：plan-workflow focused 12/12、Desktop 全量 420/420、workspace build/typecheck/tests、CLI package smoke、npm/release/preview/CI contracts、documentation 60/60、native Desktop contracts 均通过；TypeScript release gate 已在本轮完成。
+- 阶段 4 当前范围封口：pending-plan guard、foreign evidence、cancel/retry、bounded timeout、expired/discarded UI、stale review 清理、重复 apply、session 隔离与 rename/delete 生命周期均有契约覆盖；下一步进入阶段 5 证据/验证/变更血缘审计。
+- 阶段 5 首个切片已完成：validation evidence 对同一 validationId 幂等 upsert，audit export/filter 对 legacy duplicate validation 保留最新记录；Agent Core memory/evidence focused 225/225 通过，下一步验证 Desktop/CLI 血缘呈现。
+- 阶段 5 当前验证：Desktop 全量测试 420/420 通过，包含历史证据、validation rerun、rollback、Autofix 和 plan-workflow 回归；下一步执行 CLI validation/evidence focused。
+- 阶段 5 CLI focused 证据：validation、plan-command、Autofix review store 共 27/27 通过；覆盖 preimage/path conflict、fresh rerun id、postimage blocked、metadata-only audit preview/export、rollback retention 与跨进程证据恢复。
+- 阶段 5 本轮 gate 状态：workspace build/typecheck、Agent Core 225/225、Desktop 420/420、CLI evidence focused 27/27 均通过；完整 TypeScript gate 两次仅在高负载 CLI 全套中的 model-routing-cli 超时，隔离重跑通过，未修改无关 CLI 代码，release gate 留待后续低负载复核。
+- 阶段 5 第二个切片已完成：DesktopRunState 对重复 validation replay 只计一次，保留最新状态和证据关联；execution-history focused 已扩展为 26/26 GREEN，下一步扩大 Desktop 全量。
+- 阶段 5 第二个切片验证：Desktop 全量 420/420、Agent Core 225/225、CLI evidence focused 27/27 均通过；release-gate 全套仍受高负载 CLI model-routing-cli 时序超时影响，隔离重跑通过，未修改无关 CLI 代码。
+- 阶段 5 第四/第五切片验证后，Desktop 全量达到 423/423、Agent Core 226/226。更新后的完整 TypeScript release gate 再次在 apps/cli 的 background-jobs-e2e explicit resume 用例超时，其他已完成 gate steps 通过；该失败不在本轮变更路径，隔离复跑待确认。
+- 阶段 5 第四与第五切片验证：execution-history focused 27/27、Agent Core 全量 226/226、Desktop 全量 423/423、CLI evidence focused 27/27 均通过；本轮开始最终 TypeScript release gate 复核。
+- 最新 Desktop 全量为 423/423。第三次完整 TypeScript release gate 在 CLI background-jobs-e2e explicit resume (17.5s) 超时；相关 background-jobs-e2e 与 model-routing-cli 隔离重跑 3/3 通过，错误记录保持 pending，暂不以隔离 pass 替代 release gate 全绿。
+- 阶段 5 第三个切片已完成：普通 chat 与 plan apply 均拒绝携带 foreign sessionId 的 validation SSE；validation focused 13/13 GREEN，避免跨 session evidence 进入 run replay/history。
+- 阶段 5 第三个切片验证：Desktop 全量测试 422/422 通过；cross-session validation guard 未影响 rerun、rollback、Autofix、Execution History 或 task validation 回归。
+- 阶段 5 第四个切片已完成：history summary 对缺失 validationId/changeSetId 的事件清除旧 evidence links，避免跨 attempt 错配；execution-history focused 27/27 GREEN。
+- 阶段 5 第五个切片已完成：validation attempt upsert 现在会把 rerun 结果移动到记录末尾，保持 at(-1) latest consumers 与 recordedAt 顺序一致；新增 RED→GREEN 回归，Agent Core 全量 226/226 通过。
+- 阶段 5 第五个切片验证：Agent Core 全量 227/227 通过；追加 rerun-order 回归后 Desktop 全量 423/423 与 CLI evidence focused 27/27 均通过；显式历史 link 在 validation retention prune 后仍返回准确 changeSet，validation 列表保持空，不误显示其他 attempt。
+- 阶段 5 隔离浏览器验收启动：在 /tmp 创建临时 Git 仓库、Desktop 会话、旧 history reference 和保留 change-set evidence；Midscene 已连到 loopback UI，初始截图确认 fixture 内容按预期显示，下一步从 Execution Center 历史行打开失效 validation reference。
+- 阶段 5 隔离浏览器验收通过：临时 Git fixture 的 run-pruned-validation 历史链接在 validation 已 retention-pruned 后仍打开唯一 change-set-pruned evidence，显示 APPLIED、1 file、+1/−0；未显示 validation-other 或 change-set-other，操作仅切换本地只读详情。
+- 隔离浏览器观察：Midscene 未在当前 Agent run view 找到 Execution Center/history list，安全停止操作；转为检查 UI 实际挂载入口，再继续视觉验收，不以 fixture 路由数据代替可见 UI 证据。
+- Execution Center 实际挂载于右侧 Runtime Inspector、位于 Parallel agent runs 后；Midscene 首次滚动对象选择错误，本次调整为只滚动右侧 Inspector，再按视觉定位历史行。
+- 完整 TypeScript release gate 当前运行已最终输出 “all selected gates passed”；结构、build、typecheck、workspace tests、CLI package smoke、npm/release/preview/CI/docs/native Desktop contracts 均通过。此前 report 文件时间戳与内容 generatedAt 不一致，因此以本轮 release-gate 命令末尾的完成输出作为本轮证据，不引用该旧报告内容。
+
+## 当前验证证据
+
+- 上一阶段 Desktop 全量：400/400 通过。
+- 上一阶段历史 focused：14/14 通过。
+- 上一阶段 build、test type compilation、git diff --check：通过。
+- 本路线尚未宣称完成；后续阶段必须追加本轮证据。

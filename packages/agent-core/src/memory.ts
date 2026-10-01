@@ -225,10 +225,7 @@ export class InMemoryMemory implements AgentMemory {
   }
 
   async recordValidation(result: ValidationResult): Promise<void> {
-    this.validationRecords.push({
-      ...result,
-      recordedAt: new Date().toISOString(),
-    });
+    upsertValidationRecord(this.validationRecords, result);
     trimValidationRecordsInPlace(this.validationRecords, this.evidenceRetention.maxValidations);
     this.lastActiveAt = new Date().toISOString();
   }
@@ -462,13 +459,8 @@ export class FileMemory implements AgentMemory {
         }
         throw error;
       });
-      const validations = [
-        ...(existing?.validations ?? []),
-        {
-          ...result,
-          recordedAt: new Date().toISOString(),
-        },
-      ];
+      const validations = [...(existing?.validations ?? [])];
+      upsertValidationRecord(validations, result);
       trimValidationRecordsInPlace(validations, this.evidenceRetention.maxValidations);
       await this.persist(entries, undefined, undefined, validations);
     });
@@ -856,6 +848,20 @@ function trimValidationRecordsInPlace(
     records.splice(0, removed);
   }
   return removed;
+}
+
+function upsertValidationRecord(
+  records: ValidationRecord[],
+  result: ValidationResult
+): void {
+  const record: ValidationRecord = {
+    ...result,
+    recordedAt: new Date().toISOString(),
+  };
+  for (let cursor = records.length - 1; cursor >= 0; cursor -= 1) {
+    if (records[cursor]?.validationId === record.validationId) records.splice(cursor, 1);
+  }
+  records.push(record);
 }
 
 function trimChangeSetRecordsInPlace(

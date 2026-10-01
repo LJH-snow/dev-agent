@@ -210,6 +210,45 @@ test("in-memory memory records structured validation evidence", async () => {
   assert.deepEqual(records[0]?.checks, result.checks);
 });
 
+test("validation evidence replaces a duplicate validation attempt instead of growing history", async () => {
+  const memory = new InMemoryMemory();
+  const first = makeValidationResult("failed");
+
+  await memory.recordValidation(first);
+  await memory.recordValidation({
+    ...first,
+    status: "passed",
+    summary: "rerun passed",
+  });
+
+  const records = await memory.validations();
+  assert.equal(records.length, 1);
+  assert.equal(records[0]?.validationId, first.validationId);
+  assert.equal(records[0]?.status, "passed");
+  assert.equal(records[0]?.summary, "rerun passed");
+});
+
+test("rerunning an existing validation attempt moves it to the newest history position", async () => {
+  const memory = new InMemoryMemory();
+  const first = makeValidationResult("failed");
+  const second = {
+    ...makeValidationResult("failed"),
+    validationId: "validation-second",
+    changeSetId: "change-set-second",
+  };
+
+  await memory.recordValidation(first);
+  await memory.recordValidation(second);
+  await memory.recordValidation({ ...first, status: "passed", summary: "latest rerun" });
+
+  const records = await memory.validations();
+  assert.deepEqual(records.map((record) => record.validationId), [
+    second.validationId,
+    first.validationId,
+  ]);
+  assert.equal(records.at(-1)?.summary, "latest rerun");
+});
+
 test("file memory persists validation evidence across instances and preserves it across writes", async () => {
   const dir = makeTempDir();
   try {
@@ -479,6 +518,46 @@ test("memory retention bounds validation history but protects applied change set
   const pruned = await memory.pruneEvidence({ maxChangeSets: 1 });
   assert.equal(pruned.changeSetsRemoved, 0);
   assert.equal(pruned.protectedChangeSets, 2);
+});
+
+test("evidence audit keeps the latest record when legacy data repeats a validation id", () => {
+  const first = {
+    ...makeValidationResult("failed"),
+    validationId: "duplicate-validation",
+    changeSetId: "change-set-old",
+    recordedAt: "2026-09-13T00:20:00.000Z",
+  };
+  const latest = {
+    ...first,
+    status: "passed" as const,
+    changeSetId: "change-set-new",
+    recordedAt: "2026-09-13T00:21:00.000Z",
+  };
+
+  const selected = selectEvidenceForAudit([first, latest], [], {});
+  assert.equal(selected.validations.length, 1);
+  assert.equal(selected.validations[0]?.status, "passed");
+  assert.equal(selected.validations[0]?.changeSetId, "change-set-new");
+});
+
+test("evidence selection keeps an explicitly linked change set when its validation was pruned", () => {
+  const retainedValidation = {
+    ...makeValidationResult("passed"),
+    validationId: "validation-retained",
+    changeSetId: "change-set-other",
+    recordedAt: "2026-09-13T00:30:00.000Z",
+  };
+  const linkedChangeSet = makeChangeSetRecord({ changeSetId: "change-set-pruned" });
+  const otherChangeSet = makeChangeSetRecord({ changeSetId: "change-set-other" });
+
+  const selected = selectEvidenceForAudit(
+    [retainedValidation],
+    [linkedChangeSet, otherChangeSet],
+    { validationId: "validation-pruned", changeSetId: "change-set-pruned" },
+  );
+
+  assert.deepEqual(selected.validations, []);
+  assert.deepEqual(selected.changeSets.map((record) => record.changeSetId), ["change-set-pruned"]);
 });
 
 test("file memory explicitly removes only rolled-back evidence and persists the result", async () => {

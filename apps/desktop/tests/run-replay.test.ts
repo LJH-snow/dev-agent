@@ -147,3 +147,32 @@ test("run snapshots and session summaries stay isolated between sessions", async
     await close(server);
   }
 });
+
+test("run replay marks a cursor gap when retained events were truncated", async () => {
+  const server = createDesktopServer({
+    session: {
+      id: "default",
+      async run(_message, emit) {
+        for (let index = 0; index < 300; index += 1) {
+          emit({ type: "turn", data: { turn: index } });
+        }
+        emit({ type: "done", data: { status: "done", turns: 1 } });
+      },
+    },
+  });
+  const base = await start(server);
+  try {
+    const response = await chat(base, "default");
+    assert.equal(response.status, 200);
+    await response.text();
+
+    const replay = await fetch(base + "/api/sessions/default/run?after=1");
+    assert.equal(replay.status, 200);
+    const snapshot: any = await replay.json();
+    assert.equal(snapshot.truncated, true);
+    assert.ok(snapshot.events[0]?.sequence > 2);
+    assert.ok(snapshot.sequence >= 301);
+  } finally {
+    await close(server);
+  }
+});

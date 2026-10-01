@@ -88,6 +88,7 @@ import {
   type WorkbenchMetadataSnapshot,
 } from "./capabilities.js";
 import { buildDesktopAutoFixPrompt, DesktopAutoFixLoop, parseDesktopAutoFixAttempts, withDesktopAutoFixDeadline, type DesktopAutoFixTarget } from "./autofix.js";
+import { withDesktopDeadline } from "./deadline.js";
 import {
   createMcpHealthSnapshot,
   normalizeMcpHealthSnapshot,
@@ -191,6 +192,8 @@ export interface DesktopChatSession {
 
 export interface DesktopServerOptions {
   readonly autofixTimeoutMs?: number;
+  /** Maximum time a reviewed plan may remain in the apply phase. */
+  readonly planApplyTimeoutMs?: number;
   readonly host?: string;
   readonly port?: number;
   readonly session?: DesktopChatSession;
@@ -300,6 +303,8 @@ const maxCheckpointResponseBytes = 512 * 1024;
 const maxExportResponseBytes = 1024 * 1024;
 const maxPlanReviewBytes = 256 * 1024;
 const maxPlanReviewFiles = 256;
+const planApplyTimeoutMessage = "Plan apply timed out";
+const planApplyStaleMessage = "Plan review is stale and was discarded";
 const maxWorkspaceResponseBytes = 512 * 1024;
 
 const maxJsonBodyBytes = 1024 * 1024;
@@ -393,6 +398,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const autofixTimeoutMs = options.autofixTimeoutMs === undefined ? 120_000 : options.autofixTimeoutMs;
   if (!Number.isInteger(autofixTimeoutMs) || autofixTimeoutMs < 1 || autofixTimeoutMs > 120_000) {
     throw new Error("Autofix timeout must be an integer from 1 through 120000 ms");
+  }
+  const planApplyTimeoutMs = options.planApplyTimeoutMs === undefined ? 120_000 : options.planApplyTimeoutMs;
+  if (!Number.isInteger(planApplyTimeoutMs) || planApplyTimeoutMs < 1 || planApplyTimeoutMs > 120_000) {
+    throw new Error("Plan apply timeout must be an integer from 1 through 120000 ms");
   }
   const taskWorkspaces = new DesktopTaskWorkspaceManager({
     ...(options.workspaceRoot === undefined ? {} : { workspaceRoot: options.workspaceRoot }),
@@ -2658,6 +2667,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           );
           return;
         }
+        if ([...pendingPlans.values()].some((pending) => pending.sessionId === sessionId)) {
+          req.resume();
+          res.writeHead(409, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "a plan review is already pending", code: "pending-plan" }));
+          return;
+        }
         const resolved = sessionFor(sessionId);
         if (!resolved) {
           res.writeHead(429, { "content-type": "application/json" });
@@ -2771,6 +2786,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
 
         pending.status = "applying";
+        let stalePlanReview = false;
         inFlight.add(sessionId);
         const controller = new AbortController();
         runControllers.set(sessionId, controller);
@@ -2800,15 +2816,16 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
               return;
             }
           }
-          await streamPlanApply(
+          const applyResult = await streamPlanApply(
             res,
             session,
             pending,
             controller,
             run,
-            autofixTimeoutMs,
+            pending.autofix === undefined ? planApplyTimeoutMs : autofixTimeoutMs,
             () => persistRunHistory(run),
           );
+          stalePlanReview = applyResult.staleReview;
         } finally {
           res.off("close", onDisconnect);
           if (run.active) run.finish(controller.signal.aborted ? "aborted" : "failed");
@@ -2816,7 +2833,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           if (runControllers.get(sessionId) === controller) {
             runControllers.delete(sessionId);
           }
-          if (run.summary().status === "done" || pending.autofix !== undefined) {
+          if (stalePlanReview || (controller.signal.reason instanceof Error && controller.signal.reason.message === planApplyTimeoutMessage)) {
+            pendingPlans.delete(key);
+          } else if (run.summary().status === "done" || pending.autofix !== undefined) {
             pendingPlans.delete(key);
           } else if (pendingPlans.get(key) === pending) {
             pending.status = "ready";
@@ -3428,9 +3447,9 @@ async function streamPlanApply(
   pending: PendingPlan,
   controller: AbortController,
   run: DesktopRunState,
-  autofixTimeoutMs: number,
+  timeoutMs: number,
   onComplete: () => Promise<void>,
-): Promise<void> {
+): Promise<{ readonly staleReview: boolean }> {
   const onClose = (): void => {
     if (!res.writableEnded) {
       controller.abort();
@@ -3449,16 +3468,31 @@ async function streamPlanApply(
   let streamBytes = 0;
   let capped = false;
   let accepting = true;
+  let staleReview = false;
   let validation: { changeSetId: string; status: string } | undefined;
   const emit = (event: StreamEvent) => {
     if (!accepting || (pending.autofix !== undefined && controller.signal.aborted && event.type !== "error") || capped || res.writableEnded || res.destroyed) {
       return;
     }
-    if (event.type === "validation" && typeof event.data.changeSetId === "string" && typeof event.data.status === "string") {
-      validation = { changeSetId: event.data.changeSetId, status: event.data.status };
+    if (event.type === "validation" && event.data.sessionId !== undefined && event.data.sessionId !== pending.sessionId) {
+      return;
     }
-    run.append(event);
-    const frame = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
+    const prepared = event.type === "error" && isStalePlanApplyError(event.data.message)
+      ? (() => {
+        staleReview = true;
+        return { type: "error" as const, data: { message: planApplyStaleMessage } };
+      })()
+      : event;
+    if (prepared.type === "validation") {
+      if (prepared.data.changeSetId !== pending.review.changeSetId) {
+        return;
+      }
+      if (typeof prepared.data.status === "string") {
+        validation = { changeSetId: prepared.data.changeSetId, status: prepared.data.status };
+      }
+    }
+    run.append(prepared);
+    const frame = `event: ${prepared.type}\ndata: ${JSON.stringify(prepared.data)}\n\n`;
     streamBytes += Buffer.byteLength(frame, "utf8");
     if (streamBytes > maxStreamBytes) {
       capped = true;
@@ -3479,16 +3513,23 @@ async function streamPlanApply(
       emit,
       { signal: controller.signal, runId: run.runId },
     );
-    if (pending.autofix === undefined) await work();
-    else await withDesktopAutoFixDeadline(work, controller, autofixTimeoutMs);
+    if (pending.autofix === undefined) {
+      await withDesktopDeadline(work, controller, timeoutMs, planApplyTimeoutMessage, { rejectOnAbort: false });
+    } else {
+      await withDesktopAutoFixDeadline(work, controller, timeoutMs);
+    }
     if (run.active) {
       run.finish(controller.signal.aborted ? "aborted" : "done");
     }
   } catch (error) {
-    if (pending.autofix !== undefined && controller.signal.aborted) run.finish("aborted");
+    if (controller.signal.aborted) run.finish("aborted");
+    const message = error instanceof Error ? error.message : String(error);
+    if (isStalePlanApplyError(message)) {
+      staleReview = true;
+    }
     emit({
       type: "error",
-      data: { message: error instanceof Error ? error.message : String(error) },
+      data: { message: staleReview ? planApplyStaleMessage : message },
     });
     if (run.active || pending.autofix !== undefined) {
       run.finish(controller.signal.aborted ? "aborted" : "failed");
@@ -3506,6 +3547,7 @@ async function streamPlanApply(
   if (!res.writableEnded) {
     res.end();
   }
+  return { staleReview };
 }
 
 function prepareStreamEvent(
@@ -3518,6 +3560,9 @@ function prepareStreamEvent(
     readonly autofix?: DesktopAutoFixLoop;
   },
 ): StreamEvent | undefined {
+  if (event.type === "validation" && event.data.sessionId !== undefined && event.data.sessionId !== options.sessionId) {
+    return undefined;
+  }
   if (event.type !== "plan-review") {
     return event;
   }
@@ -3630,6 +3675,11 @@ function normalizePlanReview(value: unknown): ChangeSetReview | undefined {
   return Buffer.byteLength(JSON.stringify(review), "utf8") <= maxPlanReviewBytes
     ? review
     : undefined;
+}
+
+function isStalePlanApplyError(value: unknown): boolean {
+  return typeof value === "string"
+    && /preimage conflict|unknown or expired|cannot be applied because it is applied|workspace no longer matches the planned guards/i.test(value);
 }
 
 function validationErrorStatus(message: string): 404 | 409 | 500 {

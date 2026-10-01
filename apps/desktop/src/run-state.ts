@@ -1,5 +1,9 @@
 import type { StreamEvent } from "./chat-session.js";
-import type { ExecutionHistoryRecord } from "./execution-history.js";
+import {
+  normalizeExecutionHistoryId,
+  type ExecutionHistoryRecord,
+  type ExecutionHistoryValidationStatus,
+} from "./execution-history.js";
 
 export type DesktopRunStatus =
   | "idle"
@@ -87,6 +91,10 @@ export class DesktopRunState {
   private toolCount = 0;
   private approvalCount = 0;
   private validationCount = 0;
+  private readonly validationIds = new Set<string>();
+  private validationId?: string;
+  private changeSetId?: string;
+  private validationStatus?: ExecutionHistoryValidationStatus;
 
   constructor(sessionId: string, runId: string, startedAt = new Date().toISOString()) {
     this.sessionId = sessionId;
@@ -101,7 +109,30 @@ export class DesktopRunState {
   append(event: StreamEvent): DesktopRunEvent {
     if (event.type === "tool") this.toolCount += 1;
     if (event.type === "approval-request" || event.type === "plan-review") this.approvalCount += 1;
-    if (event.type === "validation") this.validationCount += 1;
+    if (event.type === "validation") {
+      const validationId = normalizeExecutionHistoryId(event.data.validationId);
+      const changeSetId = normalizeExecutionHistoryId(event.data.changeSetId);
+      if (validationId === undefined || changeSetId === undefined || !this.validationIds.has(validationId)) {
+        this.validationCount += 1;
+        if (validationId !== undefined && changeSetId !== undefined) {
+          this.validationIds.add(validationId);
+          if (this.validationIds.size > maxRetainedEvents) {
+            const oldest = this.validationIds.values().next().value;
+            if (typeof oldest === "string") this.validationIds.delete(oldest);
+          }
+        }
+      }
+      this.validationId = validationId !== undefined && changeSetId !== undefined ? validationId : undefined;
+      this.changeSetId = validationId !== undefined && changeSetId !== undefined ? changeSetId : undefined;
+      this.validationStatus = isValidationStatus(event.data.status) && validationId !== undefined && changeSetId !== undefined
+        ? event.data.status
+        : undefined;
+    } else if (event.type === "plan-review") {
+      const review = event.data.review;
+      if (isRecord(review)) {
+        this.changeSetId = normalizeExecutionHistoryId(review.changeSetId) ?? this.changeSetId;
+      }
+    }
     const replayEvent: DesktopRunEvent = {
       sequence: ++this.sequence,
       type: event.type,
@@ -191,6 +222,9 @@ export class DesktopRunState {
       toolCount: this.toolCount,
       approvalCount: this.approvalCount,
       validationCount: this.validationCount,
+      ...(this.validationId === undefined ? {} : { validationId: this.validationId }),
+      ...(this.changeSetId === undefined ? {} : { changeSetId: this.changeSetId }),
+      ...(this.validationStatus === undefined ? {} : { validationStatus: this.validationStatus }),
     };
   }
 
@@ -328,6 +362,14 @@ function appendBounded(current: string, next: string): string {
   return combined.length <= maxLiveTextLength
     ? combined
     : combined.slice(0, maxLiveTextLength);
+}
+
+function isValidationStatus(value: unknown): value is ExecutionHistoryValidationStatus {
+  return value === "passed" || value === "failed" || value === "skipped" || value === "blocked";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function sanitizeEventData(

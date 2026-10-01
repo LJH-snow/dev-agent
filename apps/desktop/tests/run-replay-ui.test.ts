@@ -35,6 +35,8 @@ test("GET / exposes session run recovery and stale-session guards", async () => 
     assert.match(html, /scheduleRunRecovery\(sessionId\)/);
     assert.match(html, /function restoreRunSnapshot\(snapshot\)/);
     assert.match(html, /function restoreCompletedRunTranscript\(sessionId, snapshot\)/);
+    assert.match(html, /from "\/public\/run-recovery\.js"/);
+    assert.match(html, /getRecoveredRunQueueAction\(snapshot\)/);
     assert.match(html, /state\.historyHasTranscript/);
     assert.match(html, /restoreCompletedRunTranscript\(sessionId, snapshot\)/);
     assert.match(html, /const live = snapshot\.live/);

@@ -777,8 +777,73 @@
             <div class="execution-center-history-header">
               <strong id="execution-center-history-title" data-i18n="executionCenter.history.title">Recent runs</strong>
               <span id="execution-center-history-status" class="execution-center-detail-status"></span>
+              <span id="execution-center-history-unread" class="execution-center-history-unread" hidden></span>
+              <button type="button" id="execution-center-history-mark-read" class="execution-center-history-mark-read" data-i18n="executionCenter.history.markRead" disabled>Mark read</button>
+            </div>
+            <div class="execution-center-history-filters">
+              <label for="execution-center-history-search">
+                <span data-i18n="executionCenter.history.search">Search run IDs</span>
+                <input type="search" id="execution-center-history-search" data-i18n-placeholder="executionCenter.history.searchPlaceholder" placeholder="Run ID" autocomplete="off" spellcheck="false" />
+              </label>
+              <label for="execution-center-history-status-filter">
+                <span data-i18n="executionCenter.history.filterStatus">Outcome</span>
+                <select id="execution-center-history-status-filter">
+                  <option value="all" data-i18n="executionCenter.history.filterAll">All outcomes</option>
+                  <option value="done" data-i18n="parallelRuns.status.done">Completed</option>
+                  <option value="failed" data-i18n="parallelRuns.status.failed">Failed</option>
+                  <option value="aborted" data-i18n="parallelRuns.status.aborted">Aborted</option>
+                </select>
+              </label>
+              <label for="execution-center-history-validation-filter">
+                <span data-i18n="executionCenter.history.filterValidation">Validation</span>
+                <select id="execution-center-history-validation-filter">
+                  <option value="all" data-i18n="executionCenter.history.filterValidationAll">All validation results</option>
+                  <option value="passed" data-i18n="validation.status.passed">Passed</option>
+                  <option value="failed" data-i18n="validation.status.failed">Failed</option>
+                  <option value="skipped" data-i18n="validation.status.skipped">Skipped</option>
+                  <option value="blocked" data-i18n="validation.status.blocked">Blocked</option>
+                  <option value="none" data-i18n="executionCenter.history.filterNoValidation">No validation result</option>
+                </select>
+              </label>
+              <label for="execution-center-history-export-format">
+                <span data-i18n="executionCenter.history.exportFormat">Export</span>
+                <select id="execution-center-history-export-format">
+                  <option value="json" data-i18n="executionCenter.history.exportJson">JSON</option>
+                  <option value="markdown" data-i18n="executionCenter.history.exportMarkdown">Markdown</option>
+                </select>
+              </label>
+              <button type="button" id="execution-center-history-export" class="execution-center-history-export" data-i18n="executionCenter.history.export" disabled>Export history</button>
+              <span id="execution-center-history-export-status" class="execution-center-detail-status" role="status" aria-live="polite"></span>
             </div>
             <ol id="execution-center-history-list" class="parallel-runs-list" aria-label="Recent runs" data-i18n-aria-label="executionCenter.history.list"></ol>
+            <button type="button" id="execution-center-history-load-more" class="execution-center-history-load-more" data-i18n="executionCenter.history.loadMore" hidden>Load more</button>
+            <section id="execution-center-history-detail" class="execution-center-history-detail" hidden aria-labelledby="execution-center-history-detail-title" aria-live="polite">
+              <div class="execution-center-history-detail-heading">
+                <strong id="execution-center-history-detail-title" class="execution-center-history-detail-title"></strong>
+                <span id="execution-center-history-detail-status" class="execution-center-detail-status"></span>
+              </div>
+              <div id="execution-center-history-detail-meta" class="execution-center-detail-meta"></div>
+              <section id="execution-center-history-comparison" class="execution-center-history-comparison" hidden aria-live="polite">
+                <strong id="execution-center-history-comparison-title" data-i18n="executionCenter.history.comparisonTitle">Compared with previous matching run</strong>
+                <div class="execution-center-history-comparison-row">
+                  <span data-i18n="executionCenter.history.comparisonSelected">Selected</span>
+                  <strong id="execution-center-history-comparison-current-id" class="execution-center-history-detail-title"></strong>
+                  <span id="execution-center-history-comparison-current-meta" class="execution-center-detail-meta"></span>
+                </div>
+                <div class="execution-center-history-comparison-row">
+                  <span data-i18n="executionCenter.history.comparisonPrevious">Previous match</span>
+                  <strong id="execution-center-history-comparison-previous-id" class="execution-center-history-detail-title"></strong>
+                  <span id="execution-center-history-comparison-previous-meta" class="execution-center-detail-meta"></span>
+                </div>
+                <div id="execution-center-history-comparison-deltas" class="execution-center-detail-meta"></div>
+              </section>
+              <div class="execution-center-history-detail-actions">
+                <button type="button" id="execution-center-history-copy" data-i18n="executionCenter.history.copy" disabled>Copy run summary</button>
+                <button type="button" id="execution-center-history-validation" data-i18n="executionCenter.history.openValidation" disabled>View validation evidence</button>
+                <button type="button" id="execution-center-history-change-set" data-i18n="executionCenter.history.openChangeSet" disabled>View change-set evidence</button>
+                <span id="execution-center-history-copy-status" class="execution-center-detail-status" role="status" aria-live="polite"></span>
+              </div>
+            </section>
           </div>
         </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
@@ -907,7 +972,8 @@
     import { createGitHubCiDiagnosisUI } from "/public/github-ci-diagnosis-ui.js";
     import { createGitHubDeliveryLoopUI } from "/public/github-delivery-loop-ui.js";
     import { createScheduledTasksUI } from "/public/scheduled-tasks-ui.js";
-    import { createExecutionCenterUI } from "/public/execution-center.js";
+    import { buildExecutionHistoryEvidenceUrl, createExecutionCenterUI } from "/public/execution-center.js";
+    import { getRecoveredRunQueueAction } from "/public/run-recovery.js";
     import {
       getTurnActivityForEvent,
       getTurnActivityForState,
@@ -1366,6 +1432,42 @@
         "executionCenter.history.count": "{count} recent runs",
         "executionCenter.history.tools": "{count} tools",
         "executionCenter.history.validations": "{count} validations",
+        "executionCenter.history.openValidation": "View validation evidence",
+        "executionCenter.history.openChangeSet": "View change-set evidence",
+        "executionCenter.history.copy": "Copy run summary",
+        "executionCenter.history.copySuccess": "Summary copied.",
+        "executionCenter.history.copyFailure": "Unable to copy summary.",
+        "executionCenter.history.unread": "{count} unread",
+        "executionCenter.history.markRead": "Mark read",
+        "executionCenter.history.exportFormat": "Export",
+        "executionCenter.history.exportJson": "JSON",
+        "executionCenter.history.exportMarkdown": "Markdown",
+        "executionCenter.history.export": "Export history",
+        "executionCenter.history.exportSuccess": "History exported.",
+        "executionCenter.history.exportFailure": "Unable to export history.",
+        "executionCenter.history.loadMore": "Load more",
+        "executionCenter.history.summaryRun": "Run: {id}",
+        "executionCenter.history.summaryStatus": "Outcome: {status}",
+        "executionCenter.history.summaryStarted": "Started: {time}",
+        "executionCenter.history.summaryDuration": "Duration: {duration}",
+        "executionCenter.history.summaryValidation": "Validation: {status}",
+        "executionCenter.history.search": "Search run IDs",
+        "executionCenter.history.searchPlaceholder": "Run ID",
+        "executionCenter.history.filterStatus": "Outcome",
+        "executionCenter.history.filterAll": "All outcomes",
+        "executionCenter.history.filterValidation": "Validation",
+        "executionCenter.history.filterValidationAll": "All validation results",
+        "executionCenter.history.filterNoValidation": "No validation result",
+        "executionCenter.history.noMatches": "No runs match these filters.",
+        "executionCenter.history.changeSetEvidence": "Change-set evidence",
+        "executionCenter.history.changeSetId": "Change set {id}",
+        "executionCenter.history.changeSetApplied": "Applied",
+        "executionCenter.history.changeSetRolledBack": "Rolled back",
+        "executionCenter.history.changeSetSummary": "{files} files · +{additions} / −{deletions}",
+        "executionCenter.history.comparisonTitle": "Compared with previous matching run",
+        "executionCenter.history.comparisonSelected": "Selected",
+        "executionCenter.history.comparisonPrevious": "Previous match",
+        "executionCenter.history.comparisonDeltas": "Change: duration {durationMs} · tools {tools} · approvals {approvals} · validations {validations}",
         "githubPrReview.title": "GitHub PR review",
         "githubCiDiagnosis.title": "PR CI diagnosis",
         "githubCiDiagnosis.repair": "Start isolated repair…",
@@ -1731,6 +1833,8 @@
         "status.planReady": "Plan ready for review",
         "status.planApplying": "Applying approved plan",
         "status.planFailed": "Plan apply failed",
+        "status.planExpired": "Plan apply timed out; review discarded",
+        "status.planStale": "Plan review is stale; review discarded",
         "composer.prompt": "Prompt the agent",
         "composer.mode": "Mode",
         "composer.execute": "Execute",
@@ -1987,6 +2091,8 @@
         "plan.applied": "Applied and validated",
         "plan.rejected": "Plan rejected",
         "plan.failed": "Apply stopped. Retry or reject this plan.",
+        "plan.expired": "Apply timed out; the review was discarded. Create a new plan.",
+        "plan.discarded": "Review no longer matches the workspace; create a new plan.",
         "plan.allow": "Allow execution",
         "plan.reject": "Reject plan",
         "plan.retry": "Retry apply",
@@ -2193,6 +2299,42 @@
         "executionCenter.history.count": "最近 {count} 次运行",
         "executionCenter.history.tools": "{count} 个工具",
         "executionCenter.history.validations": "{count} 次验证",
+        "executionCenter.history.openValidation": "查看验证证据",
+        "executionCenter.history.openChangeSet": "查看变更集证据",
+        "executionCenter.history.copy": "复制运行摘要",
+        "executionCenter.history.copySuccess": "摘要已复制。",
+        "executionCenter.history.copyFailure": "无法复制摘要。",
+        "executionCenter.history.unread": "{count} 条未读",
+        "executionCenter.history.markRead": "标记已读",
+        "executionCenter.history.exportFormat": "导出",
+        "executionCenter.history.exportJson": "JSON",
+        "executionCenter.history.exportMarkdown": "Markdown",
+        "executionCenter.history.export": "导出历史",
+        "executionCenter.history.exportSuccess": "历史已导出。",
+        "executionCenter.history.exportFailure": "无法导出历史。",
+        "executionCenter.history.loadMore": "加载更多",
+        "executionCenter.history.summaryRun": "运行 ID：{id}",
+        "executionCenter.history.summaryStatus": "运行结果：{status}",
+        "executionCenter.history.summaryStarted": "开始时间：{time}",
+        "executionCenter.history.summaryDuration": "耗时：{duration}",
+        "executionCenter.history.summaryValidation": "验证结果：{status}",
+        "executionCenter.history.search": "搜索运行 ID",
+        "executionCenter.history.searchPlaceholder": "运行 ID",
+        "executionCenter.history.filterStatus": "结果",
+        "executionCenter.history.filterAll": "全部结果",
+        "executionCenter.history.filterValidation": "验证结果",
+        "executionCenter.history.filterValidationAll": "全部验证结果",
+        "executionCenter.history.filterNoValidation": "无验证结果",
+        "executionCenter.history.noMatches": "没有符合条件的运行记录。",
+        "executionCenter.history.changeSetEvidence": "变更集证据",
+        "executionCenter.history.changeSetId": "变更集 {id}",
+        "executionCenter.history.changeSetApplied": "已应用",
+        "executionCenter.history.changeSetRolledBack": "已回滚",
+        "executionCenter.history.changeSetSummary": "{files} 个文件 · +{additions} / −{deletions}",
+        "executionCenter.history.comparisonTitle": "与上一条匹配记录对比",
+        "executionCenter.history.comparisonSelected": "当前运行",
+        "executionCenter.history.comparisonPrevious": "上一条匹配记录",
+        "executionCenter.history.comparisonDeltas": "变化：耗时 {durationMs} · 工具 {tools} · 审批 {approvals} · 验证 {validations}",
         "githubPrReview.title": "GitHub PR 审查",
         "githubCiDiagnosis.title": "PR CI 失败诊断",
         "githubCiDiagnosis.repair": "开始隔离修复…",
@@ -2558,6 +2700,8 @@
         "status.planReady": "计划已生成，等待审查",
         "status.planApplying": "正在应用已批准的计划",
         "status.planFailed": "计划应用失败",
+        "status.planExpired": "计划应用超时，审查已丢弃",
+        "status.planStale": "计划审查已过期，审查已丢弃",
         "composer.prompt": "提示智能体",
         "composer.mode": "模式",
         "composer.execute": "执行",
@@ -2803,6 +2947,8 @@
         "plan.applied": "已应用并完成校验",
         "plan.rejected": "计划已拒绝",
         "plan.failed": "应用已停止，可以重试或拒绝计划。",
+        "plan.expired": "应用超时，审查已丢弃。请重新创建计划。",
+        "plan.discarded": "审查已不再匹配当前工作区，请重新创建计划。",
         "plan.allow": "允许执行",
         "plan.reject": "拒绝计划",
         "plan.retry": "重试应用",
@@ -5579,7 +5725,7 @@
       return turn;
     }
 
-    async function loadHistory(sessionId) {
+    async function loadHistory(sessionId, evidenceFilters = {}) {
       if (!sessionId) return;
       const requestId = ++desktopHistoryRequestId;
       const state = getSessionClientState(sessionId);
@@ -5594,7 +5740,9 @@
       approvalMessages.clear();
       planMessages.clear();
       try {
-        const res = await fetch("/api/sessions/" + encodeURIComponent(sessionId) + "/messages", {
+        const historyUrl = buildExecutionHistoryEvidenceUrl(sessionId, evidenceFilters);
+        if (!historyUrl) return;
+        const res = await fetch(historyUrl, {
           cache: "no-store",
           signal: controller.signal
         });
@@ -5604,6 +5752,7 @@
         if (data.sessionId !== sessionId) return;
         const history = data.messages ?? [];
         const validations = data.validations ?? [];
+        const changeSets = data.changeSets ?? [];
         if (state) {
           state.historyHasTranscript = history.some((entry) => (
             entry
@@ -5612,7 +5761,7 @@
             && entry.content.length > 0
           ));
         }
-        if (history.length === 0 && validations.length === 0) {
+        if (history.length === 0 && validations.length === 0 && changeSets.length === 0) {
           if (!state?.active && state?.queue.snapshot().queued.length === 0) {
             messages.appendChild(createEmptyState());
           }
@@ -5622,6 +5771,9 @@
         history.forEach((entry, index) => appendHistoryEntry(sessionId, entry, index));
         for (const validation of validations) {
           appendValidation(validation, getSessionClientState(sessionId)?.historyLastTurn);
+        }
+        for (const changeSet of changeSets) {
+          appendChangeSetEvidence(changeSet);
         }
         renderPendingSessionTurns(sessionId);
         resetLiveOutputNotice();
@@ -6073,6 +6225,7 @@
       }
 
       if (!snapshot.active) {
+        const recoveredQueueAction = getRecoveredRunQueueAction(snapshot);
         const completedTurn = restoreCompletedRunTranscript(currentSessionId, snapshot);
         const terminalTurn = completedTurn || turn;
         if (terminalTurn) {
@@ -6083,6 +6236,16 @@
               : "done";
           updateTurnState(terminalTurn, terminalTurn.outcome);
           if (state?.active === terminalTurn) state.active = null;
+        }
+        if (state) {
+          if (recoveredQueueAction === "drain") {
+            state.queue.resume();
+            state.pausedReason = null;
+          } else if (recoveredQueueAction === "pause") {
+            state.pausedReason = t(snapshot.status === "aborted" ? "turn.aborted" : "turn.failed");
+          }
+          persistSessionQueue(currentSessionId);
+          renderQueueState(currentSessionId);
         }
         updateComposerAvailability(currentSessionId);
         stopButton.disabled = true;
@@ -6265,7 +6428,7 @@
 
     function setPlanCardActions(card, state) {
       if (!card) return;
-      const terminal = state === "applied" || state === "rejected";
+      const terminal = state === "applied" || state === "rejected" || state === "expired" || state === "discarded";
       const applying = state === "applying";
       const failed = state === "failed";
       card.allow.hidden = applying || failed || terminal;
@@ -6508,6 +6671,24 @@
           setPlanCardActions(card, "applied");
           appendUndo(review.changeSetId, approvalMessages.get(review.changeSetId));
           finishClientTurn(turn, "done");
+        } else if (turn.planState === "expired") {
+          state.pausedReason = t("plan.expired");
+          setPlanCardState(card, "plan.expired");
+          setPlanCardActions(card, "expired");
+          updateTurnState(turn, "failed");
+          persistSessionQueue(turn.sessionId);
+          renderQueueState(turn.sessionId);
+          updateComposerAvailability(turn.sessionId);
+          setLocalizedStatus("status.planExpired", {}, "error");
+        } else if (turn.planState === "discarded") {
+          state.pausedReason = t("plan.discarded");
+          setPlanCardState(card, "plan.discarded");
+          setPlanCardActions(card, "discarded");
+          updateTurnState(turn, "failed");
+          persistSessionQueue(turn.sessionId);
+          renderQueueState(turn.sessionId);
+          updateComposerAvailability(turn.sessionId);
+          setLocalizedStatus("status.planStale", {}, "error");
         } else {
           turn.planState = "failed";
           state.pausedReason = t("plan.failed");
@@ -7389,6 +7570,12 @@
           break;
         case "error":
           turn.outcome = "failed";
+          if (turn.planState === "applying" && parsed.message === "Plan apply timed out") {
+            turn.planState = "expired";
+          }
+          if (turn.planState === "applying" && parsed.message === "Plan review is stale and was discarded") {
+            turn.planState = "discarded";
+          }
           if (turn.planState !== "applying") {
             state.ledger.close(turn.turnId, turn.outcome);
           }
@@ -7447,6 +7634,45 @@
           if (visible) loadDesktopStatus(currentSessionId);
           break;
       }
+    }
+
+    function appendChangeSetEvidence(record) {
+      const changeSetId = typeof record?.changeSetId === "string" ? record.changeSetId.trim() : "";
+      const stateKey = record?.state === "applied"
+        ? "executionCenter.history.changeSetApplied"
+        : record?.state === "rolled-back"
+          ? "executionCenter.history.changeSetRolledBack"
+          : null;
+      if (!changeSetId || changeSetId.length > 96 || changeSetId.includes("/")
+        || changeSetId.includes("\\") || changeSetId.includes("..")
+        || /[\u0000-\u001f\u007f]/.test(changeSetId) || !stateKey) return;
+
+      const boundedCount = (value) => Number.isSafeInteger(value) && value >= 0
+        ? Math.min(1_000_000, value)
+        : 0;
+      const files = Array.isArray(record.files) ? Math.min(10_000, record.files.length) : 0;
+      const card = document.createElement("div");
+      card.className = "msg validation change-set-evidence";
+      const header = document.createElement("div");
+      header.className = "validation-header";
+      const title = document.createElement("span");
+      title.textContent = t("executionCenter.history.changeSetEvidence");
+      const status = document.createElement("span");
+      status.className = "validation-status";
+      status.textContent = t(stateKey);
+      header.append(title, status);
+      const reference = document.createElement("div");
+      reference.className = "validation-summary";
+      reference.textContent = t("executionCenter.history.changeSetId", { id: changeSetId });
+      const summary = document.createElement("div");
+      summary.className = "validation-summary";
+      summary.textContent = t("executionCenter.history.changeSetSummary", {
+        files,
+        additions: boundedCount(record.additions),
+        deletions: boundedCount(record.deletions),
+      });
+      card.append(header, reference, summary);
+      messages.appendChild(card);
     }
 
     function appendValidation(result, turn = activeTurn) {
@@ -7759,6 +7985,7 @@
       documentRef: document,
       fetcher: fetch,
       translate: t,
+      copyText,
       activateSession,
       stopSession,
       openTrace: async (sessionId) => {
@@ -7770,6 +7997,14 @@
         await activateSession(sessionId);
         await taskValidationUI?.refresh();
         document.getElementById("task-validation-panel")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      },
+      openValidationEvidence: async (sessionId, validationId, changeSetId) => {
+        await activateSession(sessionId);
+        await loadHistory(sessionId, { validationId, changeSetId });
+      },
+      openChangeSetEvidence: async (sessionId, changeSetId) => {
+        await activateSession(sessionId);
+        await loadHistory(sessionId, { changeSetId });
       },
       startAutofix: async (sessionId) => {
         await activateSession(sessionId);
