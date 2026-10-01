@@ -249,12 +249,12 @@ cache entries are reported without starting a provider or silently falling back 
 The package is built as a self-contained JavaScript CLI bundle and is verified by
 `pnpm package:smoke` in a clean npm prefix. New release candidates can be checked with
 `pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
-wrapper only publishes after that preflight succeeds. As of September 19, 2026,
-`@agent_cli/cli@0.1.8` is published to npm and is the registry `latest`; it includes
-the cancellable, bounded `index refresh` flow and its provider-free CLI lifecycle.
-The formal [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8)
-is also complete and carries the four runtime artifacts, checksums, manifest, and
-verified CLI tarball. `0.1.7` and `0.1.6` are earlier published versions. See
+wrapper only publishes after that preflight succeeds. As of September 30, 2026,
+`@agent_cli/cli@0.2.0` is published to npm and is the registry `latest`. The latest
+formal [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8)
+remains `v0.1.8`; as of October 1, 2026, npm `0.2.0` has no matching Git tag or
+GitHub Release. The `v0.1.8` release carries the four runtime artifacts, checksums,
+manifest, and verified CLI tarball. `0.1.7` and `0.1.6` are earlier published versions. See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.
@@ -264,7 +264,7 @@ pre-populated npm cache and avoid redundant registry downloads, set
 `DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE` to the cache directory before running
 `pnpm package:smoke`.
 
-The published `@agent_cli/cli@0.1.8` includes the explicit `--project-state` opt-in for
+The published `@agent_cli/cli@0.2.0` retains the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing
 user-level sessions. It also adds the provider, index, MCP, and Desktop status capabilities
 described below.
@@ -400,9 +400,9 @@ all six workspace phases in that plan are implemented and verified: project init
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
 indexes, and MCP/Desktop status management. In that September 19 release snapshot,
 [`v0.1.8`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8) was the
-published GitHub release. As of September 23, 2026, `v0.1.8` remains the current GitHub release.
-The September 19 snapshot records `@agent_cli/cli@0.1.8` as npm `latest`; no
-newer workspace candidate had been opened at that snapshot.
+published GitHub release. As of October 1, 2026, `v0.1.8` remains the latest formal GitHub release.
+The September 19 snapshot had no newer workspace candidate; npm `0.2.0` was
+published separately on September 30.
 
 The published-release snapshot above is dated September 19, 2026. The local
 working tree has continued to evolve since then; its implementation and

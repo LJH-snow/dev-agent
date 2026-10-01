@@ -1,4 +1,5 @@
 import type { StreamEvent } from "./chat-session.js";
+import type { ExecutionHistoryRecord } from "./execution-history.js";
 
 export type DesktopRunStatus =
   | "idle"
@@ -83,6 +84,9 @@ export class DesktopRunState {
   private reasoning = "";
   private tool?: DesktopRunLiveTool;
   private approval?: DesktopRunLiveApproval;
+  private toolCount = 0;
+  private approvalCount = 0;
+  private validationCount = 0;
 
   constructor(sessionId: string, runId: string, startedAt = new Date().toISOString()) {
     this.sessionId = sessionId;
@@ -95,6 +99,9 @@ export class DesktopRunState {
   }
 
   append(event: StreamEvent): DesktopRunEvent {
+    if (event.type === "tool") this.toolCount += 1;
+    if (event.type === "approval-request" || event.type === "plan-review") this.approvalCount += 1;
+    if (event.type === "validation") this.validationCount += 1;
     const replayEvent: DesktopRunEvent = {
       sequence: ++this.sequence,
       type: event.type,
@@ -158,6 +165,32 @@ export class DesktopRunState {
       sequence: this.sequence,
       startedAt: this.startedAt,
       ...(this.finishedAt === undefined ? {} : { finishedAt: this.finishedAt }),
+    };
+  }
+
+  historyRecord(): ExecutionHistoryRecord | undefined {
+    if (
+      this.finishedAt === undefined
+      || (this.status !== "done" && this.status !== "failed" && this.status !== "aborted")
+    ) {
+      return undefined;
+    }
+    const startedMs = Date.parse(this.startedAt);
+    const finishedMs = Date.parse(this.finishedAt);
+    return {
+      schemaVersion: 1,
+      sessionId: this.sessionId,
+      runId: this.runId,
+      status: this.status,
+      startedAt: this.startedAt,
+      finishedAt: this.finishedAt,
+      durationMs: Number.isFinite(startedMs) && Number.isFinite(finishedMs)
+        ? Math.max(0, finishedMs - startedMs)
+        : 0,
+      sequence: this.sequence,
+      toolCount: this.toolCount,
+      approvalCount: this.approvalCount,
+      validationCount: this.validationCount,
     };
   }
 

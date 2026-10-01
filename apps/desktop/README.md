@@ -69,6 +69,8 @@ Configure the model provider the same way as the CLI, via environment variables:
 - Provider-specific keys: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OLLAMA_BASE_URL`
 - `DEV_AGENT_DESKTOP_HOST` / `DEV_AGENT_DESKTOP_PORT` — bind address (default `127.0.0.1:4317`)
 - `DEV_AGENT_MEMORY_FILE` — session memory file (defaults to `~/.dev-agent/sessions/desktop-default.json`)
+- `DEV_AGENT_EXECUTION_HISTORY_FILE` — optional private JSON file for bounded
+  terminal run history (defaults to `~/.dev-agent/desktop-execution-history.json`).
 - `DEV_AGENT_MAX_CONTEXT_CHARS` — optional conversation-history budget; oldest
   entries are dropped first (never splitting a tool call from its results)
 - `DEV_AGENT_SUMMARIZE_CONTEXT` — `1`/`true`/`yes` replaces the dropped history
@@ -100,6 +102,31 @@ only tokens are shown. The same config file may set
 `DEV_AGENT_VALIDATION_POLICY` overrides it. Only `fast`, `default`, and `strict`
 are accepted, and validation command fields are deliberately not configurable.
 
+## Autofix Review Loop
+
+`POST /api/autofix` prepares a repair review for the latest failed or blocked
+validation. Its optional `maxAttempts` field must be an integer from **1 to 3**
+(default **3**, including the initial preview). The budget is fixed for the
+session's repair loop; omitting it on later requests does not reset the counter.
+
+Every attempt requires human review and `POST /api/plans/apply`. Apply reuses the
+stored change set and trusted validation without another model call. Only a
+matching **failed** revalidation permits another user-triggered Autofix preview;
+passing, blocked, missing, or unrelated validation stops the loop. This is not an
+autonomous apply/retry loop. The `plan-review` SSE event includes `autofix.attempt`
+and `autofix.maxAttempts` metadata.
+
+Cancellation, disconnect, timeout, discard, changed validation, and apply/file
+conflicts invalidate Autofix authority. Managed task worktrees are verified before
+planning and applying; cleaned, missing, and mismatched worktrees are refused.
+Pending Autofix reviews are not revived after server restart or session rename.
+Ordinary plan reviews retain their existing cancellation/retry behavior.
+
+Target lookup, planning, and apply each have a 120-second deadline. Embedding hosts
+may lower this with `DesktopServerOptions.autofixTimeoutMs` (1–120,000 ms).
+Late worker events cannot restore an invalidated review. Session budgets and
+review authority are in-memory, not durable execution permissions.
+
 ## How it works
 
 - `src/index.ts` — entry point; starts the server.
@@ -112,6 +139,8 @@ are accepted, and validation command fields are deliberately not configurable.
   sanitized before serialization, even when injected by a custom host.
 - src/execution-center.ts — bounded metadata-only aggregation of session run
   stages, approval waits, tool names, durations, and current runtime state.
+- src/execution-history.ts — persists only terminal run metadata with a 1 MiB
+  total cap and at most 50 records per session; replay events never reach disk.
 - `src/chat-session.ts` — builds the `AgentLoop` with the default tools and model
   provider, optionally connects configured MCP stdio servers, and bridges its
   `onToken` / `onReasoning` / `onToolCall` / `onToolProgress` / `onToolResult` /
@@ -151,6 +180,8 @@ are accepted, and validation command fields are deliberately not configurable.
   read-only GET /api/execution-center snapshot. It discards stale responses,
   renders with text nodes, focuses the selected session, and exposes Stop, Trace,
   Validation, and Autofix shortcuts by reusing the existing guarded actions.
+  It also loads the selected session's recent terminal run history without
+  exposing replay events or raw tool content.
 
 ## API
 
@@ -220,13 +251,16 @@ ID returns `400` before the approval lookup.
   approval fragments. Pass `?after=<sequence>` to request only later events.
   Retained replay is capped by event count and bytes; tool inputs, raw tool
   output, review diffs, and raw provider errors are never included. Unknown
-- GET /api/execution-center — bounded metadata-only aggregate for up to 256
+  sessions return `404`, and invalid cursors return `400`.
+- `GET /api/execution-center` — bounded metadata-only aggregate for up to 256
   sessions. It reports active, waiting, completed, failed, and aborted counts,
   per-session stage/tool/approval metadata, and an allowlisted runtime subset
   for the active session. It never returns prompts, tool output, commands,
   arguments, environment values, credentials, or absolute paths; oversized
   snapshots return 413.
-  sessions return `404`, and invalid cursors return `400`.
+- `GET /api/execution-center?historySessionId=<id>` — adds up to 50 recent
+  terminal run summaries for one known session. Records contain only run id,
+  terminal status, timestamps, duration, sequence, and bounded counters.
 - `GET /api/sessions/<id>/trace` — returns the bounded, metadata-only run
   trace. The Runtime Inspector `Trace` action renders run/span timing, status,
   turn/token totals, and bounded dropped counters only. It does not show prompt

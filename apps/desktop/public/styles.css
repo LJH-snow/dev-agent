@@ -5026,6 +5026,31 @@ html[data-density="compact"] .settings-card {
   color: var(--accent-strong);
 }
 
+.execution-center-history {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.execution-center-history-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.execution-center-history-header strong {
+  color: var(--fg);
+  font-size: 11px;
+}
+
+.execution-center-history .parallel-runs-list {
+  max-height: 220px;
+  margin-top: 0;
+}
+
 /* Task templates and keyboard-driven quick actions. */
 .composer-quick-actions {
   display: inline-flex;

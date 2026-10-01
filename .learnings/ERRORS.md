@@ -19,22 +19,42 @@ SyntaxError: Invalid or unexpected token
 - Source: error
 
 ---
+## [ERR-20260930-003] execution-history-blocked-session-release
+
+**Priority**: high
+**Status**: resolved
+**Area**: tools
+
+### 摘要
+在 HTTP 运行路径的 finally 中等待 execution history 磁盘写入，会让 SSE 已结束但 session 的 inFlight 锁尚未释放；紧接着的请求会错误返回 409，失败测试还可能留下未关闭的服务器句柄。
+
+### 错误信息
+Expected status 200, received 409.
+Promise resolution is still pending but the event loop has already resolved.
+
+### 建议修复
+终态 history 先更新内存并排队原子落盘；HTTP 清理路径先释放 inFlight、controller 和 pending state，再异步处理持久化结果。磁盘写失败不能改变已完成的请求状态。
+
+### 元数据
+- Reproducible: yes
+- Source: error
+
+---
 
 ## [ERR-20260930-002] documentation-contract-release-version-drift
 
 **Priority**: medium
-**Status**: pending
+**Status**: resolved
 **Area**: docs
 
 ### 摘要
-Desktop 执行中心完成后的文档契约检查仍有两个既有发布版本断言冲突：部分文档读取到 0.1.8，测试期望 0.2.0；另一处同步检查反向读取到 0.2.0，测试期望 0.1.8。该冲突不由本次功能改动引入。
+文档契约把 npm latest、CLI candidate 和最新 GitHub Release 当成同一版本：npm 0.2.0 已于 2026-09-30 发布，但 GitHub 最新正式 release 仍为 v0.1.8，且 v0.2.0 尚无 tag/release。
 
 ### 错误信息
-0.1.8 !== 0.2.0
-0.2.0 !== 0.1.8
+Documentation assertions expected npm 0.1.8 and GitHub v0.2.0 to advance together.
 
 ### 建议修复
-单独建立发布文档同步任务，核对 package、npm、tag、GitHub Release 和契约测试的单一版本来源；不要在功能开发中顺手修改发布记录。
+分别核验 npm dist-tag/package version 与 GitHub release/tag；release-state 记录 npm published/candidate 状态，文档明确 GitHub release 独立推进，不推断 tag/release 已发生。
 
 ### 元数据
 - Reproducible: yes

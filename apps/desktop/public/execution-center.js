@@ -17,6 +17,9 @@ export function createExecutionCenterUI(options = {}) {
   const summary = documentRef.getElementById("execution-center-summary");
   const list = documentRef.getElementById("execution-center-list");
   const refreshButton = documentRef.getElementById("execution-center-refresh");
+  const historyPanel = documentRef.getElementById("execution-center-history");
+  const historyStatus = documentRef.getElementById("execution-center-history-status");
+  const historyList = documentRef.getElementById("execution-center-history-list");
   const detailPanel = documentRef.getElementById("execution-center-detail");
   const detailTitle = documentRef.getElementById("execution-center-detail-title");
   const detailStatus = documentRef.getElementById("execution-center-detail-status");
@@ -72,6 +75,7 @@ export function createExecutionCenterUI(options = {}) {
       empty.textContent = translate("executionCenter.empty");
       list.appendChild(empty);
       renderDetail(payload);
+      renderHistory(payload);
       return;
     }
 
@@ -108,6 +112,7 @@ export function createExecutionCenterUI(options = {}) {
       list.appendChild(item);
     }
     renderDetail(payload);
+    renderHistory(payload);
   }
 
   function renderDetail(payload) {
@@ -139,7 +144,41 @@ export function createExecutionCenterUI(options = {}) {
     }
   }
 
-  async function refresh() {
+  function renderHistory(payload) {
+    if (!historyPanel || !historyList) return;
+    historyPanel.hidden = payload.history.length === 0;
+    historyList.replaceChildren();
+    if (historyStatus) {
+      historyStatus.textContent = payload.history.length === 0
+        ? translate("executionCenter.history.empty")
+        : translate("executionCenter.history.count", { count: payload.history.length });
+    }
+    for (const record of payload.history) {
+      const item = documentRef.createElement("li");
+      item.className = "parallel-run-card execution-center-history-card";
+      item.dataset.status = record.status;
+      const heading = documentRef.createElement("div");
+      heading.className = "parallel-run-card-header";
+      const runId = documentRef.createElement("span");
+      runId.className = "parallel-run-focus";
+      runId.textContent = record.runId;
+      const state = documentRef.createElement("span");
+      state.className = "parallel-run-status";
+      state.textContent = translate("parallelRuns.status." + record.status);
+      heading.append(runId, state);
+      const meta = documentRef.createElement("div");
+      meta.className = "parallel-run-meta";
+      meta.textContent = [
+        formatDuration(record.durationMs),
+        translate("executionCenter.history.tools", { count: record.toolCount }),
+        translate("executionCenter.history.validations", { count: record.validationCount }),
+      ].join(" · ");
+      item.append(heading, meta);
+      historyList.appendChild(item);
+    }
+  }
+
+  async function refresh(historySessionId = selectedSessionId) {
     const requestId = ++executionCenterRequestId;
     executionCenterController?.abort();
     const controller = new AbortController();
@@ -148,7 +187,10 @@ export function createExecutionCenterUI(options = {}) {
     refreshButton.setAttribute("aria-busy", "true");
     status.textContent = translate("executionCenter.checking");
     try {
-      const response = await fetcher("/api/execution-center", {
+      const query = typeof historySessionId === "string" && historySessionId
+        ? "?historySessionId=" + encodeURIComponent(historySessionId)
+        : "";
+      const response = await fetcher("/api/execution-center" + query, {
         cache: "no-store",
         signal: controller.signal,
       });
@@ -161,6 +203,8 @@ export function createExecutionCenterUI(options = {}) {
       list.replaceChildren();
       summary.textContent = "";
       runtime.textContent = "";
+      historyPanel?.setAttribute("hidden", "true");
+      historyList?.replaceChildren();
       status.textContent = translate("executionCenter.error");
     } finally {
       if (requestId === executionCenterRequestId) {
@@ -185,6 +229,7 @@ export function createExecutionCenterUI(options = {}) {
       selectedSessionId = sessionId;
       renderDetail(latestPayload ?? normalizeSnapshot({}));
       void activateSession(sessionId);
+      void refresh(sessionId);
     }
   });
 
@@ -249,8 +294,13 @@ function normalizeSnapshot(value) {
     });
   }
   const active = sessions.filter((item) => item.active).length;
+  const history = (Array.isArray(raw.history) ? raw.history.slice(0, 50) : [])
+    .map(normalizeHistoryRecord)
+    .filter((record) => record !== undefined);
   return {
     currentSessionId: normalizeId(raw.currentSessionId),
+    historySessionId: normalizeId(raw.historySessionId),
+    history,
     runtime: isRecord(raw.runtime) ? raw.runtime : undefined,
     total: sessions.length,
     active,
@@ -260,6 +310,27 @@ function normalizeSnapshot(value) {
     aborted: sessions.filter((item) => item.status === "aborted").length,
     sessions,
   };
+}
+
+function normalizeHistoryRecord(value) {
+  if (!isRecord(value)) return undefined;
+  const sessionId = normalizeId(value.sessionId);
+  const runId = normalizeId(value.runId);
+  if (!sessionId || !runId || !["done", "failed", "aborted"].includes(value.status)) return undefined;
+  return {
+    sessionId,
+    runId,
+    status: value.status,
+    durationMs: normalizeDuration(value.durationMs) ?? 0,
+    toolCount: normalizeCount(value.toolCount),
+    validationCount: normalizeCount(value.validationCount),
+  };
+}
+
+function normalizeCount(value) {
+  return typeof value === "number" && Number.isSafeInteger(value)
+    ? Math.min(1_000_000, Math.max(0, value))
+    : 0;
 }
 
 function normalizeTool(value) {
