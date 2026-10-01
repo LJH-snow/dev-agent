@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-01（npm 与 GitHub 发布状态同步）
+
+- `@agent_cli/cli@0.2.0` 于 2026-09-30 发布到 npm 并成为 `latest`；同步 release-state 和当前安装文档。
+- 最新正式 GitHub Release 仍是 `v0.1.8`；核验时 `v0.2.0` 尚无 tag 或 GitHub Release。文档明确区分 npm package 与 runtime/release assets，不创建远端发布。
+
 ## 2026-09-30（Desktop 执行状态中心）
 
 - Added a bounded read-only execution-center snapshot that combines existing
@@ -12,6 +17,8 @@
 - The selected execution card now opens a bounded detail view with Stop, Trace,
   Validation, and Autofix shortcuts. Autofix remains disabled unless the active
   session has failed or blocked validation evidence.
+- Execution Center now restores up to 50 terminal run summaries per session
+  from a private atomic store capped at 1 MiB; raw replay events remain ephemeral.
 
 ## 2026-09-30（CLI TUI pinned task header while browsing）
 

@@ -1,4 +1,8 @@
 import type { DesktopStatusSnapshot } from "./status.js";
+import {
+  normalizeExecutionHistoryRecord,
+  type ExecutionHistoryRecord,
+} from "./execution-history.js";
 import type {
   DesktopRunLiveState,
   DesktopRunStatus,
@@ -65,6 +69,8 @@ export interface ExecutionCenterSnapshot {
   readonly metadataOnly: true;
   readonly checkedAt: string;
   readonly currentSessionId?: string;
+  readonly historySessionId?: string;
+  readonly history: readonly ExecutionHistoryRecord[];
   readonly runtime?: ExecutionCenterRuntime;
   readonly total: number;
   readonly active: number;
@@ -136,6 +142,7 @@ export function createExecutionCenterSnapshot(
     metadataOnly: true,
     checkedAt: normalizeTimestamp(checkedAt) ?? new Date().toISOString(),
     ...(normalizedCurrentSessionId === undefined ? {} : { currentSessionId: normalizedCurrentSessionId }),
+    history: [],
     ...(runtime === undefined ? {} : { runtime }),
     total: normalized.length,
     active,
@@ -145,6 +152,24 @@ export function createExecutionCenterSnapshot(
     failed,
     aborted,
     sessions: normalized,
+  };
+}
+
+export function withExecutionHistory(
+  snapshot: ExecutionCenterSnapshot,
+  sessionId: string | undefined,
+  history: readonly unknown[] = [],
+): ExecutionCenterSnapshot {
+  const normalizedSessionId = normalizeId(sessionId, MAX_EXECUTION_CENTER_SESSION_ID_CHARS);
+  const normalizedHistory = history
+    .slice(0, 50)
+    .map(normalizeExecutionHistoryRecord)
+    .filter((record): record is ExecutionHistoryRecord => record !== undefined)
+    .filter((record) => normalizedSessionId === undefined || record.sessionId === normalizedSessionId);
+  return {
+    ...snapshot,
+    ...(normalizedSessionId === undefined ? {} : { historySessionId: normalizedSessionId }),
+    history: normalizedHistory,
   };
 }
 
@@ -182,7 +207,12 @@ export function normalizeExecutionCenterSnapshot(value: unknown): ExecutionCente
     checkedAt,
   );
   const runtime = normalizeRuntimeValue(value.runtime);
-  return runtime === undefined ? snapshot : { ...snapshot, runtime };
+  const withRuntime = runtime === undefined ? snapshot : { ...snapshot, runtime };
+  return withExecutionHistory(
+    withRuntime,
+    typeof value.historySessionId === "string" ? value.historySessionId : undefined,
+    Array.isArray(value.history) ? value.history : [],
+  );
 }
 
 function normalizeInput(input: ExecutionCenterInput, nowValue: string): ExecutionCenterCard | undefined {

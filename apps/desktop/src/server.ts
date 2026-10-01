@@ -87,7 +87,7 @@ import {
   type RepositoryCapabilitySnapshot,
   type WorkbenchMetadataSnapshot,
 } from "./capabilities.js";
-import { buildDesktopAutoFixPrompt, type DesktopAutoFixTarget } from "./autofix.js";
+import { buildDesktopAutoFixPrompt, DesktopAutoFixLoop, parseDesktopAutoFixAttempts, withDesktopAutoFixDeadline, type DesktopAutoFixTarget } from "./autofix.js";
 import {
   createMcpHealthSnapshot,
   normalizeMcpHealthSnapshot,
@@ -100,9 +100,11 @@ import {
 } from "./parallel-runs.js";
 import {
   createExecutionCenterSnapshot,
+  withExecutionHistory,
   MAX_EXECUTION_CENTER_RESPONSE_BYTES,
   type ExecutionCenterInput,
 } from "./execution-center.js";
+import { ExecutionHistoryStore } from "./execution-history.js";
 import {
   loadGitHubPrReview,
   normalizeGitHubPrReviewSnapshot,
@@ -188,6 +190,7 @@ export interface DesktopChatSession {
 }
 
 export interface DesktopServerOptions {
+  readonly autofixTimeoutMs?: number;
   readonly host?: string;
   readonly port?: number;
   readonly session?: DesktopChatSession;
@@ -215,6 +218,8 @@ export interface DesktopServerOptions {
   readonly githubPrList?: (input: GitHubPrListInput, workingDirectory?: string) => Promise<GitHubPrListResult>;
   /** Overrides the persisted schedule registry location, primarily for tests. */
   readonly scheduledTasksStateFile?: string;
+  /** Overrides the persisted execution history location, primarily for tests. */
+  readonly executionHistoryStateFile?: string;
   /** Executes scheduled job definitions; defaults to the built-in ci-watch watcher. */
   readonly scheduledJobRunner?: (definition: ScheduleDefinition, trigger: ScheduleRunRecord["trigger"]) =>
     Promise<{ ok: boolean; summary: Record<string, unknown> }>;
@@ -271,6 +276,7 @@ type PendingPlan = {
   readonly prompt: string;
   readonly review: ChangeSetReview;
   status: PendingPlanStatus;
+  readonly autofix?: DesktopAutoFixLoop;
 };
 
 const validationStatuses: readonly ValidationStatus[] = [
@@ -367,12 +373,27 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const maxRepairLineageEntries = 256;
   const inFlight = new Set<string>();
   const runs = new DesktopRunRegistry();
+  const executionHistoryStateFile = options.executionHistoryStateFile
+    ?? process.env.DEV_AGENT_EXECUTION_HISTORY_FILE
+    ?? (options.session === undefined ? join(homedir(), ".dev-agent", "desktop-execution-history.json") : undefined);
+  const executionHistory = new ExecutionHistoryStore({
+    ...(executionHistoryStateFile === undefined ? {} : { stateFile: executionHistoryStateFile }),
+  });
+  const persistRunHistory = async (run: DesktopRunState): Promise<void> => {
+    const record = run.historyRecord();
+    if (record) await executionHistory.record(record);
+  };
   const taskPresentation = new TaskPresentationStore(sessionsDir());
   // One controller per running session, so a cancel request can abort it the
   // same way a dropped connection does.
   const runControllers = new Map<string, AbortController>();
   const approvals = new Map<string, (decision: ApprovalDecision) => void>();
   const pendingPlans = new Map<string, PendingPlan>();
+  const autofixLoops = new Map<string, DesktopAutoFixLoop>();
+  const autofixTimeoutMs = options.autofixTimeoutMs === undefined ? 120_000 : options.autofixTimeoutMs;
+  if (!Number.isInteger(autofixTimeoutMs) || autofixTimeoutMs < 1 || autofixTimeoutMs > 120_000) {
+    throw new Error("Autofix timeout must be an integer from 1 through 120000 ms");
+  }
   const taskWorkspaces = new DesktopTaskWorkspaceManager({
     ...(options.workspaceRoot === undefined ? {} : { workspaceRoot: options.workspaceRoot }),
     ...(options.worktreeDirectory === undefined ? {} : { worktreeDirectory: options.worktreeDirectory }),
@@ -430,6 +451,8 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   // persisted session lifecycle so a later recovery cannot inherit stale run,
   // approval, or plan metadata from the old id.
   const clearSessionRuntimeState = (sessionId: string): void => {
+    autofixLoops.get(sessionId)?.stop();
+    autofixLoops.delete(sessionId);
     runs.delete(sessionId);
     sessionAllowlist.delete(sessionId);
     const prefix = `${sessionId}\u0000`;
@@ -441,6 +464,8 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   };
 
   const moveSessionRuntimeState = (from: string, to: string): void => {
+    autofixLoops.get(from)?.stop();
+    autofixLoops.delete(from);
     const allowlist = sessionAllowlist.get(from);
     if (allowlist !== undefined) {
       sessionAllowlist.delete(from);
@@ -452,11 +477,13 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     for (const [key, pending] of pendingPlans.entries()) {
       if (!key.startsWith(prefix)) continue;
       pendingPlans.delete(key);
+      if (pending.autofix !== undefined) continue;
       pendingPlans.set(pendingPlanKey(to, pending.review.changeSetId), {
         ...pending,
         sessionId: to,
       });
     }
+    void executionHistory.move(from, to).catch(() => undefined);
     // Renames are only allowed once no run is active; discard the old replay
     // cursor so the new id cannot report a stale run after recovery.
     runs.delete(from);
@@ -1204,7 +1231,21 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
             inFlight.has(currentSessionId) || taskValidationManager.hasRunning(currentSessionId),
           );
         }
-        const payload = createExecutionCenterSnapshot(inputs, currentSessionId, currentStatus);
+        const rawHistorySessionId = url.searchParams.get("historySessionId");
+        const historySessionId = normalizeSessionIdForRequest(rawHistorySessionId ?? currentSessionId);
+        if (rawHistorySessionId !== null && historySessionId === undefined) {
+          res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "historySessionId is too long" }));
+          return;
+        }
+        const knownHistorySession = historySessionId === undefined
+          || summaries.some((summary) => summary.sessionId === historySessionId)
+          || sessions.has(historySessionId);
+        const payload = withExecutionHistory(
+          createExecutionCenterSnapshot(inputs, currentSessionId, currentStatus),
+          knownHistorySession ? historySessionId : undefined,
+          knownHistorySession && historySessionId !== undefined ? executionHistory.list(historySessionId) : [],
+        );
         const serialized = JSON.stringify(payload);
         if (Buffer.byteLength(serialized, "utf8") > MAX_EXECUTION_CENTER_RESPONSE_BYTES) {
           res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });
@@ -2086,6 +2127,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         sessions.delete(sessionId);
         taskValidationManager.clear(sessionId);
         clearSessionRuntimeState(sessionId);
+        await executionHistory.clear(sessionId).catch(() => false);
         if (activeSessionId === sessionId) {
           activeSessionId = undefined;
         }
@@ -2441,10 +2483,18 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
       if (req.method === "POST" && url.pathname === "/api/autofix") {
         const body = await readJsonBody(req, res);
         if (body === undefined) return;
-        const parsedResult = parseJsonObjectBody<{ sessionId?: unknown }>(body);
+        const parsedResult = parseJsonObjectBody<{ sessionId?: unknown; maxAttempts?: unknown }>(body);
         if (!parsedResult.ok) {
           res.writeHead(400, { "content-type": "application/json" });
           res.end(JSON.stringify({ error: parsedResult.error }));
+          return;
+        }
+        let maxAttempts: number;
+        try {
+          maxAttempts = parseDesktopAutoFixAttempts(parsedResult.value.maxAttempts);
+        } catch (error) {
+          res.writeHead(400, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: (error as Error).message, code: "autofix-invalid-budget" }));
           return;
         }
         const sessionId = normalizeSessionIdForRequest(
@@ -2482,25 +2532,51 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           res.end(JSON.stringify({ error: "Autofix is unavailable", code: "autofix-unavailable" }));
           return;
         }
-        let target;
-        try {
-          target = await session.getLatestAutoFixTarget();
-        } catch {
-          res.writeHead(500, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "Autofix target is unavailable", code: "autofix-unavailable" }));
-          return;
-        }
-        if (!target) {
-          res.writeHead(404, { "content-type": "application/json" });
-          res.end(JSON.stringify({ error: "no failed or blocked validation is available for Autofix", code: "autofix-unavailable" }));
-          return;
-        }
-
         inFlight.add(id);
         const controller = new AbortController();
         runControllers.set(id, controller);
         const run = runs.start(id, randomUUID());
+        let loop = autofixLoops.get(id);
+        const onDisconnect = (): void => { if (!res.writableEnded) controller.abort(); };
+        res.on("close", onDisconnect);
         try {
+          let target: DesktopAutoFixTarget | undefined;
+          try {
+            target = await withDesktopAutoFixDeadline(async () => {
+              if (taskWorkspaces.isTaskSession(id)) await taskWorkspaces.terminalWorkingDirectory(id);
+              return session.getLatestAutoFixTarget!();
+            }, controller, autofixTimeoutMs);
+          } catch (error) {
+            loop?.stop();
+            if (error instanceof TaskWorkspaceError) {
+              sendTaskWorkspaceError(res, error);
+              return;
+            }
+            res.writeHead(controller.signal.aborted ? 408 : 500, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "Autofix target is unavailable", code: "autofix-unavailable" }));
+            return;
+          }
+          if (!target) {
+            loop?.stop();
+            res.writeHead(404, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: "no failed or blocked validation is available for Autofix", code: "autofix-unavailable" }));
+            return;
+          }
+          if (loop === undefined) {
+            loop = new DesktopAutoFixLoop(maxAttempts);
+            autofixLoops.set(id, loop);
+          }
+          try {
+            if (parsedResult.value.maxAttempts !== undefined && maxAttempts !== loop.maxAttempts) {
+              throw new Error("Autofix attempt budget cannot change during a repair loop");
+            }
+            loop.start(target);
+          } catch (error) {
+            const message = (error as Error).message;
+            res.writeHead(409, { "content-type": "application/json" });
+            res.end(JSON.stringify({ error: message, code: message.includes("exhausted") ? "autofix-exhausted" : "autofix-stopped" }));
+            return;
+          }
           await streamChat(
             res,
             session,
@@ -2512,8 +2588,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
             id,
             controller,
             run,
+            () => persistRunHistory(run),
+            { loop, timeoutMs: autofixTimeoutMs },
           );
         } finally {
+          res.off("close", onDisconnect);
+          if (run.active) run.finish(controller.signal.aborted ? "aborted" : "failed");
           inFlight.delete(id);
           if (runControllers.get(id) === controller) runControllers.delete(id);
         }
@@ -2612,6 +2692,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
             id,
             controller,
             run,
+            () => persistRunHistory(run),
           );
         } finally {
           inFlight.delete(id);
@@ -2694,20 +2775,48 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         const controller = new AbortController();
         runControllers.set(sessionId, controller);
         const run = runs.start(sessionId, randomUUID());
+        const onDisconnect = (): void => { if (!res.writableEnded) controller.abort(); };
+        res.on("close", onDisconnect);
         try {
+          if (pending.autofix !== undefined) {
+            try {
+              if (autofixLoops.get(sessionId) !== pending.autofix) throw new Error("Autofix session was restored");
+              const target = await withDesktopAutoFixDeadline(
+                async () => {
+                  if (taskWorkspaces.isTaskSession(sessionId)) await taskWorkspaces.terminalWorkingDirectory(sessionId);
+                  return session.getLatestAutoFixTarget?.();
+                }, controller, autofixTimeoutMs,
+              );
+              pending.autofix.apply(target, changeSetId);
+            } catch (error) {
+              pending.autofix.stop();
+              pendingPlans.delete(key);
+              if (error instanceof TaskWorkspaceError) {
+                sendTaskWorkspaceError(res, error);
+                return;
+              }
+              res.writeHead(409, { "content-type": "application/json" });
+              res.end(JSON.stringify({ error: "Autofix review is stale or unavailable", code: "autofix-stale" }));
+              return;
+            }
+          }
           await streamPlanApply(
             res,
             session,
             pending,
             controller,
             run,
+            autofixTimeoutMs,
+            () => persistRunHistory(run),
           );
         } finally {
+          res.off("close", onDisconnect);
+          if (run.active) run.finish(controller.signal.aborted ? "aborted" : "failed");
           inFlight.delete(sessionId);
           if (runControllers.get(sessionId) === controller) {
             runControllers.delete(sessionId);
           }
-          if (run.summary().status === "done") {
+          if (run.summary().status === "done" || pending.autofix !== undefined) {
             pendingPlans.delete(key);
           } else if (pendingPlans.get(key) === pending) {
             pending.status = "ready";
@@ -2769,6 +2878,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           return;
         }
         pendingPlans.delete(key);
+        pending.autofix?.stop();
         res.writeHead(200, { "content-type": "application/json" });
         res.end(JSON.stringify({ ok: true, changeSetId, rejected: true }));
         return;
@@ -3192,6 +3302,8 @@ async function streamChat(
   sessionId: string,
   controller: AbortController,
   run: DesktopRunState,
+  onComplete: () => Promise<void>,
+  autofix?: { readonly loop: DesktopAutoFixLoop; readonly timeoutMs: number },
 ): Promise<void> {
   const onClose = (): void => {
     // `close` also fires after a normal end; only a real disconnect aborts.
@@ -3216,12 +3328,15 @@ async function streamChat(
   const maxStreamBytes = sseMaxBytes();
   let streamBytes = 0;
   let capped = false;
+  let accepting = true;
   const emit = (event: StreamEvent) => {
+    if (!accepting || (autofix !== undefined && controller.signal.aborted && event.type !== "error")) return;
     const prepared = prepareStreamEvent(event, {
       mode,
       message,
       pendingPlans,
       sessionId,
+      autofix: autofix?.loop,
     });
     if (!prepared) {
       return;
@@ -3248,7 +3363,7 @@ async function streamChat(
   };
 
   try {
-    await session.run(message, emit, {
+    const work = () => session.run(message, emit, {
       signal: controller.signal,
       runId: run.runId,
       mode,
@@ -3275,21 +3390,33 @@ async function streamChat(
         });
       },
     });
+    if (autofix === undefined) await work();
+    else await withDesktopAutoFixDeadline(work, controller, autofix.timeoutMs);
     if (run.active) {
       run.finish(controller.signal.aborted ? "aborted" : "done");
     }
   } catch (error) {
+    if (autofix !== undefined && controller.signal.aborted) run.finish("aborted");
     emit({
       type: "error",
       data: { message: error instanceof Error ? error.message : String(error) },
     });
-    if (run.active) {
+    if (run.active || autofix !== undefined) {
       run.finish(controller.signal.aborted ? "aborted" : "failed");
     }
   } finally {
+    accepting = false;
+    if (autofix !== undefined) {
+      const reviews = [...pendingPlans.entries()].filter(([, pending]) => pending.autofix === autofix.loop);
+      if (controller.signal.aborted || run.summary().status !== "done" || reviews.length !== 1) {
+        autofix.loop.stop();
+        for (const [key] of reviews) pendingPlans.delete(key);
+      }
+    }
     res.off("close", onClose);
   }
 
+  await onComplete().catch(() => undefined);
   if (!res.writableEnded) {
     res.end();
   }
@@ -3301,6 +3428,8 @@ async function streamPlanApply(
   pending: PendingPlan,
   controller: AbortController,
   run: DesktopRunState,
+  autofixTimeoutMs: number,
+  onComplete: () => Promise<void>,
 ): Promise<void> {
   const onClose = (): void => {
     if (!res.writableEnded) {
@@ -3319,9 +3448,14 @@ async function streamPlanApply(
   const maxStreamBytes = sseMaxBytes();
   let streamBytes = 0;
   let capped = false;
+  let accepting = true;
+  let validation: { changeSetId: string; status: string } | undefined;
   const emit = (event: StreamEvent) => {
-    if (capped || res.writableEnded || res.destroyed) {
+    if (!accepting || (pending.autofix !== undefined && controller.signal.aborted && event.type !== "error") || capped || res.writableEnded || res.destroyed) {
       return;
+    }
+    if (event.type === "validation" && typeof event.data.changeSetId === "string" && typeof event.data.status === "string") {
+      validation = { changeSetId: event.data.changeSetId, status: event.data.status };
     }
     run.append(event);
     const frame = `event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`;
@@ -3339,27 +3473,36 @@ async function streamPlanApply(
   };
 
   try {
-    await session.applyPlannedChangeSet?.(
+    const work = async () => session.applyPlannedChangeSet?.(
       pending.review,
       pending.prompt,
       emit,
       { signal: controller.signal, runId: run.runId },
     );
+    if (pending.autofix === undefined) await work();
+    else await withDesktopAutoFixDeadline(work, controller, autofixTimeoutMs);
     if (run.active) {
       run.finish(controller.signal.aborted ? "aborted" : "done");
     }
   } catch (error) {
+    if (pending.autofix !== undefined && controller.signal.aborted) run.finish("aborted");
     emit({
       type: "error",
       data: { message: error instanceof Error ? error.message : String(error) },
     });
-    if (run.active) {
+    if (run.active || pending.autofix !== undefined) {
       run.finish(controller.signal.aborted ? "aborted" : "failed");
     }
   } finally {
+    accepting = false;
+    if (pending.autofix !== undefined) {
+      if (controller.signal.aborted || run.summary().status !== "done") pending.autofix.stop();
+      else pending.autofix.validated(validation);
+    }
     res.off("close", onClose);
   }
 
+  await onComplete().catch(() => undefined);
   if (!res.writableEnded) {
     res.end();
   }
@@ -3372,6 +3515,7 @@ function prepareStreamEvent(
     readonly message: string;
     readonly pendingPlans: Map<string, PendingPlan>;
     readonly sessionId: string;
+    readonly autofix?: DesktopAutoFixLoop;
   },
 ): StreamEvent | undefined {
   if (event.type !== "plan-review") {
@@ -3384,13 +3528,18 @@ function prepareStreamEvent(
   if (!review) {
     return undefined;
   }
+  options.autofix?.review(review.changeSetId);
   options.pendingPlans.set(pendingPlanKey(options.sessionId, review.changeSetId), {
     sessionId: options.sessionId,
     prompt: options.message,
     review,
     status: "ready",
+    ...(options.autofix === undefined ? {} : { autofix: options.autofix }),
   });
-  return { type: "plan-review", data: { review } };
+  return { type: "plan-review", data: {
+    review,
+    ...(options.autofix === undefined ? {} : { autofix: { attempt: options.autofix.attempt, maxAttempts: options.autofix.maxAttempts } }),
+  } };
 }
 
 function approvalTimeoutMs(): number {

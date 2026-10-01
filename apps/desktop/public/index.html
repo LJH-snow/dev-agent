@@ -773,6 +773,13 @@
               <button type="button" id="execution-center-autofix" data-i18n="executionCenter.action.autofix">Start Autofix review</button>
             </div>
           </div>
+          <div id="execution-center-history" class="execution-center-history" hidden aria-labelledby="execution-center-history-title" aria-live="polite">
+            <div class="execution-center-history-header">
+              <strong id="execution-center-history-title" data-i18n="executionCenter.history.title">Recent runs</strong>
+              <span id="execution-center-history-status" class="execution-center-detail-status"></span>
+            </div>
+            <ol id="execution-center-history-list" class="parallel-runs-list" aria-label="Recent runs" data-i18n-aria-label="executionCenter.history.list"></ol>
+          </div>
         </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
           <div class="desktop-status-header">
@@ -1353,6 +1360,12 @@
         "executionCenter.action.trace": "Open trace",
         "executionCenter.action.validation": "Open validation",
         "executionCenter.action.autofix": "Start Autofix review",
+        "executionCenter.history.title": "Recent runs",
+        "executionCenter.history.list": "Recent execution runs",
+        "executionCenter.history.empty": "No completed runs yet.",
+        "executionCenter.history.count": "{count} recent runs",
+        "executionCenter.history.tools": "{count} tools",
+        "executionCenter.history.validations": "{count} validations",
         "githubPrReview.title": "GitHub PR review",
         "githubCiDiagnosis.title": "PR CI diagnosis",
         "githubCiDiagnosis.repair": "Start isolated repair…",
@@ -2174,6 +2187,12 @@
         "executionCenter.action.trace": "打开 Trace",
         "executionCenter.action.validation": "打开验证",
         "executionCenter.action.autofix": "开始 Autofix 审阅",
+        "executionCenter.history.title": "最近运行",
+        "executionCenter.history.list": "最近执行记录",
+        "executionCenter.history.empty": "还没有已完成的运行记录。",
+        "executionCenter.history.count": "最近 {count} 次运行",
+        "executionCenter.history.tools": "{count} 个工具",
+        "executionCenter.history.validations": "{count} 次验证",
         "githubPrReview.title": "GitHub PR 审查",
         "githubCiDiagnosis.title": "PR CI 失败诊断",
         "githubCiDiagnosis.repair": "开始隔离修复…",

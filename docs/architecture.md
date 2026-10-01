@@ -316,6 +316,9 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
   Trace, Validation, and Autofix buttons delegate to existing session-bound
   lifecycle handlers; the panel adds no shell, network, credential, or mutation
   capability of its own.
+- **Execution history**: terminal run metadata is persisted separately from
+  replay state with atomic bounded storage. Restart recovery restores recent
+  summaries only; raw stream events and live fragments remain in memory.
 - **Conversation checkpoints**: ChatSession delegates to the bounded
   FileMemory checkpoint store through `GET /api/sessions/<id>/checkpoints`,
   `POST /api/sessions/<id>/checkpoint`, and
