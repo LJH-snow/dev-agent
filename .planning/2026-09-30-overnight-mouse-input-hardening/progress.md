@@ -19,3 +19,25 @@
   mouse, navigation, and Ink app suites passed 94/94; `git diff --check` passed.
 - Unrelated desktop changes remain in the worktree and were not staged,
   reverted, or otherwise overwritten.
+
+## 2026-10-03
+
+- Post-commit audits flagged three remaining parser boundaries; all fixed:
+  - Pending X10 reports now resync when a fresh `ESC[M` (or opt-in bare `[M`)
+    prefix arrives while 1–2 payload bytes are still pending; the truncated
+    packet is restored as text and the new report is parsed normally.
+  - New `takePendingText()` restores text-like pending input (pending SGR
+    literals and bare `[M` prefixes) into the composer before control keys are
+    routed, so Enter/Escape/arrows can no longer silently drop consumed bytes.
+    ESC-framed pending stays protocol-only and is dropped.
+  - Production X10 strategy made explicit: bare `[M` stays fail-closed by
+    default (SGR 1006 is the supported path); `DEV_AGENT_LEGACY_MOUSE_X10=1`
+    opts legacy terminals back in. Documented in the CLI README.
+- Session picker now renders a bounded visible window (`SESSION_PICKER_VISIBLE
+  = 8`) that follows the selection, mirroring the command palette; clicks map
+  window rows onto absolute rows via the offset, and the footer shows a
+  `n/total` position hint for lists larger than the window.
+- Verification: focused mouse/navigation/app suites passed 98/98. Full CLI
+  suite reported 826/827 across two runs; the single failures (thinking-timer
+  `0.0s` race, validation test under load) both pass standalone and touch no
+  changed code. `git diff --check` passed.

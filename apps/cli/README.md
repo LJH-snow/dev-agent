@@ -425,6 +425,14 @@ restoration. The repository still keeps `src/ink/alternate-screen.ts` as a
 bounded compatibility/test helper, but production runtime ownership now stays
 with Ink's native `alternateScreen` render option.
 
+Mouse wheel and click support targets the SGR `1006` protocol that modern
+terminals answer. Ink strips the leading `ESC` byte from legacy X10 mouse
+reports, which makes a bare `[M` prefix indistinguishable from composer text;
+that ambiguous compatibility path is therefore off by default. Terminals that
+only implement X10 reports can set `DEV_AGENT_LEGACY_MOUSE_X10=1` to re-enable
+it; the parser still guards text with a button-byte whitelist, same-event
+text preservation, and a bounded pending timeout.
+
 ## Installed CLI and external projects
 
 After installing the package (or after placing a local package tarball in an npm

@@ -1666,7 +1666,8 @@
         "workspace.directory": "Directory",
         "workspace.state": "State",
         "workspace.changes": "Changes",
-        "workspace.files": "{count} changed files",
+        "workspace.uncommittedChanges": "Uncommitted changes: {count}",
+        "workspace.ignoredPaths": "{count} Git-ignored local path(s)",
         "workspace.compare": "Review diff",
         "workspace.delivery": "Download delivery report",
         "workspace.merge": "Merge task",
@@ -1682,6 +1683,7 @@
         "workspace.diff.searchPlaceholder": "Filter changed files",
         "workspace.diff.summary.empty": "No changes loaded.",
         "workspace.diff.summary.files": "{count} file(s)",
+        "workspace.diff.summary.ignoredPaths": "{count} ignored path(s)",
         "workspace.diff.summary.additions": "+{count}",
         "workspace.diff.summary.deletions": "−{count}",
         "workspace.diff.summary.comments": "{count} comment(s)",
@@ -1692,10 +1694,13 @@
         "workspace.diff.staged": "Staged",
         "workspace.diff.unstaged": "Unstaged",
         "workspace.diff.untracked": "Untracked",
+        "workspace.diff.ignored": "Ignored",
         "workspace.diff.allFiles": "All files",
         "workspace.diff.loading": "Loading task diff…",
         "workspace.diff.empty": "No differences from the task base.",
+        "workspace.diff.ignoredOmitted": "This ignored path is shown for cleanup safety; its contents stay hidden.",
         "workspace.diff.loaded": "Loaded {count} changed files.",
+        "workspace.diff.loadedWithIgnored": "Loaded {count} changed file(s) and {ignored} ignored path(s).",
         "workspace.diff.truncated": "Diff truncated to fit the safety limit.",
         "workspace.diff.filesTruncated": "Only the first 500 changed files are listed.",
         "workspace.comment.title": "Review comments",
@@ -1734,9 +1739,11 @@
         "workspace.error.limit": "The task workspace limit has been reached.",
         "workspace.error.running": "Stop the task before merging or cleaning its worktree.",
         "workspace.error.dirty": "Commit or discard task changes before merging or cleaning.",
+        "workspace.error.ignoredFiles": "Move or remove Git-ignored local paths before cleaning this task worktree.",
         "workspace.error.baseDirty": "Commit or stash base workspace changes before merging.",
         "workspace.error.baseBranchChanged": "Switch back to the task's base branch before merging.",
         "workspace.error.mergeFailed": "Merge failed; any conflict was aborted and the base workspace restored.",
+        "workspace.error.mergeRecoveryFailed": "Automatic merge recovery failed; the base worktree may still contain conflicts. Inspect git status before continuing.",
         "workspace.error.missing": "The task worktree is missing.",
         "workspace.error.cleaned": "This task worktree was already cleaned up.",
         "workspace.error.generic": "Task workspace operation failed.",
@@ -2533,7 +2540,8 @@
         "workspace.directory": "目录",
         "workspace.state": "状态",
         "workspace.changes": "变更",
-        "workspace.files": "{count} 个文件变更",
+        "workspace.uncommittedChanges": "未提交变更：{count} 项",
+        "workspace.ignoredPaths": "{count} 个 Git 忽略的本地路径",
         "workspace.compare": "审查差异",
         "workspace.delivery": "下载交付报告",
         "workspace.merge": "合并任务",
@@ -2549,6 +2557,7 @@
         "workspace.diff.searchPlaceholder": "筛选变更文件",
         "workspace.diff.summary.empty": "尚未加载变更。",
         "workspace.diff.summary.files": "{count} 个文件",
+        "workspace.diff.summary.ignoredPaths": "{count} 个已忽略路径",
         "workspace.diff.summary.additions": "+{count}",
         "workspace.diff.summary.deletions": "−{count}",
         "workspace.diff.summary.comments": "{count} 条评论",
@@ -2559,10 +2568,13 @@
         "workspace.diff.staged": "已暂存",
         "workspace.diff.unstaged": "未暂存",
         "workspace.diff.untracked": "未跟踪",
+        "workspace.diff.ignored": "已忽略",
         "workspace.diff.allFiles": "全部文件",
         "workspace.diff.loading": "正在加载任务差异…",
         "workspace.diff.empty": "与任务基线相比没有差异。",
+        "workspace.diff.ignoredOmitted": "为保护清理安全，此路径仅显示元数据，不显示文件内容。",
         "workspace.diff.loaded": "已加载 {count} 个变更文件。",
+        "workspace.diff.loadedWithIgnored": "已加载 {count} 个变更文件和 {ignored} 个被忽略路径。",
         "workspace.diff.truncated": "差异内容已按安全上限截断。",
         "workspace.diff.filesTruncated": "仅显示前 500 个变更文件。",
         "workspace.comment.title": "审查批注",
@@ -2601,9 +2613,11 @@
         "workspace.error.limit": "任务工作区数量已达上限。",
         "workspace.error.running": "请先停止任务，再合并或清理 worktree。",
         "workspace.error.dirty": "请先提交或丢弃任务变更，再合并或清理。",
+        "workspace.error.ignoredFiles": "清理此任务 worktree 前，请先移走或删除被 Git 忽略的本地路径。",
         "workspace.error.baseDirty": "请先提交或暂存主工作区变更，再合并。",
         "workspace.error.baseBranchChanged": "请切回任务的基线分支后再合并。",
         "workspace.error.mergeFailed": "合并失败；冲突已中止，主工作区已恢复。",
+        "workspace.error.mergeRecoveryFailed": "自动恢复合并冲突失败；主工作区可能仍处于冲突状态。继续前请先检查 git status。",
         "workspace.error.missing": "任务 worktree 缺失。",
         "workspace.error.cleaned": "此任务 worktree 已清理。",
         "workspace.error.generic": "任务工作区操作失败。",
@@ -6290,6 +6304,11 @@
 
     function renderLiveOutputNotice() {
       if (!jumpToLatestButton) return;
+      if (!messages.querySelector(".msg, .turn")) {
+        jumpToLatestButton.hidden = true;
+        jumpToLatestButton.dataset.pending = "false";
+        return;
+      }
       jumpToLatestButton.hidden = isMessagesAtBottom();
       jumpToLatestButton.dataset.pending = String(pendingLiveOutput);
       const key = pendingLiveOutput ? "conversation.newOutput" : "conversation.jumpLatest";

@@ -75,6 +75,27 @@ export class MouseInputParser {
     this.pendingX10StartedAt = undefined;
   }
 
+  /**
+   * Restores text-like pending input before a reset so a control key never
+   * silently drops bytes this parser consumed as a protocol candidate. A
+   * pending ESC-framed X10 report holds protocol bytes only and stays dropped.
+   */
+  takePendingText(): string {
+    let text = "";
+    if (this.pendingSgr !== undefined) {
+      text += this.pendingSgr;
+      this.pendingSgr = undefined;
+      this.pendingSgrStartedAt = undefined;
+    }
+    if (this.pendingX10Prefix === "[M") {
+      // A bare `[M` was consumed from a text position, so its prefix and any
+      // bytes it already captured belong to the composer, not the protocol.
+      text += this.pendingX10Prefix + this.pendingX10Payload;
+    }
+    this.resetX10();
+    return text;
+  }
+
   /** Clear all incomplete protocol state when the input lifecycle resets. */
   reset(): void {
     this.resetX10();
@@ -129,6 +150,22 @@ export class MouseInputParser {
         const pendingLength = Array.from(this.pendingX10Payload).length;
         const characters = Array.from(input.slice(index));
         const firstPayloadCode = characters[0]?.codePointAt(0);
+        const resyncPrefixLength = input.startsWith("\u001b[M", index)
+          ? 3
+          : this.pendingX10Prefix === "[M" &&
+              this.allowEscStrippedX10 &&
+              input.startsWith("[M", index)
+            ? 2
+            : 0;
+        if (resyncPrefixLength > 0) {
+          // A fresh report began before the truncated one completed. Restore
+          // the orphaned bytes as text and reparse the new prefix from the
+          // same index instead of feeding it into the dead packet's payload.
+          remaining += this.pendingX10Prefix + this.pendingX10Payload;
+          this.reset();
+          consumed = true;
+          continue;
+        }
         if (
           pendingLength === 0 &&
           (firstPayloadCode === undefined ||

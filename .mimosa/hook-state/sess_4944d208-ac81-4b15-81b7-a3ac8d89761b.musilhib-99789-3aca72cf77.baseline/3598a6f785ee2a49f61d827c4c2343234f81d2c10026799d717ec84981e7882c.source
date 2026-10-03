@@ -1,0 +1,353 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import test from "node:test";
+const html = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
+const styles = await readFile(new URL("../public/styles.css", import.meta.url), "utf8");
+const controller = await readFile(new URL("../public/task-workspace-ui.js", import.meta.url), "utf8");
+test("Desktop exposes an isolated task action and bilingual worktree inspector contract", () => {
+    assert.match(html, /id="new-task"[^>]*data-i18n-title="session\.newTaskTitle"/);
+    assert.match(html, /id="task-workspace-panel"/);
+    assert.match(html, /id="task-workspace-list"/);
+    assert.match(html, /id="task-workspace-diff-tabs"[^>]*role="tablist"/);
+    assert.match(html, /id="task-workspace-diff-summary"/);
+    assert.match(html, /id="task-workspace-diff-view-unified"[^>]*data-view="unified"/);
+    assert.match(html, /id="task-workspace-diff-view-split"[^>]*data-view="split"/);
+    assert.match(html, /id="task-workspace-diff-search"/);
+    assert.match(html, /id="task-workspace-comments-panel"/);
+    assert.match(html, /id="task-workspace-comments-summary"/);
+    assert.match(html, /id="task-workspace-select-all-comments"/);
+    assert.match(html, /id="task-workspace-clear-comment-selection"/);
+    assert.match(html, /id="task-workspace-comments-list"/);
+    assert.match(html, /id="task-workspace-insert-comments"/);
+    assert.match(html, /id="task-workspace-branch"/);
+    assert.match(html, /id="task-workspace-directory"/);
+    assert.match(html, /id="task-workspace-state"/);
+    assert.match(html, /id="task-workspace-changes"/);
+    assert.match(html, /id="task-workspace-compare"/);
+    assert.match(html, /id="task-workspace-merge"/);
+    assert.match(html, /id="task-workspace-cleanup"/);
+    assert.match(html, /"workspace\.title": "Task workspaces"/);
+    assert.match(html, /"workspace\.title": "任务工作区"/);
+    assert.match(html, /createTaskWorkspaceUI\(/);
+    assert.match(styles, /\.task-workspace-card\s*\{/);
+    assert.match(styles, /\.task-workspace-diff\s*\{/);
+    assert.match(styles, /\.task-workspace-diff-line\.is-addition/);
+    assert.match(styles, /\.task-workspace-diff-summary/);
+    assert.match(styles, /\.task-workspace-diff-view/);
+    assert.match(styles, /\.task-workspace-split-row/);
+    assert.match(styles, /\.task-workspace-comments-panel/);
+    assert.match(styles, /\.task-workspace-file-status/);
+});
+test("task worktree actions use the bounded API and confirm merge or cleanup", () => {
+    assert.match(controller, /compareButton\.addEventListener\("click", \(\) => void compare\(\)\)/);
+    assert.match(controller, /fetcher\("\/api\/workspaces"/);
+    assert.match(controller, /method: "POST"[\s\S]*body: JSON\.stringify\(\{\}\)/);
+    assert.match(controller, /\/api\/workspaces\/\$\{encodeURIComponent\(workspace\.sessionId\)\}\/diff\$\{query\}/);
+    assert.match(controller, /\?path=\$\{encodeURIComponent\(path\)\}/);
+    assert.match(controller, /workspace\.diff\.\$\{section\.group\}/);
+    assert.match(html, /"workspace\.diff\.staged": "Staged"/);
+    assert.match(html, /"workspace\.diff\.unstaged": "Unstaged"/);
+    assert.match(controller, /setAttribute\("aria-selected"/);
+    assert.match(controller, /function updateDiffViewControls\(\)/);
+    assert.match(controller, /diffViewMode/);
+    assert.match(controller, /diffSearchValue/);
+    assert.match(controller, /function renderDiffFiles\(payload\)/);
+    assert.match(controller, /filterDiffFiles\(payload\.files, diffSearchValue\)/);
+    assert.match(controller, /parseUnifiedDiff/);
+    assert.match(controller, /pairSplitDiffEntries/);
+    assert.match(controller, /renderSplitPatch/);
+    assert.match(controller, /workspace\.diff\.noMatches/);
+    assert.match(controller, /\/api\/workspaces\/\$\{encodeURIComponent\(workspace\.sessionId\)\}\/merge/);
+    assert.match(controller, /confirmAction\(translate\("workspace\.confirm\.merge"/);
+    assert.match(controller, /confirmAction\(translate\("workspace\.confirm\.cleanup"/);
+    assert.match(controller, /\/api\/workspaces\/\$\{encodeURIComponent\(workspace\.sessionId\)\}.*method: "DELETE"/);
+    assert.match(controller, /mergeButton\.disabled = taskWorkspaceMergeDisabled\(workspace, operationInProgress\)/);
+    assert.match(controller, /cleanupButton\.disabled = taskWorkspaceCleanupDisabled\(workspace, operationInProgress\)/);
+    assert.doesNotMatch(controller, /\.innerHTML\s*=/, "Git paths and diffs must not enter an HTML parser");
+    assert.match(controller, /renderPatch\(selectedWorkspace\(\), activeChoice\.group, activeChoice\.diff\)/);
+    assert.match(controller, /textContent = file\.path/);
+    assert.match(controller, /diffViewMode === "split"/);
+    assert.match(controller, /diffSearch\?\.addEventListener\("input"/);
+    assert.match(controller, /renderDiffSummary\(payload\)/);
+    assert.match(controller, /const MAX_REVIEW_COMMENTS = 64/);
+    assert.match(controller, /data-review-anchor/);
+    assert.match(controller, /async function navigateToComment\(comment\)/);
+    assert.match(controller, /insertSelectedComments/);
+    assert.match(controller, /comment\.selected/);
+    assert.match(controller, /comment\.state = "inserted"/);
+    assert.match(styles, /\.task-workspace-comment-jump/);
+    assert.match(styles, /\.is-review-target/);
+});
+test("merge recovery failures map to a distinct user-facing state", async () => {
+    const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+    assert.equal(module.taskWorkspaceErrorKey("merge-recovery-failed"), "workspace.error.mergeRecoveryFailed");
+    assert.ok(html.includes("\"workspace.error.mergeRecoveryFailed\": \"Automatic merge recovery failed; the base worktree may still contain conflicts. Inspect git status before continuing.\""));
+    assert.ok(html.includes("\"workspace.error.mergeRecoveryFailed\": \"自动恢复合并冲突失败；主工作区可能仍处于冲突状态。继续前请先检查 git status。\""));
+});
+test("review comments persist per task session and stay bounded when inserted", async () => {
+    const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+    const storage = new Map();
+    const adapter = {
+        getItem: (key) => storage.get(key) ?? null,
+        setItem: (key, value) => { storage.set(key, value); },
+    };
+    const comments = [
+        { path: "src/app.ts", anchor: "@@ -1,2 +1,3 @@", group: "unstaged", text: "check this branch" },
+        { path: "bad\u0000path", anchor: "line 2", group: "unknown", text: "safe" },
+    ];
+    assert.equal(module.writeReviewComments(adapter, "task-a", comments), true);
+    const restored = module.readReviewComments(adapter, "task-a");
+    assert.equal(restored.length, 2);
+    assert.equal(restored[1].group, "all");
+    assert.equal(restored[0].state, "pending");
+    assert.equal(restored[0].selected, true);
+    const formatted = module.formatReviewComments(restored);
+    assert.match(formatted, /Review comment src\/app\.ts:/);
+    assert.doesNotMatch(formatted, /\u0000/);
+    assert.ok(formatted.length <= 32 * 1024);
+});
+test("task workspace UI scopes comments and filters and surfaces merge errors", async () => {
+    const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+    class FakeNode {
+        children = [];
+        dataset = {};
+        attributes = {};
+        listeners = new Map();
+        textContent = "";
+        hidden = false;
+        disabled = false;
+        checked = false;
+        value = "";
+        type = "";
+        className = "";
+        appendChild(node) { this.children.push(node); return node; }
+        append(...nodes) { this.children.push(...nodes); }
+        replaceChildren(...nodes) { this.children.splice(0, this.children.length, ...nodes); }
+        addEventListener(name, callback) { this.listeners.set(name, callback); }
+        dispatch(name, event = {}) { return this.listeners.get(name)?.(event); }
+        setAttribute(name, value) { this.attributes[name] = value; }
+        querySelectorAll(_selector) { return []; }
+        focus() { }
+        scrollIntoView() { }
+    }
+    const nodes = new Map();
+    const documentRef = {
+        getElementById: (id) => {
+            if (!nodes.has(id))
+                nodes.set(id, new FakeNode());
+            return nodes.get(id);
+        },
+        createElement: (_tag) => new FakeNode(),
+        createTextNode: (text) => { const node = new FakeNode(); node.textContent = text; return node; },
+    };
+    const storage = new Map();
+    const adapter = {
+        getItem: (key) => storage.get(key) ?? null,
+        setItem: (key, value) => { storage.set(key, value); },
+    };
+    const workspace = (sessionId) => ({
+        sessionId,
+        branch: "dev-agent/" + sessionId,
+        baseBranch: "main",
+        directory: "~/worktrees/" + sessionId,
+        state: "ready",
+        changedFiles: 0,
+        ignoredPaths: 0,
+        dirty: false,
+        merged: false,
+        createdAt: "2026-10-02T00:00:00Z",
+    });
+    const workspaces = [workspace("task-a"), workspace("task-b")];
+    const mergeErrorCodes = ["base-worktree-dirty", "merge-recovery-failed"];
+    module.writeReviewComments(adapter, "dev-agent:review-comments:task-a", [
+        { path: "src/app.ts", anchor: "+1", group: "unstaged", text: "only task A" },
+    ]);
+    module.writeReviewComments(adapter, "dev-agent:review-comments:task-b", [
+        { path: "src/app.ts", anchor: "+1", group: "unstaged", text: "only task B" },
+    ]);
+    let selectedSession = "task-a";
+    const ui = module.createTaskWorkspaceUI({
+        documentRef,
+        fetcher: async (url, init) => {
+            if (url === "/api/workspaces")
+                return { ok: true, json: async () => ({ available: true, workspaces }) };
+            if (init?.method === "POST" && url.endsWith("/merge")) {
+                const code = mergeErrorCodes.shift();
+                return { ok: false, json: async () => ({ code }) };
+            }
+            const sessionId = url.split("/")[3];
+            const paths = sessionId === "task-a" ? ["src/a-only.ts", "README.md"] : ["src/b-only.ts", "README.md"];
+            return {
+                ok: true,
+                json: async () => ({
+                    sessionId,
+                    branch: "dev-agent/" + sessionId,
+                    baseBranch: "main",
+                    files: paths.map((path) => ({ path, status: "M", groups: ["unstaged"] })),
+                    sections: [],
+                    diff: "",
+                    truncated: false,
+                    filesTruncated: false,
+                }),
+            };
+        },
+        translate: (key) => key,
+        getSessionId: () => selectedSession,
+        activateSession: (sessionId) => { selectedSession = sessionId; },
+        confirmAction: () => true,
+        storage: adapter,
+    });
+    await ui.refresh();
+    const list = nodes.get("task-workspace-comments-list");
+    const panel = nodes.get("task-workspace-comments-panel");
+    assert.equal(panel.hidden, false);
+    assert.equal(list.children.length, 1);
+    assert.equal(list.children[0].children[1].textContent, "src/app.ts:+1 · only task A");
+    nodes.get("task-workspace-compare").dispatch("click");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const search = nodes.get("task-workspace-diff-search");
+    search.value = "a-only";
+    search.dispatch("input");
+    const diffFiles = nodes.get("task-workspace-diff-files");
+    assert.equal(diffFiles.children.length, 2);
+    assert.equal(diffFiles.children[1].children[0].dataset.filePath, "src/a-only.ts");
+    selectedSession = "task-b";
+    ui.render();
+    assert.equal(panel.hidden, false);
+    assert.equal(list.children.length, 1);
+    assert.equal(list.children[0].children[1].textContent, "src/app.ts:+1 · only task B");
+    assert.equal(search.value, "");
+    assert.equal(nodes.get("task-workspace-diff-panel").hidden, true);
+    nodes.get("task-workspace-compare").dispatch("click");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(diffFiles.children.length, 3);
+    assert.equal(diffFiles.children[1].children[0].dataset.filePath, "src/b-only.ts");
+    selectedSession = "task-a";
+    ui.render();
+    assert.equal(list.children[0].children[1].textContent, "src/app.ts:+1 · only task A");
+    const status = nodes.get("task-workspace-status");
+    await nodes.get("task-workspace-merge").dispatch("click");
+    assert.equal(status.textContent, "workspace.error.baseDirty");
+    assert.equal(status.dataset.state, "error");
+    await nodes.get("task-workspace-merge").dispatch("click");
+    assert.equal(status.textContent, "workspace.error.mergeRecoveryFailed");
+    assert.equal(status.dataset.state, "error");
+});
+test("review comment selection and insertion state stay bounded and deterministic", async () => {
+    const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+    const comments = [
+        { path: "a.ts", anchor: "+1", group: "unstaged", text: "pending selected" },
+        { path: "b.ts", anchor: "−2", group: "staged", text: "already inserted", state: "inserted", selected: false },
+        { path: "c.ts", anchor: "+3", group: "unknown", text: "invalid state", state: "resolved", selected: "yes" },
+    ];
+    assert.deepEqual(module.summarizeReviewComments(comments), {
+        total: 3,
+        selected: 1,
+        pending: 2,
+        inserted: 1,
+    });
+    assert.deepEqual(module.selectReviewComments(comments).map((comment) => comment.path), ["a.ts"]);
+    const storage = new Map();
+    const adapter = {
+        getItem: (key) => storage.get(key) ?? null,
+        setItem: (key, value) => { storage.set(key, value); },
+    };
+    assert.equal(module.writeReviewComments(adapter, "task-selection", comments), true);
+    const restored = module.readReviewComments(adapter, "task-selection");
+    assert.equal(restored[1].selected, false);
+    assert.equal(restored[1].state, "inserted");
+    assert.equal(restored[2].state, "pending");
+    assert.equal(restored[2].selected, false);
+});
+test("Changes Center helpers stay bounded and preserve diff anchors", async () => {
+    const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+    const files = [
+        { path: "src/App.ts", status: "M" },
+        { path: "README.md", status: "??" },
+        { path: "src/old.ts", status: "D" },
+    ];
+    assert.deepEqual(module.filterDiffFiles(files, "app"), [files[0]]);
+    assert.deepEqual(module.filterDiffFiles(files, ""), files);
+    assert.deepEqual(module.summarizeDiffPayload({
+        files,
+        diff: "@@ -1,2 +1,2 @@\n-old\n+new\n context",
+    }), {
+        files: 3,
+        additions: 1,
+        deletions: 1,
+        added: 1,
+        modified: 1,
+        deleted: 1,
+        ignoredPaths: 0,
+    });
+    const rows = module.parseUnifiedDiff("@@ -3,1 +3,2 @@\n-old\n+new\n context");
+    assert.deepEqual(rows.map((row) => [row.kind, row.anchor]), [
+        ["hunk", undefined],
+        ["delete", "−3"],
+        ["add", "+3"],
+        ["context", undefined],
+    ]);
+});
+test("ignored workspace paths stay visible without enabling destructive cleanup", async () => {
+    const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+    assert.deepEqual(module.summarizeDiffPayload({
+        files: [{ path: "local.secret", status: "!!", groups: ["ignored"] }],
+        diff: "",
+    }), {
+        files: 1,
+        additions: 0,
+        deletions: 0,
+        added: 0,
+        modified: 0,
+        deleted: 0,
+        ignoredPaths: 1,
+    });
+    const translate = (key, values) => (key === "workspace.uncommittedChanges" ? "{count} uncommitted changes" : "{count} ignored local paths")
+        .replace("{count}", String(values.count));
+    assert.equal(module.taskWorkspaceFileSummary({ changedFiles: 0, ignoredPaths: 2 }, translate), "0 uncommitted changes · 2 ignored local paths");
+    assert.equal(module.taskWorkspaceCleanupDisabled({ state: "ready", dirty: false, ignoredPaths: 1 }), true);
+    assert.equal(module.taskWorkspaceCleanupDisabled({ state: "ready", dirty: false, ignoredPaths: 0 }), false);
+    assert.equal(module.taskWorkspaceMergeDisabled({ state: "ready", dirty: false, ignoredPaths: 1 }), false);
+    assert.equal(module.taskWorkspaceCleanupDisabled({ state: "missing", dirty: false, ignoredPaths: 0 }), true);
+    assert.equal(module.taskWorkspaceMergeDisabled({ state: "missing", dirty: false, ignoredPaths: 0 }), true);
+});
+test("bounded diff helpers parse anchors, summarize files, and filter paths", async () => {
+    const module = await import(pathToFileURL(fileURLToPath(new URL("../public/task-workspace-ui.js", import.meta.url))).href);
+    const patch = [
+        "@@ -1,2 +1,3 @@",
+        " context",
+        "-old",
+        "+new",
+        "+added",
+    ].join("\n");
+    const parsed = module.parseUnifiedDiff(patch);
+    assert.equal(parsed.filter((entry) => entry.kind === "add").length, 2);
+    assert.equal(module.parseUnifiedDiff("# unstaged changes\nindex abc")[0].kind, "meta");
+    assert.equal(parsed.find((entry) => entry.kind === "delete")?.oldLine, 2);
+    assert.equal(parsed.find((entry) => entry.kind === "add")?.anchor, "+2");
+    const summary = module.summarizeDiffPayload({
+        files: [
+            { path: "a.ts", status: "M" },
+            { path: "b.ts", status: "A" },
+            { path: "old.ts", status: "D" },
+        ],
+        diff: patch,
+    });
+    assert.deepEqual(summary, {
+        files: 3,
+        additions: 2,
+        deletions: 1,
+        added: 1,
+        modified: 1,
+        deleted: 1,
+        ignoredPaths: 0,
+    });
+    assert.deepEqual(module.filterDiffFiles([
+        { path: "src/App.tsx" },
+        { path: "README.md" },
+    ], "app"), [{ path: "src/App.tsx" }]);
+    const paired = module.pairSplitDiffEntries(parsed);
+    assert.equal(paired.find((row) => row.kind === "change")?.deletion?.anchor, "−2");
+    assert.equal(paired.find((row) => row.kind === "change")?.addition?.anchor, "+2");
+});

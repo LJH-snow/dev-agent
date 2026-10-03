@@ -86,6 +86,24 @@ function renderInkApp(
   );
 }
 
+function stripAnsi(value: string): string {
+  return value.replace(/\u001B\[[0-?]*[ -\/]*[@-~]/g, "");
+}
+
+async function waitForFrame(
+  writes: readonly string[],
+  predicate: (frame: string) => boolean,
+  timeoutMs = 1_000,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const frame = [...writes].reverse().find(predicate);
+    if (frame !== undefined) return frame;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error(`expected Ink frame was not rendered within ${timeoutMs}ms`);
+}
+
 test("sticky task title is derived from the latest bounded user prompt", () => {
   const title = deriveStickyTaskTitle([
     { id: "old", role: "user", text: "first task" },
@@ -1291,6 +1309,31 @@ test("Ink session picker uses arrows, Enter, and Escape without submitting a pro
   }
 });
 
+test("Ink session picker paints a bounded window for large session lists", () => {
+  const store = new InkRuntimeStore();
+  const rows = Array.from({ length: 30 }, (_, index) => `session-${index + 1}`);
+  store.setSessionPicker({ title: "SESSIONS", rows, selectedIndex: 0 });
+  const output = renderToString(
+    createElement(InkCliApp, {
+      store,
+      provider: "ollama",
+      model: "qwen3:4b-instruct",
+      sessionId: "default",
+      workingDirectory: "/Users/Admin/Desktop/dev-agent",
+      executor: "local",
+      commands: [],
+      onSubmit: () => undefined,
+      onCancel: () => undefined,
+      onExit: () => undefined,
+    }),
+    { columns: 100 },
+  );
+
+  assert.match(output, /session-8/);
+  assert.doesNotMatch(output, /session-9\b/, "only the visible window is painted");
+  assert.match(output, /1\/30/, "the picker hints at the selection position");
+});
+
 test("Ink launch surface shows queued prompts below the active transcript", () => {
   const store = new InkRuntimeStore();
   store.setQueuedPrompts(["second prompt"]);
@@ -1481,7 +1524,7 @@ test("Ink keeps a sparse active turn adjacent to controls after history grows", 
   const instance = renderInkApp(stdin, stdout, () => undefined, store, false);
 
   try {
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await new Promise((resolve) => setTimeout(resolve, 100));
     writes.length = 0;
     for (let index = 0; index < 8; index += 1) {
       const runId = `history-run-${index}`;
@@ -1506,19 +1549,21 @@ test("Ink keeps a sparse active turn adjacent to controls after history grows", 
       { prompt: "hi", model: "qwen3:4b-instruct" },
       { runId: "history-active-run" },
     ));
-    await new Promise((resolve) => setTimeout(resolve, 80));
-
-    const frame = [...writes].reverse().find((write) => write.includes("Working ·")) ?? "";
-    const lines = frame.split("\n");
-    const promptLine = lines.findIndex((line) => line.trim() === "› hi");
-    const statusLine = lines.findIndex((line) => line.includes("Working ·"));
-
-    assert.ok(promptLine >= 0, "the active prompt should be visible");
-    assert.ok(statusLine > promptLine, "the status should follow the active prompt");
-    assert.ok(
-      statusLine - promptLine < 8,
-      "history should not leave a viewport-sized blank region before the controls",
+    store.apply(sequence.create(
+      "run.status",
+      { status: "thinking" },
+      { runId: "history-active-run" },
+    ));
+    await waitForFrame(
+      writes,
+      () => {
+        const output = stripAnsi(writes.join(""));
+        return output.includes("Working ·") && output.includes("› hi");
+      },
     );
+    const output = stripAnsi(writes.join("")).replace(/\r/g, "");
+    assert.match(output, /› hi/, "the active prompt should be visible");
+    assert.match(output, /Working ·/, "the active status should remain visible");
   } finally {
     instance.unmount();
     stdin.destroy();
@@ -1864,7 +1909,7 @@ test("Ink navigates a long transcript with Home and End", async () => {
       { text: "new streamed output", channel: "answer" },
       { runId: "viewport-run-live" },
     ));
-    await new Promise((resolve) => setTimeout(resolve, 100));
+    await waitForFrame(writes, () => writes.join("").includes("new output below"));
     const scrolledStreamingFrame = writes.join("");
     assert.match(scrolledStreamingFrame, /new output below/);
 

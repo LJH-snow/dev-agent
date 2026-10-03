@@ -42,7 +42,7 @@ import {
   type CommandPaletteLayout,
 } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
-import { SessionPicker, SESSION_PICKER_HEADER_ROWS } from "./session-picker.js";
+import { SessionPicker, SESSION_PICKER_HEADER_ROWS, SESSION_PICKER_VISIBLE } from "./session-picker.js";
 import { panelRowAt, type PanelLayout } from "./panel-hitbox.js";
 import { PlanReviewPanel } from "./plan-review-panel.js";
 import { CollaborationPanel } from "./collaboration-panel.js";
@@ -155,7 +155,13 @@ export function InkCliApp({
   const viewportLayout = deriveInkViewportLayout(terminalRows, shellRows);
   const visibleTranscriptRows = viewportLayout.visibleRows;
   const navigationRow = viewportLayout.navigationRow;
-  const viewportMouseInput = useRef(new MouseInputParser()).current;
+  // Ink strips the ESC byte from X10 reports, so a legacy mouse prefix
+  // arrives as bare `[M`, which is indistinguishable from composer text.
+  // Modern terminals answer SGR 1006, so the ambiguous path stays off by
+  // default; X10-only terminals can opt in with DEV_AGENT_LEGACY_MOUSE_X10=1.
+  const viewportMouseInput = useRef(new MouseInputParser({
+    allowEscStrippedX10: process.env.DEV_AGENT_LEGACY_MOUSE_X10 === "1",
+  })).current;
   const kittyQueryResponseFilter = useRef(new KittyQueryResponseFilter()).current;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -196,6 +202,7 @@ export function InkCliApp({
   const [paletteLayout, setPaletteLayout] = useState<CommandPaletteLayout | undefined>(undefined);
   const [pathPanelLayout, setPathPanelLayout] = useState<PanelLayout | undefined>(undefined);
   const [sessionPanelLayout, setSessionPanelLayout] = useState<PanelLayout | undefined>(undefined);
+  const [pickerOffset, setPickerOffset] = useState(0);
   // Painted row positions of the user prompts, measured after each commit.
   // The pinned task header picks the prompt that owns the row currently at
   // the top of the viewport, so scrolling into an older task switches the
@@ -372,7 +379,30 @@ export function InkCliApp({
   }, [pathCompletion]);
 
   useEffect(() => {
-    if (snapshot.sessionPicker === undefined) setSessionPanelLayout(undefined);
+    if (snapshot.sessionPicker === undefined) {
+      setSessionPanelLayout(undefined);
+      setPickerOffset(0);
+    }
+  }, [snapshot.sessionPicker]);
+
+  // Keep the bounded picker window on the selected row so session registries
+  // larger than the visible window stay keyboard-reachable; the window never
+  // scrolls otherwise, mirroring the command palette.
+  useEffect(() => {
+    const picker = snapshot.sessionPicker;
+    if (picker === undefined) {
+      setPickerOffset(0);
+      return;
+    }
+    setPickerOffset((current) => {
+      const maxOffset = Math.max(0, picker.rows.length - SESSION_PICKER_VISIBLE);
+      const clamped = Math.min(current, maxOffset);
+      if (picker.selectedIndex < clamped) return picker.selectedIndex;
+      if (picker.selectedIndex >= clamped + SESSION_PICKER_VISIBLE) {
+        return Math.max(0, picker.selectedIndex - SESSION_PICKER_VISIBLE + 1);
+      }
+      return clamped;
+    });
   }, [snapshot.sessionPicker]);
 
   const registerUserRow = useCallback((id: string, node: DOMElement | null): void => {
@@ -569,8 +599,9 @@ export function InkCliApp({
     }
     // A pending X10 report must never consume a real control key. Ink may
     // deliver Enter/Ctrl-C with the same input byte that a malformed packet
-    // would otherwise use as payload, so clear protocol state before routing
-    // those keys through the normal submit/cancel branches below.
+    // would otherwise use as payload, so restore any text-like pending bytes
+    // to the composer before routing those keys through the normal
+    // submit/cancel branches below.
     if (
       key.ctrl ||
       key.return ||
@@ -587,7 +618,8 @@ export function InkCliApp({
       key.backspace ||
       key.delete
     ) {
-      viewportMouseInput.reset();
+      const pendingText = viewportMouseInput.takePendingText();
+      if (pendingText.length > 0) insertText(pendingText);
     }
     const mouseInput = viewportMouseInput.push(input);
     for (const direction of mouseInput.directions) {
@@ -667,13 +699,22 @@ export function InkCliApp({
       }
       const clickedPicker = focusOwner === "sessionPicker" ? snapshot.sessionPicker : undefined;
       const sessionRow = clickedPicker !== undefined
-        ? panelRowAt(click, sessionPanelLayout, SESSION_PICKER_HEADER_ROWS, clickedPicker.rows.length)
+        ? panelRowAt(
+            click,
+            sessionPanelLayout,
+            SESSION_PICKER_HEADER_ROWS,
+            Math.min(SESSION_PICKER_VISIBLE, clickedPicker.rows.length),
+          )
         : undefined;
       if (sessionRow !== undefined && clickedPicker !== undefined) {
-        if (sessionRow === clickedPicker.selectedIndex) {
-          onSessionResume?.(sessionRow);
+        // Painted rows are window-relative; the offset maps them onto the
+        // full session list. First click selects, clicking the already
+        // selected row resumes (mirroring Enter).
+        const absoluteRow = sessionRow + pickerOffset;
+        if (absoluteRow === clickedPicker.selectedIndex) {
+          onSessionResume?.(absoluteRow);
         } else {
-          store.setSessionPickerIndex(sessionRow);
+          store.setSessionPickerIndex(absoluteRow);
         }
         continue;
       }
@@ -1008,6 +1049,7 @@ export function InkCliApp({
             rows={snapshot.sessionPicker.rows}
             selectedIndex={snapshot.sessionPicker.selectedIndex}
             columns={columns}
+            offset={pickerOffset}
             onLayout={setSessionPanelLayout}
           />
         ) : null}

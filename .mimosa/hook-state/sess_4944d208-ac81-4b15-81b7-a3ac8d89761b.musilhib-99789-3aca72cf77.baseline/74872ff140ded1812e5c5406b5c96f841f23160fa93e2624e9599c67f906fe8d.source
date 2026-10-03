@@ -1,0 +1,1124 @@
+import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import test from "node:test";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+import { ExecutionHistoryStore } from "../dist/execution-history.js";
+import { DesktopRunState } from "../dist/run-state.js";
+import { createDesktopServer } from "../dist/server.js";
+
+function historyRecord(sessionId: string, index: number) {
+  const startedAt = new Date(Date.UTC(2026, 8, 30, 10, index % 60, 0)).toISOString();
+  const finishedAt = new Date(Date.parse(startedAt) + 1000 + index).toISOString();
+  return {
+    schemaVersion: 1 as const,
+    sessionId,
+    runId: "run-" + String(index),
+    status: "done" as const,
+    startedAt,
+    finishedAt,
+    durationMs: 1000 + index,
+    sequence: index,
+    toolCount: index % 4,
+    approvalCount: index % 2,
+    validationCount: index % 3,
+    validationId: "validation-" + String(index),
+    changeSetId: "change-set-" + String(index),
+    validationStatus: "failed" as const,
+  };
+}
+
+function start(server: any): Promise<string> {
+  return new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.removeListener("error", reject);
+      const address = server.address() as any;
+      resolve("http://" + address.address + ":" + address.port);
+    });
+  });
+}
+
+function close(server: any): Promise<void> {
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+class FakeElement {
+  readonly dataset: Record<string, string> = {};
+  readonly children: FakeElement[] = [];
+  readonly attributes = new Map<string, string>();
+  readonly listeners = new Map<string, (event: any) => unknown>();
+  hidden = false;
+  disabled = false;
+  textContent = "";
+  className = "";
+  type = "";
+  title = "";
+  value = "";
+
+  addEventListener(name: string, callback: (event: any) => unknown): void {
+    this.listeners.set(name, callback);
+  }
+
+  append(...nodes: FakeElement[]): void {
+    this.children.push(...nodes);
+  }
+
+  appendChild(node: FakeElement): void {
+    this.children.push(node);
+  }
+
+  replaceChildren(...nodes: FakeElement[]): void {
+    this.children.splice(0, this.children.length, ...nodes);
+  }
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  getAttribute(name: string): string | null {
+    if (name.startsWith("data-")) {
+      const key = name.slice(5).replace(/-([a-z])/g, (_match, letter: string) => letter.toUpperCase());
+      return this.dataset[key] ?? null;
+    }
+    return this.attributes.get(name) ?? null;
+  }
+
+  closest(selector: string): FakeElement | null {
+    if (selector === "[data-execution-history-run-id]" && this.dataset.executionHistoryRunId) return this;
+    if (selector === "[data-execution-center-session-id]" && this.dataset.executionCenterSessionId) return this;
+    return null;
+  }
+}
+
+class FakeDocument {
+  readonly elements = new Map<string, FakeElement>();
+
+  getElementById(id: string): FakeElement | null {
+    return this.elements.get(id) ?? null;
+  }
+
+  createElement(): FakeElement {
+    return new FakeElement();
+  }
+}
+
+class FakeStorage {
+  readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.get(key) ?? null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, value);
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+}
+
+async function createHistoryFilterHarness(
+  history: readonly unknown[],
+  copyText?: (text: string) => Promise<boolean>,
+  historySequence: readonly (readonly unknown[])[] = [history],
+  fetcherOverride?: () => Promise<{ ok: boolean; json: () => Promise<unknown> }>,
+  downloadFile?: (filename: string, content: string, mimeType: string) => Promise<void> | void,
+  filterStorage?: FakeStorage,
+  payloadSequence?: readonly Record<string, unknown>[],
+) {
+  const modulePath = fileURLToPath(new URL("../public/execution-center.js", import.meta.url));
+  const { createExecutionCenterUI } = await import(pathToFileURL(modulePath).href);
+  const documentRef = new FakeDocument();
+  const ids = [
+    "execution-center-status",
+    "execution-center-runtime",
+    "execution-center-summary",
+    "execution-center-list",
+    "execution-center-refresh",
+    "execution-center-detail",
+    "execution-center-detail-title",
+    "execution-center-detail-status",
+    "execution-center-detail-meta",
+    "execution-center-stop",
+    "execution-center-trace",
+    "execution-center-validation",
+    "execution-center-autofix",
+    "execution-center-history",
+    "execution-center-history-status",
+    "execution-center-history-list",
+    "execution-center-history-unread",
+    "execution-center-history-mark-read",
+    "execution-center-history-export-format",
+    "execution-center-history-export",
+    "execution-center-history-export-status",
+    "execution-center-history-load-more",
+    "execution-center-history-search",
+    "execution-center-history-status-filter",
+    "execution-center-history-validation-filter",
+    "execution-center-history-detail",
+    "execution-center-history-comparison",
+    "execution-center-history-comparison-current-id",
+    "execution-center-history-comparison-current-meta",
+    "execution-center-history-comparison-previous-id",
+    "execution-center-history-comparison-previous-meta",
+    "execution-center-history-comparison-deltas",
+    "execution-center-history-detail-title",
+    "execution-center-history-detail-status",
+    "execution-center-history-detail-meta",
+    "execution-center-history-copy",
+    "execution-center-history-copy-status",
+    "execution-center-history-validation",
+    "execution-center-history-change-set",
+  ];
+  for (const id of ids) documentRef.elements.set(id, new FakeElement());
+  let fetchIndex = 0;
+  const ui = createExecutionCenterUI({
+    documentRef,
+    translate: (key: string, values: Record<string, unknown> = {}) => {
+      if (key === "executionCenter.history.count") return String(values.count) + " runs";
+      if (key === "executionCenter.history.comparisonDeltas") {
+        return [values.durationMs, values.tools, values.approvals, values.validations].join("|");
+      }
+      if (key === "executionCenter.history.summaryRun") return "Run: " + values.id;
+      if (key === "executionCenter.history.summaryStatus") return "Outcome: " + values.status;
+      if (key === "executionCenter.history.summaryStarted") return "Started: " + values.time;
+      if (key === "executionCenter.history.summaryDuration") return "Duration: " + values.duration;
+      if (key === "executionCenter.history.summaryValidation") return "Validation: " + values.status;
+      if (key === "executionCenter.history.tools") return String(values.count) + " tools";
+      if (key === "executionCenter.history.approvals") return String(values.count) + " approvals";
+      if (key === "executionCenter.history.validations") return String(values.count) + " validations";
+      if (key === "parallelRuns.status.done") return "Completed";
+      if (key === "validation.status.failed") return "Failed";
+      if (key === "executionCenter.history.copySuccess") return "Copied";
+      if (key === "executionCenter.history.copyFailure") return "Copy failed";
+      if (key === "executionCenter.history.unread") return String(values.count) + " unread";
+      if (key === "executionCenter.history.exportSuccess") return "History exported.";
+      if (key === "executionCenter.history.exportFailure") return "Export failed";
+      return key;
+    },
+    fetcher: fetcherOverride ?? (async () => ({
+      ok: true,
+      async json() {
+        if (payloadSequence !== undefined) {
+          return payloadSequence[Math.min(fetchIndex++, payloadSequence.length - 1)];
+        }
+        return {
+          currentSessionId: "desktop-default",
+          historySessionId: "desktop-default",
+          sessions: [{
+            sessionId: "desktop-default",
+            title: "Demo task",
+            status: "done",
+            active: false,
+            stage: "done",
+          }],
+          history: historySequence[Math.min(fetchIndex++, historySequence.length - 1)],
+        };
+      },
+    })),
+    ...(copyText === undefined ? {} : { copyText }),
+    ...(downloadFile === undefined ? {} : { downloadFile }),
+    ...(filterStorage === undefined ? {} : { filterStorage }),
+  });
+  documentRef.getElementById("execution-center-history-copy")!.disabled = true;
+  documentRef.getElementById("execution-center-history-comparison")!.hidden = true;
+  return { documentRef, ui };
+}
+
+function visibleHistoryRunIds(documentRef: FakeDocument): string[] {
+  return (documentRef.getElementById("execution-center-history-list")?.children ?? [])
+    .map((item) => item.children[0]?.children[0]?.textContent ?? "");
+}
+
+test("DesktopRunState produces terminal metadata without replay content", () => {
+  const run = new DesktopRunState("desktop-default", "run-1", "2026-09-30T10:00:00.000Z");
+  run.append({ type: "tool", data: { name: "filesystem.patch", input: "secret" } } as any);
+  run.append({ type: "approval-request", data: { id: "approval-1", tool: "filesystem.patch" } } as any);
+  run.append({
+    type: "validation",
+    data: {
+      validationId: "validation-1",
+      changeSetId: "change-set-1",
+      status: "failed",
+      output: "private output",
+    },
+  } as any);
+  run.finish("failed");
+
+  const record = run.historyRecord();
+  assert.equal(record?.sessionId, "desktop-default");
+  assert.equal(record?.runId, "run-1");
+  assert.equal(record?.status, "failed");
+  assert.equal(record?.toolCount, 1);
+  assert.equal(record?.approvalCount, 1);
+  assert.equal(record?.validationCount, 1);
+  assert.equal(Reflect.get(record ?? {}, "validationId"), "validation-1");
+  assert.equal(Reflect.get(record ?? {}, "changeSetId"), "change-set-1");
+  assert.equal(Reflect.get(record ?? {}, "validationStatus"), "failed");
+  assert.doesNotMatch(JSON.stringify(record), /secret|private output|input|output/i);
+
+  const reviewRun = new DesktopRunState("desktop-default", "run-review", "2026-09-30T10:00:00.000Z");
+  reviewRun.append({ type: "plan-review", data: { review: { changeSetId: "review-change-set" } } } as any);
+  reviewRun.finish("done");
+  assert.equal(Reflect.get(reviewRun.historyRecord() ?? {}, "changeSetId"), "review-change-set");
+});
+
+test("DesktopRunState deduplicates repeated validation events in history metadata", () => {
+  const run = new DesktopRunState("desktop-default", "run-duplicate-validation", "2026-09-30T10:00:00.000Z");
+  const validation = {
+    type: "validation" as const,
+    data: {
+      validationId: "validation-duplicate",
+      changeSetId: "change-set-duplicate",
+      status: "failed",
+    },
+  };
+  run.append(validation as any);
+  run.append({ ...validation, data: { ...validation.data, status: "passed" } } as any);
+  run.finish("done");
+
+  const record = run.historyRecord();
+  assert.equal(record?.validationCount, 1);
+  assert.equal(record?.validationId, "validation-duplicate");
+  assert.equal(record?.changeSetId, "change-set-duplicate");
+  assert.equal(record?.validationStatus, "passed");
+});
+
+test("DesktopRunState clears evidence links when a validation event has incomplete identity", () => {
+  const run = new DesktopRunState("desktop-default", "run-incomplete-validation", "2026-09-30T10:00:00.000Z");
+  run.append({
+    type: "validation",
+    data: {
+      validationId: "validation-first",
+      changeSetId: "change-set-first",
+      status: "failed",
+    },
+  } as any);
+  run.append({
+    type: "validation",
+    data: {
+      validationId: "validation-next",
+      status: "passed",
+    },
+  } as any);
+  run.finish("done");
+
+  const record = run.historyRecord();
+  assert.equal(record?.validationCount, 2);
+  assert.equal(Reflect.get(record ?? {}, "validationId"), undefined);
+  assert.equal(Reflect.get(record ?? {}, "changeSetId"), undefined);
+  assert.equal(Reflect.get(record ?? {}, "validationStatus"), undefined);
+});
+
+test("execution history persists, reloads, and caps each session at 50 records", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-execution-history-"));
+  const stateFile = join(directory, "history.json");
+  try {
+    const store = new ExecutionHistoryStore({ stateFile });
+    for (let index = 0; index < 52; index += 1) {
+      assert.equal(await store.record(historyRecord("desktop-default", index)), true);
+    }
+
+    const reloaded = new ExecutionHistoryStore({ stateFile });
+    const history = reloaded.list("desktop-default");
+    assert.equal(history.length, 50);
+    assert.equal(history[0]?.runId, "run-51");
+    assert.equal(history.at(-1)?.runId, "run-2");
+    assert.equal(Reflect.get(history[0] ?? {}, "validationId"), "validation-51");
+    assert.equal(Reflect.get(history[0] ?? {}, "changeSetId"), "change-set-51");
+    assert.equal(Reflect.get(history[0] ?? {}, "validationStatus"), "failed");
+    assert.doesNotMatch(JSON.stringify(history), /prompt|output|command|secret|Users|home|tmp/i);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("malformed or oversized execution history fails closed", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-execution-history-invalid-"));
+  const stateFile = join(directory, "history.json");
+  try {
+    await writeFile(stateFile, "{not json", "utf8");
+    assert.deepEqual(new ExecutionHistoryStore({ stateFile }).list("desktop-default"), []);
+    await writeFile(stateFile, "x".repeat(1024 * 1024 + 1), "utf8");
+    assert.deepEqual(new ExecutionHistoryStore({ stateFile }).list("desktop-default"), []);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("execution history drops unsafe evidence references but retains the run summary", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-execution-history-evidence-"));
+  const stateFile = join(directory, "history.json");
+  try {
+    const store = new ExecutionHistoryStore({ stateFile });
+    const invalid = {
+      ...historyRecord("desktop-default", 3),
+      validationId: "../private",
+      changeSetId: "x".repeat(200),
+      validationStatus: "unknown",
+    };
+    assert.equal(await store.record(invalid), true);
+    const record = store.list("desktop-default")[0];
+    assert.equal(record?.runId, "run-3");
+    assert.equal(Reflect.get(record ?? {}, "validationId"), undefined);
+    assert.equal(Reflect.get(record ?? {}, "changeSetId"), undefined);
+    assert.equal(Reflect.get(record ?? {}, "validationStatus"), undefined);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("execution history follows session renames and clears deleted sessions", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-execution-history-lifecycle-"));
+  const stateFile = join(directory, "history.json");
+  try {
+    const store = new ExecutionHistoryStore({ stateFile });
+    await store.record(historyRecord("old-session", 1));
+    assert.equal(await store.move("old-session", "new-session"), true);
+    assert.equal(store.list("old-session").length, 0);
+    assert.equal(store.list("new-session").length, 1);
+    assert.equal(await store.clear("new-session"), true);
+    assert.equal(new ExecutionHistoryStore({ stateFile }).list("new-session").length, 0);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("closing the Desktop server preserves execution history for the next launch", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-execution-history-shutdown-"));
+  const stateFile = join(directory, "history.json");
+  try {
+    const store = new ExecutionHistoryStore({ stateFile });
+    await store.record(historyRecord("desktop-default", 8));
+    const server = createDesktopServer({
+      executionHistoryStateFile: stateFile,
+      session: { id: "desktop-default", async run() {} },
+    });
+    await start(server);
+    await close(server);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const restored = new ExecutionHistoryStore({ stateFile });
+    assert.deepEqual(restored.list("desktop-default").map((record) => record.runId), ["run-8"]);
+  } finally {
+    await rm(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("GET /api/execution-center returns persisted history and exposes the history panel", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-execution-history-route-"));
+  const stateFile = join(directory, "history.json");
+  const store = new ExecutionHistoryStore({ stateFile });
+  await store.record(historyRecord("desktop-default", 7));
+  const server = createDesktopServer({
+    executionHistoryStateFile: stateFile,
+    session: { id: "desktop-default", async run() {} },
+  });
+  const base = await start(server);
+  try {
+    const response = await fetch(base + "/api/execution-center?historySessionId=desktop-default");
+    assert.equal(response.status, 200);
+    const payload = await response.json() as any;
+    assert.equal(payload.historySessionId, "desktop-default");
+    assert.equal(payload.history.length, 1);
+    assert.equal(payload.history[0].runId, "run-7");
+    assert.doesNotMatch(JSON.stringify(payload), /prompt|output|command|secret|Users|home|tmp/i);
+
+    const [html, moduleSource] = await Promise.all([
+      fetch(base + "/").then((result) => result.text()),
+      fetch(base + "/public/execution-center.js").then((result) => result.text()),
+    ]);
+    for (const id of [
+      "execution-center-history",
+      "execution-center-history-list",
+      "execution-center-history-status",
+      "execution-center-history-search",
+      "execution-center-history-status-filter",
+      "execution-center-history-validation-filter",
+      "execution-center-history-detail",
+      "execution-center-history-detail-title",
+      "execution-center-history-detail-status",
+      "execution-center-history-detail-meta",
+      "execution-center-history-copy",
+      "execution-center-history-copy-status",
+      "execution-center-history-validation",
+      "execution-center-history-change-set",
+      "execution-center-history-comparison",
+      "execution-center-history-comparison-current-id",
+      "execution-center-history-comparison-current-meta",
+      "execution-center-history-comparison-previous-id",
+      "execution-center-history-comparison-previous-meta",
+      "execution-center-history-comparison-deltas",
+    ]) {
+      assert.match(html, new RegExp("id=\\\"" + id + "\\\""));
+    }
+    assert.match(moduleSource, /historySessionId/);
+    assert.match(moduleSource, /executionCenter\.history/);
+    assert.match(moduleSource, /data-execution-history-run-id/);
+    assert.match(moduleSource, /openValidationEvidence/);
+    assert.match(moduleSource, /openChangeSetEvidence/);
+    assert.match(moduleSource, /textContent/);
+    assert.match(html, /openValidationEvidence:\s*async\s*\(sessionId, validationId, changeSetId\)/);
+    assert.match(html, /loadHistory\(sessionId, \{ validationId, changeSetId \}\)/);
+    assert.match(html, /openChangeSetEvidence:\s*async\s*\(sessionId, changeSetId\)/);
+    assert.match(html, /loadHistory\(sessionId, \{ changeSetId \}\)/);
+    assert.match(html, /appendChangeSetEvidence/);
+  } finally {
+    await close(server);
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("history search matches run ids case-insensitively and reports no matches", async () => {
+  const records = [
+    historyRecord("desktop-default", 1),
+    { ...historyRecord("desktop-default", 2), runId: "run-failed", status: "failed" as const },
+    { ...historyRecord("desktop-default", 3), runId: "run-aborted", status: "aborted" as const },
+  ];
+  const { documentRef, ui } = await createHistoryFilterHarness(records);
+  try {
+    await ui.refresh();
+    assert.deepEqual(visibleHistoryRunIds(documentRef), ["run-1", "run-failed", "run-aborted"]);
+
+    const search = documentRef.getElementById("execution-center-history-search")!;
+    search.value = "FAILED";
+    search.listeners.get("input")?.({ target: search });
+    assert.deepEqual(visibleHistoryRunIds(documentRef), ["run-failed"]);
+    assert.equal(documentRef.getElementById("execution-center-history-status")?.textContent, "1 runs");
+
+    search.value = "missing-run";
+    search.listeners.get("input")?.({ target: search });
+    assert.deepEqual(visibleHistoryRunIds(documentRef), []);
+    assert.equal(
+      documentRef.getElementById("execution-center-history-status")?.textContent,
+      "executionCenter.history.noMatches",
+    );
+  } finally {
+    ui.destroy();
+  }
+});
+
+test("history status filter hides selected detail when the selected run no longer matches", async () => {
+  const records = [
+    historyRecord("desktop-default", 1),
+    { ...historyRecord("desktop-default", 2), runId: "run-failed", status: "failed" as const },
+    { ...historyRecord("desktop-default", 3), runId: "run-aborted", status: "aborted" as const },
+  ];
+  const { documentRef, ui } = await createHistoryFilterHarness(records);
+  const previousElement = (globalThis as any).Element;
+  (globalThis as any).Element = FakeElement;
+  try {
+    await ui.refresh();
+    const historyList = documentRef.getElementById("execution-center-history-list")!;
+    const selectedRunButton = historyList.children[0]?.children[0]?.children[0];
+    assert.ok(selectedRunButton);
+    historyList.listeners.get("click")?.({ target: selectedRunButton });
+    assert.equal(documentRef.getElementById("execution-center-history-detail")?.hidden, false);
+
+    const statusFilter = documentRef.getElementById("execution-center-history-status-filter")!;
+    statusFilter.value = "failed";
+    statusFilter.listeners.get("change")?.({ target: statusFilter });
+    assert.deepEqual(visibleHistoryRunIds(documentRef), ["run-failed"]);
+    assert.equal(documentRef.getElementById("execution-center-history-detail")?.hidden, true);
+    assert.equal(documentRef.getElementById("execution-center-history-validation")?.disabled, true);
+    assert.equal(documentRef.getElementById("execution-center-history-change-set")?.disabled, true);
+  } finally {
+    if (previousElement === undefined) delete (globalThis as any).Element;
+    else (globalThis as any).Element = previousElement;
+    ui.destroy();
+  }
+});
+
+test("history validation filter is independent from run outcome and matches legacy runs", async () => {
+  const records = [
+    {
+      ...historyRecord("desktop-default", 1),
+      runId: "run-done-validation-failed",
+      status: "done" as const,
+      validationStatus: "failed" as const,
+    },
+    {
+      ...historyRecord("desktop-default", 2),
+      runId: "run-failed-validation-passed",
+      status: "failed" as const,
+      validationStatus: "passed" as const,
+    },
+    {
+      ...historyRecord("desktop-default", 3),
+      runId: "run-without-validation",
+      status: "done" as const,
+      validationStatus: undefined,
+    },
+  ];
+  const { documentRef, ui } = await createHistoryFilterHarness(records);
+  try {
+    await ui.refresh();
+    const validationFilter = documentRef.getElementById("execution-center-history-validation-filter")!;
+
+    validationFilter.value = "failed";
+    validationFilter.listeners.get("change")?.({ target: validationFilter });
+    assert.deepEqual(visibleHistoryRunIds(documentRef), ["run-done-validation-failed"]);
+
+    validationFilter.value = "passed";
+    validationFilter.listeners.get("change")?.({ target: validationFilter });
+    assert.deepEqual(visibleHistoryRunIds(documentRef), ["run-failed-validation-passed"]);
+
+    validationFilter.value = "none";
+    validationFilter.listeners.get("change")?.({ target: validationFilter });
+    assert.deepEqual(visibleHistoryRunIds(documentRef), ["run-without-validation"]);
+  } finally {
+    ui.destroy();
+  }
+});
+
+test("history detail compares a selected run with the previous visible run using summary metrics", async () => {
+  const records = [
+    {
+      ...historyRecord("desktop-default", 3),
+      runId: "run-current",
+      status: "done" as const,
+      durationMs: 2500,
+      toolCount: 4,
+      approvalCount: 1,
+      validationCount: 2,
+      validationStatus: "failed" as const,
+      privateData: "PRIVATE_MARKER",
+    },
+    {
+      ...historyRecord("desktop-default", 2),
+      runId: "run-middle",
+      status: "failed" as const,
+      durationMs: 4000,
+      toolCount: 2,
+      approvalCount: 2,
+      validationCount: 1,
+      validationStatus: "passed" as const,
+    },
+    {
+      ...historyRecord("desktop-default", 1),
+      runId: "run-older",
+      status: "done" as const,
+      durationMs: 1000,
+      toolCount: 1,
+      approvalCount: 0,
+      validationCount: 1,
+      validationStatus: "failed" as const,
+    },
+  ];
+  const { documentRef, ui } = await createHistoryFilterHarness(records);
+  const previousElement = (globalThis as any).Element;
+  (globalThis as any).Element = FakeElement;
+  try {
+    await ui.refresh();
+    const historyList = documentRef.getElementById("execution-center-history-list")!;
+    const currentRunButton = historyList.children[0]?.children[0]?.children[0];
+    assert.ok(currentRunButton);
+    historyList.listeners.get("click")?.({ target: currentRunButton });
+
+    const comparison = documentRef.getElementById("execution-center-history-comparison")!;
+    assert.equal(comparison.hidden, false);
+    assert.equal(documentRef.getElementById("execution-center-history-comparison-current-id")?.textContent, "run-current");
+    assert.equal(documentRef.getElementById("execution-center-history-comparison-previous-id")?.textContent, "run-middle");
+    assert.equal(
+      documentRef.getElementById("execution-center-history-comparison-deltas")?.textContent,
+      "-1500 ms|+2|-1|+1",
+    );
+    assert.doesNotMatch(JSON.stringify(comparison), /PRIVATE_MARKER/);
+
+    const validationFilter = documentRef.getElementById("execution-center-history-validation-filter")!;
+    validationFilter.value = "failed";
+    validationFilter.listeners.get("change")?.({ target: validationFilter });
+    assert.equal(documentRef.getElementById("execution-center-history-comparison-previous-id")?.textContent, "run-older");
+
+    const search = documentRef.getElementById("execution-center-history-search")!;
+    search.value = "run-current";
+    search.listeners.get("input")?.({ target: search });
+    assert.equal(comparison.hidden, true);
+  } finally {
+    if (previousElement === undefined) delete (globalThis as any).Element;
+    else (globalThis as any).Element = previousElement;
+    ui.destroy();
+  }
+});
+
+test("selected history run copies bounded summary and reports clipboard outcome", async () => {
+  const copied: string[] = [];
+  let allowCopy = false;
+  const record = {
+    ...historyRecord("desktop-default", 1),
+    runId: "run-copy-1",
+    prompt: "PRIVATE_MARKER",
+    output: "PRIVATE_MARKER",
+    command: "PRIVATE_MARKER",
+    workingDirectory: "PRIVATE_MARKER",
+  };
+  const { documentRef, ui } = await createHistoryFilterHarness([record], async (text) => {
+    copied.push(text);
+    return allowCopy;
+  });
+  const previousElement = (globalThis as any).Element;
+  (globalThis as any).Element = FakeElement;
+  try {
+    await ui.refresh();
+    const copyButton = documentRef.getElementById("execution-center-history-copy")!;
+    assert.equal(copyButton.disabled, true);
+
+    const historyList = documentRef.getElementById("execution-center-history-list")!;
+    const runButton = historyList.children[0]?.children[0]?.children[0];
+    assert.ok(runButton);
+    historyList.listeners.get("click")?.({ target: runButton });
+    assert.equal(copyButton.disabled, false);
+
+    await Promise.resolve(copyButton.listeners.get("click")?.({ target: copyButton }));
+    assert.equal(copied.length, 1);
+    assert.match(copied[0] ?? "", /run-copy-1/);
+    assert.match(copied[0] ?? "", /Outcome: Completed/);
+    assert.match(copied[0] ?? "", /1 tools/);
+    assert.doesNotMatch(copied[0] ?? "", /PRIVATE_MARKER|prompt|output|command|workingDirectory/i);
+    assert.equal(documentRef.getElementById("execution-center-history-copy-status")?.textContent, "Copy failed");
+
+    allowCopy = true;
+    await Promise.resolve(copyButton.listeners.get("click")?.({ target: copyButton }));
+    assert.equal(copied.length, 2);
+    assert.equal(documentRef.getElementById("execution-center-history-copy-status")?.textContent, "Copied");
+  } finally {
+    if (previousElement === undefined) delete (globalThis as any).Element;
+    else (globalThis as any).Element = previousElement;
+    ui.destroy();
+  }
+});
+
+test("execution completion notifications deduplicate runs and isolate unread state by session", async () => {
+  const modulePath = fileURLToPath(new URL("../public/execution-notifications.js", import.meta.url));
+  const { createExecutionNotificationStore } = await import(pathToFileURL(modulePath).href);
+  const store = createExecutionNotificationStore({ maxEntries: 2 });
+
+  assert.equal(store.record({ sessionId: "alpha", runId: "run-1", status: "done", finishedAt: "2026-10-01T10:00:00.000Z" }), true);
+  assert.equal(store.record({ sessionId: "alpha", runId: "run-1", status: "done", finishedAt: "2026-10-01T10:00:00.000Z" }), false);
+  assert.equal(store.record({ sessionId: "beta", runId: "run-2", status: "failed", finishedAt: "2026-10-01T10:01:00.000Z" }), true);
+  assert.equal(store.unreadCount("alpha"), 1);
+  assert.equal(store.unreadCount("beta"), 1);
+
+  store.markRead("alpha", "run-1");
+  assert.equal(store.unreadCount("alpha"), 0);
+  assert.equal(store.unreadCount("beta"), 1);
+
+  assert.equal(store.record({ sessionId: "gamma", runId: "run-3", status: "aborted", finishedAt: "2026-10-01T10:02:00.000Z" }), true);
+  assert.deepEqual(store.list().map((item: { sessionId: string; runId: string }) => [item.sessionId, item.runId]), [
+    ["gamma", "run-3"],
+    ["beta", "run-2"],
+  ]);
+  store.markAllRead("beta");
+  assert.equal(store.unreadCount(), 1);
+  store.clear("gamma", "run-3");
+  assert.equal(store.unreadCount(), 0);
+});
+
+test("execution completion notifications move and clear session entries without leaking unread state", async () => {
+  const modulePath = fileURLToPath(new URL("../public/execution-notifications.js", import.meta.url));
+  const { createExecutionNotificationStore } = await import(pathToFileURL(modulePath).href);
+  const store = createExecutionNotificationStore();
+  store.record({ sessionId: "old-session", runId: "run-1", status: "done", finishedAt: "2026-10-01T10:00:00.000Z" });
+  assert.equal(store.moveSession("old-session", "renamed-session"), 1);
+  assert.equal(store.unreadCount("old-session"), 0);
+  assert.equal(store.unreadCount("renamed-session"), 1);
+  assert.equal(store.clearSession("renamed-session"), 1);
+  assert.equal(store.unreadCount("renamed-session"), 0);
+  assert.deepEqual(store.list("renamed-session"), []);
+});
+
+test("execution center marks new completed runs unread without notifying for initial history", async () => {
+  const initial = [historyRecord("desktop-default", 1)];
+  const next = [historyRecord("desktop-default", 2), ...initial];
+  const { documentRef, ui } = await createHistoryFilterHarness(initial, undefined, [initial, next]);
+  const previousElement = (globalThis as any).Element;
+  (globalThis as any).Element = FakeElement;
+  try {
+    await ui.refresh();
+    const unread = documentRef.getElementById("execution-center-history-unread")!;
+    const markRead = documentRef.getElementById("execution-center-history-mark-read")!;
+    assert.equal(unread.hidden, true);
+    assert.equal(markRead.disabled, true);
+
+    await ui.refresh();
+    assert.equal(unread.hidden, false);
+    assert.equal(unread.textContent, "1 unread");
+    assert.equal(markRead.disabled, false);
+
+    markRead.listeners.get("click")?.({ target: markRead });
+    assert.equal(unread.hidden, true);
+    assert.equal(markRead.disabled, true);
+  } finally {
+    if (previousElement === undefined) delete (globalThis as any).Element;
+    else (globalThis as any).Element = previousElement;
+    ui.destroy();
+  }
+});
+
+test("execution center ignores a stale history refresh and does not duplicate unread notifications", async () => {
+  const initial = [historyRecord("desktop-default", 1)];
+  const latest = [historyRecord("desktop-default", 3), ...initial];
+  const stale = [historyRecord("desktop-default", 2), ...initial];
+  const pending: Array<(response: { ok: boolean; json: () => Promise<unknown> }) => void> = [];
+  const fetcher = () => new Promise<{ ok: boolean; json: () => Promise<unknown> }>((resolve) => {
+    pending.push(resolve);
+  });
+  const { documentRef, ui } = await createHistoryFilterHarness(initial, undefined, [initial], fetcher);
+  try {
+    const baseline = ui.refresh();
+    pending.shift()?.({
+      ok: true,
+      json: async () => ({
+        currentSessionId: "desktop-default",
+        historySessionId: "desktop-default",
+        sessions: [{ sessionId: "desktop-default", title: "Demo task", status: "done", active: false, stage: "done" }],
+        history: initial,
+      }),
+    });
+    await baseline;
+
+    const staleRequest = ui.refresh();
+    const latestRequest = ui.refresh();
+    const staleResponse = pending.shift();
+    const latestResponse = pending.shift();
+    latestResponse?.({
+      ok: true,
+      json: async () => ({
+        currentSessionId: "desktop-default",
+        historySessionId: "desktop-default",
+        sessions: [{ sessionId: "desktop-default", title: "Demo task", status: "done", active: false, stage: "done" }],
+        history: latest,
+      }),
+    });
+    await latestRequest;
+    assert.equal(documentRef.getElementById("execution-center-history-unread")?.textContent, "1 unread");
+
+    staleResponse?.({
+      ok: true,
+      json: async () => ({
+        currentSessionId: "desktop-default",
+        historySessionId: "desktop-default",
+        sessions: [{ sessionId: "desktop-default", title: "Demo task", status: "done", active: false, stage: "done" }],
+        history: stale,
+      }),
+    });
+    await staleRequest;
+    assert.equal(documentRef.getElementById("execution-center-history-unread")?.textContent, "1 unread");
+    assert.deepEqual(visibleHistoryRunIds(documentRef), ["run-3", "run-1"]);
+  } finally {
+    ui.destroy();
+  }
+});
+
+test("history export keeps only allowlisted metadata in JSON and Markdown", async () => {
+  const modulePath = fileURLToPath(new URL("../public/execution-center.js", import.meta.url));
+  const { buildExecutionHistoryExport } = await import(pathToFileURL(modulePath).href);
+  const record = {
+    ...historyRecord("desktop-default", 9),
+    prompt: "PRIVATE_PROMPT",
+    output: "PRIVATE_OUTPUT",
+    command: "PRIVATE_COMMAND",
+    workingDirectory: "/private/workspace",
+    unknownSecret: "PRIVATE_SECRET",
+  };
+  const json = JSON.parse(buildExecutionHistoryExport([record], "json"));
+  assert.deepEqual(json, {
+    schemaVersion: 1,
+    records: [{
+      sessionId: "desktop-default",
+      runId: "run-9",
+      status: "done",
+      startedAt: record.startedAt,
+      finishedAt: record.finishedAt,
+      durationMs: 1009,
+      sequence: 9,
+      toolCount: 1,
+      approvalCount: 1,
+      validationCount: 0,
+      validationId: "validation-9",
+      changeSetId: "change-set-9",
+      validationStatus: "failed",
+    }],
+  });
+  const markdown = buildExecutionHistoryExport([record], "markdown");
+  assert.match(markdown, /# Execution history/);
+  assert.match(markdown, /run-9/);
+  assert.match(markdown, /validation-9/);
+  assert.doesNotMatch(markdown, /PRIVATE_PROMPT|PRIVATE_OUTPUT|PRIVATE_COMMAND|PRIVATE_SECRET|private\/workspace/);
+});
+
+test("history export button downloads the currently filtered metadata projection", async () => {
+  const downloads: Array<[string, string, string]> = [];
+  const record = { ...historyRecord("desktop-default", 10), prompt: "PRIVATE_PROMPT" };
+  const { documentRef, ui } = await createHistoryFilterHarness(
+    [record],
+    undefined,
+    [[record]],
+    undefined,
+    async (filename, content, mimeType) => { downloads.push([filename, content, mimeType]); },
+  );
+  try {
+    await ui.refresh();
+    const format = documentRef.getElementById("execution-center-history-export-format")!;
+    format.value = "markdown";
+    const exportButton = documentRef.getElementById("execution-center-history-export")!;
+    exportButton.listeners.get("click")?.({ target: exportButton });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(downloads.length, 1);
+    assert.equal(downloads[0]?.[0], "execution-history.md");
+    assert.equal(downloads[0]?.[2], "text/markdown;charset=utf-8");
+    assert.match(downloads[0]?.[1] ?? "", /run-10/);
+    assert.doesNotMatch(downloads[0]?.[1] ?? "", /PRIVATE_PROMPT/);
+    assert.equal(documentRef.getElementById("execution-center-history-export-status")?.textContent, "History exported.");
+    await ui.refresh();
+    assert.equal(documentRef.getElementById("execution-center-history-export-status")?.textContent, "History exported.");
+  } finally {
+    ui.destroy();
+  }
+});
+
+test("history export stays bounded for empty and over-capacity inputs", async () => {
+  const modulePath = fileURLToPath(new URL("../public/execution-center.js", import.meta.url));
+  const { buildExecutionHistoryExport } = await import(pathToFileURL(modulePath).href);
+  const empty = JSON.parse(buildExecutionHistoryExport([], "json"));
+  assert.deepEqual(empty, { schemaVersion: 1, records: [] });
+
+  const records = Array.from({ length: 55 }, (_value, index) => historyRecord("desktop-default", index + 1));
+  const bounded = JSON.parse(buildExecutionHistoryExport(records, "json"));
+  assert.equal(bounded.schemaVersion, 1);
+  assert.equal(bounded.records.length, 50);
+  assert.equal(bounded.truncated, true);
+  assert.ok(JSON.stringify(bounded).length <= 64 * 1024);
+});
+
+test("history filter persistence keeps only bounded selectors and fails closed", async () => {
+  const modulePath = fileURLToPath(new URL("../public/execution-history-filters.js", import.meta.url));
+  const { readExecutionHistoryFilters, writeExecutionHistoryFilters } = await import(pathToFileURL(modulePath).href);
+  const storage = new FakeStorage();
+  assert.deepEqual(readExecutionHistoryFilters(storage), {
+    search: "",
+    status: "all",
+    validation: "all",
+    format: "json",
+  });
+  assert.equal(writeExecutionHistoryFilters(storage, {
+    search: "run-failed",
+    status: "failed",
+    validation: "blocked",
+    format: "markdown",
+  }), true);
+  assert.deepEqual(readExecutionHistoryFilters(storage), {
+    search: "run-failed",
+    status: "failed",
+    validation: "blocked",
+    format: "markdown",
+  });
+
+  storage.setItem("dev-agent.execution-history-filters.v1", JSON.stringify({ search: "x".repeat(500) }));
+  assert.deepEqual(readExecutionHistoryFilters(storage), {
+    search: "",
+    status: "all",
+    validation: "all",
+    format: "json",
+  });
+  storage.setItem("dev-agent.execution-history-filters.v1", "not-json");
+  assert.deepEqual(readExecutionHistoryFilters(storage), {
+    search: "",
+    status: "all",
+    validation: "all",
+    format: "json",
+  });
+});
+
+test("execution center restores persisted history filters and applies them before rendering", async () => {
+  const storage = new FakeStorage();
+  const records = [
+    historyRecord("desktop-default", 1),
+    { ...historyRecord("desktop-default", 2), runId: "run-failed", status: "failed" as const },
+  ];
+  const first = await createHistoryFilterHarness(records, undefined, [records], undefined, undefined, storage);
+  await first.ui.refresh();
+  const firstSearch = first.documentRef.getElementById("execution-center-history-search")!;
+  const firstStatus = first.documentRef.getElementById("execution-center-history-status-filter")!;
+  const firstValidation = first.documentRef.getElementById("execution-center-history-validation-filter")!;
+  const firstFormat = first.documentRef.getElementById("execution-center-history-export-format")!;
+  firstSearch.value = "failed";
+  firstSearch.listeners.get("input")?.({ target: firstSearch });
+  firstStatus.value = "failed";
+  firstStatus.listeners.get("change")?.({ target: firstStatus });
+  firstValidation.value = "all";
+  firstValidation.listeners.get("change")?.({ target: firstValidation });
+  firstFormat.value = "markdown";
+  firstFormat.listeners.get("change")?.({ target: firstFormat });
+  first.ui.destroy();
+
+  const second = await createHistoryFilterHarness(records, undefined, [records], undefined, undefined, storage);
+  try {
+    assert.equal(second.documentRef.getElementById("execution-center-history-search")?.value, "failed");
+    assert.equal(second.documentRef.getElementById("execution-center-history-status-filter")?.value, "failed");
+    assert.equal(second.documentRef.getElementById("execution-center-history-export-format")?.value, "markdown");
+    await second.ui.refresh();
+    assert.deepEqual(visibleHistoryRunIds(second.documentRef), ["run-failed"]);
+  } finally {
+    second.ui.destroy();
+  }
+});
+
+test("execution center reveals bounded history in pages without changing the fetched payload", async () => {
+  const records = Array.from({ length: 25 }, (_value, index) => historyRecord("desktop-default", index + 1));
+  const { documentRef, ui } = await createHistoryFilterHarness(records);
+  try {
+    await ui.refresh();
+    const loadMore = documentRef.getElementById("execution-center-history-load-more")!;
+    assert.equal(documentRef.getElementById("execution-center-history-list")?.children.length, 20);
+    assert.equal(loadMore.hidden, false);
+    assert.equal(loadMore.disabled, false);
+
+    loadMore.listeners.get("click")?.({ target: loadMore });
+    assert.equal(documentRef.getElementById("execution-center-history-list")?.children.length, 25);
+    assert.equal(loadMore.hidden, true);
+  } finally {
+    ui.destroy();
+  }
+});
+
+test("execution center treats renamed history as a new session baseline and clears deleted-session unread state", async () => {
+  const alpha = historyRecord("alpha", 1);
+  const beta = { ...alpha, sessionId: "beta" };
+  const payloads = [
+    {
+      currentSessionId: "alpha",
+      historySessionId: "alpha",
+      sessions: [{ sessionId: "alpha", title: "Alpha", status: "done", active: false, stage: "done" }],
+      history: [alpha],
+    },
+    {
+      currentSessionId: "beta",
+      historySessionId: "beta",
+      sessions: [{ sessionId: "beta", title: "Beta", status: "done", active: false, stage: "done" }],
+      history: [beta],
+    },
+    {
+      currentSessionId: "beta",
+      historySessionId: "beta",
+      sessions: [],
+      history: [],
+    },
+  ];
+  const { documentRef, ui } = await createHistoryFilterHarness([], undefined, [[]], undefined, undefined, undefined, payloads);
+  try {
+    await ui.refresh();
+    await ui.refresh();
+    assert.equal(documentRef.getElementById("execution-center-history-unread")?.hidden, true);
+    await ui.refresh();
+    assert.equal(documentRef.getElementById("execution-center-history-unread")?.hidden, true);
+    assert.equal(documentRef.getElementById("execution-center-history")?.hidden, true);
+  } finally {
+    ui.destroy();
+  }
+});
+
+test("history evidence URL encodes safe ids and fails closed on oversized filters", async () => {
+  const modulePath = fileURLToPath(new URL("../public/execution-center.js", import.meta.url));
+  const module = await import(pathToFileURL(modulePath).href);
+  const buildUrl = module.buildExecutionHistoryEvidenceUrl;
+  assert.equal(typeof buildUrl, "function");
+  assert.equal(
+    buildUrl("task-one", { validationId: "validation?one", changeSetId: "change&one" }),
+    "/api/sessions/task-one/messages?validationId=validation%3Fone&changeSetId=change%26one",
+  );
+  assert.equal(buildUrl("task", { validationId: "v".repeat(97), changeSetId: "change-one" }), null);
+  assert.equal(buildUrl("task", { changeSetId: "../private" }), null);
+});
+
+test("history detail opens the selected run and routes only its bounded evidence ids", async () => {
+  const modulePath = fileURLToPath(new URL("../public/execution-center.js", import.meta.url));
+  const { createExecutionCenterUI } = await import(pathToFileURL(modulePath).href);
+  const documentRef = new FakeDocument();
+  const ids = [
+    "execution-center-status",
+    "execution-center-runtime",
+    "execution-center-summary",
+    "execution-center-list",
+    "execution-center-refresh",
+    "execution-center-detail",
+    "execution-center-detail-title",
+    "execution-center-detail-status",
+    "execution-center-detail-meta",
+    "execution-center-stop",
+    "execution-center-trace",
+    "execution-center-validation",
+    "execution-center-autofix",
+    "execution-center-history",
+    "execution-center-history-status",
+    "execution-center-history-list",
+    "execution-center-history-detail",
+    "execution-center-history-detail-title",
+    "execution-center-history-detail-status",
+    "execution-center-history-detail-meta",
+    "execution-center-history-validation",
+    "execution-center-history-change-set",
+  ];
+  for (const id of ids) documentRef.elements.set(id, new FakeElement());
+
+  const calls: unknown[][] = [];
+  const history = historyRecord("desktop-default", 4);
+  const ui = createExecutionCenterUI({
+    documentRef,
+    translate: (key: string) => key,
+    fetcher: async () => ({
+      ok: true,
+      async json() {
+        return {
+          currentSessionId: "desktop-default",
+          historySessionId: "desktop-default",
+          sessions: [{
+            sessionId: "desktop-default",
+            title: "Demo task",
+            status: "done",
+            active: false,
+            stage: "done",
+          }],
+          history: [history],
+        };
+      },
+    }),
+    activateSession: async (sessionId: string) => { calls.push(["activate", sessionId]); },
+    openValidationEvidence: async (...args: unknown[]) => { calls.push(["validation", ...args]); },
+    openChangeSetEvidence: async (...args: unknown[]) => { calls.push(["change-set", ...args]); },
+  });
+
+  const previousElement = (globalThis as any).Element;
+  (globalThis as any).Element = FakeElement;
+  try {
+    await ui.refresh();
+    const historyList = documentRef.getElementById("execution-center-history-list")!;
+    const runButton = historyList.children[0]?.children[0]?.children[0];
+    assert.ok(runButton, "history row should expose a keyboard-accessible selection button");
+    historyList.listeners.get("click")?.({ target: runButton });
+
+    const detail = documentRef.getElementById("execution-center-history-detail")!;
+    assert.equal(detail.hidden, false);
+    assert.equal(
+      documentRef.getElementById("execution-center-history-detail-title")?.textContent,
+      history.runId,
+    );
+    assert.equal(documentRef.getElementById("execution-center-history-validation")?.disabled, false);
+    assert.equal(documentRef.getElementById("execution-center-history-change-set")?.disabled, false);
+
+    documentRef.getElementById("execution-center-history-validation")?.listeners.get("click")?.({ target: null });
+    documentRef.getElementById("execution-center-history-change-set")?.listeners.get("click")?.({ target: null });
+    assert.deepEqual(calls, [
+      ["validation", "desktop-default", "validation-4", "change-set-4"],
+      ["change-set", "desktop-default", "change-set-4"],
+    ]);
+  } finally {
+    if (previousElement === undefined) delete (globalThis as any).Element;
+    else (globalThis as any).Element = previousElement;
+    ui.destroy();
+  }
+});

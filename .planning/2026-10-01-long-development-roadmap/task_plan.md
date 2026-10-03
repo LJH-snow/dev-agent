@@ -26,13 +26,13 @@
 
 ## 长期阶段总览
 
-### 阶段 0：基线、边界和证据账本（已开始）
+### 阶段 0：基线、边界和证据账本（已完成）
 
 交付：建立本路线计划、findings、progress；记录工作区保护边界；确认当前测试基线和真实接入点。
 
 门槛：能从账本回答当前阶段、下一个阶段、受保护文件和最后一次验证结果；任何命令失败都记录原因和替代方案。
 
-### 阶段 1：运行完成通知与未读状态（下一阶段）
+### 阶段 1：运行完成通知与未读状态（已完成）
 
 交付：
 
@@ -44,7 +44,7 @@
 
 验收：先写模型、渲染、生命周期 RED 测试；覆盖 done、failed、aborted、等待 plan、session rename/delete、stale event、重复 done 和刷新；再做 Desktop focused、全量和隔离浏览器验收。
 
-### 阶段 2：历史视图与安全导出
+### 阶段 2：历史视图与安全导出（已完成）
 
 交付：
 
@@ -55,7 +55,7 @@
 
 验收：导出快照 golden tests、超大数据测试、旧 schema 兼容测试、浏览器下载/复制验收和文档契约测试。
 
-### 阶段 3：会话生命周期与运行恢复
+### 阶段 3：会话生命周期与运行恢复（已完成）
 
 交付：
 
@@ -66,7 +66,7 @@
 
 验收：重启、并发 rename/delete、活动 session 删除、cursor gap、重复 done、客户端断开和恢复后继续操作的端到端测试。
 
-### 阶段 4：队列、审批和计划执行可靠性
+### 阶段 4：队列、审批和计划执行可靠性（已完成）
 
 交付：
 
@@ -77,7 +77,7 @@
 
 验收：Agent Core、Desktop、CLI 三侧状态机测试；真实 MCP transport/approval seam 测试；并行运行隔离测试。
 
-### 阶段 5：证据、验证和变更血缘
+### 阶段 5：证据、验证和变更血缘（已完成）
 
 交付：
 
@@ -88,7 +88,7 @@
 
 验收：证据 schema、过滤、导出、parity 测试，跨重启和跨 session 隔离测试，隔离 Git fixture 浏览器验收。
 
-### 阶段 6：Task Workspace 与 Changes Center 完整闭环
+### 阶段 6：Task Workspace 与 Changes Center 完整闭环（已完成）
 
 交付：
 
@@ -99,7 +99,7 @@
 
 验收：临时 Git 仓库 fixture、脏工作区矩阵、浏览器 split/unified diff、键盘导航和合并边界测试。
 
-### 阶段 7：Terminal 与 Preview 的可恢复体验
+### 阶段 7：Terminal 与 Preview 的可恢复体验（已完成）
 
 交付：
 
@@ -110,7 +110,7 @@
 
 验收：Desktop focused、真实本地 PTY、隔离浏览器和生命周期 trace 对照；不使用外部生产项目。
 
-### 阶段 8：MCP、审批、沙箱和能力边界复核
+### 阶段 8：MCP、审批、沙箱和能力边界复核（已完成）
 
 交付：
 
@@ -121,7 +121,7 @@
 
 验收：Agent Core、Tools、CLI、Desktop、MCP transport、Rust integration 分层测试和安全契约检查。
 
-### 阶段 9：CLI 与 Desktop 关键体验对齐
+### 阶段 9：CLI 与 Desktop 关键体验对齐（已完成）
 
 交付：
 
@@ -132,7 +132,7 @@
 
 验收：CLI focused/full、rich TUI evals、真实 fixture provider PTY、Desktop 全量及跨端 contract tests。
 
-### 阶段 10：无障碍、双语和响应式质量
+### 阶段 10：无障碍、双语和响应式质量（已完成）
 
 交付：
 
@@ -142,7 +142,7 @@
 
 验收：DOM/contract tests、视觉浏览器验收、键盘流程、窄视口截图和文案完整性检查。
 
-### 阶段 11：性能、容量和故障注入
+### 阶段 11：性能、容量和故障注入（已完成）
 
 交付：
 
@@ -153,7 +153,7 @@
 
 验收：benchmark、bounded-response tests、慢路径和资源清理检查；不牺牲安全上限换取速度。
 
-### 阶段 12：发布候选、文档和维护闭环
+### 阶段 12：发布候选、文档和维护闭环（已完成）
 
 交付：
 
@@ -163,6 +163,17 @@
 - 生成最终验收清单和已知边界；只有用户明确要求才提交/推送。
 
 完成门槛：所有阶段 checklist 完成；所有 required gates 有本轮证据；浏览器/PTY 关键流程至少各有一次隔离验收；工作区保护边界仍满足。
+
+### 阶段 13：CI 完整 verify gate（已完成）
+
+交付：
+
+- 在 GitHub Actions 中新增独立 `full-verify` job，执行完整 `pnpm verify`。
+- 为完整 gate 提供 Rust、bwrap、PTY、ripgrep、protobuf 和 Linux user namespace 前置条件。
+- 保留现有 TypeScript、Rust、Linux integration、macOS integration job，继续提供清晰的失败边界。
+- 以 workflow contract 测试锁定 job、环境变量、前置顺序和完整命令。
+
+验收：CI workflow contract、release-gate contract、结构检查和 `git diff --check` 通过；完整 gate 命令在 CI 配置中唯一且可见。
 
 ## 阶段执行规则
 

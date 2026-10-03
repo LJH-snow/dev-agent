@@ -206,6 +206,55 @@ test("mouse input parser reset drops pending protocol state", () => {
   });
 });
 
+test("mouse input parser resyncs when a fresh X10 report interrupts a truncated one", () => {
+  const parser = new MouseInputParser();
+  const payload = [32, 44, 49].map((code) => String.fromCharCode(code));
+
+  assert.deepEqual(parser.push(`\u001b[M${payload[0]}`), {
+    consumed: true,
+    directions: [],
+    clicks: [],
+    moves: [],
+    remaining: "",
+  });
+  assert.deepEqual(parser.push(`\u001b[M${payload.join("")}`), {
+    consumed: true,
+    directions: [],
+    clicks: [{ button: 0, x: 12, y: 17, action: "press" }],
+    moves: [],
+    remaining: `\u001b[M${payload[0]}`,
+  });
+});
+
+test("mouse input parser restores text-like pending input via takePendingText", () => {
+  const sgrParser = new MouseInputParser();
+  assert.equal(sgrParser.push("[<64;1").remaining, "");
+  assert.equal(sgrParser.takePendingText(), "[<64;1");
+  assert.deepEqual(sgrParser.push("hello"), {
+    consumed: false,
+    directions: [],
+    clicks: [],
+    moves: [],
+    remaining: "hello",
+  });
+
+  const bareParser = new MouseInputParser({ allowEscStrippedX10: true });
+  assert.equal(bareParser.push("[M").remaining, "");
+  assert.equal(bareParser.push("!").remaining, "");
+  assert.equal(bareParser.takePendingText(), "[M!");
+
+  const escParser = new MouseInputParser();
+  assert.equal(escParser.push("\u001b[M ").remaining, "");
+  assert.equal(escParser.takePendingText(), "");
+  assert.deepEqual(escParser.push("ok"), {
+    consumed: false,
+    directions: [],
+    clicks: [],
+    moves: [],
+    remaining: "ok",
+  });
+});
+
 test("mouse input parser accepts X10 payload split one byte at a time", () => {
   const parser = new MouseInputParser({ allowEscStrippedX10: true });
   const payload = [32, 44, 49].map((code) => String.fromCharCode(code));
