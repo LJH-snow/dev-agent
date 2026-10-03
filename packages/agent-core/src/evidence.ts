@@ -151,7 +151,7 @@ export function selectEvidenceForAudit(
   readonly validations: ValidationRecord[];
   readonly changeSets: AppliedChangeSetRecord[];
 } {
-  const matchingValidations = validations.filter((validation) => {
+  const matchingValidations = deduplicateValidations(validations).filter((validation) => {
     if (
       filters.changeSetId !== undefined &&
       validation.changeSetId !== filters.changeSetId
@@ -178,7 +178,9 @@ export function selectEvidenceForAudit(
     ) {
       return false;
     }
-    return !hasValidationFilter || matchingChangeSetIds.has(changeSet.changeSetId);
+    return !hasValidationFilter
+      || matchingChangeSetIds.has(changeSet.changeSetId)
+      || filters.changeSetId !== undefined;
   });
   return {
     validations: matchingValidations,
@@ -204,7 +206,7 @@ export function createEvidenceAuditExport(
   const generatedAt = options.generatedAt ?? new Date().toISOString();
   assertNonEmptyString(generatedAt, "generatedAt");
 
-  const projectedValidations = [...validations]
+  const projectedValidations = deduplicateValidations(validations)
     .sort(compareValidations)
     .map(projectValidation);
   const projectedChangeSets = [...changeSets]
@@ -404,6 +406,19 @@ function projectSummary(summary: EvidenceSummary): EvidenceSummary {
 function compareValidations(left: ValidationRecord, right: ValidationRecord): number {
   return left.recordedAt.localeCompare(right.recordedAt) ||
     left.validationId.localeCompare(right.validationId);
+}
+
+function deduplicateValidations(
+  validations: readonly ValidationRecord[]
+): ValidationRecord[] {
+  const latest = new Map<string, ValidationRecord>();
+  for (const validation of validations) {
+    const previous = latest.get(validation.validationId);
+    if (previous === undefined || compareValidations(previous, validation) <= 0) {
+      latest.set(validation.validationId, validation);
+    }
+  }
+  return [...latest.values()];
 }
 
 function compareChangeSets(

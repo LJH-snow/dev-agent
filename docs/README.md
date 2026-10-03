@@ -12,6 +12,10 @@ Architecture, design decisions, and module documentation.
   records upstream design references, project fit, and known boundaries; it does
   not replace the local architecture as the source of truth.
 
+- **Execution Center history contract:** [execution-center-history.md](execution-center-history.md)
+  records the bounded history filters, notification semantics, export allowlist, and UI
+  capacity limits implemented by the Desktop workbench.
+
 The `v62/v63/v64` labels in phase documents are release-planning phase labels; they are not the
 numbered items 62/63/64 in the root README Roadmap.
 - **Chronological decisions and evidence:** [CHANGELOG.md](CHANGELOG.md) preserves

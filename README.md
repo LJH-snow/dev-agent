@@ -328,6 +328,9 @@ cargo clippy --target x86_64-unknown-linux-gnu --all-targets -- -D warnings
 
 `.github/workflows/ci.yml` runs on every push to `main` and on pull requests:
 
+- **Full verify**: a dedicated Ubuntu job installs Rust, `bubblewrap`, PTY tools, protobuf,
+  and ripgrep, configures the hosted user namespace, builds the runtime/executor artifacts,
+  and runs the complete `pnpm verify` gate with `DEV_AGENT_REQUIRE_LIVE_SANDBOX=1`.
 - **TypeScript**: `pnpm verify:typescript` runs the fixed structure check, build,
   typecheck, workspace tests, CLI package install smoke, preview contract, release/CI
   workflow contracts, and documentation contract (Node 26, pnpm 12.3.4). The hosted job installs `expect` and

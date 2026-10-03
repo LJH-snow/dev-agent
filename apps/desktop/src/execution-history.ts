@@ -12,6 +12,7 @@ export const MAX_EXECUTION_HISTORY_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 export const MAX_EXECUTION_HISTORY_COUNTER = 1_000_000;
 
 export type ExecutionHistoryStatus = "done" | "failed" | "aborted";
+export type ExecutionHistoryValidationStatus = "passed" | "failed" | "skipped" | "blocked";
 
 export interface ExecutionHistoryRecord {
   readonly schemaVersion: typeof EXECUTION_HISTORY_SCHEMA_VERSION;
@@ -25,6 +26,9 @@ export interface ExecutionHistoryRecord {
   readonly toolCount: number;
   readonly approvalCount: number;
   readonly validationCount: number;
+  readonly validationId?: string;
+  readonly changeSetId?: string;
+  readonly validationStatus?: ExecutionHistoryValidationStatus;
 }
 
 interface StoredExecutionHistoryState {
@@ -167,7 +171,20 @@ export function normalizeExecutionHistoryRecord(value: unknown): ExecutionHistor
     toolCount: clampInteger(value.toolCount, 0, MAX_EXECUTION_HISTORY_COUNTER),
     approvalCount: clampInteger(value.approvalCount, 0, MAX_EXECUTION_HISTORY_COUNTER),
     validationCount: clampInteger(value.validationCount, 0, MAX_EXECUTION_HISTORY_COUNTER),
+    ...(normalizeId(value.validationId) === undefined ? {} : { validationId: normalizeId(value.validationId) }),
+    ...(normalizeId(value.changeSetId) === undefined ? {} : { changeSetId: normalizeId(value.changeSetId) }),
+    ...(isExecutionHistoryValidationStatus(value.validationStatus)
+      ? { validationStatus: value.validationStatus }
+      : {}),
   };
+}
+
+export function normalizeExecutionHistoryId(value: unknown): string | undefined {
+  return normalizeId(value);
+}
+
+function isExecutionHistoryValidationStatus(value: unknown): value is ExecutionHistoryValidationStatus {
+  return value === "passed" || value === "failed" || value === "skipped" || value === "blocked";
 }
 
 function pruneHistories(histories: Map<string, ExecutionHistoryRecord[]>): void {

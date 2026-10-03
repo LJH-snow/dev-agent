@@ -251,6 +251,44 @@ test("Desktop SSE forwards validation results for isolated sessions", async () =
   }
 });
 
+test("Desktop drops validation evidence that belongs to another session", async () => {
+  const server = createDesktopServer({
+    session: {
+      id: "alpha",
+      async run(_message, emit) {
+        emit({
+          type: "validation",
+          data: {
+            sessionId: "beta",
+            validationId: "validation-beta",
+            changeSetId: "change-set-beta",
+            status: "passed",
+            checks: [],
+          },
+        });
+        emit({ type: "done", data: { status: "done", turns: 1 } });
+      },
+    },
+  });
+  const base = await start(server);
+  try {
+    const response = await fetch(base + "/api/chat", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sessionId: "alpha", message: "verify" }),
+    });
+    assert.equal(response.status, 200);
+    const events = parseSse(await response.text());
+    assert.equal(events.some((event) => event.type === "validation"), false);
+
+    const snapshot = await fetch(base + "/api/sessions/alpha/run");
+    assert.equal(snapshot.status, 200);
+    assert.doesNotMatch(await snapshot.text(), /validation-beta|change-set-beta|sessionId.*beta/);
+  } finally {
+    await close(server);
+  }
+});
+
 test("Desktop cancel keeps a blocked validation event before the aborted done event", async () => {
   let markStarted: (() => void) | undefined;
   const started = new Promise<void>((resolve) => {

@@ -43,6 +43,19 @@ async function loadQueueModule(): Promise<QueueModule> {
   return (await import(new URL("../public/chat-queue.js", import.meta.url).href)) as QueueModule;
 }
 
+test("recovered run queue policy pauses failed or aborted runs and drains only completed runs", async () => {
+  const module = await import(new URL("../public/run-recovery.js", import.meta.url).href) as {
+    getRecoveredRunQueueAction: (snapshot: unknown) => "hold" | "pause" | "drain";
+  };
+
+  assert.equal(module.getRecoveredRunQueueAction({ active: true, status: "running" }), "hold");
+  assert.equal(module.getRecoveredRunQueueAction({ active: false, status: "done" }), "drain");
+  assert.equal(module.getRecoveredRunQueueAction({ active: false, status: "failed" }), "pause");
+  assert.equal(module.getRecoveredRunQueueAction({ active: false, status: "aborted" }), "pause");
+  assert.equal(module.getRecoveredRunQueueAction({ active: false, status: "idle" }), "hold");
+  assert.equal(module.getRecoveredRunQueueAction(null), "hold");
+});
+
 test("prompt queue drains waiting prompts in FIFO order after a normal completion", async () => {
   const { createPromptQueue } = await loadQueueModule();
   const queue = createPromptQueue();
@@ -202,4 +215,27 @@ test("replay cursor accepts increasing sequences once and resets for a new run",
   assert.equal(cursor.accept("run-a", 0), false);
   assert.equal(cursor.accept("run-a", 2), true);
   assert.equal(cursor.accept("run-b", 1), true);
+});
+
+test("queue recovery drains FIFO after one accepted terminal replay and ignores duplicate terminal events", async () => {
+  const { createPromptQueue, createReplayCursor } = await loadQueueModule();
+  const queue = createPromptQueue();
+  const cursor = createReplayCursor();
+
+  queue.enqueue("active", { queueId: "q1", turnId: "t1" });
+  queue.enqueue("waiting", { queueId: "q2", turnId: "t2" });
+  assert.equal(queue.startNext()?.queueId, "q1");
+
+  assert.equal(cursor.accept("run-a", 1), true);
+  assert.equal(queue.requeueActive()?.queueId, "q1");
+  assert.equal(queue.snapshot().mode, "paused");
+
+  assert.equal(cursor.accept("run-a", 2), true);
+  queue.resume();
+  assert.equal(queue.startNext()?.queueId, "q1");
+  queue.complete("done");
+  assert.equal(queue.startNext()?.queueId, "q2");
+
+  assert.equal(cursor.accept("run-a", 2), false);
+  assert.equal(queue.startNext(), undefined);
 });

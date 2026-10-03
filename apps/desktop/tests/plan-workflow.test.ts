@@ -143,6 +143,118 @@ test("plan chat projects a pending review and approved apply uses the stored rev
   }
 });
 
+test("plan application does not forward validation evidence from another change set", async () => {
+  const server = createDesktopServer({
+    session: {
+      async run(_message, emit) {
+        (emit as any)({ type: "plan-review", data: { review } });
+        emit({ type: "done", data: { status: "done", turns: 1 } });
+      },
+      async applyPlannedChangeSet(_review, _prompt, emit) {
+        emit({
+          type: "validation",
+          data: {
+            validationId: "foreign-validation",
+            changeSetId: "foreign-change-set",
+            status: "passed",
+          },
+        });
+        emit({ type: "done", data: { status: "done", turns: 1 } });
+      },
+    },
+  });
+  const base = await start(server);
+  try {
+    const planned = await postJson(base, "/api/chat", {
+      message: "prepare the change",
+      mode: "plan",
+    });
+    await readSse(planned);
+
+    const applied = await postJson(base, "/api/plans/apply", {
+      changeSetId: review.changeSetId,
+    });
+    assert.equal(applied.status, 200);
+    const events = await readSse(applied);
+    assert.equal(events.some((event) => event.type === "validation"), false);
+    assert.ok(events.some((event) => event.type === "done"));
+
+    const snapshot = await fetch(base + "/api/sessions/desktop-default/run");
+    assert.equal(snapshot.status, 200);
+    assert.doesNotMatch(await snapshot.text(), /foreign-change-set|foreign-validation/);
+  } finally {
+    await close(server);
+  }
+});
+
+test("a pending plan blocks a second chat until the review is resolved", async () => {
+  const server = createDesktopServer({
+    session: {
+      async run(_message, emit) {
+        (emit as any)({ type: "plan-review", data: { review } });
+        emit({ type: "done", data: { status: "done", turns: 1 } });
+      },
+    },
+  });
+  const base = await start(server);
+  try {
+    const planned = await postJson(base, "/api/chat", {
+      message: "prepare the change",
+      mode: "plan",
+    });
+    await readSse(planned);
+
+    const secondChat = await postJson(base, "/api/chat", {
+      message: "continue while the review is pending",
+    });
+    assert.equal(secondChat.status, 409);
+    assert.deepEqual(await secondChat.json(), {
+      error: "a plan review is already pending",
+      code: "pending-plan",
+    });
+  } finally {
+    await close(server);
+  }
+});
+
+test("stale plan application discards the review and returns a bounded error", async () => {
+  const server = createDesktopServer({
+    session: {
+      async run(_message, emit) {
+        (emit as any)({ type: "plan-review", data: { review } });
+        emit({ type: "done", data: { status: "done", turns: 1 } });
+      },
+      async applyPlannedChangeSet(_review, _prompt, emit) {
+        emit({ type: "error", data: { message: "preimage conflict at /private/workspace/secret.txt" } });
+        emit({ type: "done", data: { status: "error", turns: 1 } });
+      },
+    },
+  });
+  const base = await start(server);
+  try {
+    const planned = await postJson(base, "/api/chat", {
+      message: "prepare the change",
+      mode: "plan",
+    });
+    await readSse(planned);
+
+    const applied = await postJson(base, "/api/plans/apply", {
+      changeSetId: review.changeSetId,
+    });
+    assert.equal(applied.status, 200);
+    const text = await applied.text();
+    assert.match(text, /Plan review is stale and was discarded/);
+    assert.doesNotMatch(text, /preimage conflict|private\/workspace|secret\.txt/);
+
+    const retry = await postJson(base, "/api/plans/apply", {
+      changeSetId: review.changeSetId,
+    });
+    assert.equal(retry.status, 404);
+  } finally {
+    await close(server);
+  }
+});
+
 test("rejecting a pending plan removes it without invoking apply", async () => {
   let applyCalls = 0;
   const server = createDesktopServer({
@@ -296,6 +408,84 @@ test("cancelling plan application restores the pending plan for retry", async ()
     const retryEvents = await readSse(retryResponse);
     assert.ok(retryEvents.some((event) => event.type === "done"));
     assert.equal(applyCalls, 2);
+  } finally {
+    await close(server);
+  }
+});
+
+test("timed out plan application drops the review and ignores late completion", async () => {
+  const serverOptions = {
+    planApplyTimeoutMs: 10,
+    session: {
+      async run(_message, emit) {
+        (emit as any)({ type: "plan-review", data: { review } });
+        emit({ type: "done", data: { status: "done", turns: 1 } });
+      },
+      async applyPlannedChangeSet(_review, _prompt, emit) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        emit({ type: "done", data: { status: "done", turns: 1 } });
+      },
+    },
+  };
+  const server = createDesktopServer(serverOptions);
+  const base = await start(server);
+  try {
+    const planned = await postJson(base, "/api/chat", {
+      message: "prepare the change",
+      mode: "plan",
+    });
+    await readSse(planned);
+
+    const applied = await postJson(base, "/api/plans/apply", {
+      changeSetId: review.changeSetId,
+    });
+    assert.equal(applied.status, 200);
+    const text = await applied.text();
+    assert.match(text, /Plan apply timed out/);
+    assert.doesNotMatch(text, /event: done/);
+
+    await new Promise((resolve) => setTimeout(resolve, 70));
+    const retry = await postJson(base, "/api/plans/apply", {
+      changeSetId: review.changeSetId,
+    });
+    assert.equal(retry.status, 404);
+
+    const snapshot = await fetch(base + "/api/sessions/desktop-default/run");
+    assert.equal(snapshot.status, 200);
+    assert.equal((await snapshot.json() as any).status, "aborted");
+  } finally {
+    await close(server);
+  }
+});
+
+test("Desktop marks timed out plan reviews as discarded instead of retryable", async () => {
+  const server = createDesktopServer({ session: { async run() {} } });
+  const base = await start(server);
+  try {
+    const response = await fetch(base + "/");
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /"plan\.expired": "Apply timed out; the review was discarded\. Create a new plan\."/);
+    assert.match(html, /"status\.planExpired": "Plan apply timed out; review discarded"/);
+    assert.match(html, /state === "expired"/);
+    assert.match(html, /parsed\.message === "Plan apply timed out"/);
+    assert.match(html, /setPlanCardState\(card, "plan\.expired"\)/);
+  } finally {
+    await close(server);
+  }
+});
+
+test("Desktop marks stale plan reviews as discarded instead of retryable", async () => {
+  const server = createDesktopServer({ session: { async run() {} } });
+  const base = await start(server);
+  try {
+    const response = await fetch(base + "/");
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    assert.match(html, /"plan\.discarded": "Review no longer matches the workspace; create a new plan\."/);
+    assert.match(html, /"status\.planStale": "Plan review is stale; review discarded"/);
+    assert.match(html, /parsed\.message === "Plan review is stale and was discarded"/);
+    assert.match(html, /setPlanCardState\(card, "plan\.discarded"\)/);
   } finally {
     await close(server);
   }
