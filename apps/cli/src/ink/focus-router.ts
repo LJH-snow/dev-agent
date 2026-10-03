@@ -5,6 +5,7 @@ export const INK_FOCUS_IDS = {
   prompt: "ink-prompt",
   sessionPicker: "ink-session-picker",
   pathCompletion: "ink-path-completion",
+  historySearch: "ink-history-search",
   commandPalette: "ink-command-palette",
   retry: "ink-retry",
   composer: "ink-composer",
@@ -16,6 +17,7 @@ export interface InkFocusState {
   readonly activeInputPrompt: boolean;
   readonly sessionPicker: boolean;
   readonly pathCompletion: boolean;
+  readonly historySearch: boolean;
   readonly commandPalette: boolean;
   readonly retry: boolean;
 }
@@ -24,6 +26,7 @@ export function resolveInkFocusOwner(state: InkFocusState): InkFocusOwner {
   if (state.activeInputPrompt) return "prompt";
   if (state.sessionPicker) return "sessionPicker";
   if (state.pathCompletion) return "pathCompletion";
+  if (state.historySearch) return "historySearch";
   if (state.commandPalette) return "commandPalette";
   if (state.retry) return "retry";
   return "composer";
@@ -50,6 +53,10 @@ export function useInkFocusRouter(state: InkFocusState): {
   useFocus({
     id: INK_FOCUS_IDS.pathCompletion,
     isActive: owner === "pathCompletion",
+  });
+  useFocus({
+    id: INK_FOCUS_IDS.historySearch,
+    isActive: owner === "historySearch",
   });
   useFocus({
     id: INK_FOCUS_IDS.commandPalette,

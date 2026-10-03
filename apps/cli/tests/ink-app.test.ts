@@ -1361,6 +1361,86 @@ test("Ink notice panel keeps a bounded recent window", () => {
   assert.match(output, /\+ 3 earlier notices/);
 });
 
+test("Ink history search filters prompts and accepts into the composer", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const submitted: string[] = [];
+  const instance = renderInkApp(stdin, stdout, (value) => submitted.push(value));
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    stdin.write("first task\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("second task\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, ["first task", "second task"]);
+
+    stdin.write("\u0012");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /HISTORY \/\/ SEARCH/);
+    assert.match(writes.join(""), /› second task/, "the empty query selects the newest entry");
+
+    // ^R again cycles to the next older match.
+    stdin.write("\u0012");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /› first task/);
+
+    stdin.write("fir");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /1 match/);
+    assert.match(writes.join(""), /› first task/);
+
+    // Enter restores the match into the composer without submitting.
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, ["first task", "second task"]);
+    assert.match(writes.join(""), /first task█/);
+
+    // The next Enter submits the restored prompt.
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, ["first task", "second task", "first task"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("Ink history search Escape closes without touching the composer", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const submitted: string[] = [];
+  const instance = renderInkApp(stdin, stdout, (value) => submitted.push(value));
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    stdin.write("hello");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\u0012");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.doesNotMatch(writes.join(""), /HISTORY \/\/ SEARCH/, "search stays closed without history");
+
+    stdin.write("x\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, ["hellox"]);
+    stdin.write("\u0012");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /HISTORY \/\/ SEARCH/);
+
+    stdin.write("\u001b");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    writes.length = 0;
+    stdin.write("!");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.doesNotMatch(writes.join(""), /HISTORY \/\/ SEARCH/);
+    assert.match(writes.join(""), /!█/, "composer input resumes after closing");
+    assert.deepEqual(submitted, ["hellox"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
 test("Ink launch surface shows queued prompts below the active transcript", () => {
   const store = new InkRuntimeStore();
   store.setQueuedPrompts(["second prompt"]);

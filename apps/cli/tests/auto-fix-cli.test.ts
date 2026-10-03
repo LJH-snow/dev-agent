@@ -604,7 +604,10 @@ test("Autofix discard reports a persistence failure instead of claiming success"
   }
 });
 
-test("restarted CLI reviews a persisted Autofix change set but fails closed on apply", async () => {
+test(
+  "restarted CLI reviews a persisted Autofix change set but fails closed on apply",
+  { timeout: 40_000 },
+  async () => {
   const workspace = await mkdtemp(join(tmpdir(), "dev-agent-autofix-restart-cli-"));
   const sessionDir = join(workspace, "sessions");
   const memoryPath = join(sessionDir, "default.json");

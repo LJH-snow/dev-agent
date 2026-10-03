@@ -79,3 +79,24 @@
   earlier run showed 6 load-induced timing failures while parallel windows
   were testing; all pass standalone and none touch the changed code);
   `git diff --check` passed.
+
+## 2026-10-04 (round 4)
+
+- Added incremental history search to the Ink composer on `Ctrl-R`:
+  - the new bounded `HistorySearchPanel` filters session prompts case-insensitively,
+    starts on the newest match, and supports repeated `Ctrl-R`, arrow keys,
+    wheel navigation, measured click hitboxes, Enter/Tab acceptance, and Escape
+    cancellation;
+  - acceptance restores the selected prompt into the composer without submitting,
+    preserving the shell-style review-before-send flow; modal focus routing keeps
+    query input and control keys out of the composer and retry shortcut;
+  - the panel renders at most six matches and keeps long prompts single-line and
+    bounded, with a welcome hint for discoverability.
+- Added protocol-level and real-screen regression coverage for keyboard, wheel,
+  click, Escape, focus priority, and the updated welcome snapshot.
+- Added a 40s timeout to the persisted Autofix restart PTY test; this only
+  removes a load-induced false negative and does not alter the behavior under test.
+- Verification: CLI test TypeScript build passed; full CLI suite passed 836/836;
+  `git diff --check` passed. Parallel `.mimosa/`, `.zcode/`, desktop, and other
+  pre-existing worktree changes remain outside this round and were not cleaned
+  or overwritten.

@@ -108,6 +108,7 @@ test("launch surface and empty composer have a stable visual contract", () => {
     " 2. Be specific for the best results.",
     " 3. Type / or : for commands.",
     " 4. Wheel/PageUp/PageDown browse; Home/End jump to bounds.",
+    " 5. Ctrl-R searches past prompts; :editor opens a full editor.",
     "",
     " Provider: fixture",
     " Model: fixture-model",

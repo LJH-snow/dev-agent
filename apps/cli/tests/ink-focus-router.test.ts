@@ -42,6 +42,7 @@ const emptyFocusState: InkFocusState = {
   activeInputPrompt: false,
   sessionPicker: false,
   pathCompletion: false,
+  historySearch: false,
   commandPalette: false,
   retry: false,
 };
@@ -51,7 +52,8 @@ test("focus owner resolution preserves modal priority", () => {
     ["composer", {}, "composer"],
     ["retry", { retry: true }, "retry"],
     ["command palette", { commandPalette: true, retry: true }, "commandPalette"],
-    ["path completion", { pathCompletion: true, commandPalette: true }, "pathCompletion"],
+    ["history search", { historySearch: true, commandPalette: true }, "historySearch"],
+    ["path completion", { pathCompletion: true, historySearch: true }, "pathCompletion"],
     ["session picker", { sessionPicker: true, pathCompletion: true }, "sessionPicker"],
     ["input prompt", { activeInputPrompt: true, sessionPicker: true }, "prompt"],
   ];

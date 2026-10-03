@@ -42,6 +42,12 @@ import {
   type CommandPaletteLayout,
 } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
+import {
+  HISTORY_SEARCH_MAX_MATCHES,
+  HISTORY_SEARCH_VISIBLE,
+  HistorySearchPanel,
+  historySearchRowAt,
+} from "./history-search.js";
 import { SessionPicker, SESSION_PICKER_HEADER_ROWS, SESSION_PICKER_VISIBLE } from "./session-picker.js";
 import { isPointerInPanel, panelRowAt, type PanelLayout } from "./panel-hitbox.js";
 import { PlanReviewPanel } from "./plan-review-panel.js";
@@ -209,6 +215,12 @@ export function InkCliApp({
   const [pickerOffset, setPickerOffset] = useState(0);
   const [mcpPanelLayout, setMcpPanelLayout] = useState<PanelLayout | undefined>(undefined);
   const [mcpOffset, setMcpOffset] = useState(0);
+  // Incremental history search (^R): `undefined` means the panel is closed;
+  // a string holds the live query while the panel owns the input routing.
+  const [historySearchQuery, setHistorySearchQuery] = useState<string | undefined>(undefined);
+  const [historySearchIndex, setHistorySearchIndex] = useState(0);
+  const [historySearchOffset, setHistorySearchOffset] = useState(0);
+  const [historyPanelLayout, setHistoryPanelLayout] = useState<PanelLayout | undefined>(undefined);
   // Painted row positions of the user prompts, measured after each commit.
   // The pinned task header picks the prompt that owns the row currently at
   // the top of the viewport, so scrolling into an older task switches the
@@ -329,6 +341,14 @@ export function InkCliApp({
     ? []
     : rawSuggestions;
   const activePaletteLayout = suggestions.length > 0 ? paletteLayout : undefined;
+  const historySearchOpen = historySearchQuery !== undefined;
+  // Newest prompts are the most likely re-run targets, so search matches keep
+  // history order (oldest first) and the selection starts at the last entry.
+  const historyMatches = historySearchQuery === undefined
+    ? []
+    : history
+      .filter((entry) => entry.toLowerCase().includes(historySearchQuery.toLowerCase()))
+      .slice(-HISTORY_SEARCH_MAX_MATCHES);
   const busy = inputSnapshot.busy ||
     (snapshot.state !== "ready" && snapshot.state !== "done" &&
       snapshot.state !== "error" && snapshot.state !== "interrupted");
@@ -342,6 +362,7 @@ export function InkCliApp({
     activeInputPrompt: activeInputPrompt !== undefined,
     sessionPicker: snapshot.sessionPicker !== undefined,
     pathCompletion: pathCompletion !== undefined,
+    historySearch: historySearchOpen,
     commandPalette: suggestions.length > 0,
     retry: snapshot.retry !== undefined,
   });
@@ -466,6 +487,24 @@ export function InkCliApp({
     const maxOffset = Math.max(0, mcp.servers.length - MCP_SERVERS_VISIBLE);
     setMcpOffset((current) => Math.min(current, maxOffset));
   }, [snapshot.mcp]);
+
+  // Keep the bounded search window on the selected match as the query
+  // narrows or the selection moves; the window never scrolls otherwise.
+  useEffect(() => {
+    if (!historySearchOpen) {
+      setHistorySearchOffset(0);
+      return;
+    }
+    setHistorySearchOffset((current) => {
+      const maxOffset = Math.max(0, historyMatches.length - HISTORY_SEARCH_VISIBLE);
+      const clamped = Math.min(current, maxOffset);
+      if (historySearchIndex < clamped) return historySearchIndex;
+      if (historySearchIndex >= clamped + HISTORY_SEARCH_VISIBLE) {
+        return Math.max(0, historySearchIndex - HISTORY_SEARCH_VISIBLE + 1);
+      }
+      return clamped;
+    });
+  }, [historySearchOpen, historySearchIndex, historyMatches.length]);
 
   const registerUserRow = useCallback((id: string, node: DOMElement | null): void => {
     if (node) userRowNodes.set(id, node);
@@ -597,6 +636,20 @@ export function InkCliApp({
     }
   };
 
+  // Accepts one highlighted history match into the composer without
+  // submitting (shell ^R parity): the user reviews the restored prompt and
+  // presses Enter themselves.
+  const acceptHistoryMatch = (index: number): void => {
+    if (historyMatches.length === 0) return;
+    const selected = Math.min(Math.max(index, 0), historyMatches.length - 1);
+    const entry = historyMatches[selected];
+    if (entry === undefined) return;
+    applyComposer(entry, Array.from(entry).length);
+    setHistorySearchQuery(undefined);
+    setHistorySearchIndex(0);
+    setHistorySearchOffset(0);
+  };
+
   const choosePathSuggestion = (index: number): void => {
     const panel = pathCompletion;
     if (panel === undefined) return;
@@ -696,6 +749,16 @@ export function InkCliApp({
         });
         continue;
       }
+      if (focusOwner === "historySearch" && historyMatches.length > 0) {
+        const max = historyMatches.length - 1;
+        setHistorySearchIndex((index) => {
+          const current = Math.min(Math.max(index, 0), max);
+          return direction === "up"
+            ? Math.max(0, current - 1)
+            : Math.min(max, current + 1);
+        });
+        continue;
+      }
       if (focusOwner === "pathCompletion" && pathCompletion?.suggestions.length) {
         const max = pathCompletion.suggestions.length - 1;
         setPathCompletionIndex((index) => {
@@ -755,6 +818,24 @@ export function InkCliApp({
           acceptCommandSuggestion(absoluteRow);
         } else {
           setSuggestionIndex(absoluteRow);
+        }
+        continue;
+      }
+      const historyRow = focusOwner === "historySearch"
+        ? historySearchRowAt(click, historyPanelLayout, historyMatches.length)
+        : undefined;
+      if (historyRow !== undefined) {
+        // Same contract as the palette: first click selects, clicking the
+        // already-selected row accepts it into the composer.
+        const absoluteRow = historyRow + historySearchOffset;
+        const current = Math.min(
+          Math.max(historySearchIndex, 0),
+          historyMatches.length - 1,
+        );
+        if (absoluteRow === current) {
+          acceptHistoryMatch(absoluteRow);
+        } else {
+          setHistorySearchIndex(absoluteRow);
         }
         continue;
       }
@@ -818,6 +899,22 @@ export function InkCliApp({
       onCancel();
       return;
     }
+    // ^R opens incremental history search from the composer; the panel takes
+    // over input routing until Enter accepts or Escape cancels. It must sit
+    // before the retry "r" shortcut so Ctrl-R never re-runs a failed task.
+    if (
+      key.ctrl &&
+      input === "r" &&
+      (focusOwner === "composer" || focusOwner === "retry") &&
+      history.length > 0
+    ) {
+      setHistorySearchQuery("");
+      setHistorySearchIndex(
+        Math.max(0, Math.min(history.length, HISTORY_SEARCH_MAX_MATCHES) - 1),
+      );
+      setHistorySearchOffset(0);
+      return;
+    }
     // Some terminals expose Home/End as raw escape sequences without Ink's
     // parsed key flags. Handle those sequences before the generic Escape path.
     const draft = composerRef.current;
@@ -852,6 +949,10 @@ export function InkCliApp({
           setDismissedCommandKey(commandPaletteKey);
           setSuggestionIndex(0);
           break;
+        case "historySearch":
+          setHistorySearchQuery(undefined);
+          setHistorySearchIndex(0);
+          break;
         case "retry":
           if (onDismissRetry) {
             onDismissRetry();
@@ -862,6 +963,51 @@ export function InkCliApp({
         case "composer":
           onCancel();
           break;
+      }
+      return;
+    }
+    if (historySearchOpen && focusOwner === "historySearch") {
+      // Modal: the search panel owns every key so query edits never reach
+      // the composer, the queue, or the transcript viewport.
+      if ((key.return && !key.shift) || key.tab) {
+        if (historyMatches.length > 0) acceptHistoryMatch(historySearchIndex);
+        return;
+      }
+      if (key.upArrow || key.downArrow) {
+        const max = historyMatches.length - 1;
+        setHistorySearchIndex((index) => {
+          const current = Math.min(Math.max(index, 0), max);
+          if (key.upArrow) return current <= 0 ? max : current - 1;
+          return current >= max ? 0 : current + 1;
+        });
+        return;
+      }
+      if (key.ctrl && input === "r" && historyMatches.length > 0) {
+        // Shell parity: pressing ^R again moves to the next older match.
+        const max = historyMatches.length - 1;
+        setHistorySearchIndex((index) => {
+          const current = Math.min(Math.max(index, 0), max);
+          return current <= 0 ? max : current - 1;
+        });
+        return;
+      }
+      if (key.backspace || key.delete) {
+        const nextQuery = (historySearchQuery ?? "").slice(0, -1);
+        const nextMatches = history
+          .filter((entry) => entry.toLowerCase().includes(nextQuery.toLowerCase()))
+          .slice(-HISTORY_SEARCH_MAX_MATCHES);
+        setHistorySearchQuery(nextQuery);
+        setHistorySearchIndex(Math.max(0, nextMatches.length - 1));
+        return;
+      }
+      if (input.length > 0 && !key.ctrl && !key.meta && !key.escape) {
+        const nextQuery = (historySearchQuery ?? "") + input;
+        const nextMatches = history
+          .filter((entry) => entry.toLowerCase().includes(nextQuery.toLowerCase()))
+          .slice(-HISTORY_SEARCH_MAX_MATCHES);
+        setHistorySearchQuery(nextQuery);
+        setHistorySearchIndex(Math.max(0, nextMatches.length - 1));
+        return;
       }
       return;
     }
@@ -925,6 +1071,7 @@ export function InkCliApp({
     if (
       focusOwner === "retry" &&
       !busy &&
+      !key.ctrl &&
       draft.value.length === 0 &&
       input.toLowerCase() === "r"
     ) {
@@ -1176,6 +1323,16 @@ export function InkCliApp({
             onLayout={setPaletteLayout}
           />
         ) : null}
+        {historySearchOpen ? (
+          <HistorySearchPanel
+            query={historySearchQuery ?? ""}
+            matches={historyMatches}
+            selectedIndex={historySearchIndex}
+            columns={columns}
+            offset={historySearchOffset}
+            onLayout={setHistoryPanelLayout}
+          />
+        ) : null}
         {pathCompletion?.suggestions.length ? (
           <PathCompletionPanel
             completion={pathCompletion}
@@ -1282,6 +1439,7 @@ function WelcomePanel(props: {
         <Text>2. Be specific for the best results.</Text>
         <Text>3. Type / or : for commands.</Text>
         <Text>4. Wheel/PageUp/PageDown browse; Home/End jump to bounds.</Text>
+        <Text>5. Ctrl-R searches past prompts; :editor opens a full editor.</Text>
       </Box>
       <Box marginTop={1} flexDirection="column">
         <Text color={theme.muted}>Provider: <Text color={theme.text}>{props.provider}</Text></Text>

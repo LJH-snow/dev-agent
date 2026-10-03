@@ -459,6 +459,56 @@ test("hovering the MCP capability card scrolls its bounded window", async () => 
   } finally { screen.dispose(); }
 });
 
+test("history search moves with the wheel and accepts with clicks", async () => {
+  const screen = createScreen(120, 40);
+  const lastRowWith = (needle: string): number | undefined => {
+    const rows = screen.lines();
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      if (rows[index]?.includes(needle)) return index + 1;
+    }
+    return undefined;
+  };
+  try {
+    for (const prompt of ["alpha task one", "alpha task two", "beta task three"]) {
+      screen.stdin.write(`${prompt}\r`);
+      await new Promise((resolve) => setTimeout(resolve, 40));
+    }
+    assert.deepEqual(screen.submitted, [
+      "alpha task one",
+      "alpha task two",
+      "beta task three",
+    ]);
+
+    screen.stdin.write("\u0012");
+    await screen.waitFor(() => screen.paintedRow("HISTORY // SEARCH") !== undefined, "search open");
+    await screen.waitFor(
+      () => lastRowWith("› beta task three") !== undefined,
+      "the empty query selects the newest entry",
+    );
+
+    // Wheel up moves the selection one match older; because the row under the
+    // pointer is now the selected one, a single click accepts it immediately.
+    screen.stdin.write("\u001b[<64;10;10M");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    const selectedRow = lastRowWith("› alpha task two");
+    assert.ok(selectedRow !== undefined, "the wheel moved the selection to the older match");
+    screen.click(2, selectedRow);
+    await screen.waitFor(
+      () => screen.lines().some((line) => line.includes("alpha task two█")),
+      "clicking the selected row restores the prompt into the composer",
+    );
+
+    screen.stdin.write("\r");
+    await screen.waitFor(() => screen.submitted.length === 4, "Enter submits the restored prompt");
+    assert.deepEqual(screen.submitted, [
+      "alpha task one",
+      "alpha task two",
+      "beta task three",
+      "alpha task two",
+    ]);
+  } finally { screen.dispose(); }
+});
+
 test("clicking path completion rows selects and then accepts", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "dev-agent-click-path-"));
   await writeFile(join(workspace, "notes.md"), "notes\n", "utf8");
