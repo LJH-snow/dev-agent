@@ -431,7 +431,10 @@ reports, which makes a bare `[M` prefix indistinguishable from composer text;
 that ambiguous compatibility path is therefore off by default. Terminals that
 only implement X10 reports can set `DEV_AGENT_LEGACY_MOUSE_X10=1` to re-enable
 it; the parser still guards text with a button-byte whitelist, same-event
-text preservation, and a bounded pending timeout.
+text preservation, and a bounded pending timeout. While `:editor` suspends the
+TUI for an external editor, mouse tracking is disabled for the duration and
+re-enabled after Ink reclaims the terminal, so the editor never receives
+stray mouse report bytes.
 
 ## Installed CLI and external projects
 

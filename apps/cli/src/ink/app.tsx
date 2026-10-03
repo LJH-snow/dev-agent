@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore, useState } from "react";
-import { Box, Text, measureElement, useApp, useCursor, useInput, usePaste, useStdin, useStdout, type DOMElement, type SuspendTerminal } from "ink";
+import { Box, Text, measureElement, useApp, useCursor, useInput, usePaste, useStdin, useStdout, type DOMElement } from "ink";
 
 import {
   DEFAULT_COMMAND_HINTS,
@@ -54,6 +54,13 @@ import {
   type PathCompletionResult,
 } from "../path-completion.js";
 
+/**
+ * Callback-form terminal suspension. The CLI only hands the terminal to an
+ * external editor and awaits completion; Ink's async-dispose handle form is
+ * intentionally not re-exported through this boundary.
+ */
+export type InkSuspendTerminal = (callback: () => void | Promise<void>) => Promise<void>;
+
 export interface InkCliAppProps {
   readonly store: InkRuntimeStore;
   readonly provider: string;
@@ -75,7 +82,7 @@ export interface InkCliAppProps {
   readonly onDismissRetry?: () => void;
   readonly onSessionResume?: (index: number) => void;
   readonly onDismissSessionPicker?: () => void;
-  readonly onSuspendTerminalReady?: (suspendTerminal: SuspendTerminal) => void;
+  readonly onSuspendTerminalReady?: (suspendTerminal: InkSuspendTerminal) => void;
 }
 
 const EMPTY_UI_SNAPSHOT: InkUiSnapshot = {
@@ -131,9 +138,6 @@ export function InkCliApp({
   const { stdout, write } = useStdout();
   const { suspendTerminal } = useApp();
   const { isRawModeSupported } = useStdin();
-  useEffect(() => {
-    onSuspendTerminalReady?.(suspendTerminal);
-  }, [onSuspendTerminalReady, suspendTerminal]);
   const [, resize] = useState(0);
   useEffect(() => {
     const changed = (): void => resize((n) => n + 1);
@@ -274,6 +278,48 @@ export function InkCliApp({
       }
     };
   }, [isRawModeSupported, stdout, viewportMouseInput, write]);
+
+  // Ink's suspension disables the keyboard protocol and alternate screen for
+  // the child process but leaves mouse tracking enabled, so an external
+  // `$EDITOR` would keep receiving stray mouse reports. Wrap the handoff:
+  // disable tracking before the child owns the terminal, re-enable it after
+  // Ink reclaims the screen, and reset protocol parsers on both edges so no
+  // half-consumed report survives the suspension.
+  useEffect(() => {
+    if (onSuspendTerminalReady === undefined) return;
+    const wrapped: InkSuspendTerminal = async (callback) => {
+      if (isRawModeSupported) {
+        viewportMouseInput.reset();
+        kittyQueryResponseFilter.reset();
+        try {
+          stdout.write(MOUSE_TRACKING_DISABLE);
+        } catch {
+          // Best-effort: the stream may already be closing.
+        }
+      }
+      try {
+        await suspendTerminal(callback);
+      } finally {
+        if (isRawModeSupported) {
+          viewportMouseInput.reset();
+          kittyQueryResponseFilter.reset();
+          try {
+            stdout.write(MOUSE_TRACKING_ENABLE);
+          } catch {
+            // Best-effort: the stream may already be closing.
+          }
+        }
+      }
+    };
+    onSuspendTerminalReady(wrapped);
+  }, [
+    isRawModeSupported,
+    kittyQueryResponseFilter,
+    onSuspendTerminalReady,
+    stdout,
+    suspendTerminal,
+    viewportMouseInput,
+  ]);
 
   const rawSuggestions = commandSuggestions(value, commands);
   const commandPaletteKey = `${value}\u0000${JSON.stringify(rawSuggestions)}`;

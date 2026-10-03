@@ -41,3 +41,20 @@
   suite reported 826/827 across two runs; the single failures (thinking-timer
   `0.0s` race, validation test under load) both pass standalone and touch no
   changed code. `git diff --check` passed.
+
+## 2026-10-03 (round 2)
+
+- Closed the last audit backlog item: mouse-tracking lifecycle around
+  `:editor` suspension. Ink's `beginSuspend()` disables the Kitty protocol and
+  alternate screen but leaves 1003/1006 enabled, so an external editor used to
+  receive stray mouse report bytes.
+- `InkCliApp` now wraps Ink's `suspendTerminal` (new exported callback-form
+  type `InkSuspendTerminal`, also narrowing the `index.ts` variable): tracking
+  is disabled before the child owns the terminal, re-enabled after Ink
+  reclaims it, and both protocol parsers (mouse, kitty query) reset on both
+  edges. Failures keep the handoff intact via symmetric finally blocks.
+- Regression test proves the wrapped handler runs the editor callback and
+  orders DISABLE before ENABLE in the output stream.
+- Verification: source/test builds passed; focused ink-app/mouse/navigation/
+  composer suites passed 108/108; full CLI suite passed 828/828;
+  `git diff --check` passed. README documents the suspension behavior.

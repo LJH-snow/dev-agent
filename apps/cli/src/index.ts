@@ -12,7 +12,7 @@ import { dirname } from "node:path";
 import { StringDecoder } from "node:string_decoder";
 import { fileURLToPath } from "node:url";
 import React from "react";
-import { render as renderInk, type SuspendTerminal } from "ink";
+import { render as renderInk } from "ink";
 import {
   createTaskStatusBridge,
   scheduleInteractiveTask,
@@ -149,7 +149,7 @@ import { resolveExecutorSelection, type ExecutorPreference } from "./runtime-sel
 import { executeWorkflowCommand } from "./workflow-command.js";
 import { createNonInteractiveController, EXIT_CODES } from "./non-interactive.js";
 import { runAcpServer } from "./acp-server.js";
-import { InkCliApp } from "./ink/app.js";
+import { InkCliApp, type InkSuspendTerminal } from "./ink/app.js";
 import { createRenderMetricsLifecycle } from "./ink/render-metrics.js";
 import { alternateScreenEnabled } from "./ink/alternate-screen.js";
 import {
@@ -5593,7 +5593,7 @@ async function interactiveInk(
   let closed = false;
   let pickerSessions: readonly StoredSession[] | undefined;
   let instance: ReturnType<typeof renderInk> | undefined;
-  let suspendTerminal: SuspendTerminal | undefined;
+  let suspendTerminal: InkSuspendTerminal | undefined;
   let lastRetry:
     | {
         readonly prompt: string;

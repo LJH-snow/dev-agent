@@ -333,6 +333,48 @@ test("clicking session picker rows selects and then resumes", async () => {
         screen.dispose();
     }
 });
+test("large session lists scroll a bounded window and clicks map to absolute rows", async () => {
+    const screen = createScreen(120, 40);
+    try {
+        const rows = Array.from({ length: 30 }, (_, index) => `session-${index + 1}`);
+        screen.store.setSessionPicker({
+            title: "SESSIONS",
+            rows,
+            selectedIndex: 0,
+        });
+        await screen.waitFor(() => screen.paintedRow("SESSIONS") !== undefined, "picker open");
+        await screen.waitFor(() => screen.paintedRow("session-8") !== undefined, "window paints 8 rows");
+        assert.equal(screen.paintedRow("session-9"), undefined, "window stays bounded");
+        assert.ok(screen.paintedRow("1/30") !== undefined, "position hint painted");
+        // Move the selection to session-12 (absolute index 11): the window must
+        // follow and paint session-5..session-12.
+        for (let step = 0; step < 11; step += 1) {
+            screen.stdin.write("\u001b[B");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        await screen.waitFor(() => screen.paintedRow("› session-12") !== undefined, "window follows the selection");
+        assert.equal(screen.paintedRow("session-4"), undefined, "rows above the window stay hidden");
+        // session-8 (absolute 7) is window row 3; the offset must map the click
+        // onto the absolute row: first click selects, second click resumes.
+        const sessionEightRow = screen.paintedRow("session-8");
+        assert.ok(sessionEightRow !== undefined, "session-8 painted in the window");
+        screen.click(2, sessionEightRow);
+        await screen.waitFor(() => screen.paintedRow("› session-8") !== undefined, "click selects the absolute row");
+        screen.click(2, sessionEightRow);
+        await screen.waitFor(() => screen.resumed.length === 1, "second click resumes");
+        assert.deepEqual(screen.resumed, [7]);
+        // Wrapping above the first row jumps the window to the list end.
+        for (let step = 0; step < 8; step += 1) {
+            screen.stdin.write("\u001b[A");
+            await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        await screen.waitFor(() => screen.paintedRow("› session-30") !== undefined, "wrap scrolls to the last row");
+        assert.ok(screen.paintedRow("30/30") !== undefined, "wrap updates the position hint");
+    }
+    finally {
+        screen.dispose();
+    }
+});
 test("clicking path completion rows selects and then accepts", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "dev-agent-click-path-"));
     await writeFile(join(workspace, "notes.md"), "notes\n", "utf8");

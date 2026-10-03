@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore, useState } from "react";
-import { Box, Text, measureElement, useApp, useCursor, useInput, usePaste, useStdin, useStdout, type DOMElement, type SuspendTerminal } from "ink";
+import { Box, Text, measureElement, useApp, useCursor, useInput, usePaste, useStdin, useStdout, type DOMElement } from "ink";
 
 import {
   DEFAULT_COMMAND_HINTS,
@@ -42,7 +42,7 @@ import {
   type CommandPaletteLayout,
 } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
-import { SessionPicker, SESSION_PICKER_HEADER_ROWS } from "./session-picker.js";
+import { SessionPicker, SESSION_PICKER_HEADER_ROWS, SESSION_PICKER_VISIBLE } from "./session-picker.js";
 import { panelRowAt, type PanelLayout } from "./panel-hitbox.js";
 import { PlanReviewPanel } from "./plan-review-panel.js";
 import { CollaborationPanel } from "./collaboration-panel.js";
@@ -53,6 +53,13 @@ import {
   completeWorkspacePath,
   type PathCompletionResult,
 } from "../path-completion.js";
+
+/**
+ * Callback-form terminal suspension. The CLI only hands the terminal to an
+ * external editor and awaits completion; Ink's async-dispose handle form is
+ * intentionally not re-exported through this boundary.
+ */
+export type InkSuspendTerminal = (callback: () => void | Promise<void>) => Promise<void>;
 
 export interface InkCliAppProps {
   readonly store: InkRuntimeStore;
@@ -75,7 +82,7 @@ export interface InkCliAppProps {
   readonly onDismissRetry?: () => void;
   readonly onSessionResume?: (index: number) => void;
   readonly onDismissSessionPicker?: () => void;
-  readonly onSuspendTerminalReady?: (suspendTerminal: SuspendTerminal) => void;
+  readonly onSuspendTerminalReady?: (suspendTerminal: InkSuspendTerminal) => void;
 }
 
 const EMPTY_UI_SNAPSHOT: InkUiSnapshot = {
@@ -131,9 +138,6 @@ export function InkCliApp({
   const { stdout, write } = useStdout();
   const { suspendTerminal } = useApp();
   const { isRawModeSupported } = useStdin();
-  useEffect(() => {
-    onSuspendTerminalReady?.(suspendTerminal);
-  }, [onSuspendTerminalReady, suspendTerminal]);
   const [, resize] = useState(0);
   useEffect(() => {
     const changed = (): void => resize((n) => n + 1);
@@ -155,7 +159,13 @@ export function InkCliApp({
   const viewportLayout = deriveInkViewportLayout(terminalRows, shellRows);
   const visibleTranscriptRows = viewportLayout.visibleRows;
   const navigationRow = viewportLayout.navigationRow;
-  const viewportMouseInput = useRef(new MouseInputParser()).current;
+  // Ink strips the ESC byte from X10 reports, so a legacy mouse prefix
+  // arrives as bare `[M`, which is indistinguishable from composer text.
+  // Modern terminals answer SGR 1006, so the ambiguous path stays off by
+  // default; X10-only terminals can opt in with DEV_AGENT_LEGACY_MOUSE_X10=1.
+  const viewportMouseInput = useRef(new MouseInputParser({
+    allowEscStrippedX10: process.env.DEV_AGENT_LEGACY_MOUSE_X10 === "1",
+  })).current;
   const kittyQueryResponseFilter = useRef(new KittyQueryResponseFilter()).current;
   const [value, setValue] = useState("");
   const [cursor, setCursor] = useState(0);
@@ -196,6 +206,7 @@ export function InkCliApp({
   const [paletteLayout, setPaletteLayout] = useState<CommandPaletteLayout | undefined>(undefined);
   const [pathPanelLayout, setPathPanelLayout] = useState<PanelLayout | undefined>(undefined);
   const [sessionPanelLayout, setSessionPanelLayout] = useState<PanelLayout | undefined>(undefined);
+  const [pickerOffset, setPickerOffset] = useState(0);
   // Painted row positions of the user prompts, measured after each commit.
   // The pinned task header picks the prompt that owns the row currently at
   // the top of the viewport, so scrolling into an older task switches the
@@ -267,6 +278,48 @@ export function InkCliApp({
       }
     };
   }, [isRawModeSupported, stdout, viewportMouseInput, write]);
+
+  // Ink's suspension disables the keyboard protocol and alternate screen for
+  // the child process but leaves mouse tracking enabled, so an external
+  // `$EDITOR` would keep receiving stray mouse reports. Wrap the handoff:
+  // disable tracking before the child owns the terminal, re-enable it after
+  // Ink reclaims the screen, and reset protocol parsers on both edges so no
+  // half-consumed report survives the suspension.
+  useEffect(() => {
+    if (onSuspendTerminalReady === undefined) return;
+    const wrapped: InkSuspendTerminal = async (callback) => {
+      if (isRawModeSupported) {
+        viewportMouseInput.reset();
+        kittyQueryResponseFilter.reset();
+        try {
+          stdout.write(MOUSE_TRACKING_DISABLE);
+        } catch {
+          // Best-effort: the stream may already be closing.
+        }
+      }
+      try {
+        await suspendTerminal(callback);
+      } finally {
+        if (isRawModeSupported) {
+          viewportMouseInput.reset();
+          kittyQueryResponseFilter.reset();
+          try {
+            stdout.write(MOUSE_TRACKING_ENABLE);
+          } catch {
+            // Best-effort: the stream may already be closing.
+          }
+        }
+      }
+    };
+    onSuspendTerminalReady(wrapped);
+  }, [
+    isRawModeSupported,
+    kittyQueryResponseFilter,
+    onSuspendTerminalReady,
+    stdout,
+    suspendTerminal,
+    viewportMouseInput,
+  ]);
 
   const rawSuggestions = commandSuggestions(value, commands);
   const commandPaletteKey = `${value}\u0000${JSON.stringify(rawSuggestions)}`;
@@ -372,7 +425,30 @@ export function InkCliApp({
   }, [pathCompletion]);
 
   useEffect(() => {
-    if (snapshot.sessionPicker === undefined) setSessionPanelLayout(undefined);
+    if (snapshot.sessionPicker === undefined) {
+      setSessionPanelLayout(undefined);
+      setPickerOffset(0);
+    }
+  }, [snapshot.sessionPicker]);
+
+  // Keep the bounded picker window on the selected row so session registries
+  // larger than the visible window stay keyboard-reachable; the window never
+  // scrolls otherwise, mirroring the command palette.
+  useEffect(() => {
+    const picker = snapshot.sessionPicker;
+    if (picker === undefined) {
+      setPickerOffset(0);
+      return;
+    }
+    setPickerOffset((current) => {
+      const maxOffset = Math.max(0, picker.rows.length - SESSION_PICKER_VISIBLE);
+      const clamped = Math.min(current, maxOffset);
+      if (picker.selectedIndex < clamped) return picker.selectedIndex;
+      if (picker.selectedIndex >= clamped + SESSION_PICKER_VISIBLE) {
+        return Math.max(0, picker.selectedIndex - SESSION_PICKER_VISIBLE + 1);
+      }
+      return clamped;
+    });
   }, [snapshot.sessionPicker]);
 
   const registerUserRow = useCallback((id: string, node: DOMElement | null): void => {
@@ -569,8 +645,9 @@ export function InkCliApp({
     }
     // A pending X10 report must never consume a real control key. Ink may
     // deliver Enter/Ctrl-C with the same input byte that a malformed packet
-    // would otherwise use as payload, so clear protocol state before routing
-    // those keys through the normal submit/cancel branches below.
+    // would otherwise use as payload, so restore any text-like pending bytes
+    // to the composer before routing those keys through the normal
+    // submit/cancel branches below.
     if (
       key.ctrl ||
       key.return ||
@@ -587,7 +664,8 @@ export function InkCliApp({
       key.backspace ||
       key.delete
     ) {
-      viewportMouseInput.reset();
+      const pendingText = viewportMouseInput.takePendingText();
+      if (pendingText.length > 0) insertText(pendingText);
     }
     const mouseInput = viewportMouseInput.push(input);
     for (const direction of mouseInput.directions) {
@@ -667,13 +745,22 @@ export function InkCliApp({
       }
       const clickedPicker = focusOwner === "sessionPicker" ? snapshot.sessionPicker : undefined;
       const sessionRow = clickedPicker !== undefined
-        ? panelRowAt(click, sessionPanelLayout, SESSION_PICKER_HEADER_ROWS, clickedPicker.rows.length)
+        ? panelRowAt(
+            click,
+            sessionPanelLayout,
+            SESSION_PICKER_HEADER_ROWS,
+            Math.min(SESSION_PICKER_VISIBLE, clickedPicker.rows.length),
+          )
         : undefined;
       if (sessionRow !== undefined && clickedPicker !== undefined) {
-        if (sessionRow === clickedPicker.selectedIndex) {
-          onSessionResume?.(sessionRow);
+        // Painted rows are window-relative; the offset maps them onto the
+        // full session list. First click selects, clicking the already
+        // selected row resumes (mirroring Enter).
+        const absoluteRow = sessionRow + pickerOffset;
+        if (absoluteRow === clickedPicker.selectedIndex) {
+          onSessionResume?.(absoluteRow);
         } else {
-          store.setSessionPickerIndex(sessionRow);
+          store.setSessionPickerIndex(absoluteRow);
         }
         continue;
       }
@@ -1008,6 +1095,7 @@ export function InkCliApp({
             rows={snapshot.sessionPicker.rows}
             selectedIndex={snapshot.sessionPicker.selectedIndex}
             columns={columns}
+            offset={pickerOffset}
             onLayout={setSessionPanelLayout}
           />
         ) : null}

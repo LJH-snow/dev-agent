@@ -1309,6 +1309,31 @@ test("Ink session picker uses arrows, Enter, and Escape without submitting a pro
   }
 });
 
+test("Ink session picker paints a bounded window for large session lists", () => {
+  const store = new InkRuntimeStore();
+  const rows = Array.from({ length: 30 }, (_, index) => `session-${index + 1}`);
+  store.setSessionPicker({ title: "SESSIONS", rows, selectedIndex: 0 });
+  const output = renderToString(
+    createElement(InkCliApp, {
+      store,
+      provider: "ollama",
+      model: "qwen3:4b-instruct",
+      sessionId: "default",
+      workingDirectory: "/Users/Admin/Desktop/dev-agent",
+      executor: "local",
+      commands: [],
+      onSubmit: () => undefined,
+      onCancel: () => undefined,
+      onExit: () => undefined,
+    }),
+    { columns: 100 },
+  );
+
+  assert.match(output, /session-8/);
+  assert.doesNotMatch(output, /session-9\b/, "only the visible window is painted");
+  assert.match(output, /1\/30/, "the picker hints at the selection position");
+});
+
 test("Ink launch surface shows queued prompts below the active transcript", () => {
   const store = new InkRuntimeStore();
   store.setQueuedPrompts(["second prompt"]);
