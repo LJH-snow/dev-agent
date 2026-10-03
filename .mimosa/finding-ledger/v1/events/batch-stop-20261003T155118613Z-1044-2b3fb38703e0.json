@@ -1,0 +1,37 @@
+{
+  "schemaVersion": "mimosa-finding-ledger-batch/v1",
+  "batchId": "stop-20261003T155118613Z-1044-2b3fb38703e0",
+  "runId": "20261003T155118613Z-1044-2b3fb38703e0",
+  "runStatus": "completed",
+  "coverage": {
+    "status": "complete",
+    "reasons": []
+  },
+  "source": {
+    "component": "zcode-hook",
+    "operationId": "Stop"
+  },
+  "revision": "f9b8f85e78692bf96374e41bd1886e1ef59f73d2",
+  "diffHash": "e26e2e09f1b2a60605618b2816fc5e2200683a6d8ef0c185b94696bdb952812c",
+  "rulesVersion": "unavailable",
+  "sessionHash": "3a3eaf13a24842bcd49998f1835e43b1a1df747c74d176770a91b563501e85ef",
+  "reportRef": ".mimosa/reports/task-review-sess_4944d208-ac81-4b15-81b7-a3ac8d89761b-20261003T155118613Z-1044-2b3fb38703e0.json",
+  "events": [],
+  "observedFindingIds": [
+    "mimosa-8e48b34d2d17fb44e0162c72",
+    "mimosa-7ec27771173496c653c84ecc"
+  ],
+  "verifiedFiles": [
+    {
+      "file": "apps/cli/src/index.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    },
+    {
+      "file": "apps/cli/tests/ink-app.test.ts",
+      "direct": "complete",
+      "projectContext": "partial"
+    }
+  ],
+  "recordedAt": "2026-10-03T15:51:19.229Z"
+}

@@ -23,3 +23,18 @@ export function panelRowAt(
   if (row < 0 || row >= rowCount) return undefined;
   return row;
 }
+
+/**
+ * Reports whether the pointer currently hovers a measured bordered panel.
+ * Mouse rows are 1-based while `layout.top` is 0-based, so the box spans
+ * rows `top + 1` through `top + height`. Row containment is sufficient:
+ * a panel row is only painted where the panel itself lives in the frame.
+ */
+export function isPointerInPanel(
+  pointer: { readonly x: number; readonly y: number },
+  layout: PanelLayout | undefined,
+): boolean {
+  if (layout === undefined || layout.height <= 0) return false;
+  if (!Number.isInteger(pointer.y) || !Number.isInteger(pointer.x)) return false;
+  return pointer.y >= layout.top + 1 && pointer.y <= layout.top + layout.height;
+}

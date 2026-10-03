@@ -1,5 +1,7 @@
-import { Box, Text } from "ink";
+import { useEffect, useRef } from "react";
+import { Box, Text, measureElement, type DOMElement } from "ink";
 
+import type { PanelLayout } from "./panel-hitbox.js";
 import type {
   InkMcpServerSnapshot,
   InkMcpServerState,
@@ -7,18 +9,57 @@ import type {
 } from "./runtime-store.js";
 import { useInkTheme } from "./theme.js";
 
+export interface McpPanelProps {
+  readonly snapshot: InkMcpSnapshot | undefined;
+  readonly columns: number;
+  /** First server row painted in the scrolling visible window. */
+  readonly offset?: number;
+  readonly onLayout?: (layout: PanelLayout) => void;
+}
+
+/** Rows painted above the first server row: top border + header. */
+export const MCP_PANEL_HEADER_ROWS = 2;
+/**
+ * Server registries can grow long; painting every row would push the composer
+ * and footer out of the terminal, so the card renders a bounded window that
+ * the pointer can scroll while hovering it.
+ */
+export const MCP_SERVERS_VISIBLE = 8;
+
 export function McpPanel({
   snapshot,
   columns,
-}: {
-  readonly snapshot: InkMcpSnapshot | undefined;
-  readonly columns: number;
-}): React.JSX.Element | null {
+  offset = 0,
+  onLayout,
+}: McpPanelProps): React.JSX.Element | null {
   const theme = useInkTheme();
+  const boxRef = useRef<DOMElement | null>(null);
+  const reportedLayoutRef = useRef("");
+  // Same measured-layout contract as the session picker so pointer hit-testing
+  // stays aligned with what is painted; the change guard keeps re-measures
+  // from re-rendering the whole app.
+  useEffect(() => {
+    const node = boxRef.current;
+    if (!node) return;
+    try {
+      const measured = measureElement(node);
+      if (measured.height <= 0) return;
+      const key = `${measured.y}:${measured.height}`;
+      if (key !== reportedLayoutRef.current) {
+        reportedLayoutRef.current = key;
+        onLayout?.({ top: measured.y, height: measured.height });
+      }
+    } catch {
+      // The node is not attached yet; the next commit measures it.
+    }
+  });
   if (snapshot === undefined) return null;
 
+  const visible = snapshot.servers.slice(offset, offset + MCP_SERVERS_VISIBLE);
+  const windowEnd = Math.min(offset + MCP_SERVERS_VISIBLE, snapshot.servers.length);
   return (
     <Box
+      ref={boxRef}
       flexDirection="column"
       borderStyle="round"
       borderColor={panelBorderColor(snapshot, theme)}
@@ -32,10 +73,12 @@ export function McpPanel({
       {snapshot.servers.length === 0 ? (
         <Text dimColor>No MCP servers configured. Use :mcp add or :mcp templates.</Text>
       ) : (
-        snapshot.servers.map((server) => <McpServerRow key={server.name} server={server} />)
+        visible.map((server) => <McpServerRow key={server.name} server={server} />)
       )}
       <Text color={theme.warning}>
-        :mcp status · :mcp test · :mcp templates
+        {snapshot.servers.length > MCP_SERVERS_VISIBLE
+          ? `:mcp status · :mcp test · :mcp templates · ${offset + 1}–${windowEnd}/${snapshot.servers.length}`
+          : ":mcp status · :mcp test · :mcp templates"}
       </Text>
     </Box>
   );

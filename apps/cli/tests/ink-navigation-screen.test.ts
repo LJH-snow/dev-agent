@@ -427,6 +427,38 @@ test("large session lists scroll a bounded window and clicks map to absolute row
   } finally { screen.dispose(); }
 });
 
+test("hovering the MCP capability card scrolls its bounded window", async () => {
+  const screen = createScreen(120, 40);
+  try {
+    const servers = Array.from({ length: 12 }, (_, index) => ({
+      name: `server-${index + 1}`,
+      state: "ready" as const,
+      tools: 1,
+      resources: 0,
+      prompts: 0,
+    }));
+    screen.store.setMcpSnapshot({
+      status: "ready",
+      servers,
+      totals: { servers: 12, tools: 12, resources: 0, prompts: 0 },
+    });
+    await screen.waitFor(() => screen.paintedRow("MCP CAPABILITIES") !== undefined, "panel open");
+    await screen.waitFor(() => screen.paintedRow("server-8") !== undefined, "window paints 8 servers");
+    assert.equal(screen.paintedRow("server-9"), undefined, "window stays bounded");
+
+    // A motion report parks the pointer on the painted server-8 row; the
+    // following wheel-down must scroll the card's window, not the transcript.
+    const hoverRow = screen.paintedRow("server-8");
+    assert.ok(hoverRow !== undefined, "hover target painted");
+    screen.stdin.write(`\u001b[<35;2;${hoverRow}M`);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    screen.stdin.write(`\u001b[<65;2;${hoverRow}M`);
+    await screen.waitFor(() => screen.paintedRow("server-9") !== undefined, "wheel scrolls the card window");
+    assert.ok(screen.paintedRow("2–9/12") !== undefined, "position hint tracks the window");
+    assert.equal(screen.paintedRow("server-1"), undefined, "the window left the first server behind");
+  } finally { screen.dispose(); }
+});
+
 test("clicking path completion rows selects and then accepts", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "dev-agent-click-path-"));
   await writeFile(join(workspace, "notes.md"), "notes\n", "utf8");

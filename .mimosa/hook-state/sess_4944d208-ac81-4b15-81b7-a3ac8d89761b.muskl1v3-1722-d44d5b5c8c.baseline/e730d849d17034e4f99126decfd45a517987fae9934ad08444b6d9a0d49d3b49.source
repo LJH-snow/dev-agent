@@ -19,7 +19,7 @@ import {
   type CommandPaletteLayout,
 } from "../dist/ink/command-palette.js";
 import { InkRuntimeStore } from "../dist/ink/runtime-store.js";
-import { MOUSE_TRACKING_DISABLE } from "../dist/ink/mouse-wheel.js";
+import { MOUSE_TRACKING_DISABLE, MOUSE_TRACKING_ENABLE } from "../dist/ink/mouse-wheel.js";
 import {
   createInkRenderOutput,
   normalizeInkTerminalSize,
@@ -2058,6 +2058,61 @@ test("Ink disables mouse tracking through the raw stdout stream during unmount",
       "unmount must disable SGR and any-event mouse tracking",
     );
   } finally {
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
+test("Ink suspends mouse tracking while an external editor owns the terminal", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  let suspendHandler: ((callback: () => void | Promise<void>) => Promise<void>) | undefined;
+  const instance = render(
+    createElement(InkCliApp, {
+      store: new InkRuntimeStore(),
+      provider: "ollama",
+      model: "qwen3:4b-instruct",
+      sessionId: "default",
+      workingDirectory: "/Users/Admin/Desktop/dev-agent",
+      executor: "local",
+      commands: [],
+      onSubmit: () => undefined,
+      onCancel: () => undefined,
+      onExit: () => undefined,
+      onSuspendTerminalReady: (handler) => {
+        suspendHandler = handler;
+      },
+    }),
+    {
+      stdin,
+      stdout,
+      stderr: stdout,
+      debug: true,
+      incrementalRendering: false,
+      exitOnCtrlC: false,
+    },
+  );
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.ok(suspendHandler !== undefined, "the app must expose the wrapped suspension");
+
+    writes.length = 0;
+    let editorRan = false;
+    await suspendHandler!(async () => {
+      editorRan = true;
+    });
+    assert.equal(editorRan, true, "the editor callback must run while suspended");
+
+    const frame = writes.join("");
+    const disableIndex = frame.indexOf(MOUSE_TRACKING_DISABLE);
+    const enableIndex = frame.indexOf(MOUSE_TRACKING_ENABLE);
+    assert.ok(disableIndex >= 0, "suspension must disable mouse tracking before the editor");
+    assert.ok(
+      enableIndex > disableIndex,
+      "resume must re-enable mouse tracking only after Ink reclaimed the terminal",
+    );
+  } finally {
+    instance.unmount();
     stdin.destroy();
     stdout.destroy();
   }

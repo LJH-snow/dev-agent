@@ -43,10 +43,10 @@ import {
 } from "./command-palette.js";
 import { HistoryPanel } from "./history-panel.js";
 import { SessionPicker, SESSION_PICKER_HEADER_ROWS, SESSION_PICKER_VISIBLE } from "./session-picker.js";
-import { panelRowAt, type PanelLayout } from "./panel-hitbox.js";
+import { isPointerInPanel, panelRowAt, type PanelLayout } from "./panel-hitbox.js";
 import { PlanReviewPanel } from "./plan-review-panel.js";
 import { CollaborationPanel } from "./collaboration-panel.js";
-import { McpPanel } from "./mcp-panel.js";
+import { McpPanel, MCP_SERVERS_VISIBLE } from "./mcp-panel.js";
 import { InkThemeProvider, getInkTheme, useInkTheme } from "./theme.js";
 import { useInkFocusRouter } from "./focus-router.js";
 import {
@@ -207,6 +207,8 @@ export function InkCliApp({
   const [pathPanelLayout, setPathPanelLayout] = useState<PanelLayout | undefined>(undefined);
   const [sessionPanelLayout, setSessionPanelLayout] = useState<PanelLayout | undefined>(undefined);
   const [pickerOffset, setPickerOffset] = useState(0);
+  const [mcpPanelLayout, setMcpPanelLayout] = useState<PanelLayout | undefined>(undefined);
+  const [mcpOffset, setMcpOffset] = useState(0);
   // Painted row positions of the user prompts, measured after each commit.
   // The pinned task header picks the prompt that owns the row currently at
   // the top of the viewport, so scrolling into an older task switches the
@@ -450,6 +452,20 @@ export function InkCliApp({
       return clamped;
     });
   }, [snapshot.sessionPicker]);
+
+  // The capability card's window must track the live server list: drop the
+  // panel state when the snapshot disappears and clamp the offset when the
+  // list shrinks so the window can never point past the last server.
+  useEffect(() => {
+    const mcp = snapshot.mcp;
+    if (mcp === undefined) {
+      setMcpPanelLayout(undefined);
+      setMcpOffset(0);
+      return;
+    }
+    const maxOffset = Math.max(0, mcp.servers.length - MCP_SERVERS_VISIBLE);
+    setMcpOffset((current) => Math.min(current, maxOffset));
+  }, [snapshot.mcp]);
 
   const registerUserRow = useCallback((id: string, node: DOMElement | null): void => {
     if (node) userRowNodes.set(id, node);
@@ -697,6 +713,23 @@ export function InkCliApp({
         store.setSessionPickerIndex(direction === "up"
           ? Math.max(0, current - 1)
           : Math.min(max, current + 1));
+        continue;
+      }
+      // Hovering the capability card scrolls its bounded server window
+      // instead of the transcript, mirroring the pointer behavior of the
+      // focused panels.
+      if (
+        mousePosition !== undefined &&
+        snapshot.mcp !== undefined &&
+        isPointerInPanel(mousePosition, mcpPanelLayout)
+      ) {
+        const maxOffset = Math.max(0, snapshot.mcp.servers.length - MCP_SERVERS_VISIBLE);
+        setMcpOffset((current) => {
+          const clamped = Math.min(current, maxOffset);
+          return direction === "up"
+            ? Math.max(0, clamped - 1)
+            : Math.min(maxOffset, clamped + 1);
+        });
         continue;
       }
       moveViewport(direction, "wheel");
@@ -1114,7 +1147,12 @@ export function InkCliApp({
           />
         ) : null}
         {snapshot.mcp !== undefined ? (
-          <McpPanel snapshot={snapshot.mcp} columns={columns} />
+          <McpPanel
+            snapshot={snapshot.mcp}
+            columns={columns}
+            offset={mcpOffset}
+            onLayout={setMcpPanelLayout}
+          />
         ) : null}
         {snapshot.notices.length > 0 ? (
           <NoticePanel notices={snapshot.notices} columns={columns} />
@@ -1669,6 +1707,9 @@ function TranscriptEntry({
   );
 }
 
+/** Newest notices painted by the panel; older ones collapse into a hint. */
+const NOTICE_VISIBLE = 6;
+
 function NoticePanel({
   notices,
   columns,
@@ -1677,6 +1718,8 @@ function NoticePanel({
   columns: number;
 }): React.JSX.Element {
   const theme = useInkTheme();
+  const visible = notices.slice(-NOTICE_VISIBLE);
+  const hidden = notices.length - visible.length;
   return (
     <Box
       flexDirection="column"
@@ -1686,7 +1729,10 @@ function NoticePanel({
       marginTop={1}
       width={columns - 2}
     >
-      {notices.map((notice, index) => (
+      {hidden > 0 ? (
+        <Text dimColor>+ {hidden} earlier notice{hidden === 1 ? "" : "s"}</Text>
+      ) : null}
+      {visible.map((notice, index) => (
         <Text key={`${index}-${notice}`} color={theme.warning} wrap="wrap">{notice}</Text>
       ))}
     </Box>

@@ -1334,6 +1334,33 @@ test("Ink session picker paints a bounded window for large session lists", () =>
   assert.match(output, /1\/30/, "the picker hints at the selection position");
 });
 
+test("Ink notice panel keeps a bounded recent window", () => {
+  const store = new InkRuntimeStore();
+  for (let index = 0; index < 9; index += 1) {
+    store.addNotice(`notice-${index}`);
+  }
+  const output = renderToString(
+    createElement(InkCliApp, {
+      store,
+      provider: "ollama",
+      model: "qwen3:4b-instruct",
+      sessionId: "default",
+      workingDirectory: "/Users/Admin/Desktop/dev-agent",
+      executor: "local",
+      commands: [],
+      onSubmit: () => undefined,
+      onCancel: () => undefined,
+      onExit: () => undefined,
+    }),
+    { columns: 80 },
+  );
+
+  assert.match(output, /notice-8/, "the newest notice stays visible");
+  assert.match(output, /notice-3/, "the last six notices are painted");
+  assert.doesNotMatch(output, /notice-2\b/, "older notices collapse into the hint");
+  assert.match(output, /\+ 3 earlier notices/);
+});
+
 test("Ink launch surface shows queued prompts below the active transcript", () => {
   const store = new InkRuntimeStore();
   store.setQueuedPrompts(["second prompt"]);

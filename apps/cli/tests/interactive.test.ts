@@ -1073,7 +1073,9 @@ test(
 
 test(
   "Ink run summary and :trace expose timing metadata after a streamed answer",
-  { skip: !expectAvailable ? "expect is unavailable" : false },
+  // The expect-driven PTY run takes ~8s even in isolation; the default 10s
+  // timeout makes this test flake when the full suite runs concurrently.
+  { skip: !expectAvailable ? "expect is unavailable" : false, timeout: 40_000 },
   async () => {
     const provider = await startQueuedStreamingStubProvider();
     try {

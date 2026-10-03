@@ -58,3 +58,24 @@
 - Verification: source/test builds passed; focused ink-app/mouse/navigation/
   composer suites passed 108/108; full CLI suite passed 828/828;
   `git diff --check` passed. README documents the suspension behavior.
+
+## 2026-10-03 (round 3)
+
+- Aligned the remaining display panels with the established pointer/panel
+  standard (bounded rendering + measured hitbox + pointer interaction):
+  - `McpPanel` renders a bounded server window (`MCP_SERVERS_VISIBLE = 8`)
+    with a `n–m/total` footer hint, reports its measured layout through the
+    shared `PanelLayout` contract, and the app routes wheel events that hover
+    the card (new `isPointerInPanel` containment check) to the card's offset
+    instead of the transcript. The offset clamps when the server list shrinks
+    and resets when the snapshot closes.
+  - `NoticePanel` keeps the newest six notices and collapses older ones into
+    a `+ N earlier notices` hint line.
+- Added a 40s node:test timeout to the expect-driven `:trace` summary test
+  (~8s in isolation) after load-induced timeouts; it is not related to the
+  panel changes.
+- Verification: source/test builds passed; focused mcp-panel/ink-app/
+  navigation suites passed 83/83; full CLI suite passed 833/833 on rerun (one
+  earlier run showed 6 load-induced timing failures while parallel windows
+  were testing; all pass standalone and none touch the changed code);
+  `git diff --check` passed.

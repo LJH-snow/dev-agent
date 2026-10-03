@@ -5593,7 +5593,7 @@ async function interactiveInk(
   let closed = false;
   let pickerSessions: readonly StoredSession[] | undefined;
   let instance: ReturnType<typeof renderInk> | undefined;
-  let suspendTerminal: SuspendTerminal | undefined;
+  let suspendTerminal: InkSuspendTerminal | undefined;
   let lastRetry:
     | {
         readonly prompt: string;
