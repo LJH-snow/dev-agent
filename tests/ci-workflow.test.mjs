@@ -31,3 +31,26 @@ test("CI TypeScript job runs the CLI package smoke test", () => {
   const job = sectionAfter("  typescript:\n", "  rust:\n");
   assert.match(job, /- name: CLI package install smoke test\n\s+run: pnpm package:smoke/);
 });
+
+test("CI runs the complete verify gate with live Linux sandbox prerequisites", () => {
+  const job = sectionAfter("  full-verify:\n", "  rust:\n");
+
+  assert.match(job, /name: Full verify/);
+  assert.match(job, /runs-on: ubuntu-latest/);
+  assert.match(job, /timeout-minutes: 45/);
+  assert.match(job, /DEV_AGENT_REQUIRE_LIVE_SANDBOX: "1"/);
+  assert.match(
+    job,
+    /sudo apt-get install -y -qq bubblewrap expect procps protobuf-compiler ripgrep/
+  );
+  assert.match(job, /- name: Configure hosted user namespace prerequisites/);
+  assert.match(job, /pnpm install --frozen-lockfile/);
+  assert.match(job, /- name: Complete release gate\n\s+run: pnpm verify/);
+
+  const prerequisites = job.indexOf("- name: Install full verify prerequisites");
+  const namespace = job.indexOf("- name: Configure hosted user namespace prerequisites");
+  const dependencies = job.indexOf("- name: Install dependencies");
+  const gate = job.indexOf("run: pnpm verify");
+  assert.ok(prerequisites >= 0 && prerequisites < namespace);
+  assert.ok(namespace < dependencies && dependencies < gate);
+});

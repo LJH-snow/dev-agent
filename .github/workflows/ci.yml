@@ -58,6 +58,92 @@ jobs:
       - name: TypeScript release gate
         run: pnpm verify:typescript
 
+  full-verify:
+    name: Full verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # The complete gate must exercise the real restricted backend in CI.
+      DEV_AGENT_REQUIRE_LIVE_SANDBOX: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12.3.4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runtime/rust
+
+      - name: Install full verify prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bubblewrap expect procps protobuf-compiler ripgrep
+
+      - name: Configure hosted user namespace prerequisites
+        run: |
+          set -euo pipefail
+          userns_clone="$(sysctl -n kernel.unprivileged_userns_clone 2>/dev/null || true)"
+          if [[ -n "$userns_clone" && "$userns_clone" != "1" ]]; then
+            sudo sysctl -w kernel.unprivileged_userns_clone=1
+          fi
+          apparmor_userns="$(sysctl -n kernel.apparmor_restrict_unprivileged_userns 2>/dev/null || true)"
+          if [[ -n "$apparmor_userns" && "$apparmor_userns" != "0" ]]; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build debug Rust runtime
+        run: cargo build --bin dev-agent-executor
+        working-directory: runtime/rust
+
+      - name: Build executor package
+        run: pnpm --filter @dev-agent/executor build
+
+      - name: Check Rust binary prerequisite
+        run: test -x runtime/rust/target/debug/dev-agent-executor
+
+      - name: Check bwrap prerequisite
+        run: command -v bwrap && bwrap --version
+
+      - name: Check bwrap user namespace prerequisite
+        run: |
+          set -euo pipefail
+          bwrap \
+            --unshare-user \
+            --uid 0 \
+            --gid 0 \
+            --unshare-net \
+            --unshare-pid \
+            --ro-bind / / \
+            --proc /proc \
+            --dev /dev \
+            --die-with-parent \
+            -- /usr/bin/true
+
+      - name: Check Python network fixture prerequisite
+        run: python3 -c "import socket"
+
+      - name: Complete release gate
+        run: pnpm verify
+
   rust:
     name: Rust
     runs-on: ubuntu-latest
