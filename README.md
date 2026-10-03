@@ -1,6 +1,7 @@
 # dev-agent
 
 [![CI](https://github.com/LJH-snow/dev-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/LJH-snow/dev-agent/actions/workflows/ci.yml)
+[English](README.md) · [简体中文](README.zh-CN.md)
 
 An AI coding agent for developers, built with TypeScript and Node.js.
 
