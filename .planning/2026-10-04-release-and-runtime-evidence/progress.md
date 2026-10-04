@@ -71,3 +71,11 @@
   relaxed and no production code changed.
 - Final full-suite results for this round: runtime-manager 26/26, desktop
   445/445, CLI 844/844, real Rust sandbox integration 11/11.
+
+## 2026-10-04 — final sealed scan
+
+- Post-round deep scan `scan-2026-10-04T15-55-49.883Z-540c04f94daf`, seal
+  `sha256:abf7abbbb14a1da6cc191566fbf13525a1a01b0ecfe1c1ec0a0caa623bc85de3`:
+  21 findings (unchanged — the cache ownership gate introduced none),
+  198 packages / 0 dependency advisories. Static-only evidence boundary
+  unchanged; this remains a triage record, not a security certification.
