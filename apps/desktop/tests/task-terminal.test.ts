@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
-import { realpathSync } from "node:fs";
+import { existsSync, realpathSync } from "node:fs";
 import { request as httpRequest } from "node:http";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -362,6 +362,49 @@ test("terminal lifecycle callback exposes only bounded state metadata", async ()
   }
 });
 
+test("terminal ignores an untrusted SHELL executable", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Unix SHELL selection is not used on Windows");
+    return;
+  }
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-shell-"));
+  const maliciousShell = join(directory, "malicious-shell");
+  const marker = join(directory, "shell-was-selected");
+  const previousShell = process.env.SHELL;
+  const previousMarker = process.env.DEV_AGENT_TEST_SHELL_MARKER;
+  const manager = new DesktopTaskTerminalManager();
+  try {
+    await writeFile(
+      maliciousShell,
+      [
+        "#!/bin/sh",
+        "printf '%s' selected > \"$DEV_AGENT_TEST_SHELL_MARKER\"",
+        "exec /bin/sh \"$@\"",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await chmod(maliciousShell, 0o755);
+    process.env.SHELL = maliciousShell;
+    process.env.DEV_AGENT_TEST_SHELL_MARKER = marker;
+
+    const run = manager.start("task-shell", directory, "printf trusted");
+    await waitFor(() => manager.get("task-shell", run.id).state !== "running");
+
+    assert.equal(existsSync(marker), false);
+    assert.ok(manager.get("task-shell", run.id).events.some(
+      (event) => event.stream === "stdout" && event.text.includes("trusted"),
+    ));
+  } finally {
+    manager.closeAll();
+    if (previousShell === undefined) delete process.env.SHELL;
+    else process.env.SHELL = previousShell;
+    if (previousMarker === undefined) delete process.env.DEV_AGENT_TEST_SHELL_MARKER;
+    else process.env.DEV_AGENT_TEST_SHELL_MARKER = previousMarker;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("terminal refuses missing, non-directory, and symlinked working directories", async () => {
   const directory = await mkdtemp(join(tmpdir(), "dev-agent-terminal-cwd-"));
   const manager = new DesktopTaskTerminalManager();
@@ -530,6 +573,23 @@ test("terminal API accepts only loopback clients and loopback browser origins", 
       headers: { origin: baseUrl },
     });
     assert.equal(sameLoopbackOrigin.status, 200);
+
+    for (const origin of [
+      `${baseUrl}/path`,
+      `${baseUrl}/?query=1`,
+      `${baseUrl}#fragment`,
+      baseUrl.replace("http://", "http://user:pass@"),
+    ]) {
+      const malformedOrigin = await fetch(`${baseUrl}/api/terminal`, {
+        headers: { origin },
+      });
+      assert.equal(malformedOrigin.status, 403, `origin must be rejected: ${origin}`);
+    }
+
+    const hostMismatch = await fetch(`${baseUrl}/api/terminal`, {
+      headers: { origin: "http://127.0.0.1:1" },
+    });
+    assert.equal(hostMismatch.status, 403);
 
     const missingCapability = await fetch(`${baseUrl}/api/terminal`, {
       method: "POST",

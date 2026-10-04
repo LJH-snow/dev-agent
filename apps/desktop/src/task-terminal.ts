@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { lstatSync, realpathSync } from "node:fs";
+import { accessSync, constants, lstatSync, realpathSync } from "node:fs";
 import { spawn, type ChildProcess } from "node:child_process";
+import { win32 } from "node:path";
 
 const maxCommandBytes = 4096;
 const maxInputBytes = 8192;
@@ -145,6 +146,68 @@ function canonicalWorkingDirectory(workingDirectory: string): string {
   }
 }
 
+const unixTrustedShellPaths = new Set([
+  "/bin/sh",
+  "/bin/bash",
+  "/bin/dash",
+  "/bin/ksh",
+  "/bin/zsh",
+  "/usr/bin/bash",
+  "/usr/bin/dash",
+  "/usr/bin/ksh",
+  "/usr/bin/sh",
+  "/usr/bin/zsh",
+]);
+
+function isExecutableRegularFile(path: string): boolean {
+  try {
+    const stat = lstatSync(path);
+    if (!stat.isFile() || stat.isSymbolicLink()) return false;
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function trustedUnixShell(): string {
+  for (const candidate of [process.env.SHELL, "/bin/sh"]) {
+    if (!candidate || !isExecutableRegularFile(candidate)) continue;
+    try {
+      const canonical = realpathSync(candidate);
+      if (unixTrustedShellPaths.has(canonical)) return canonical;
+    } catch {
+      // Fall through to the fixed system shell.
+    }
+  }
+  return "/bin/sh";
+}
+
+function trustedWindowsShell(): string {
+  const systemRoot = process.env.SystemRoot?.trim() || process.env.windir?.trim() || "C:\\Windows";
+  const systemDirectory = win32.resolve(systemRoot, "System32");
+  const fallback = win32.join(systemDirectory, "cmd.exe");
+  const candidate = process.env.ComSpec?.trim() || fallback;
+  try {
+    const canonical = win32.normalize(realpathSync(candidate));
+    const canonicalSystemDirectory = win32.normalize(realpathSync(systemDirectory));
+    if (
+      win32.dirname(canonical).toLowerCase() === canonicalSystemDirectory.toLowerCase()
+      && win32.basename(canonical).toLowerCase() === "cmd.exe"
+      && isExecutableRegularFile(candidate)
+    ) {
+      return canonical;
+    }
+  } catch {
+    // Fall through to the fixed system shell.
+  }
+  return fallback;
+}
+
+export function resolveTrustedTerminalShell(platform = process.platform): string {
+  return platform === "win32" ? trustedWindowsShell() : trustedUnixShell();
+}
+
 export class DesktopTaskTerminalManager {
   private readonly runs = new Map<string, TerminalRun>();
   private readonly onLifecycle?: DesktopTaskTerminalManagerOptions["onLifecycle"];
@@ -173,7 +236,7 @@ export class DesktopTaskTerminalManager {
     }
 
     const safeCommand = displayCommand(command);
-    const shell = process.platform === "win32" ? (process.env.ComSpec || "cmd.exe") : (process.env.SHELL || "/bin/sh");
+    const shell = resolveTrustedTerminalShell();
     const guardedCommand = process.platform === "win32"
       ? command
       : [
@@ -195,6 +258,7 @@ export class DesktopTaskTerminalManager {
           DEV_AGENT_TERMINAL_EXPECTED_CWD: canonicalCwd,
         },
         stdio: ["pipe", "pipe", "pipe"],
+        shell: false,
         windowsHide: true,
         detached: process.platform !== "win32",
       });

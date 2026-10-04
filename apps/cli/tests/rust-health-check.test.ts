@@ -12,6 +12,9 @@ const cliPath = fileURLToPath(new URL("../dist/index.js", import.meta.url));
 const mockBinaryPath = fileURLToPath(
   new URL("../../../packages/executor/tests/mock-executor-binary.mjs", import.meta.url)
 );
+const wedgedBinaryPath = fileURLToPath(
+  new URL("../../../packages/executor/tests/wedged-executor-binary.mjs", import.meta.url)
+);
 
 function runCheckRust(): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -102,6 +105,13 @@ test("probe rejects a response frame above the transport limit", async () => {
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("probe kills and rejects a wedged runtime instead of waiting forever", { timeout: 15000 }, async () => {
+  await assert.rejects(
+    () => probeRustBinary(wedgedBinaryPath),
+    /Rust executor health probe timed out/
+  );
 });
 
 test("doctor shows protocol version without exposing the runtime path", async () => {

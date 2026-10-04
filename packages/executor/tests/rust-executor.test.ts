@@ -2,6 +2,8 @@
 // binary, covering the protobufjs oneof encoding that manual wire tests skip.
 
 import assert from "node:assert/strict";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -10,6 +12,41 @@ import { resolveExecutorMode, RustExecutor } from "../dist/index.js";
 
 const here = fileURLToPath(new URL(".", import.meta.url));
 const mockBinary = join(here, "..", "tests", "mock-executor-binary.mjs");
+
+test("RustExecutor refuses a directory as its binary path before spawning", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-rust-preflight-"));
+  const runtimeDirectory = join(directory, "runtime-dir");
+  try {
+    await mkdir(runtimeDirectory);
+    const executor = new RustExecutor({ binaryPath: runtimeDirectory });
+    await assert.rejects(
+      executor.run("echo", ["hello"]),
+      /Rust executor binary path is not a regular file/
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("RustExecutor refuses a non-executable regular file on Unix", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("Unix executable-bit checks do not apply on Windows");
+    return;
+  }
+  const directory = await mkdtemp(join(tmpdir(), "dev-agent-rust-preflight-"));
+  const inertBinary = join(directory, "inert-runtime.mjs");
+  try {
+    await writeFile(inertBinary, "#!/usr/bin/env node\n", "utf8");
+    await chmod(inertBinary, 0o644);
+    const executor = new RustExecutor({ binaryPath: inertBinary });
+    await assert.rejects(
+      executor.run("echo", ["hello"]),
+      /Rust executor binary is not executable/
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test("executor mode resolver keeps local and unsupported states explicit", () => {
   assert.equal(resolveExecutorMode(), "local");

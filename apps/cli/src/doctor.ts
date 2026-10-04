@@ -126,6 +126,8 @@ const CLI_LATEST_URL = "https://registry.npmjs.org/@agent_cli%2fcli/latest";
 const MAX_UPDATE_RESPONSE_BYTES = 64 * 1024;
 const MAX_COMMAND_VERSION_BYTES = 64 * 1024;
 const MAX_RUST_PROBE_STDERR_BYTES = 16 * 1024;
+/** A healthy runtime answers a HealthCheck in milliseconds; anything past this is wedged. */
+const RUST_PROBE_TIMEOUT_MS = 5000;
 const UPDATE_CHECK_TIMEOUT_MS = 5000;
 
 export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
@@ -666,6 +668,32 @@ export function probeRustBinary(path: string): Promise<RustProbeResult> {
     let stderrBytes = 0;
     let oversized = false;
     let frameLengthChecked = false;
+    let settled = false;
+
+    const settleFailure = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(probeTimer);
+      reject(error);
+    };
+
+    const settleSuccess = (result: RustProbeResult): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(probeTimer);
+      resolve(result);
+    };
+
+    // A wedged runtime would otherwise leave this promise pending forever and
+    // keep doctor (and the spawned child) alive; kill it at a fixed deadline.
+    const probeTimer = setTimeout(() => {
+      if (settled || oversized) return;
+      child.kill();
+      settleFailure(
+        new Error(`Rust executor health probe timed out after ${RUST_PROBE_TIMEOUT_MS}ms`)
+      );
+    }, RUST_PROBE_TIMEOUT_MS);
+    probeTimer.unref();
 
     const stopForOversizedResponse = (): void => {
       if (oversized) {
@@ -673,6 +701,9 @@ export function probeRustBinary(path: string): Promise<RustProbeResult> {
       }
       oversized = true;
       child.kill();
+      settleFailure(
+        new Error(`Rust executor response exceeds the ${maxFrameBytes} byte frame limit`)
+      );
     };
 
     child.stdout.on("data", (chunk: Buffer | string) => {
@@ -706,12 +737,15 @@ export function probeRustBinary(path: string): Promise<RustProbeResult> {
     });
     child.on("error", (error) => {
       if (!oversized) {
-        reject(error);
+        settleFailure(error instanceof Error ? error : new Error(String(error)));
       }
     });
     child.on("close", (code) => {
+      if (settled) {
+        return;
+      }
       if (oversized) {
-        reject(
+        settleFailure(
           new Error(
             `Rust executor response exceeds the ${maxFrameBytes} byte frame limit`
           )
@@ -721,11 +755,11 @@ export function probeRustBinary(path: string): Promise<RustProbeResult> {
       const stdout = Buffer.concat(stdoutChunks, stdoutBytes);
       const stderr = Buffer.concat(stderrChunks, stderrBytes).toString("utf8");
       if (code !== 0) {
-        reject(new Error(`Rust executor exited with code ${code}: ${stderr}`));
+        settleFailure(new Error(`Rust executor exited with code ${code}: ${stderr}`));
         return;
       }
       if (stdout.length < 4) {
-        reject(new Error("Rust executor returned no response"));
+        settleFailure(new Error("Rust executor returned no response"));
         return;
       }
       const length = stdout.readUInt32BE(0);
@@ -733,12 +767,12 @@ export function probeRustBinary(path: string): Promise<RustProbeResult> {
       try {
         const healthCheck = decodeHealthCheckResponse(payload);
         if (!healthCheck) {
-          reject(new Error("Rust executor returned an unexpected response"));
+          settleFailure(new Error("Rust executor returned an unexpected response"));
           return;
         }
-        resolve(healthCheck);
+        settleSuccess(healthCheck);
       } catch (error) {
-        reject(error instanceof Error ? error : new Error(String(error)));
+        settleFailure(error instanceof Error ? error : new Error(String(error)));
       }
     });
 

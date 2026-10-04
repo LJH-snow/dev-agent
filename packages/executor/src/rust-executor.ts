@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
+import { accessSync, constants as fsConstants, lstatSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import * as protobuf from "protobufjs";
 
@@ -345,11 +345,7 @@ export class RustExecutor implements SandboxExecutor {
   }
 
   private async start(): Promise<void> {
-    if (!existsSync(this.binaryPath)) {
-      throw new Error(
-        `Rust executor binary not found at ${this.binaryPath}. Build the runtime/rust crate first.`
-      );
-    }
+    this.assertSpawnableBinaryPath();
     const root = await this.loadRoot();
     this.root = root;
     this.envelopeType = root.lookupType("dev_agent.executor.Envelope");
@@ -401,8 +397,40 @@ export class RustExecutor implements SandboxExecutor {
     this.started = true;
   }
 
-  private async loadRoot(): Promise<protobuf.Root> {
-    if (this.root) {
+  /**
+   * Validates the runtime path immediately before spawning. The path itself
+   * stays a caller-trusted custom-runtime capability (`--rust-executor` /
+   * `DEV_AGENT_RUST_BINARY`); this check only refuses obviously unspawnable
+   * targets (missing, directories, non-regular files) and, on Unix, files
+   * without the executable bit, so a bad path fails with a clear error
+   * instead of a low-level spawn failure.
+   */
+  private assertSpawnableBinaryPath(): void {
+    let stat: import("node:fs").Stats;
+    try {
+      stat = lstatSync(this.binaryPath);
+    } catch {
+      throw new Error(
+        `Rust executor binary not found at ${this.binaryPath}. Build the runtime/rust crate first.`
+      );
+    }
+    if (!stat.isFile()) {
+      throw new Error(
+        `Rust executor binary path is not a regular file: ${this.binaryPath}`
+      );
+    }
+    if (process.platform !== "win32") {
+      try {
+        accessSync(this.binaryPath, fsConstants.X_OK);
+      } catch {
+        throw new Error(
+          `Rust executor binary is not executable: ${this.binaryPath}`
+        );
+      }
+    }
+  }
+
+  private async loadRoot(): Promise<protobuf.Root> {    if (this.root) {
       return this.root;
     }
     if (this.protoPath) {
