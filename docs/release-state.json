@@ -1,7 +1,7 @@
 {
   "package": "@agent_cli/cli",
-  "publishedVersion": "0.2.0",
-  "candidateVersion": "0.2.0",
+  "publishedVersion": "0.2.1",
+  "candidateVersion": "0.2.1",
   "status": "published",
-  "updatedAt": "2026-10-01"
+  "updatedAt": "2026-10-04"
 }

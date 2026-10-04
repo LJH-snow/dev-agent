@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-10-04（@agent_cli/cli 0.2.1 发布）
+
+- `@agent_cli/cli@0.2.1` 已发布到 npm 并成为 `latest`（registry 复核
+  `npm view @agent_cli/cli@0.2.1 version` = `0.2.1`）；release-state 的
+  publishedVersion 已同步。本次只发布 npm 包，按项目惯例未创建 Git tag 或
+  GitHub Release。
+
+- Security hardening: the Desktop terminal now resolves `SHELL`/`ComSpec`
+  through a trusted canonical system-shell allowlist (regular, executable,
+  fixed fallbacks) and spawns with explicit `shell: false`; terminal commands
+  remain the intentional interactive capability of the task worktree.
+- Security hardening: `RustExecutor` preflights its binary path before
+  spawning (regular file, Unix executable bit) while keeping the documented
+  caller-trusted custom-runtime contract; `probeRustBinary` gained a fixed 5s
+  deadline that kills wedged runtimes and settles exactly once.
+- Security triage: the 2026-10-04 Mimosa deep-scan findings were dispositioned
+  one by one in `.planning/2026-10-04-security-boundary-hardening/`; rescan
+  reports 21 findings (baseline 22) with none introduced by the fixes. The
+  scan remains static-only evidence, not a runtime security proof.
+- CLI TUI: incremental Ctrl-R history search backed by persistent
+  session-scoped prompt history (bounded extraction, session replacement
+  isolation on `:resume`), bounded MCP/notice panel windows with
+  pointer-scrollable capability cards, mouse parser resync, and mouse
+  tracking suspended while an external editor owns the terminal.
+- Desktop: execution history persistence with evidence hardening and
+  execution-center actions; MCP notification handler failures are isolated.
+- CI: complete verify gate runs in GitHub Actions; Simplified Chinese README
+  added.
+
 ## 2026-10-01（npm 与 GitHub 发布状态同步）
 
 - `@agent_cli/cli@0.2.0` 于 2026-09-30 发布到 npm 并成为 `latest`；同步 release-state 和当前安装文档。
