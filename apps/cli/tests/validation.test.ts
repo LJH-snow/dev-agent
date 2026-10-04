@@ -119,11 +119,19 @@ async function waitFor(predicate: () => boolean, timeoutMs: number): Promise<voi
   throw new Error("condition was not met before the timeout");
 }
 
+interface InteractiveValidationTiming {
+  readonly timeoutMs?: number;
+  readonly waitMs?: number;
+}
+
 function runCliInteractiveValidation(
   args: readonly string[],
   env: NodeJS.ProcessEnv,
-  changeSetId: string
+  changeSetId: string,
+  timing: InteractiveValidationTiming = {},
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const timeoutMs = timing.timeoutMs ?? INTERACTIVE_VALIDATION_TIMEOUT_MS;
+  const waitMs = timing.waitMs ?? INTERACTIVE_VALIDATION_WAIT_MS;
   return new Promise((resolve, reject) => {
     const child: ChildProcess = spawn("node", [cliPath, ...args], {
       env: { DEV_AGENT_MCP_SERVERS: "[]", ...env },
@@ -138,7 +146,7 @@ function runCliInteractiveValidation(
         settled = true;
         reject(new Error("the interactive CLI did not finish in time"));
       }
-    }, INTERACTIVE_VALIDATION_TIMEOUT_MS);
+    }, timeoutMs);
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
@@ -158,9 +166,9 @@ function runCliInteractiveValidation(
 
     void (async () => {
       try {
-        await waitFor(() => stdout.includes("Type 'exit' or 'quit' to stop."), INTERACTIVE_VALIDATION_WAIT_MS);
+        await waitFor(() => stdout.includes("Type 'exit' or 'quit' to stop."), waitMs);
         child.stdin.write(`:validate ${changeSetId}\n`);
-        await waitFor(() => stdout.includes(`"changeSetId": "${changeSetId}"`), INTERACTIVE_VALIDATION_WAIT_MS);
+        await waitFor(() => stdout.includes(`"changeSetId": "${changeSetId}"`), waitMs);
         child.stdin.write("exit\n");
       } catch (error) {
         if (settled) {
@@ -804,7 +812,8 @@ test("CLI reruns persisted change-set validation after a new process", async () 
     const second = await runCliInteractiveValidation(
       ["--no-stream", "--json"],
       env,
-      changeSetId
+      changeSetId,
+      { timeoutMs: 40_000, waitMs: 20_000 },
     );
     assert.equal(second.code, 0, second.stderr);
     const validationPayload = parseFirstJsonObject(second.stdout);

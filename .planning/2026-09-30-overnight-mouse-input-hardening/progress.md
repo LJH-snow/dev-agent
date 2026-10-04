@@ -100,3 +100,31 @@
   `git diff --check` passed. Parallel `.mimosa/`, `.zcode/`, desktop, and other
   pre-existing worktree changes remain outside this round and were not cleaned
   or overwritten.
+
+## 2026-10-04 (round 5)
+
+- Made Ctrl-R prompt history session-aware without adding a persistence format:
+  startup hydrates bounded user entries from the active session memory, and
+  `:resume` replaces the runtime projection and prompt list for the selected
+  session. In-flight switches hide the old list; a generation guard prevents
+  stale opens from replacing a newer selection, and failed opens restore the
+  prior prompt list.
+- Added a shared bound of 200 prompts and 8,000 Unicode code points per prompt.
+  Only persisted user entries are extracted; blank prompts are excluded,
+  chronological order is retained, and panel rendering sanitizes terminal
+  controls without changing the text restored into the composer.
+- Moved history into `InkRuntimeStore` with defensive snapshots, bounded
+  replacement/append, a revision signal for resetting stale navigation state,
+  and an atomic `replaceSession()` seam. Ordinary runtime reset continues to
+  preserve active-session composer history.
+- Added extraction, store lifecycle, pre-input hydration, keyboard acceptance,
+  and session A/B isolation regressions. Added a local 40s total / 20s phase
+  timeout to the persisted validation restart test after standalone success and
+  load-induced wait failures; production behavior is unchanged.
+- Verification: source and test TypeScript builds passed. The selected-file
+  aggregate run had one existing live-frame timing assertion fail under load;
+  that Ink app file passed alone (60/60), and the full CLI suite then passed
+  843/843, including the changed history and validation tests. `git diff --check`
+  passed. Parallel `.mimosa/`, `.zcode/`,
+  desktop, and other pre-existing worktree changes remain outside this round and
+  were not cleaned or overwritten.

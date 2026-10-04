@@ -3,6 +3,8 @@ import { Box, Text, measureElement, type DOMElement } from "ink";
 
 import { panelRowAt, type PanelLayout } from "./panel-hitbox.js";
 import { useInkTheme } from "./theme.js";
+import { DEFAULT_PROMPT_HISTORY_LIMIT } from "../session-history.js";
+import { sanitizeTerminalText } from "../tui-renderer.js";
 
 /** Rows painted above the first history row: top border + header. */
 export const HISTORY_SEARCH_HEADER_ROWS = 2;
@@ -14,7 +16,7 @@ export const HISTORY_SEARCH_HEADER_ROWS = 2;
 export const HISTORY_SEARCH_VISIBLE = 6;
 const HISTORY_SEARCH_SELECTED_INK = "#131923";
 /** Maximum matched entries kept for navigation; histories are session-scoped. */
-export const HISTORY_SEARCH_MAX_MATCHES = 200;
+export const HISTORY_SEARCH_MAX_MATCHES = DEFAULT_PROMPT_HISTORY_LIMIT;
 
 export interface HistorySearchPanelProps {
   readonly query: string;
@@ -42,7 +44,7 @@ export function historySearchRowAt(
 
 /** Collapses a stored prompt into one paintable search row. */
 export function historySearchRow(entry: string): string {
-  return entry.replace(/[\r\n\t]+/gu, " ⏎ ").trim();
+  return sanitizeTerminalText(entry).replace(/[\r\n\t]+/gu, " ⏎ ").trim();
 }
 
 export function HistorySearchPanel({

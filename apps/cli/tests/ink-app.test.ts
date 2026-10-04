@@ -1361,6 +1361,35 @@ test("Ink notice panel keeps a bounded recent window", () => {
   assert.match(output, /\+ 3 earlier notices/);
 });
 
+test("Ink history search opens from hydrated store history before new input", async () => {
+  const { stdin, stdout, writes } = createInkTerminal();
+  const store = new InkRuntimeStore();
+  store.setPromptHistory(["restored older prompt", "restored newest prompt"]);
+  const submitted: string[] = [];
+  const instance = renderInkApp(stdin, stdout, (value) => submitted.push(value), store);
+
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    stdin.write("\u0012");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.match(writes.join(""), /HISTORY \/\/ SEARCH/);
+    assert.match(writes.join(""), /› restored newest prompt/);
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, []);
+    assert.match(writes.join(""), /restored newest prompt█/);
+
+    stdin.write("\r");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    assert.deepEqual(submitted, ["restored newest prompt"]);
+  } finally {
+    instance.unmount();
+    stdin.destroy();
+    stdout.destroy();
+  }
+});
+
 test("Ink history search filters prompts and accepts into the composer", async () => {
   const { stdin, stdout, writes } = createInkTerminal();
   const submitted: string[] = [];

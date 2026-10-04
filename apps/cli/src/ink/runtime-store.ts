@@ -15,6 +15,7 @@ import {
   type TuiStateSnapshot,
 } from "../tui-session.js";
 import type { McpManagementResult } from "../mcp-command.js";
+import { boundPromptHistory } from "../session-history.js";
 
 export interface InkRunSummary {
   readonly status: string;
@@ -152,6 +153,10 @@ export interface InkRuntimeSnapshot extends TuiStateSnapshot {
   readonly collaboration?: InkCollaborationSnapshot;
   readonly mcp?: InkMcpSnapshot;
   readonly composerInsert?: InkComposerInsert;
+  /** Bounded, session-scoped prompts available to composer history navigation. */
+  readonly promptHistory: readonly string[];
+  /** Changes whenever session-scoped prompt history is replaced. */
+  readonly promptHistoryRevision: number;
   /** Suppress one stale input event replayed when Ink resumes a suspension. */
   readonly inputSuppressed?: boolean;
 }
@@ -189,15 +194,18 @@ export class InkRuntimeStore {
   private mcp: InkMcpSnapshot | undefined;
   private composerInsert: InkComposerInsert | undefined;
   private composerInsertId = 0;
+  private promptHistory: string[] = [];
+  private promptHistoryRevision = 0;
   private inputSuppressed = false;
   private readonly lastThoughtSequenceBySession = new Map<string, number>();
   private snapshotValue: InkRuntimeSnapshot = this.buildSnapshot();
   private readonly listeners = new Set<() => void>();
   private applyingRuntimeEvent = false;
+  private applyingSessionReplacement = false;
 
   constructor() {
     this.model.subscribe(() => {
-      if (!this.applyingRuntimeEvent) {
+      if (!this.applyingRuntimeEvent && !this.applyingSessionReplacement) {
         this.publish();
       }
     });
@@ -332,6 +340,35 @@ export class InkRuntimeStore {
   setComposerInsert(value: string, truncated: boolean): void {
     this.composerInsertId += 1;
     this.composerInsert = { id: this.composerInsertId, value, truncated };
+    this.publish();
+  }
+
+  setPromptHistory(prompts: readonly string[]): void {
+    this.promptHistory = boundPromptHistory(prompts);
+    this.promptHistoryRevision += 1;
+    this.publish();
+  }
+
+  appendPromptHistory(prompt: string): void {
+    this.setPromptHistory([...this.promptHistory, prompt]);
+  }
+
+  /**
+   * Replaces all runtime projections that belong to the active session and
+   * installs the new session's bounded composer history atomically.
+   */
+  replaceSession(promptHistory: readonly string[]): void {
+    this.applyingSessionReplacement = true;
+    try {
+      this.resetSessionProjection();
+      this.promptHistory = boundPromptHistory(promptHistory);
+      this.promptHistoryRevision += 1;
+      this.composerInsert = undefined;
+      this.inputSuppressed = false;
+    } finally {
+      this.applyingSessionReplacement = false;
+    }
+    this.snapshotValue = this.buildSnapshot();
     this.publish();
   }
 
@@ -499,6 +536,12 @@ export class InkRuntimeStore {
   }
 
   reset(): void {
+    this.resetSessionProjection();
+    this.snapshotValue = this.buildSnapshot();
+    this.publish();
+  }
+
+  private resetSessionProjection(): void {
     this.conversation = undefined;
     this.model.reset();
     this.queuedPrompts = [];
@@ -517,8 +560,6 @@ export class InkRuntimeStore {
     this.plan = undefined;
     this.collaboration = undefined;
     this.lastThoughtSequenceBySession.clear();
-    this.snapshotValue = this.buildSnapshot();
-    this.publish();
   }
 
   private buildSnapshot(): InkRuntimeSnapshot {
@@ -558,6 +599,8 @@ export class InkRuntimeStore {
       ...(this.composerInsert === undefined
         ? {}
         : { composerInsert: { ...this.composerInsert } }),
+      promptHistory: [...this.promptHistory],
+      promptHistoryRevision: this.promptHistoryRevision,
       ...(this.inputSuppressed ? { inputSuppressed: true } : {}),
       ...(this.plan === undefined
         ? {}

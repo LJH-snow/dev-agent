@@ -6,6 +6,53 @@ export const DEFAULT_HISTORY_LIMIT = 10;
 export const MAX_HISTORY_LIMIT = 50;
 export const DEFAULT_HISTORY_CONTENT_CHARS = 320;
 export const MAX_HISTORY_QUERY_CHARS = 160;
+/** Maximum number of prompts retained for composer history navigation. */
+export const DEFAULT_PROMPT_HISTORY_LIMIT = 200;
+/** Maximum size of one restored prompt, measured in Unicode code points. */
+export const MAX_PROMPT_HISTORY_CHARS = 8_000;
+
+export interface PromptHistoryOptions {
+  readonly maxEntries?: number;
+  readonly maxPromptChars?: number;
+}
+
+/**
+ * Applies the bounded composer-history policy to already extracted prompts.
+ * The returned values remain restorable prompt text; presentation code is
+ * responsible for collapsing or sanitizing them before painting.
+ */
+export function boundPromptHistory(
+  prompts: readonly string[],
+  options: PromptHistoryOptions = {},
+): string[] {
+  const maxEntries = normalizePromptHistoryLimit(options.maxEntries);
+  const maxPromptChars = normalizePromptHistoryChars(options.maxPromptChars);
+  return prompts
+    .map((prompt) => {
+      const chars = Array.from(prompt);
+      return chars.length <= maxPromptChars
+        ? prompt
+        : chars.slice(0, maxPromptChars).join("");
+    })
+    .filter((prompt) => prompt.trim().length > 0)
+    .slice(-maxEntries);
+}
+
+/**
+ * Extracts only user prompts from persisted session memory for local composer
+ * navigation.
+ */
+export function extractPromptHistory(
+  entries: readonly MemoryEntry[],
+  options: PromptHistoryOptions = {},
+): string[] {
+  return boundPromptHistory(
+    entries
+      .filter((entry) => entry.role === "user")
+      .map((entry) => entry.content),
+    options,
+  );
+}
 
 export type SessionHistoryCommandResult =
   | { readonly handled: false }
@@ -170,6 +217,20 @@ function normalizeLimit(value: number | undefined): number {
     return DEFAULT_HISTORY_LIMIT;
   }
   return Math.min(value, MAX_HISTORY_LIMIT);
+}
+
+function normalizePromptHistoryLimit(value: number | undefined): number {
+  if (!Number.isSafeInteger(value) || value === undefined || value < 1) {
+    return DEFAULT_PROMPT_HISTORY_LIMIT;
+  }
+  return Math.min(value, DEFAULT_PROMPT_HISTORY_LIMIT);
+}
+
+function normalizePromptHistoryChars(value: number | undefined): number {
+  if (!Number.isSafeInteger(value) || value === undefined || value < 1) {
+    return MAX_PROMPT_HISTORY_CHARS;
+  }
+  return Math.min(value, MAX_PROMPT_HISTORY_CHARS);
 }
 
 function normalizeContentLimit(value: number | undefined): number {

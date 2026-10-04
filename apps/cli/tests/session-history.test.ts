@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  extractPromptHistory,
   formatSessionHistory,
   formatSessionSearch,
   parseSessionHistoryCommand,
@@ -77,6 +78,67 @@ test("history formatter shows the newest entries and redacts unsafe content", ()
 
 test("history formatter reports an empty session", () => {
   assert.equal(formatSessionHistory([], { limit: 10 }), "No conversation history.");
+});
+
+test("prompt history extracts bounded user entries without changing their order", () => {
+  const entries = [
+    {
+      id: "system",
+      role: "system" as const,
+      content: "system prompt",
+      createdAt: "2026-09-21T00:00:00.000Z",
+    },
+    {
+      id: "old-user",
+      role: "user" as const,
+      content: "old request",
+      createdAt: "2026-09-21T00:01:00.000Z",
+    },
+    {
+      id: "assistant",
+      role: "assistant" as const,
+      content: "answer",
+      createdAt: "2026-09-21T00:02:00.000Z",
+    },
+    {
+      id: "tool",
+      role: "tool" as const,
+      content: "tool output",
+      toolName: "shell",
+      createdAt: "2026-09-21T00:03:00.000Z",
+    },
+    {
+      id: "new-user",
+      role: "user" as const,
+      content: "  new request\nwith details  ",
+      createdAt: "2026-09-21T00:04:00.000Z",
+    },
+    {
+      id: "blank-user",
+      role: "user" as const,
+      content: "   \n\t",
+      createdAt: "2026-09-21T00:05:00.000Z",
+    },
+  ];
+
+  assert.deepEqual(extractPromptHistory(entries), [
+    "old request",
+    "  new request\nwith details  ",
+  ]);
+});
+
+test("prompt history keeps only the newest bounded entries and caps long prompts", () => {
+  const entries = Array.from({ length: 4 }, (_, index) => ({
+    id: `user-${index}`,
+    role: "user" as const,
+    content: `prompt-${index}-${"x".repeat(80)}`,
+    createdAt: `2026-09-21T00:0${index}:00.000Z`,
+  }));
+
+  const result = extractPromptHistory(entries, { maxEntries: 2, maxPromptChars: 20 });
+  assert.equal(result.length, 2);
+  assert.deepEqual(result.map((entry) => entry.slice(0, 9)), ["prompt-2-", "prompt-3-"]);
+  assert.ok(result.every((entry) => Array.from(entry).length <= 20));
 });
 
 test("history search command accepts aliases and requires a query", () => {

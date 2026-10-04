@@ -241,6 +241,7 @@ import {
   formatTaskCommandResult,
 } from "./task-command.js";
 import {
+  extractPromptHistory,
   formatSessionSearch,
   formatSessionHistory,
   parseSessionHistoryCommand,
@@ -3452,6 +3453,16 @@ interface PendingPlan {
 
 type PendingAutoFixReview = PendingAutoFixReviewState;
 
+async function loadPromptHistory(context: AgentContext): Promise<readonly string[]> {
+  try {
+    return extractPromptHistory(await context.memory.entries());
+  } catch {
+    // Persisted memory is optional for the interactive composer. A malformed
+    // or unavailable file must not block the session or expose raw details.
+    return [];
+  }
+}
+
 async function loadPendingAutoFixReview(
   context: AgentContext,
   liveChangeSets: ReadonlySet<string>,
@@ -5583,6 +5594,7 @@ async function interactiveInk(
   let pendingPlan: PendingPlan | undefined;
   const liveAutoFixChangeSets = new Set<string>();
   let pendingAutoFixReview = await loadPendingAutoFixReview(context, liveAutoFixChangeSets);
+  let resumeGeneration = 0;
   let latestCollaboration: CollaborationExecutionResult | undefined;
   let latestCollaborationContext: string | undefined;
   let activeCollaboration: CollaborationExecutionHandle | undefined;
@@ -5606,6 +5618,7 @@ async function interactiveInk(
   };
 
   ink.store.setSpeedMode(ui.speedMode.mode);
+  ink.store.setPromptHistory(await loadPromptHistory(current));
 
   const syncQueue = (): void => {
     ink.store.setQueuedPrompts(ink.controller.snapshot().queuedPrompts);
@@ -6156,6 +6169,7 @@ async function interactiveInk(
   };
 
   const resumeSessionAt = (index: number): void => {
+    const generation = ++resumeGeneration;
     const candidate = pickerSessions?.[index];
     dismissSessionPicker();
     if (candidate === undefined) {
@@ -6170,13 +6184,22 @@ async function interactiveInk(
       ink.store.addNotice("Session switching is unavailable in this interface.");
       return;
     }
+    const previousPromptHistory = ink.store.getSnapshot().promptHistory;
+    // Do not leave the old session searchable while the asynchronous open is
+    // in flight. Restore it only if opening the target session fails.
+    ink.store.setPromptHistory([]);
     void ui.openSession(candidate.id)
       .then(async (next) => {
+        const [nextHistory, nextPendingAutoFixReview] = await Promise.all([
+          loadPromptHistory(next),
+          loadPendingAutoFixReview(next, liveAutoFixChangeSets),
+        ]);
+        if (generation !== resumeGeneration) return;
         current = next;
         pendingPlan = undefined;
-        pendingAutoFixReview = await loadPendingAutoFixReview(next, liveAutoFixChangeSets);
+        pendingAutoFixReview = nextPendingAutoFixReview;
         lastRetry = undefined;
-        ink.store.reset();
+        ink.store.replaceSession(nextHistory);
         if (pendingAutoFixReview !== undefined) {
           ink.store.setPlan({
             prompt: pendingAutoFixReview.prompt,
@@ -6189,6 +6212,8 @@ async function interactiveInk(
         updateInkSummary(next);
       })
       .catch((error) => {
+        if (generation !== resumeGeneration) return;
+        ink.store.setPromptHistory(previousPromptHistory);
         const message = error instanceof Error ? error.message : String(error);
         ink.store.addNotice(safeTerminalText(`Session resume failed: ${message}`));
       });

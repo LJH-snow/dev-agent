@@ -459,6 +459,26 @@ test("hovering the MCP capability card scrolls its bounded window", async () => 
   } finally { screen.dispose(); }
 });
 
+test("session replacement isolates hydrated composer history", async () => {
+  const screen = createScreen(120, 40);
+  try {
+    screen.store.setPromptHistory(["session A secret prompt"]);
+    screen.stdin.write("\u0012");
+    await screen.waitFor(() => screen.paintedRow("HISTORY // SEARCH") !== undefined, "session A search open");
+    assert.ok(screen.lines().some((line) => line.includes("session A secret prompt")));
+    screen.stdin.write("\u001b");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    screen.store.replaceSession(["session B restored prompt"]);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    screen.stdin.write("\u0012");
+    await screen.waitFor(() => screen.paintedRow("HISTORY // SEARCH") !== undefined, "session B search open");
+    const output = screen.lines().join("\\n");
+    assert.match(output, /session B restored prompt/);
+    assert.doesNotMatch(output, /session A secret prompt/);
+  } finally { screen.dispose(); }
+});
+
 test("history search moves with the wheel and accepts with clicks", async () => {
   const screen = createScreen(120, 40);
   const lastRowWith = (needle: string): number | undefined => {

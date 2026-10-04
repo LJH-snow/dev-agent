@@ -203,7 +203,7 @@ export function InkCliApp({
   }, [composerInsert, applyComposer]);
   const [mousePosition, setMousePosition] = useState<MouseMove | undefined>(undefined);
   const lastMousePosition = useRef<MouseMove | undefined>(undefined);
-  const [history, setHistory] = useState<string[]>([]);
+  const history = snapshot.promptHistory;
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [pathCompletion, setPathCompletion] = useState<PathCompletionResult | undefined>(undefined);
   const [pathCompletionIndex, setPathCompletionIndex] = useState(0);
@@ -221,6 +221,21 @@ export function InkCliApp({
   const [historySearchIndex, setHistorySearchIndex] = useState(0);
   const [historySearchOffset, setHistorySearchOffset] = useState(0);
   const [historyPanelLayout, setHistoryPanelLayout] = useState<PanelLayout | undefined>(undefined);
+  const promptHistoryRevision = snapshot.promptHistoryRevision;
+  const previousPromptHistoryRevision = useRef(promptHistoryRevision);
+  useEffect(() => {
+    if (previousPromptHistoryRevision.current === promptHistoryRevision) return;
+    previousPromptHistoryRevision.current = promptHistoryRevision;
+    setHistoryIndex(-1);
+    setHistorySearchQuery(undefined);
+    setHistorySearchIndex(0);
+    setHistorySearchOffset(0);
+    setHistoryPanelLayout(undefined);
+  }, [promptHistoryRevision]);
+  useEffect(() => {
+    if (historyIndex < history.length) return;
+    setHistoryIndex(history.length - 1);
+  }, [history.length, historyIndex]);
   // Painted row positions of the user prompts, measured after each commit.
   // The pinned task header picks the prompt that owns the row currently at
   // the top of the viewport, so scrolling into an older task switches the
@@ -600,7 +615,7 @@ export function InkCliApp({
       return;
     }
     if (submitted.trim().length > 0) {
-      setHistory((items) => [...items, submitted]);
+      store.appendPromptHistory(submitted);
       onSubmit(submitted);
     }
   };
