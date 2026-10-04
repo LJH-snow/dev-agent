@@ -2,7 +2,7 @@
 
 **建立日期：2026-09-14**
 
-**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、MCP reconnect hardening、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；`v0.1.8` GitHub Release 已完成，npm `0.2.0` 于 2026-09-30 发布。**
+**文档状态：v62/v63/v64、CLI Modern TUI v1/v1.1、MCP reconnect hardening、上一轮 8 小时开发目标和当前 10 个开发目标均已完成；`v0.2.1` GitHub Release 已完成，npm `0.2.1` 于 2026-10-04 发布。**
 
 > v60 完成了文档 source-of-truth 整理，v61 完成了 Windows restricted execution 的
 > feasibility review。v61 的结论是：继续保留 macOS `sandbox-exec`、Linux `bwrap` 和其他
@@ -306,10 +306,10 @@ fallback。详细 proof gap 见
 上一轮 [8 小时安全无人值守并行开发计划](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md)、
 其[进度记录](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md)
 以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
-均已完成。当前 npm 包 `@agent_cli/cli@0.2.0` 已发布（2026-09-30），npm registry `latest` 指向该版本。
-截至 2026-10-01，最新正式 GitHub Release 仍为 `v0.1.8`；`v0.2.0` 尚无对应
-Git tag 或 GitHub Release。v0.1.8 的四平台 runtime、checksum sidecar、manifest 和
-CLI tarball 已上传并验证；不要把 npm `latest` 与 GitHub Release 状态视为同一版本。
+均已完成。当前 npm 包 `@agent_cli/cli@0.2.1` 已发布（2026-10-04），npm registry `latest` 指向该版本。
+正式 GitHub Release 已推进到 `v0.2.1`；tag、workflow run `37215824488`、四平台 runtime、
+checksum sidecar、manifest 和 CLI tarball 均已验证。Rust runtime identity 仍为 `0.2.0`，
+与 carrier release 分开记录；不要把 npm、GitHub carrier release 与 runtime contract 视为同一版本。
 在没有新的产品决策或真实 Desktop UX trigger 时，保持当前实现和发布边界，不开始
 speculative Desktop UI，也不重新打开 Windows backend。
 

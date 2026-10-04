@@ -1,14 +1,14 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-01，`@agent_cli/cli@0.2.0` 已于 2026-09-30 发布到 npm 并成为 `latest`，而最新正式 GitHub Release 仍为 `v0.1.8`**。npm 发布与 GitHub Release 是两个独立状态；核验时 `v0.2.0` 尚无匹配 Git tag 或 GitHub Release（no matching v0.2.0 Git tag or GitHub Release）。后续新版本仍需维护者单独授权。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-04，`@agent_cli/cli@0.2.1` 已发布到 npm 并成为 `latest`，正式 GitHub Release 为 `v0.2.1`**。npm 发布与 GitHub Release 仍是两个独立状态：tag/release 只有在单独授权后才创建，但本次授权的 `v0.2.1` workflow 已完成。
 
-## 当前发行状态核验（2026-10-01）
+## 当前发行状态核验（2026-10-04）
 
-- `npm view @agent_cli/cli version` 与 `dist-tags.latest` 均为 `0.2.0`；`npm view @agent_cli/cli@0.2.0 version` 可复核精确版本，发布时间为 2026-09-30。
-- `apps/cli/package.json` 与 `docs/release-state.json` 的候选版本均为 `0.2.0`，release-state 的 publishedVersion 也已同步为 `0.2.0`。
-- 发布完成后 candidate 与 published 相同；下一次 release preflight 会在 manifest/state 一起提升到高于 `0.2.0` 的版本前拒绝发布。
-- GitHub Releases API 返回的最新正式发行仍是 `v0.1.8` (latest formal GitHub Release remains v0.1.8)；查询 `v0.2.0` release 返回 404，本地仓库也无 `v0.2.0` tag。
-- 因此当前 `0.2.0` npm 包不代表 GitHub release workflow 已完成；不要据此声称四平台 runtime asset 已针对 `v0.2.0` 发布。
+- `npm view @agent_cli/cli version` 与 `dist-tags.latest` 均为 `0.2.1`；`npm view @agent_cli/cli@0.2.1 version` 可复核精确版本。
+- `apps/cli/package.json` 与 `docs/release-state.json` 的 candidate/published 版本均为 `0.2.1`。
+- annotated tag `v0.2.1` 已推送；release workflow run `37215824488` 成功完成。
+- [GitHub Release v0.2.1](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.1) 是正式、非 draft、非 prerelease 的 release，包含四个平台 runtime archive、四个 `.sha256` sidecar、`dev-agent-runtime-manifest.json` 和 CLI tarball；下载后 checksum 已复核。
+- runtime identity 仍是 `0.2.0`，carrier release 是 `0.2.1`；managed runtime 安装因此显式使用 `--runtime-version 0.2.0 --runtime-release 0.2.1`。不要把 CLI/npm 版本、GitHub carrier release 和 Rust runtime contract 混成同一个版本。
 
 ## 已发布版本记录（2026-09-16）
 
@@ -153,7 +153,7 @@ DEV_AGENT_CONFIG_FILE=.dev-agent/config.json \
 ```
 
 如果希望一次性为外部项目启用成套的项目级状态，可以在当前已发布的
-`@agent_cli/cli@0.2.0` 中显式使用 `--project-state`：
+`@agent_cli/cli@0.2.1` 中显式使用 `--project-state`：
 
 ```bash
 dev-agent --cwd /path/to/project --project-state --session project --tools
@@ -170,7 +170,7 @@ session: DEV_AGENT_SESSION_DIR > --project-state 项目默认 > 用户默认
 memory:  DEV_AGENT_MEMORY_FILE > 选定的 session 目录
 ```
 
-`--project-state` 已随已发布的 `@agent_cli/cli@0.2.0` 提供；该功能最早随 `@agent_cli/cli@0.1.3` 引入。它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
+`--project-state` 已随已发布的 `@agent_cli/cli@0.2.1` 提供；该功能最早随 `@agent_cli/cli@0.1.3` 引入。它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
 `~/.dev-agent/sessions/default.json`。不带该 flag 时，兼容默认仍是
 `~/.dev-agent/config.json` 和 `~/.dev-agent/sessions`。
 

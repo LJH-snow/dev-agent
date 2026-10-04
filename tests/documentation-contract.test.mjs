@@ -230,8 +230,8 @@ test("npm CLI docs describe external-directory use and current publication statu
   assert.equal(releaseState.package, cliPackage.name);
   assert.equal(releaseState.status, "published");
   assert.equal(candidateCliVersion, cliPackage.version);
-  assert.equal(publishedCliVersion, "0.2.0");
-  assert.equal(candidateCliVersion, "0.2.0");
+  assert.equal(publishedCliVersion, "0.2.1");
+  assert.equal(candidateCliVersion, "0.2.1");
   assert.match(readme, /release-cli-npm\.md/);
   assert.match(readme, /npm install -g @agent_cli\/cli/);
   assert.match(readme, /--project-state/);
@@ -260,7 +260,7 @@ test("npm CLI docs describe external-directory use and current publication statu
   assert.match(npmRelease, /pnpm release:publish -- --publish/);
   assert.match(npmRelease, cliVersionPattern(publishedCliVersion));
   assert.match(npmRelease, cliVersionPattern(candidateCliVersion));
-  assert.match(npmRelease, /published to npm|2026-09-30 发布到 npm/i);
+  assert.match(npmRelease, /published to npm|已发布到 npm|2026-10-04/i);
   assert.match(npmRelease, /候选|candidate/i);
   assert.match(npmRelease, /Rust|sandbox/i);
   assert.match(npmRelease, /session/i);
@@ -270,16 +270,16 @@ test("npm CLI docs describe external-directory use and current publication statu
 test("published CLI version is synchronized across current release documentation", () => {
   assert.match(npmRelease, cliVersionPattern(publishedCliVersion));
   assert.match(readme, cliVersionPattern(publishedCliVersion));
-  assert.match(npmRelease, /2026-09-30/);
+  assert.match(npmRelease, /2026-10-04/);
   assert.match(readme, /release state/);
   assert.doesNotMatch(readme, /current npm package @agent_cli\/cli@0\.1\.8/);
   assert.match(cliDistributionPlan, /本次已获得该授权并单独完成 npm 包发布/);
 });
 
-test("runtime release selection and smoke command are documented as candidate-only", () => {
+test("runtime release selection and smoke command are documented separately from runtime identity", () => {
   assert.match(cliReadme, /--runtime-release <version>/);
   assert.match(cliReadme, /GitHub release that carries the runtime manifest and archive/);
-  assert.match(cliReadme, /--runtime-release 0\.1\.6/);
+  assert.match(cliReadme, /--runtime-release 0\.2\.1/);
   assert.match(cliReadme, /runtime identity/);
   assert.match(cliReadme, /pnpm runtime:smoke/);
   assert.match(desktopCandidate, /--runtime-release/);
@@ -530,15 +530,19 @@ test("v0.1.7 records the post-goal-46 release preflight refresh", () => {
   assert.match(desktopCandidate, /five/i);
 });
 
-test("npm 0.2.0 publication is distinct from the latest GitHub Release", () => {
-  assert.equal(releaseState.publishedVersion, "0.2.0");
-  assert.equal(releaseState.candidateVersion, "0.2.0");
+test("npm 0.2.1 publication and GitHub Release evidence stay distinct", () => {
+  assert.equal(releaseState.publishedVersion, "0.2.1");
+  assert.equal(releaseState.candidateVersion, "0.2.1");
   assert.equal(releaseState.status, "published");
-  assert.equal(cliPackage.version, "0.2.0");
-  assert.match(npmRelease, /2026-09-30[\s\S]*@agent_cli\/cli@0\.2\.0[\s\S]*latest/);
-  assert.match(npmRelease, /npm view @agent_cli\/cli@0\.2\.0 version/);
-  assert.match(npmRelease, /latest formal GitHub Release remains v0\.1\.8/);
-  assert.match(npmRelease, /no matching v0\.2\.0 Git tag or GitHub Release/);
+  assert.equal(cliPackage.version, "0.2.1");
+  assert.match(npmRelease, /2026-10-04[\s\S]*@agent_cli\/cli@0\.2\.1[\s\S]*latest/);
+  assert.match(npmRelease, /npm view @agent_cli\/cli@0\.2\.1 version/);
+  assert.match(npmRelease, /annotated tag `v0\.2\.1`/);
+  assert.match(npmRelease, /release workflow run `37215824488` 成功完成/);
+  assert.match(npmRelease, /GitHub Release v0\.2\.1/);
+  assert.match(npmRelease, /四个平台 runtime archive/);
+  assert.match(npmRelease, /runtime identity 仍是 `0\.2\.0`/);
+  assert.match(npmRelease, /carrier release 是 `0\.2\.1`/);
   assert.match(npmRelease, /v0\.1\.7 GitHub Release 记录/);
   assert.match(npmRelease, /https:\/\/github\.com\/LJH-snow\/dev-agent\/releases\/tag\/v0\.1\.7/);
   assert.match(npmRelease, /npm view @agent_cli\/cli@0\.1\.7 version/);
@@ -546,13 +550,11 @@ test("npm 0.2.0 publication is distinct from the latest GitHub Release", () => {
   assert.match(npmRelease, /npm view @agent_cli\/cli@0\.1\.8 version/);
   assert.match(npmRelease, /tag `v0\.1\.8` 已创建并推送/);
   assert.match(npmRelease, /release workflow run `35425092544` 成功完成/);
-  assert.match(npmRelease, /四个平台 runtime archive/);
-  assert.doesNotMatch(npmRelease, /v0\.2\.0.*GitHub Release 已完成/);
   assert.match(desktopCandidate, /Publication evidence/);
   assert.match(desktopCandidate, /35338225586/);
-  assert.match(readme, /latest\s+formal\s+\[GitHub Release\][\s\S]*v0\.1\.8/);
-  assert.match(readme, /@agent_cli\/cli@0\.2\.0[\s\S]*latest/);
-  assert.match(readme, /latest\s+formal[\s\S]*\[GitHub Release\][\s\S]*remains `v0\.1\.8`/);
+  assert.match(readme, /formal\s+\[GitHub Release v0\.2\.1\]/);
+  assert.match(readme, /@agent_cli\/cli@0\.2\.1[\s\S]*latest/);
+  assert.match(readme, /Rust runtime identity remains\s+`0\.2\.0`/);
 });
 
 test("Desktop diagnostic reports are ignored", () => {

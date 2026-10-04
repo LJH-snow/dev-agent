@@ -4,8 +4,16 @@
 
 - `@agent_cli/cli@0.2.1` 已发布到 npm 并成为 `latest`（registry 复核
   `npm view @agent_cli/cli@0.2.1 version` = `0.2.1`）；release-state 的
-  publishedVersion 已同步。本次只发布 npm 包，按项目惯例未创建 Git tag 或
-  GitHub Release。
+  `publishedVersion` 已同步。
+- 经用户授权创建并推送 annotated tag `v0.2.1`；release workflow
+  `37215824488` 成功完成并创建了正式
+  [GitHub Release v0.2.1](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.1)。
+  Release 包含四个平台 runtime archive、四个 SHA-256 sidecar、runtime manifest
+  和 CLI npm tarball；四个 archive 的下载后 checksum 均复核通过。
+- 发布后的隔离 clean-install smoke 复核了 `dev-agent --version`、`--tools`、
+  `--doctor --check-update`，并以 runtime identity `0.2.0`、carrier release
+  `0.2.1` 完成 managed runtime install/doctor/remove 生命周期。runtime identity
+  与承载 manifest/archive 的 GitHub release 保持显式分离。
 
 - Security hardening: the Desktop terminal now resolves `SHELL`/`ComSpec`
   through a trusted canonical system-shell allowlist (regular, executable,

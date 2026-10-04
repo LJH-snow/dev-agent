@@ -454,7 +454,7 @@ dev-agent config validate --cwd /path/to/other-project --project-state --json
 dev-agent config show --cwd /path/to/other-project --project-state --json
 # Explicitly inspect and install the managed Rust runtime when sandboxing is needed
 dev-agent runtime status --runtime-version 0.2.0 --json
-dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6
+dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.2.1
 dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
 # Provider-free CI workflows
 dev-agent review --cwd /path/to/other-project --json --non-interactive
@@ -577,7 +577,7 @@ Options:
 - `--no-stream` - print only the final answer instead of streaming tokens
 - `--executor <local|rust-sandbox>` - explicitly select the local executor or an already-installed managed Rust runtime; `rust-sandbox` fails if no matching runtime is installed
 - `--runtime-version <version>` - select the managed Rust runtime identity when used with `--executor rust-sandbox`
-- `--runtime-release <version>` - select the GitHub release that carries the runtime manifest and archive during `runtime install`. It defaults to `0.1.6` and may differ from `--runtime-version`; the local cache remains keyed by the runtime identity
+- `--runtime-release <version>` - select the GitHub release that carries the runtime manifest and archive during `runtime install`. The published 0.2.1 carrier is `0.2.1`; it may differ from `--runtime-version`, and the local cache remains keyed by the runtime identity
 - `--runtime-dir <path>` - override the managed runtime cache directory for the current invocation
 - `runtime status|install|path|remove` - inspect, install, locate, or remove a managed Rust runtime; add `--target <target>` to scope lifecycle operations
 - `--rust-executor <path>` - run tools through the Rust sandbox runtime binary
@@ -916,7 +916,7 @@ The npm package contains the JavaScript CLI only. Runtime installation is explic
 
 ```bash
 dev-agent runtime status --runtime-version 0.2.0 --json
-dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6 --json
+dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.2.1 --json
 dev-agent runtime path --runtime-version 0.2.0 --json
 dev-agent runtime remove --runtime-version 0.2.0 --json
 ```

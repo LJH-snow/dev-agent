@@ -143,7 +143,7 @@ dev-agent --resume other-project --once "continue the previous task"
 dev-agent --acp --cwd /path/to/other-project
 dev-agent --a2a --cwd /path/to/other-project --host 127.0.0.1 --port 4320
 dev-agent runtime status --runtime-version 0.2.0 --json
-dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6
+dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.2.1
 dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
 # Provider-free CI workflows
 dev-agent review --cwd /path/to/other-project --json --non-interactive
@@ -250,12 +250,13 @@ cache entries are reported without starting a provider or silently falling back 
 The package is built as a self-contained JavaScript CLI bundle and is verified by
 `pnpm package:smoke` in a clean npm prefix. New release candidates can be checked with
 `pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
-wrapper only publishes after that preflight succeeds. As of September 30, 2026,
-`@agent_cli/cli@0.2.0` is published to npm and is the registry `latest`. The latest
-formal [GitHub Release](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8)
-remains `v0.1.8`; as of October 1, 2026, npm `0.2.0` has no matching Git tag or
-GitHub Release. The `v0.1.8` release carries the four runtime artifacts, checksums,
-manifest, and verified CLI tarball. `0.1.7` and `0.1.6` are earlier published versions. See
+wrapper only publishes after that preflight succeeds. As of October 4, 2026,
+`@agent_cli/cli@0.2.1` is published to npm and is the registry `latest`. The formal
+[GitHub Release v0.2.1](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.1)
+was created by the authorized tag workflow and carries the four runtime artifacts,
+checksums, manifest, and verified CLI tarball. The Rust runtime identity remains
+`0.2.0`; use `--runtime-version 0.2.0 --runtime-release 0.2.1` when installing that
+runtime carrier. See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.
@@ -265,10 +266,10 @@ pre-populated npm cache and avoid redundant registry downloads, set
 `DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE` to the cache directory before running
 `pnpm package:smoke`.
 
-The published `@agent_cli/cli@0.2.0` retains the explicit `--project-state` opt-in for
+The published `@agent_cli/cli@0.2.1` retains the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing
-user-level sessions. It also adds the provider, index, MCP, and Desktop status capabilities
-described below.
+user-level sessions. It also includes the provider, index, MCP, Desktop status, TUI
+history, and runtime-boundary hardening described below.
 
 To exercise the workspace build locally from the repository:
 
@@ -392,7 +393,7 @@ cargo build --release --bin dev-agent-executor
 
 Point the CLI or desktop app at it with `--rust-executor <path>` or
 `DEV_AGENT_RUST_BINARY`. For released binaries, the CLI can instead use
-`dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.1.6` followed by
+`dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.2.1` followed by
 `--executor rust-sandbox`; `runtime status|path|remove` provide cache diagnostics
 without starting a model provider.
 
@@ -404,15 +405,17 @@ all six workspace phases in that plan are implemented and verified: project init
 Rust runtime distribution, review/plan/apply CI mode, provider/model budgets, incremental multi-language
 indexes, and MCP/Desktop status management. In that September 19 release snapshot,
 [`v0.1.8`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.1.8) was the
-published GitHub release. As of October 1, 2026, `v0.1.8` remains the latest formal GitHub release.
-The September 19 snapshot had no newer workspace candidate; npm `0.2.0` was
-published separately on September 30.
+published GitHub release. The current formal release is now
+[`v0.2.1`](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.1), built from the
+authorized release tag and verified by the release workflow. The npm package and
+runtime carrier are therefore both published, while the Rust runtime identity remains
+`0.2.0` as documented above.
 
-The published-release snapshot above is dated September 19, 2026. The local
-working tree has continued to evolve since then; its implementation and
-verification history is recorded in the repository-root `task_plan.md`,
-`progress.md`, and `findings.md`. Those local changes do not by themselves
-constitute a published release or release candidate.
+The published-release snapshot above is dated September 19, 2026; the current
+0.2.1 release evidence is recorded in `docs/release-cli-npm.md` and the
+`.planning/2026-10-05-github-release-v0.2.1/` ledger. The local working tree has
+continued to evolve since the historical snapshot; those records distinguish
+published artifacts from later workspace changes.
 
 The [2026-09-18 overnight plan](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals.md),
 its [progress record](docs/superpowers/plans/2026-09-18-overnight-ten-project-goals-progress.md),
