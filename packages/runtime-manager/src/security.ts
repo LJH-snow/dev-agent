@@ -44,6 +44,21 @@ export function assertValidReleaseVersion(value: unknown): asserts value is stri
   }
 }
 
+/**
+ * POSIX ownership gate for runtime cache directories. The cache must stay
+ * owned by the invoking user and not be group/world writable, so another
+ * local user cannot pre-plant (or later tamper with) a version directory that
+ * would otherwise pass the metadata/hash consistency checks. Windows has no
+ * comparable uid model, so the check is a no-op there.
+ */
+export function isPrivatelyOwned(info: { uid: number; mode: number }): boolean {
+  if (process.platform === "win32" || typeof process.getuid !== "function") {
+    return true;
+  }
+  if (info.uid !== process.getuid()) return false;
+  return (info.mode & 0o022) === 0;
+}
+
 export function stableStringify(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;

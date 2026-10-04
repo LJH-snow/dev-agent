@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -685,4 +685,67 @@ test("remove waits for an active installation of the same runtime version", asyn
   } finally {
     releaseArchive?.(Buffer.from("archive-bytes"));
   }
+});
+
+test("install refuses a group or world writable runtime cache root", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("POSIX ownership checks do not apply on Windows");
+    return;
+  }
+  const root = await tempRoot();
+  await chmod(root, 0o777);
+  const manager = new api.RuntimeManager({
+    runtimeDir: root,
+    platform: "darwin",
+    arch: "arm64",
+    ...makeInstallDependencies(),
+  });
+
+  await assert.rejects(
+    () => manager.install(VERSION),
+    (error: unknown) =>
+      assertRuntimeError(error, "INSTALL_FAILED") &&
+      /private|writable|owned/i.test((error as Error).message)
+  );
+  assert.equal((await manager.status(VERSION, TARGET)).state, "missing");
+});
+
+test("status marks a tampered-permission cache as corrupt", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("POSIX ownership checks do not apply on Windows");
+    return;
+  }
+  const root = await tempRoot();
+  const manager = new api.RuntimeManager({
+    runtimeDir: root,
+    platform: "darwin",
+    arch: "arm64",
+    ...makeInstallDependencies(),
+  });
+  await manager.install(VERSION);
+  assert.equal((await manager.status(VERSION, TARGET)).state, "installed");
+
+  const paths = api.getRuntimePaths(root, VERSION, TARGET);
+  await chmod(paths.versionDir, 0o777);
+  const status = await manager.status(VERSION, TARGET);
+  assert.equal(status.state, "corrupt");
+  assert.match(status.reason ?? "", /private|writable|owned/i);
+  await assert.rejects(() => manager.path(VERSION, TARGET), (error: unknown) => assertRuntimeError(error, "RUNTIME_CORRUPT"));
+});
+
+test("the private-ownership predicate rejects foreign owners and writable modes", (t) => {
+  if (process.platform === "win32" || typeof process.getuid !== "function") {
+    t.skip("POSIX ownership checks do not apply on this platform");
+    return;
+  }
+  const predicate = (api as { isPrivatelyOwned?: (info: { uid: number; mode: number }) => boolean }).isPrivatelyOwned;
+  assert.ok(typeof predicate === "function", "runtime-manager must export isPrivatelyOwned");
+  const uid = process.getuid();
+
+  assert.equal(predicate!({ uid, mode: 0o700 }), true);
+  assert.equal(predicate!({ uid, mode: 0o500 }), true);
+  assert.equal(predicate!({ uid, mode: 0o770 }), false, "group-writable directories are not private");
+  assert.equal(predicate!({ uid, mode: 0o707 }), false, "world-writable directories are not private");
+  assert.equal(predicate!({ uid, mode: 0o777 }), false);
+  assert.equal(predicate!({ uid: uid + 1, mode: 0o700 }), false, "another user's directory is not private");
 });

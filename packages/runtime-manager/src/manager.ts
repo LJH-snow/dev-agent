@@ -148,11 +148,25 @@ async function removePathSafely(path: string): Promise<boolean> {
   return true;
 }
 
+function privateDirectoryDenial(info: { uid: number; mode: number }): string | undefined {
+  if (process.platform !== "win32" && typeof process.getuid === "function" && info.uid !== process.getuid()) {
+    return "Runtime cache directory is owned by another user";
+  }
+  if ((info.mode & 0o022) !== 0) {
+    return "Runtime cache directory is group or world writable";
+  }
+  return undefined;
+}
+
 async function ensurePrivateDirectory(path: string): Promise<void> {
   try {
     const info = await lstat(path);
     if (info.isSymbolicLink() || !info.isDirectory()) {
       throw new RuntimeManagerError("INSTALL_FAILED", "Runtime cache directory is not a private directory");
+    }
+    const denial = privateDirectoryDenial(info);
+    if (denial) {
+      throw new RuntimeManagerError("INSTALL_FAILED", denial);
     }
     return;
   } catch (error) {
@@ -349,6 +363,10 @@ export class RuntimeManager {
     if (!versionInfo.isDirectory() || versionInfo.isSymbolicLink()) {
       return { state: "corrupt", version, target, reason: "Runtime version directory is not private" };
     }
+    const versionDenial = privateDirectoryDenial(versionInfo);
+    if (versionDenial) {
+      return { state: "corrupt", version, target, reason: versionDenial };
+    }
 
     let targetInfo;
     try {
@@ -359,6 +377,10 @@ export class RuntimeManager {
     }
     if (!targetInfo.isDirectory() || targetInfo.isSymbolicLink()) {
       return { state: "corrupt", version, target, reason: "Runtime cache directory is not a private directory" };
+    }
+    const targetDenial = privateDirectoryDenial(targetInfo);
+    if (targetDenial) {
+      return { state: "corrupt", version, target, reason: targetDenial };
     }
 
     let metadata: InstallMetadata | undefined;

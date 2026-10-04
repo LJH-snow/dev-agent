@@ -157,8 +157,8 @@ function launch({ provider, memoryFile, model, openAiBaseUrl, cwd, devAgentHome,
  * proves the handler is in place — a fixed sleep is a race under load, and
  * signalling earlier kills the process with a signal instead of exit code 130.
  */
-async function waitForReady(child: ChildProcess, output: () => string): Promise<void> {
-  await waitFor(() => output().includes("Type 'exit' or 'quit' to stop."), 5000);
+async function waitForReady(child: ChildProcess, output: () => string, timeoutMs = 5000): Promise<void> {
+  await waitFor(() => output().includes("Type 'exit' or 'quit' to stop."), timeoutMs);
   if (child.exitCode !== null || child.signalCode !== null) {
     throw new Error("the CLI exited before it was ready");
   }
@@ -559,13 +559,16 @@ test("interactive CLI exposes answer, stage, and total timings in a metadata-onl
     });
 
     try {
-      await waitForReady(child, () => stdout);
+      // This trace round-trip crosses two processes; under full-suite load the
+      // PTY startup alone can exceed a default 4s wait, so this test carries
+      // its own local timing allowance instead of relaxing the assertions.
+      await waitForReady(child, () => stdout, 20000);
       child.stdin?.write("trace-prompt\n");
-      await waitFor(() => stdout.includes("[state=done turns=1]"), 4000);
+      await waitFor(() => stdout.includes("[state=done turns=1]"), 20000);
       child.stdin?.write(":trace\n");
-      await waitFor(() => stdout.includes("[trace]"), 4000);
+      await waitFor(() => stdout.includes("[trace]"), 20000);
       child.stdin?.write("exit\n");
-      const result = await waitForExit(child, 5000);
+      const result = await waitForExit(child, 20000);
       assert.equal(result.code, 0, stdout);
     } finally {
       if (child.exitCode === null && child.signalCode === null) {

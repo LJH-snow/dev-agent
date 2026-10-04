@@ -2,6 +2,7 @@ export * from "./errors.js";
 export * from "./manifest.js";
 export * from "./manager.js";
 export * from "./paths.js";
+export * from "./security.js";
 export * from "./targets.js";
 export * from "./types.js";
 export * from "./version.js";
