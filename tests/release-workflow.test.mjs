@@ -161,6 +161,33 @@ test("manifest job aggregates the four build outputs and uploads the checksum-on
   assert.match(manifestJob, /checksum-only/i);
 });
 
+test("manifest signing is opt-in, secret-gated, and skips cleanly without the key", () => {
+  const manifestJob = sectionAfter("  manifest:\n", "  release:\n");
+
+  assert.match(
+    manifestJob,
+    /RUNTIME_MANIFEST_SIGNING_KEY: \$\{\{ secrets\.RUNTIME_MANIFEST_SIGNING_KEY \}\}/
+  );
+  assert.match(manifestJob, /if: env\.RUNTIME_MANIFEST_SIGNING_KEY != ''/);
+  assert.match(manifestJob, /sign-runtime-manifest\.mjs/);
+  assert.match(manifestJob, /dev-agent-runtime-manifest\.sig/);
+  // The optional signing step must build the workspace signer, not improvise
+  // its own canonicalization.
+  assert.match(manifestJob, /@dev-agent\/runtime-manager/);
+});
+
+test("release job keeps the optional signature consistent with its secret", () => {
+  const releaseJob = sectionAfter("  release:\n");
+
+  assert.match(releaseJob, /RUNTIME_MANIFEST_SIGNING_KEY/);
+  assert.match(releaseJob, /dev-agent-runtime-manifest\.sig/);
+  // Consistency: with the secret the sidecar must exist; without it the
+  // sidecar must not. The allowlist accepts the optional sidecar.
+  assert.match(releaseJob, /test -s dist\/dev-agent-runtime-manifest\.sig/);
+  assert.match(releaseJob, /dev-agent-runtime-manifest\.json\|dev-agent-runtime-manifest\.sig\)/);
+  assert.match(releaseJob, /sig_args/);
+});
+
 test("release allowlist and release assets include the runtime manifest", () => {
   const releaseJob = sectionAfter("  release:\n");
 

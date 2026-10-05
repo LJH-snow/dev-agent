@@ -2,6 +2,14 @@
 
 ## 2026-10-05（v0.2.2 carrier 发布后跟进）
 
+- Release workflow: 新增可选的 manifest 签名步骤——配置
+  `RUNTIME_MANIFEST_SIGNING_KEY` secret（Ed25519 PKCS8 PEM）后，manifest
+  job 会构建 workspace 并用 `scripts/sign-runtime-manifest.mjs`（复用
+  runtime-manager 的 canonical 化）产出 `dev-agent-runtime-manifest.sig`
+  并上传；release job 校验 sidecar 与 secret 的一致性（有 secret 必有
+  sidecar、无 secret 必无）并条件上传到 release。未配置 secret 时发布
+  流程零变化。先 RED 测试（workflow 契约 + 脚本），并对已发布的 v0.2.2
+  manifest 实测签名/验签通过。
 - Runtime manager: 新增可选的 manifest Ed25519 签名验证——
   `manifestVerifyPublicKey`（CLI 经 `DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY`
   配置）启用后，安装时对下载的 manifest 逐一验签（canonical 形式 +
