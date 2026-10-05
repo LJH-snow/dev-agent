@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10-05（未发布 / unreleased）
+
+- CLI Security Center: `:security` 扫描现在会把有界元数据写入审计历史，
+  并新增 `:security history` 查看。历史记录只包含 scan id、时间、状态、
+  耗时、文件/字节/跳过计数和按 severity/category 的聚合计数；finding
+  位置、摘要、secret 值、命令、环境变量、绝对路径和错误文本一律不落盘、
+  不展示。存储为 50 条 / 256 KiB 上限、原子私有权限写入，坏档 fail-closed。
+  审计历史只是记账辅助，不构成运行时安全证明。
+- CLI: managed runtime 默认 carrier release 从 `0.1.6` 切换为已发布的
+  `0.2.1`（runtime identity 仍为 `0.2.0`）。不带 `--runtime-release` 的
+  `runtime install` 现在安装与当前 GitHub Release v0.2.1 一致的资产，
+  显式 flag 行为不变。
+
 ## 2026-10-04（@agent_cli/cli 0.2.1 发布）
 
 - `@agent_cli/cli@0.2.1` 已发布到 npm 并成为 `latest`（registry 复核

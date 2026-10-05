@@ -107,14 +107,15 @@ test("runtime path fails closed without an installed runtime", async () => {
 });
 
 test("runtime release parsing keeps carrying release separate from runtime identity", () => {
-  assert.equal(runtimeCommand.readRuntimeManifestRelease([]), "0.1.6");
+  assert.equal(runtimeCommand.DEFAULT_RUNTIME_RELEASE_VERSION, "0.2.1");
+  assert.equal(runtimeCommand.readRuntimeManifestRelease([]), "0.2.1");
   assert.equal(
-    runtimeCommand.readRuntimeManifestRelease(["--runtime-release", "0.1.7"]),
-    "0.1.7"
+    runtimeCommand.readRuntimeManifestRelease(["--runtime-release", "0.2.2"]),
+    "0.2.2"
   );
   assert.equal(
     runtimeCommand.readRuntimeManifestRelease(["--runtime-release", "  "]),
-    "0.1.6"
+    "0.2.1"
   );
 });
 
