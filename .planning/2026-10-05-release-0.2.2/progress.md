@@ -31,4 +31,18 @@
 
 ## Publish evidence
 
-- (pending)
+- Blocked on user 2FA: the non-interactive governance publish returned
+  `publish_failed`; the PTY-wrapped `npm publish` reached the auth stage and
+  printed browser-auth URLs, but the `/-/v1/done` poll timed out (E404) before
+  the user completed authorization. An auto-retry loop (15 attempts over
+  ~35 minutes, freshest URL maintained in `/tmp/dev-agent-npm-auth-latest.txt`)
+  also exhausted without a completed authorization.
+- Registry stayed consistent throughout: `dist-tags.latest` remained `0.2.1`
+  and `@agent_cli/cli@0.2.2` was never partially published.
+- The candidate is fully prepared, verified, and committed (`d6b65f2`).
+  Completion path when the user is ready: re-run the PTY publish (or the
+  guarded `pnpm release:publish -- --publish` after a fresh `npm login`)
+  and click the printed URL within its short validity window; then re-check
+  `npm view @agent_cli/cli@0.2.2 version` and `dist-tags.latest`, flip
+  `docs/release-state.json` to published 0.2.2, update the docs contract and
+  CHANGELOG, and commit.
