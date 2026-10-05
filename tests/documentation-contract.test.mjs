@@ -561,8 +561,28 @@ test("Desktop diagnostic reports are ignored", () => {
   assert.match(gitignore, /apps\/desktop\/report\.\*\.json/);
 });
 
-test("runtime manager documents fixed manifest and archive download limits", () => {
-  assert.match(cliReadme, /runtime manifest/i);
+test("runtime manifest signing documents the key ceremony and inert defaults", () => {
+  const signingDoc = readFileSync(
+    new URL("../docs/runtime-manifest-signing.md", import.meta.url),
+    "utf8"
+  );
+  assert.match(signingDoc, /RUNTIME_MANIFEST_SIGNING_KEY/);
+  assert.match(signingDoc, /DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY/);
+  assert.match(signingDoc, /MANIFEST_SIGNATURE_INVALID/);
+  assert.match(signingDoc, /generateKeyPairSync/);
+  assert.match(signingDoc, /not\s+a\s+runtime\s+security\s+proof/i);
+  assert.doesNotMatch(
+    signingDoc,
+    /BEGIN [A-Z ]*PRIVATE KEY[\s\S]*?[A-Za-z0-9+/]{40}/,
+    "signing doc must never contain a private key body"
+  );
+  assert.match(docsReadme, /runtime-manifest-signing\.md/);
+  assert.match(cliReadme, /docs\/runtime-manifest-signing\.md/);
+  assert.match(cliReadme, /:security clear confirm/);
+  assert.match(cliReadme, /DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY/);
+});
+
+test("runtime manager documents fixed manifest and archive download limits", () => {  assert.match(cliReadme, /runtime manifest/i);
   assert.match(cliReadme, /1 MiB/i);
   assert.match(cliReadme, /16 MiB/i);
 });

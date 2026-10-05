@@ -956,6 +956,8 @@ canonical manifest form), and installs fail closed when the signature is
 missing, corrupt, or produced by a different key. Without the variable, the
 previous checksum-only trust model applies unchanged. The signing private
 key stays with the release process; the CLI never accepts it at runtime.
+The full key ceremony lives in
+[`docs/runtime-manifest-signing.md`](../../docs/runtime-manifest-signing.md).
 
 When Rust sandbox execution is selected, built-in Shell and Git calls use a
 workspace-write profile limited to the current working directory, while Search
