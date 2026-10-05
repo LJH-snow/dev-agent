@@ -552,7 +552,7 @@ test("npm 0.2.1 publication and GitHub Release evidence stay distinct", () => {
   assert.match(npmRelease, /release workflow run `35425092544` 成功完成/);
   assert.match(desktopCandidate, /Publication evidence/);
   assert.match(desktopCandidate, /35338225586/);
-  assert.match(readme, /formal\s+\[GitHub Release v0\.2\.1\]/);
+  assert.match(readme, /formal\s+\[GitHub Release v0\.2\.2\]/);
   assert.match(readme, /@agent_cli\/cli@0\.2\.1[\s\S]*latest/);
   assert.match(readme, /Rust runtime identity remains\s+`0\.2\.0`/);
 });

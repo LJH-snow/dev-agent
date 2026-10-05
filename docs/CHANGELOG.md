@@ -10,8 +10,16 @@
   --skip-build`（carrier 0.2.1）通过。账号 2FA 走与 0.2.1 相同的浏览器授权
   流程；发布后 clean-install 复核 `dev-agent --version` = `0.2.2`，
   provider-free `--tools --json` 正常。
-- 正式 GitHub carrier release 仍为 `v0.2.1`（runtime identity 0.2.0，
-  carrier 0.2.1）；`v0.2.2` tag/release 未创建，需要单独授权。
+- 正式 GitHub carrier release
+  [v0.2.2](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.2) 已随
+  annotated tag 创建（release workflow run `37306834407` 成功）：包含
+  `agent_cli-cli-0.2.2.tgz`、四平台 runtime archive（runtime identity 仍为
+  `0.2.0`，protocol 1）、四个 `.sha256` sidecar 和
+  `dev-agent-runtime-manifest.json`（releaseVersion 0.2.2 / releaseTag
+  v0.2.2 / 四 target）。下载后四平台 checksum 独立复核全部匹配；从该
+  carrier clean-install 后 `runtime install --runtime-version 0.2.0
+  --runtime-release 0.2.2` 安装、`runtime status` 报 installed、
+  `runtime remove` 正常完成，端到端生命周期通过。
 - 本版本内容：CLI Security Center metadata-only 审计历史与 `:security
   history`；managed runtime 默认 carrier release 从 `0.1.6` 切换为已发布的
   `0.2.1`；Desktop Security Center 路由与面板（loopback + capability token

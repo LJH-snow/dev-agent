@@ -308,8 +308,10 @@ fallback。详细 proof gap 见
 以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
 均已完成。当前 npm 包 `@agent_cli/cli@0.2.2` 已发布（2026-10-05），npm registry `latest` 指向该版本；
 0.2.2 包含 Security Center 审计历史、Desktop Security Center、runtime 默认 carrier 0.2.1
-与 spawn 前受管 runtime 完整性复验。正式 GitHub carrier release 仍为 `v0.2.1`；
-`v0.2.2` tag/release 需要单独授权才会创建。
+与 spawn 前受管 runtime 完整性复验。正式 GitHub carrier release 已推进到
+`v0.2.2`（workflow run `37306834488` 同源 tag `v0.2.2`，四平台 runtime 以
+identity 0.2.0 构建，checksum 与 manifest 均已复核，carrier 生命周期
+端到端通过）。
 正式 GitHub Release 已推进到 `v0.2.1`；tag、workflow run `37215824488`、四平台 runtime、
 checksum sidecar、manifest 和 CLI tarball 均已验证。Rust runtime identity 仍为 `0.2.0`，
 与 carrier release 分开记录；不要把 npm、GitHub carrier release 与 runtime contract 视为同一版本。

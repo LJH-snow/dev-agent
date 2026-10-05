@@ -1,6 +1,22 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-05，`@agent_cli/cli@0.2.2` 已发布到 npm 并成为 `latest`**。npm 发布与 GitHub Release 仍是两个独立状态：正式 GitHub carrier release 仍为 `v0.2.1`，`v0.2.2` tag/release 只有在单独授权后才会创建。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-05，`@agent_cli/cli@0.2.2` 已发布到 npm 并成为 `latest`，正式 GitHub carrier Release 为 `v0.2.2`**。npm 发布与 GitHub Release 仍是两个独立状态，本次均已获得用户授权并完成。
+
+## v0.2.2 GitHub Release 记录（2026-10-05）
+
+- annotated tag `v0.2.2` 创建在 `75553ba` 并推送，触发 release workflow run
+  `37306834407`，成功完成。
+- [GitHub Release v0.2.2](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.2)
+  是正式、非 draft、非 prerelease 的 release，包含 CLI tarball
+  `agent_cli-cli-0.2.2.tgz`、四平台 runtime archive（runtime identity 仍为
+  `0.2.0`，protocol 1）、四个 `.sha256` sidecar 和
+  `dev-agent-runtime-manifest.json`。
+- 下载后四平台 archive 的 SHA-256 与 sidecar 独立复核全部匹配；manifest
+  记录 `releaseVersion: 0.2.2`、`releaseTag: v0.2.2`、四个 target。
+- 端到端复核：从 registry clean-install `@agent_cli/cli@0.2.2`，以
+  `--runtime-version 0.2.0 --runtime-release 0.2.2` 完成
+  `runtime install`（成功装到隔离 runtime dir）→ `runtime status`
+  （installed）→ `runtime remove`（干净移除）生命周期。
 
 ## 0.2.2 发布记录（2026-10-05）
 

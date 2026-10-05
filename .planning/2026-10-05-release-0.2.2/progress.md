@@ -52,6 +52,18 @@
   0.2.2 release section), documentation contract updated and green.
 - The formal GitHub carrier release remains `v0.2.1`; a `v0.2.2` tag/release
   is a separate decision requiring explicit authorization.
+- Carrier release completed later on 2026-10-05 after the user said 继续:
+  annotated tag `v0.2.2` created at `75553ba` and pushed; release workflow
+  run `37306834407` succeeded;
+  [GitHub Release v0.2.2](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.2)
+  is formal (non-draft, non-prerelease) with 10 assets (CLI tarball, four
+  platform archives, four sha256 sidecars, runtime manifest). All four
+  archive checksums were independently re-verified against their sidecars;
+  the manifest records releaseVersion 0.2.2 / releaseTag v0.2.2 with four
+  targets (runtime identity 0.2.0, protocol 1). End-to-end: clean-installed
+  the published 0.2.2 package and completed `runtime install
+  --runtime-version 0.2.0 --runtime-release 0.2.2` → `runtime status`
+  (installed) → `runtime remove` against an isolated runtime dir.
 - Closing scan for the round:
   `scan-2026-10-05T11-40-57.116Z-79526bc7838e`, seal
   `sha256:193d500a07d5b005f7dc48a33aa329c2cfe0a483dc02971ea16db7182e2f7399`,

@@ -254,13 +254,13 @@ wrapper only publishes after that preflight succeeds. As of October 5, 2026,
 `@agent_cli/cli@0.2.2` is published to npm and is the registry `latest` (Security
 Center audit history, Desktop Security Center, runtime default carrier 0.2.1, and
 pre-spawn managed-runtime re-validation). The formal
-[GitHub Release v0.2.1](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.1)
-remains the current carrier release created by the authorized tag workflow; it
-carries the four runtime artifacts, checksums, manifest, and verified CLI tarball.
-The Rust runtime identity remains
-`0.2.0`; use `--runtime-version 0.2.0 --runtime-release 0.2.1` when installing that
-runtime carrier (this is also the built-in default since 0.2.2). A `v0.2.2` GitHub
-tag/release is only created after separate authorization. See
+[GitHub Release v0.2.2](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.2)
+is the current carrier release, created by the authorized tag workflow with the
+four runtime artifacts (runtime identity `0.2.0`), checksums, manifest, and
+verified CLI tarball. The Rust runtime identity remains
+`0.2.0`; use `--runtime-version 0.2.0 --runtime-release 0.2.2` when installing that
+runtime carrier (the built-in default is `0.2.1` until the packaged default is
+bumped). See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.
