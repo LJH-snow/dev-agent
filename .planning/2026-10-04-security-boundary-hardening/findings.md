@@ -74,3 +74,11 @@ Residual risks: static analysis does not prove runtime exploitability; managed c
 > `.planning/2026-10-05-runtime-toctou-narrowing/progress.md`. Same-UID
 > planted state that rewrites cache content and metadata consistently, and
 > root attackers, remain out of scope.
+>
+> Closing rescan for that slice:
+> `scan-2026-10-05T06-31-26.771Z-79bcff433dfb`, seal
+> `sha256:67c3c979f7ca785659667b769b9716497a88faee25d87fd3e83c8a7e76d9531a`,
+> depth deep, 198 dependencies / 0 advisories, verdict effect `none`.
+> Findings: 21 — unchanged across four consecutive scans; the verifier hook
+> and CLI wiring introduced zero findings (no occurrence references
+> `runtime-command.ts` or the executor changes).
