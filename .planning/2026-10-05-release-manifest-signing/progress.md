@@ -33,3 +33,9 @@
   public key in docs for users who set `DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY`.
   Until then, no release produces a signature and all existing behavior is
   unchanged.
+- Closing scan: `scan-2026-10-05T15-15-04.479Z-494fbc9d4cf7`, seal
+  `sha256:8ee885caad04bd382aa719c844982caa3c394fea54d6aa4ce29d151283e0bf08`,
+  depth deep, 198 dependencies / 0 advisories, verdict effect `none`.
+  Findings: 21 — unchanged across nine consecutive scans; zero findings in
+  the signing script or workflow. Static-only evidence, not a runtime
+  security proof.
