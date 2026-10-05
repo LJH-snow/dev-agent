@@ -2,6 +2,10 @@
 
 ## 2026-10-05（v0.2.2 carrier 发布后跟进）
 
+- Desktop Security Center: `POST /api/security-scan` 现在与 CLI 对齐，
+  对 MCP 服务器元数据做只读检查（默认有界读取用户级 config 的
+  `mcpServers`，宿主可注入）；finding 进入聚合计数，而 MCP 名称、命令、
+  参数、环境变量值一律不落盘。先 RED 测试。Desktop 套件 450/450。
 - Desktop Security Center: 新增 `DELETE /api/security-center`（capability
   token 门控）清除持久化的扫描元数据历史，面板增加带浏览器确认的
   "清除历史"动作；底层 `SecurityAuditHistoryStore` 增加 `clear()`（先 RED

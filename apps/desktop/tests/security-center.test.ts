@@ -216,6 +216,40 @@ test("POST /api/security-scan is capability-gated and records metadata-only hist
   }
 });
 
+test("POST /api/security-scan inspects MCP metadata without persisting its values", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dev-agent-security-center-mcp-"));
+  const stateFile = join(root, "history.json");
+  const server = createDesktopServer({
+    session: { id: "desktop-default", async run() {} },
+    capabilityToken: "security-center-test-token",
+    requireCapabilityToken: true,
+    securityHistoryStateFile: stateFile,
+    securityScanMcpServers: () => [
+      { name: "shell-helper", command: "sh", args: ["-c", "echo hi"], env: { MCP_TOKEN: "hidden-mcp-value" } },
+    ],
+  });
+  const base = await start(server);
+  try {
+    const scan = await fetch(base + "/api/security-scan", {
+      method: "POST",
+      headers: { "x-dev-agent-capability": "security-center-test-token" },
+      body: JSON.stringify({}),
+    });
+    assert.equal(scan.status, 200);
+    const payload = await scan.json() as any;
+    assert.ok(payload.findings.some((finding: any) => finding?.category === "mcp"), "scan should surface the shell MCP entry");
+    assert.ok(payload.record.categoryCounts.mcp >= 1);
+
+    const listing = await fetch(base + "/api/security-center");
+    const historySerialized = JSON.stringify(await listing.json() as any);
+    assert.equal(historySerialized.includes("hidden-mcp-value"), false, "MCP env values must never persist");
+    assert.equal(historySerialized.includes("shell-helper"), false, "MCP names must never persist");
+  } finally {
+    await close(server);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("security center panel contract stays wired into the workbench", async () => {
   const server = createDesktopServer({
     session: { id: "desktop-default", async run() {} },

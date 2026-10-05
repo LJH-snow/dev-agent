@@ -1,7 +1,7 @@
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
 import { isIP } from "node:net";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { opendir, readFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -236,6 +236,12 @@ export interface DesktopServerOptions {
   readonly executionHistoryStateFile?: string;
   /** Overrides the persisted security scan history location, primarily for tests. */
   readonly securityHistoryStateFile?: string;
+  /**
+   * Supplies MCP server metadata for the bounded Security Center scan.
+   * Defaults to a bounded read of the user-level dev-agent config. The scan
+   * only inspects command/args/env shapes read-only; values never persist.
+   */
+  readonly securityScanMcpServers?: () => readonly unknown[];
   /** Executes scheduled job definitions; defaults to the built-in ci-watch watcher. */
   readonly scheduledJobRunner?: (definition: ScheduleDefinition, trigger: ScheduleRunRecord["trigger"]) =>
     Promise<{ ok: boolean; summary: Record<string, unknown> }>;
@@ -403,6 +409,7 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
   const securityHistory = new SecurityAuditHistoryStore({
     ...(securityHistoryStateFile === undefined ? {} : { stateFile: securityHistoryStateFile }),
   });
+  const loadSecurityScanMcpServers = options.securityScanMcpServers ?? loadScanMcpMetadata;
   const persistRunHistory = async (run: DesktopRunState): Promise<void> => {
     const record = run.historyRecord();
     if (record) await executionHistory.record(record);
@@ -1360,7 +1367,10 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         }
         const startedAt = new Date().toISOString();
         try {
-          const result: SecurityScanResult = await scanWorkspace({ workingDirectory });
+          const result: SecurityScanResult = await scanWorkspace({
+            workingDirectory,
+            mcpServers: loadSecurityScanMcpServers(),
+          });
           const record = createSecurityAuditRecord(result, { startedAt, finishedAt: new Date().toISOString() });
           await securityHistory.record(record);
           const payload = {
@@ -4017,6 +4027,36 @@ function parseJsonObjectBody<T>(body: string): JsonObjectParseResult<T> {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && "code" in error;
+}
+
+const maxScanMcpMetadataFileBytes = 1024 * 1024;
+const maxScanMcpServers = 64;
+
+/**
+ * Bounded, fail-closed read of the user-level dev-agent config's MCP server
+ * list for the Security Center scan. The array is capped and its entries are
+ * passed as opaque metadata: the scanner only inspects command/args/env
+ * shapes read-only, and none of the values are persisted.
+ */
+function loadScanMcpMetadata(): readonly unknown[] {
+  let raw: string;
+  try {
+    const path = join(homedir(), ".dev-agent", "config.json");
+    if (statSync(path).size > maxScanMcpMetadataFileBytes) return [];
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return [];
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return [];
+  const servers = (parsed as Record<string, unknown>).mcpServers;
+  if (!Array.isArray(servers)) return [];
+  return servers.slice(0, maxScanMcpServers);
 }
 
 function emptyEvidenceSummary(): EvidenceSummary {
