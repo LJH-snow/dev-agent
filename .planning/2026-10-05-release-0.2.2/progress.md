@@ -64,6 +64,12 @@
   the published 0.2.2 package and completed `runtime install
   --runtime-version 0.2.0 --runtime-release 0.2.2` → `runtime status`
   (installed) → `runtime remove` against an isolated runtime dir.
+- Closing scan after the carrier-release docs:
+  `scan-2026-10-05T12-12-36.332Z-be57ccea1e00`, seal
+  `sha256:f0de74ee7ba26b943b4a53de873c405f80a8f85fa96a840a95a886ccfa4a95de`,
+  depth deep, 198 dependencies / 0 advisories, verdict effect `none`.
+  Findings: 21 — unchanged across six consecutive scans. Static-only
+  evidence, not a runtime security proof.
 - Closing scan for the round:
   `scan-2026-10-05T11-40-57.116Z-79526bc7838e`, seal
   `sha256:193d500a07d5b005f7dc48a33aa329c2cfe0a483dc02971ea16db7182e2f7399`,
