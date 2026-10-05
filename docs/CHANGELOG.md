@@ -17,6 +17,13 @@
   与 2026-10-04 rescan 持平；本两轮改动未引入新 finding，逐项映射到既有
   处置账本（`.planning/2026-10-04-security-boundary-hardening/findings.md`）。
   扫描仍为 static-only 证据，不构成运行时安全证明。
+- Desktop Security Center: 新增 `GET /api/security-center`（仅 loopback，
+  返回 fail-closed、metadata-only 的扫描历史快照）和
+  `POST /api/security-scan`（loopback + capability token，对默认工作区或
+  task worktree 运行只读有界扫描并记录聚合元数据）。工作台新增
+  security-center.js 面板（textContent 渲染、stale-response guard）。
+  持久化历史不含 finding 位置、摘要、命令、环境变量、路径或错误文本。
+  扫描器与审计历史已提取到 `@dev-agent/agent-core` 供 CLI/Desktop 共享。
 
 ## 2026-10-04（@agent_cli/cli 0.2.1 发布）
 

@@ -189,3 +189,38 @@ test("POST /api/security-scan is capability-gated and records metadata-only hist
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("security center panel contract stays wired into the workbench", async () => {
+  const server = createDesktopServer({
+    session: { id: "desktop-default", async run() {} },
+  });
+  const base = await start(server);
+  try {
+    const page = await (await fetch(base + "/")).text();
+    for (const id of [
+      "security-center-panel",
+      "security-center-title",
+      "security-center-status",
+      "security-center-summary",
+      "security-center-list",
+      "security-center-run-scan",
+      "security-center-refresh",
+      "security-center-findings",
+      "security-center-findings-title",
+      "security-center-findings-list",
+      "security-center-note",
+    ]) {
+      assert.ok(page.includes(`id="${id}"`), `workbench should declare #${id}`);
+    }
+    assert.ok(page.includes('data-i18n="securityCenter.title"'));
+    assert.ok(page.includes('"securityCenter.metadataNote"'), "en dictionary should define securityCenter keys");
+    assert.ok(page.includes('"securityCenter.title": "安全中心"'), "zh dictionary should define securityCenter keys");
+    assert.ok(page.includes("createSecurityCenterUI"));
+
+    const module = await (await fetch(base + "/public/security-center.js")).text();
+    for (const symbol of ["createSecurityCenterUI", "/api/security-center", "/api/security-scan", "textContent"]) {
+      assert.ok(module.includes(symbol), `security-center.js should reference ${symbol}`);
+    }
+    assert.equal(module.includes("innerHTML"), false, "panel must render with textContent only");
+  } finally { await close(server); }
+});

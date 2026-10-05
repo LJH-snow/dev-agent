@@ -846,6 +846,25 @@
             </section>
           </div>
         </section>
+        <section id="security-center-panel" class="desktop-status-panel parallel-runs-panel" aria-labelledby="security-center-title" aria-live="polite">
+          <div class="desktop-status-header">
+            <div>
+              <div id="security-center-title" class="desktop-status-title" data-i18n="securityCenter.title">Security center</div>
+              <div id="security-center-status" class="desktop-status-note" role="status" data-i18n="securityCenter.loading">Loading security metadata…</div>
+            </div>
+            <div class="security-center-actions">
+              <button type="button" id="security-center-run-scan" data-i18n="securityCenter.runScan">Run bounded scan</button>
+              <button type="button" id="security-center-refresh" class="desktop-status-refresh" data-i18n="securityCenter.refresh">Refresh</button>
+            </div>
+          </div>
+          <div id="security-center-summary" class="parallel-runs-summary" role="status"></div>
+          <ul id="security-center-list" class="parallel-runs-list" aria-label="Recorded security scans" data-i18n-aria-label="securityCenter.history"></ul>
+          <section id="security-center-findings" class="security-center-findings" hidden aria-labelledby="security-center-findings-title" aria-live="polite">
+            <strong id="security-center-findings-title" data-i18n="securityCenter.findingsTitle">Latest scan findings</strong>
+            <ul id="security-center-findings-list" class="parallel-runs-list"></ul>
+          </section>
+          <div id="security-center-note" class="desktop-status-note" data-i18n="securityCenter.metadataNote">History stores aggregate metadata only — no finding content, paths, commands, or secrets.</div>
+        </section>
         <section id="desktop-status-panel" class="desktop-status-panel" aria-labelledby="desktop-status-title" aria-live="polite">
           <div class="desktop-status-header">
             <div>
@@ -973,6 +992,7 @@
     import { createGitHubDeliveryLoopUI } from "/public/github-delivery-loop-ui.js";
     import { createScheduledTasksUI } from "/public/scheduled-tasks-ui.js";
     import { buildExecutionHistoryEvidenceUrl, createExecutionCenterUI } from "/public/execution-center.js";
+    import { createSecurityCenterUI } from "/public/security-center.js";
     import { getRecoveredRunQueueAction } from "/public/run-recovery.js";
     import {
       getTurnActivityForEvent,
@@ -1411,6 +1431,22 @@
         "parallelRuns.duration.minutes": "{count}m",
         "parallelRuns.duration.hours": "{count}h",
         "parallelRuns.focus": "Focus",
+        "securityCenter.title": "Security center",
+        "securityCenter.loading": "Loading security metadata…",
+        "securityCenter.scanning": "Running a bounded workspace scan…",
+        "securityCenter.empty": "No security scans recorded yet.",
+        "securityCenter.summary": "{count} recorded scans · metadata-only",
+        "securityCenter.error": "Security metadata is temporarily unavailable.",
+        "securityCenter.refresh": "Refresh",
+        "securityCenter.runScan": "Run bounded scan",
+        "securityCenter.scanDone": "Scan {status} · {files} files · {findings} findings",
+        "securityCenter.scanError": "The bounded scan failed; it was recorded as an error entry.",
+        "securityCenter.files": "files",
+        "securityCenter.findings": "findings",
+        "securityCenter.history": "Recorded security scans",
+        "securityCenter.findingsTitle": "Latest scan findings",
+        "securityCenter.noFindings": "No findings in the latest bounded scan.",
+        "securityCenter.metadataNote": "History stores aggregate metadata only — no finding content, paths, commands, or secrets.",
         "executionCenter.title": "Execution center",
         "executionCenter.loading": "Loading execution state…",
         "executionCenter.checking": "Checking execution state…",
@@ -2285,6 +2321,22 @@
         "parallelRuns.duration.minutes": "{count} 分钟",
         "parallelRuns.duration.hours": "{count} 小时",
         "parallelRuns.focus": "聚焦",
+        "securityCenter.title": "安全中心",
+        "securityCenter.loading": "正在加载安全元数据…",
+        "securityCenter.scanning": "正在运行有界工作区扫描…",
+        "securityCenter.empty": "还没有已记录的安全扫描。",
+        "securityCenter.summary": "{count} 条扫描记录 · 仅元数据",
+        "securityCenter.error": "安全元数据暂时不可用。",
+        "securityCenter.refresh": "刷新",
+        "securityCenter.runScan": "运行有界扫描",
+        "securityCenter.scanDone": "扫描 {status} · {files} 个文件 · {findings} 个发现",
+        "securityCenter.scanError": "有界扫描失败；已记录为一条错误条目。",
+        "securityCenter.files": "文件",
+        "securityCenter.findings": "发现",
+        "securityCenter.history": "已记录的安全扫描",
+        "securityCenter.findingsTitle": "最近一次扫描的发现",
+        "securityCenter.noFindings": "最近一次有界扫描没有发现。",
+        "securityCenter.metadataNote": "历史只保存聚合元数据——不保存发现内容、路径、命令或密钥。",
         "executionCenter.title": "执行中心",
         "executionCenter.loading": "正在加载执行状态…",
         "executionCenter.checking": "正在检查执行状态…",
@@ -8030,6 +8082,10 @@
         return enqueueAutoFix(sessionId);
       },
     });
+    const securityCenterUI = createSecurityCenterUI({
+      documentRef: document, fetcher: fetch, translate: t,
+    });
+    void securityCenterUI?.refresh();
     taskTerminalUI = createTaskTerminalUI({
       documentRef: document,
       fetcher: fetch,

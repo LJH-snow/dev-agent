@@ -319,6 +319,16 @@ dev-agent is an AI coding agent built as a pnpm monorepo with TypeScript package
 - **Execution history**: terminal run metadata is persisted separately from
   replay state with atomic bounded storage. Restart recovery restores recent
   summaries only; raw stream events and live fragments remain in memory.
+- **Security center**: `security-center.ts` exposes the agent-core bounded
+  workspace scanner behind two loopback-gated endpoints: `GET
+  /api/security-center` serves a fail-closed, metadata-only snapshot of
+  recorded scans, and `POST /api/security-scan` (also capability-token gated)
+  runs a read-only, size- and count-bounded scan of the default workspace or a
+  task worktree. Persisted history keeps aggregate counters only — finding
+  locations, summaries, commands, environment values, paths, and error text
+  never enter storage — and the security-center.js panel renders with
+  text-only DOM updates. Audit history is bookkeeping evidence, not a runtime
+  security proof.
 - **Conversation checkpoints**: ChatSession delegates to the bounded
   FileMemory checkpoint store through `GET /api/sessions/<id>/checkpoints`,
   `POST /api/sessions/<id>/checkpoint`, and
