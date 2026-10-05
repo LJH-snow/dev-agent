@@ -8,6 +8,26 @@ Source scan: `scan-2026-10-04T08-40-18.059Z-c1111d24e45a` (static-only; verdict 
 - Findings: 21 (baseline 22). No new findings were introduced by this round's changes; every remaining occurrence maps onto a disposition row below. The rust-executor occurrence moved `:358` → `:354` purely from line shifts.
 - The scan remains `static_only_no_runtime_execution` with partial call-graph coverage and verdict effect `none`: this ledger records triage and hardening evidence, not a runtime security proof.
 
+## Rescan after audit-history and runtime-default slices (2026-10-05)
+
+- Rescan: `scan-2026-10-05T05-28-39.340Z-21118f7e6330`, seal
+  `sha256:7df8618a1d950bcdeec417fc486b00a7bd92c2bf209871cd2bc0da02fa84630b`,
+  depth deep, dependencies 198 scanned / 0 advisories / 0 unknown,
+  evidence boundary `static_only_no_runtime_execution`, verdict effect `none`.
+- Findings: 21 — identical count to the 2026-10-04 rescan. The new
+  `apps/cli/src/security-audit-history.ts`, `apps/cli/src/runtime-command.ts`
+  change, and the `securityCommandMessage`/`securityAuditHistory` additions in
+  `apps/cli/src/index.ts` introduced no findings.
+- Location mapping (old → new, line shifts only from the index.ts additions):
+  `checkRust`/`runDoctor` 1550/1591 → 1559/1600; `probeRustBinary` 3327 → 3340;
+  `parseSessionResumeCommand` 3962 → 3997; `backgroundJobCommandMessage` /
+  `sessionPickerLookup` 4727/4748 → 4762/4783 and 6554/6410 → 6589/6445.
+  All Desktop `server.ts`, `rust-executor.ts:354`, and `mcp/server.ts:218`
+  occurrences are unchanged and remain covered by the disposition rows above.
+- Still not claimed: this scan is static-only triage evidence, not a runtime
+  security proof; managed-cache TOCTOU and same-UID planted-state residuals
+  remain recorded as out of scope.
+
 | Finding/location | Provisional disposition | Evidence / follow-up |
 |---|---|---|
 | `apps/desktop/src/task-terminal.ts:189` | Fixed for executable-selection risk; capability remains intentional | `resolveTrustedTerminalShell()` now canonicalizes against fixed system shells, rejects temporary/non-regular/non-executable candidates, and `spawn()` explicitly uses `shell: false`. Focused terminal regression is GREEN. Terminal command text remains an intentional task-worktree shell capability. |

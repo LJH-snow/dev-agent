@@ -12,6 +12,11 @@
   `0.2.1`（runtime identity 仍为 `0.2.0`）。不带 `--runtime-release` 的
   `runtime install` 现在安装与当前 GitHub Release v0.2.1 一致的资产，
   显式 flag 行为不变。
+- Security triage: 2026-10-05 Mimosa deep rescan（scan id
+  `scan-2026-10-05T05-28-39.340Z-21118f7e6330`）报告 21 个 finding，
+  与 2026-10-04 rescan 持平；本两轮改动未引入新 finding，逐项映射到既有
+  处置账本（`.planning/2026-10-04-security-boundary-hardening/findings.md`）。
+  扫描仍为 static-only 证据，不构成运行时安全证明。
 
 ## 2026-10-04（@agent_cli/cli 0.2.1 发布）
 
