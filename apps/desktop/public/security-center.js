@@ -13,6 +13,7 @@ export function createSecurityCenterUI(options = {}) {
   const scanButton = documentRef.getElementById("security-center-run-scan");
   const clearButton = documentRef.getElementById("security-center-clear");
   const clearStatus = documentRef.getElementById("security-center-clear-status");
+  const sessionSelect = documentRef.getElementById("security-center-session");
   const findingsPanel = documentRef.getElementById("security-center-findings");
   const findingsTitle = documentRef.getElementById("security-center-findings-title");
   const findingsList = documentRef.getElementById("security-center-findings-list");
@@ -120,10 +121,41 @@ export function createSecurityCenterUI(options = {}) {
     }
   };
 
+  /**
+   * Loads the bounded session list for the scan-scope picker. Only session
+   * ids are read from the response; previews and other content-derived
+   * fields are ignored.
+   */
+  const loadSessions = async () => {
+    if (!sessionSelect) return;
+    const selected = sessionSelect.value;
+    const response = await fetcher("/api/sessions", { cache: "no-store" });
+    if (!response.ok) return;
+    const payload = await response.json();
+    const ids = Array.isArray(payload?.sessions)
+      ? payload.sessions
+        .map((summary) => (typeof summary?.sessionId === "string" ? summary.sessionId : ""))
+        .filter((id) => id && id.length <= MAX_ID_LENGTH)
+        .slice(0, 256)
+      : [];
+    const defaultOption = documentRef.createElement("option");
+    defaultOption.value = "";
+    defaultOption.textContent = translate("securityCenter.sessionDefault");
+    sessionSelect.replaceChildren(defaultOption);
+    for (const id of ids) {
+      const option = documentRef.createElement("option");
+      option.value = id;
+      option.textContent = id;
+      sessionSelect.append(option);
+    }
+    if (selected && ids.includes(selected)) sessionSelect.value = selected;
+  };
+
   const refresh = async () => {
     const currentRequest = ++requestId;
     if (status) status.textContent = translate("securityCenter.loading");
     try {
+      await loadSessions();
       const response = await fetcher("/api/security-center", { cache: "no-store" });
       if (currentRequest !== requestId) return;
       if (!response.ok) throw new Error("security center unavailable");
@@ -151,10 +183,11 @@ export function createSecurityCenterUI(options = {}) {
     if (scanButton) scanButton.disabled = true;
     if (status) status.textContent = translate("securityCenter.scanning");
     try {
+      const selectedSession = sessionSelect && typeof sessionSelect.value === "string" ? sessionSelect.value : "";
       const response = await fetcher("/api/security-scan", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify(selectedSession ? { sessionId: selectedSession } : {}),
         cache: "no-store",
       });
       if (currentRequest !== requestId) return;

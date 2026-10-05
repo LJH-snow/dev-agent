@@ -267,6 +267,7 @@ test("security center panel contract stays wired into the workbench", async () =
       "security-center-clear",
       "security-center-clear-status",
       "security-center-refresh",
+      "security-center-session",
       "security-center-findings",
       "security-center-findings-title",
       "security-center-findings-list",
@@ -274,7 +275,8 @@ test("security center panel contract stays wired into the workbench", async () =
     ]) {
       assert.ok(page.includes(`id="${id}"`), `workbench should declare #${id}`);
     }
-    assert.ok(page.includes('data-i18n="securityCenter.title"'));
+    assert.ok(page.includes('for="security-center-session"'), "scope select should be labeled");
+    assert.ok(page.includes('data-i18n="securityCenter.sessionDefault"'));
     assert.ok(page.includes('"securityCenter.metadataNote"'), "en dictionary should define securityCenter keys");
     assert.ok(page.includes('"securityCenter.title": "安全中心"'), "zh dictionary should define securityCenter keys");
     assert.ok(page.includes("createSecurityCenterUI"));
@@ -284,6 +286,8 @@ test("security center panel contract stays wired into the workbench", async () =
       assert.ok(module.includes(symbol), `security-center.js should reference ${symbol}`);
     }
     assert.ok(module.includes("securityCenter.clearConfirm"), "clear action must confirm before deleting");
+    assert.ok(module.includes("/api/sessions"), "session picker must load the bounded session list");
+    assert.ok(module.includes("securityCenter.sessionDefault"), "picker must offer the default workspace scope");
     assert.equal(module.includes("innerHTML"), false, "panel must render with textContent only");
   } finally { await close(server); }
 });

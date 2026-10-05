@@ -853,6 +853,12 @@
               <div id="security-center-status" class="desktop-status-note" role="status" data-i18n="securityCenter.loading">Loading security metadata…</div>
             </div>
             <div class="security-center-actions">
+              <label for="security-center-session" class="security-center-scope">
+                <span data-i18n="securityCenter.sessionLabel">Scan scope</span>
+                <select id="security-center-session">
+                  <option value="" data-i18n="securityCenter.sessionDefault">Default workspace</option>
+                </select>
+              </label>
               <button type="button" id="security-center-run-scan" data-i18n="securityCenter.runScan">Run bounded scan</button>
               <button type="button" id="security-center-clear" data-i18n="securityCenter.clear">Clear history</button>
               <button type="button" id="security-center-refresh" class="desktop-status-refresh" data-i18n="securityCenter.refresh">Refresh</button>
@@ -1440,6 +1446,9 @@
         "securityCenter.summary": "{count} recorded scans · metadata-only",
         "securityCenter.error": "Security metadata is temporarily unavailable.",
         "securityCenter.refresh": "Refresh",
+        "securityCenter.sessionLabel": "Scan scope",
+        "securityCenter.sessionDefault": "Default workspace",
+        "securityCenter.sessionError": "Session scope is unavailable; scanning the default workspace.",
         "securityCenter.clear": "Clear history",
         "securityCenter.clearConfirm": "Delete all recorded security scan metadata? The aggregate history cannot be restored.",
         "securityCenter.cleared": "History cleared.",
@@ -2333,6 +2342,9 @@
         "securityCenter.summary": "{count} 条扫描记录 · 仅元数据",
         "securityCenter.error": "安全元数据暂时不可用。",
         "securityCenter.refresh": "刷新",
+        "securityCenter.sessionLabel": "扫描范围",
+        "securityCenter.sessionDefault": "默认工作区",
+        "securityCenter.sessionError": "会话范围不可用；将扫描默认工作区。",
         "securityCenter.clear": "清除历史",
         "securityCenter.clearConfirm": "删除所有已记录的安全扫描元数据？聚合历史无法恢复。",
         "securityCenter.cleared": "历史已清除。",
