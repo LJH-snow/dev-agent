@@ -37,6 +37,7 @@ export interface DoctorRuntimeSelection {
   readonly target?: string;
   readonly state?: "unsupported" | "missing" | "installed" | "corrupt";
   readonly missingReason?: string;
+  readonly manifestVerification?: "enabled" | "not-configured";
 }
 
 export interface DoctorManagedRuntimeStatus {
@@ -44,6 +45,7 @@ export interface DoctorManagedRuntimeStatus {
   readonly version: string;
   readonly target?: string;
   readonly reason?: string;
+  readonly manifestVerification?: "enabled" | "not-configured";
 }
 
 export interface DoctorReport {
@@ -195,6 +197,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
   let target: string | undefined;
   let state: DoctorRuntimeSelection["state"];
   let missingReason: string | undefined;
+  let manifestVerification: DoctorRuntimeSelection["manifestVerification"];
   if (runtimeCheck.probe?.runtimeVersion) {
     runtimeVersion = runtimeCheck.probe.runtimeVersion;
     protocolVersion = runtimeCheck.probe.protocolVersion ?? 0;
@@ -203,6 +206,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
         const managed = await options.managedRuntimeStatus;
         target = managed.target;
         state = managed.state;
+        manifestVerification = managed.manifestVerification;
       } catch (error) {
         state = "corrupt";
         missingReason = `runtime_status_unavailable (${doctorErrorCode(error)})`;
@@ -217,6 +221,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
       }
       target = managed.target;
       state = managed.state;
+      manifestVerification = managed.manifestVerification;
       const reason = managedMissingReason(managed);
       missingReason = reason;
     } catch (error) {
@@ -233,6 +238,7 @@ export async function runDoctor(options: DoctorOptions): Promise<DoctorReport> {
     ...(target === undefined ? {} : { target }),
     ...(state === undefined ? {} : { state }),
     ...(missingReason === undefined ? {} : { missingReason }),
+    ...(manifestVerification === undefined ? {} : { manifestVerification }),
   };
   const scope: DoctorScope = {
     workingDirectoryScope: "final-cwd",
@@ -426,6 +432,9 @@ export function printDoctorReport(report: DoctorReport): void {
       ...(report.runtime.missingReason === undefined
         ? []
         : [`missing-reason=${safeDoctorText(report.runtime.missingReason)}`]),
+      ...(report.runtime.manifestVerification === undefined
+        ? []
+        : [`manifest-verification=${safeDoctorText(report.runtime.manifestVerification)}`]),
     ];
     console.log(`runtime: ${runtimeFacts.join(" ")}`);
   }

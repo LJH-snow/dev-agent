@@ -515,6 +515,46 @@ test("runDoctor reports managed runtime identity and missing reason without path
   }
 });
 
+test("runDoctor surfaces manifest signature verification state from managed status", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-verify-"));
+  try {
+    const report = await runDoctor({
+      providerId: "ollama",
+      sessionDir: dir,
+      configPath: join(dir, "config.json"),
+      runtimeSource: "default-local",
+      managedRuntimeVersion: "0.2.0",
+      managedRuntimeStatus: Promise.resolve({
+        state: "missing",
+        version: "0.2.0",
+        target: "aarch64-apple-darwin",
+        manifestVerification: "enabled",
+      }),
+      env: {},
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+    assert.equal(report.runtime.manifestVerification, "enabled");
+
+    const unconfigured = await runDoctor({
+      providerId: "ollama",
+      sessionDir: dir,
+      configPath: join(dir, "config.json"),
+      runtimeSource: "default-local",
+      managedRuntimeVersion: "0.2.0",
+      managedRuntimeStatus: Promise.resolve({
+        state: "missing",
+        version: "0.2.0",
+        target: "aarch64-apple-darwin",
+      }),
+      env: {},
+      commandVersion: async (command) => `${command} 1.0.0`,
+    });
+    assert.equal("manifestVerification" in unconfigured.runtime, false);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("runDoctor merges managed runtime platform and state with a healthy probe", async () => {
   const dir = await mkdtemp(join(tmpdir(), "dev-agent-doctor-runtime-"));
   try {
