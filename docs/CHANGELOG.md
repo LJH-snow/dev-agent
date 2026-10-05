@@ -2,6 +2,17 @@
 
 ## 2026-10-05（v0.2.2 carrier 发布后跟进）
 
+- Runtime manager: 新增可选的 manifest Ed25519 签名验证——
+  `manifestVerifyPublicKey`（CLI 经 `DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY`
+  配置）启用后，安装时对下载的 manifest 逐一验签（canonical 形式 +
+  `dev-agent-runtime-manifest.sig`），缺失、损坏或不匹配即 fail-closed
+  （新错误码 `MANIFEST_SIGNATURE_INVALID`）。未配置时保持既有 checksum-only
+  信任模型。先 RED 测试（29/29），workflow 侧的签名生成步骤待发布密钥
+  治理决策后单独接入。
+- Desktop Security Center: 面板新增扫描范围会话选择器（从
+  `GET /api/sessions` 有界加载、只读 sessionId），选择会话后
+  `POST /api/security-scan` 携带 `sessionId` 扫描对应 task worktree。
+  先 RED 契约测试。Desktop 套件 450/450。
 - Desktop Security Center: `POST /api/security-scan` 现在与 CLI 对齐，
   对 MCP 服务器元数据做只读检查（默认有界读取用户级 config 的
   `mcpServers`，宿主可注入）；finding 进入聚合计数，而 MCP 名称、命令、

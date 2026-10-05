@@ -166,6 +166,10 @@ export function getManifestDownloadUrl(version: string): string {
   return `${getReleaseBaseUrl(version)}/dev-agent-runtime-manifest.json`;
 }
 
+export function getManifestSignatureDownloadUrl(version: string): string {
+  return `${getReleaseBaseUrl(version)}/dev-agent-runtime-manifest.sig`;
+}
+
 export function getArtifactDownloadUrl(version: string, artifact: RuntimeArtifact): string {
   const validated = validateManifest({
     schemaVersion: 1,

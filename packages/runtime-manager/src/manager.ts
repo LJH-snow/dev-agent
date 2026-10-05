@@ -13,16 +13,19 @@ import {
   findArtifact,
   getArtifactDownloadUrl,
   getManifestDownloadUrl,
+  getManifestSignatureDownloadUrl,
   parseManifest,
   validateManifest,
 } from "./manifest.js";
 import { getRuntimePaths, getRuntimeRoot } from "./paths.js";
 import { isSafeArchiveName, isWithin, resolveWithin, stableStringify } from "./security.js";
+import { verifyManifestSignature } from "./signing.js";
 import { isRuntimeTarget, resolveTarget, targetResolutionFor } from "./targets.js";
 import type {
   ArchiveDownloader,
   ArchiveExtractor,
   HashVerifier,
+  ManifestSignatureDownloader,
   HealthVerifier,
   InstallOptions,
   InstallResult,
@@ -101,6 +104,17 @@ async function defaultManifestDownloader(version: string, signal?: AbortSignal):
   } catch (error) {
     if (isAbortError(error) || signal?.aborted) throw error;
     throw new Error("manifest request failed");
+  }
+}
+
+async function defaultManifestSignatureDownloader(version: string, signal?: AbortSignal): Promise<string> {
+  try {
+    const response = await fetch(getManifestSignatureDownloadUrl(version), { signal });
+    if (!response.ok) throw new Error("manifest signature request failed");
+    return Buffer.from(await collectBoundedResponse(response, maxManifestDownloadBytes)).toString("utf8");
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) throw error;
+    throw new Error("manifest signature request failed");
   }
 }
 
@@ -255,6 +269,8 @@ export class RuntimeManager {
   private readonly options: RuntimeManagerOptions;
   private readonly root: string;
   private readonly manifestDownloader: ManifestDownloader;
+  private readonly manifestVerifyPublicKey: string | undefined;
+  private readonly manifestSignatureDownloader: ManifestSignatureDownloader;
   private readonly archiveDownloader: ArchiveDownloader;
   private readonly hashVerifier: HashVerifier;
   private readonly healthVerifier: HealthVerifier;
@@ -265,6 +281,8 @@ export class RuntimeManager {
     this.options = { ...options };
     this.root = getRuntimeRoot(options);
     this.manifestDownloader = options.manifestDownloader ?? defaultManifestDownloader;
+    this.manifestVerifyPublicKey = options.manifestVerifyPublicKey;
+    this.manifestSignatureDownloader = options.manifestSignatureDownloader ?? defaultManifestSignatureDownloader;
     this.archiveDownloader = options.archiveDownloader ?? defaultArchiveDownloader;
     this.hashVerifier = options.hashVerifier ?? hashFile;
     this.healthVerifier = options.healthVerifier ?? verifyExecutableFile;
@@ -575,12 +593,47 @@ export class RuntimeManager {
       throw new RuntimeManagerError("DOWNLOAD_FAILED", "Runtime manifest download failed");
     }
     assertManifestDownloadSize(payload);
+    let manifest: RuntimeManifest;
     try {
-      return validateManifest(parseManifest(payload), version);
+      manifest = validateManifest(parseManifest(payload), version);
     } catch (error) {
       if (error instanceof RuntimeManagerError) throw error;
       throw new RuntimeManagerError("INVALID_MANIFEST", "Runtime manifest is invalid");
     }
+    return this.verifyManifestSignatureOrThrow(manifest, version, options.signal);
+  }
+
+  /**
+   * Optional hardening step: when the caller configured an Ed25519 public key,
+   * the release's manifest signature is fetched and verified against the
+   * canonical manifest form. Missing, corrupt, or mismatching signatures fail
+   * closed. Without a configured key this is a no-op and the checksum-only
+   * trust model applies unchanged.
+   */
+  private async verifyManifestSignatureOrThrow(
+    manifest: RuntimeManifest,
+    version: string,
+    signal?: AbortSignal
+  ): Promise<RuntimeManifest> {
+    if (this.manifestVerifyPublicKey === undefined) {
+      return manifest;
+    }
+    let payload: ManifestPayload;
+    try {
+      payload = await this.manifestSignatureDownloader(version, signal);
+    } catch (error) {
+      if (isAbortError(error) || signal?.aborted) throw error;
+      throw new RuntimeManagerError("MANIFEST_SIGNATURE_INVALID", "Runtime manifest signature could not be fetched");
+    }
+    const signature = typeof payload === "string"
+      ? payload
+      : payload instanceof Uint8Array
+        ? new TextDecoder().decode(payload)
+        : "";
+    if (!verifyManifestSignature(manifest, signature.trim(), this.manifestVerifyPublicKey)) {
+      throw new RuntimeManagerError("MANIFEST_SIGNATURE_INVALID", "Runtime manifest signature is invalid");
+    }
+    return manifest;
   }
 
   private ensureNotCancelled(signal?: AbortSignal, error?: unknown): void {

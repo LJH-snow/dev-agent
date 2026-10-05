@@ -296,6 +296,67 @@ test("installs with fixed URLs, checksum, executable bit, health, and atomic com
   ]);
 });
 
+test("verifies the manifest signature when a verification key is configured", async () => {
+  const { privateKeyPem, publicKeyPem } = api.generateManifestSigningKeyPair();
+  const signature = api.createRuntimeManifestSignature(manifestFor() as any, privateKeyPem);
+  let signatureDownloads = 0;
+  const base = (runtimeDir: string) => ({
+    runtimeDir,
+    platform: "darwin" as const,
+    arch: "arm64" as const,
+    manifestVerifyPublicKey: publicKeyPem,
+    manifestSignatureDownloader: async () => {
+      signatureDownloads++;
+      return signature;
+    },
+  });
+
+  const valid = new api.RuntimeManager({
+    ...(base(await tempRoot())),
+    ...makeInstallDependencies({}),
+  });
+  const result = await valid.install(VERSION);
+  assert.equal(signatureDownloads, 1);
+  assert.equal(result.target, TARGET);
+
+  const tampered = new api.RuntimeManager({
+    ...(base(await tempRoot())),
+    manifestSignatureDownloader: async () => `${signature.slice(0, -2)}AA`,
+    ...makeInstallDependencies({}),
+  });
+  await assert.rejects(
+    tampered.install(VERSION),
+    (error: unknown) => assertRuntimeError(error, "MANIFEST_SIGNATURE_INVALID")
+  );
+
+  const missing = new api.RuntimeManager({
+    ...(base(await tempRoot())),
+    manifestSignatureDownloader: async () => {
+      throw new Error("signature 404");
+    },
+    ...makeInstallDependencies({}),
+  });
+  await assert.rejects(
+    missing.install(VERSION),
+    (error: unknown) => assertRuntimeError(error, "MANIFEST_SIGNATURE_INVALID")
+  );
+
+  // Without a configured key the same malformed downloader is never called.
+  let called = false;
+  const unconfigured = new api.RuntimeManager({
+    runtimeDir: await tempRoot(),
+    platform: "darwin",
+    arch: "arm64",
+    manifestSignatureDownloader: async () => {
+      called = true;
+      return "bogus";
+    },
+    ...makeInstallDependencies({}),
+  });
+  await unconfigured.install(VERSION);
+  assert.equal(called, false);
+});
+
 test("installs a runtime from the official release that carries its manifest", async () => {
   const root = await tempRoot();
   const calls: string[] = [];

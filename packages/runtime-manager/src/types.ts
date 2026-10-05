@@ -104,6 +104,11 @@ export type ArchiveExtractor = (
   destination: string
 ) => Promise<void>;
 
+export type ManifestSignatureDownloader = (
+  version: string,
+  signal?: AbortSignal
+) => Promise<ManifestPayload>;
+
 export interface RuntimeManagerOptions {
   readonly home?: string;
   readonly runtimeDir?: string;
@@ -115,6 +120,14 @@ export interface RuntimeManagerOptions {
   readonly hashVerifier?: HashVerifier;
   readonly healthVerifier?: HealthVerifier;
   readonly archiveExtractor?: ArchiveExtractor;
+  /**
+   * Ed25519 public key (SPKI PEM). When set, every manifest fetched during
+   * install is verified against the release's `dev-agent-runtime-manifest.sig`
+   * and fails closed on absence, corruption, or mismatch. When unset, the
+   * previous checksum-only trust model applies unchanged.
+   */
+  readonly manifestVerifyPublicKey?: string;
+  readonly manifestSignatureDownloader?: ManifestSignatureDownloader;
 }
 
 export interface InstallOptions {

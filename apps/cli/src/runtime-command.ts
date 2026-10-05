@@ -88,6 +88,11 @@ export function createCliRuntimeManager(args: readonly string[]): RuntimeManager
   return new RuntimeManager({
     runtimeDir: readRuntimeDirectory(args),
     home: homedir(),
+    // Opt-in manifest signature verification: when the user pins an Ed25519
+    // public key, every downloaded manifest must match its release signature.
+    ...(process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY?.trim()
+      ? { manifestVerifyPublicKey: process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY.trim() }
+      : {}),
     healthVerifier: async (binaryPath) => {
       const probe = await probeRustBinary(binaryPath);
       const contract = validateRustRuntimeContract(probe, {

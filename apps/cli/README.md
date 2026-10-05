@@ -945,6 +945,17 @@ A normal run remains local unless `--executor rust-sandbox` or the legacy
 runtime selection is fail-closed: an absent, corrupt, unsupported, or protocol/version
 mismatched runtime stops before the model provider or tools start.
 
+### Optional manifest signature verification
+
+Managed runtime installs can additionally verify the release's Ed25519
+manifest signature. Set `DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY` to the
+release signer's SPKI PEM public key; every downloaded manifest must then
+match its `dev-agent-runtime-manifest.sig` sidecar (signature over the
+canonical manifest form), and installs fail closed when the signature is
+missing, corrupt, or produced by a different key. Without the variable, the
+previous checksum-only trust model applies unchanged. The signing private
+key stays with the release process; the CLI never accepts it at runtime.
+
 When Rust sandbox execution is selected, built-in Shell and Git calls use a
 workspace-write profile limited to the current working directory, while Search
 uses a read-only profile with network disabled and no writable paths. The same
