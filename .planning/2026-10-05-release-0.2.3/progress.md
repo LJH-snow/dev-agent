@@ -42,3 +42,8 @@
   documentation contract updated and green.
 - The formal GitHub carrier release remains `v0.2.2`; a `v0.2.3` tag/release
   is a separate decision requiring explicit authorization.
+- Closing scan: `scan-2026-10-05T16-08-57.281Z-cd3941cd33da`, seal
+  `sha256:18cbacac7ccaf00843b5e1fbe51cbbc974aa1ba83d90ed47cc2017298a5ac212`,
+  depth deep, 198 dependencies / 0 advisories, verdict effect `none`.
+  Findings: 21 — unchanged across ten consecutive scans. Static-only
+  evidence, not a runtime security proof.
