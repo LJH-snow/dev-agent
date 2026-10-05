@@ -17,6 +17,15 @@
 - Remaining follow-up deliberately not done here: per-session worktree scan
   selection from the panel (the route accepts a sessionId; a session picker
   in the panel is UI work left for a later slice).
+- Slice 3 (npm provenance) was investigated and is **blocked on a governance
+  decision, not implemented**: npm provenance attestations can only be
+  generated from a supported CI (GitHub Actions with `id-token: write` OIDC
+  and an `NPM_TOKEN` secret) — the current flow publishes locally after the
+  user's browser 2FA authorization, which cannot produce provenance. Adding
+  it therefore means moving npm publication into the release workflow with a
+  stored token, which changes the standing "publish only after explicit
+  user authorization + interactive 2FA" governance and requires the user to
+  create the repo secret. No code was changed for this slice.
 - Closing scan: `scan-2026-10-05T12-42-14.564Z-0cec65d49f7f`, seal
   `sha256:967c2d5d2ee130df21b161f7fd879498062bfbf87578dbf2ae248cdd2fffeb84`,
   depth deep, 198 dependencies / 0 advisories, verdict effect `none`.
