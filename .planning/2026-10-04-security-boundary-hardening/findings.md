@@ -28,6 +28,30 @@ Source scan: `scan-2026-10-04T08-40-18.059Z-c1111d24e45a` (static-only; verdict 
   security proof; managed-cache TOCTOU and same-UID planted-state residuals
   remain recorded as out of scope.
 
+## Rescan after the Desktop Security Center round (2026-10-05)
+
+- Rescan: `scan-2026-10-05T06-12-58.118Z-a18c6e27a77f`, seal
+  `sha256:f68404a864036a8f6c23fbc8d27cd045b82329f30662c8e6f54cbfec7d8c77b5`,
+  depth deep, dependencies 198 scanned / 0 advisories / 0 unknown,
+  evidence boundary `static_only_no_runtime_execution`, verdict effect `none`.
+- Findings: 21 — identical count to both previous scans. The new
+  `packages/agent-core/src/security-scan.ts`,
+  `packages/agent-core/src/security-audit-history.ts`,
+  `apps/desktop/src/security-center.ts`,
+  `apps/desktop/public/security-center.js`, and the Desktop route additions
+  introduced zero findings. Desktop `server.ts` occurrences only shifted
+  lines (1196→1217, 1356→1463, 1378/1553 terminal block, 1430→1537,
+  1485→1592, 1660→1767, 1808→1915, 3386→3493) from the inserted routes and
+  remain covered by the disposition rows above.
+- New gated surface evidence: both `/api/security-center` and
+  `/api/security-scan` are in the trusted-loopback metadata gate; the scan
+  POST is additionally capability-token gated (tested); unknown sessions fail
+  closed with 404; the scan itself is read-only with file/byte caps and never
+  executes anything.
+- Still not claimed: static-only triage evidence, not a runtime security
+  proof; managed-cache TOCTOU and same-UID planted-state residuals remain out
+  of scope.
+
 | Finding/location | Provisional disposition | Evidence / follow-up |
 |---|---|---|
 | `apps/desktop/src/task-terminal.ts:189` | Fixed for executable-selection risk; capability remains intentional | `resolveTrustedTerminalShell()` now canonicalizes against fixed system shells, rejects temporary/non-regular/non-executable candidates, and `spawn()` explicitly uses `shell: false`. Focused terminal regression is GREEN. Terminal command text remains an intentional task-worktree shell capability. |
