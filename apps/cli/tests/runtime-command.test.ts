@@ -119,6 +119,29 @@ test("runtime release parsing keeps carrying release separate from runtime ident
   );
 });
 
+test("runtime status reports whether manifest signature verification is enabled", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dev-agent-runtime-verify-status-"));
+  const previousKey = process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY;
+  try {
+    delete process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY;
+    const unconfigured = await runtimeCommand.resolveManagedRuntimeStatus([
+      "--runtime-version", "0.2.0",
+      "--runtime-dir", join(root, "runtimes"),
+    ]);
+    assert.equal(unconfigured.manifestVerification, "not-configured");
+
+    process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY = "not-a-real-key";
+    const configured = await runtimeCommand.resolveManagedRuntimeStatus([
+      "--runtime-version", "0.2.0",
+      "--runtime-dir", join(root, "runtimes"),
+    ]);
+    assert.equal(configured.manifestVerification, "enabled");
+  } finally {
+    if (previousKey === undefined) delete process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY;
+    else process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY = previousKey;
+  }
+});
+
 test("runtime status accepts the release flag without leaking carrier metadata", async () => {
   const root = await mkdtemp(join(tmpdir(), "dev-agent-runtime-release-cli-"));
   try {

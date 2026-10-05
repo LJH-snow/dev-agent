@@ -26,6 +26,18 @@
 - 发布后从 registry clean-install：`dev-agent --version` 输出 `0.2.2`，provider-free `dev-agent --tools --json` 正常返回。
 - 首次 registry 查询仍出现传播延迟（约 2 分钟内 E404），等待后精确版本与 dist-tag 均确认同步。
 
+## 0.2.3 候选准备（2026-10-05）
+
+- `@agent_cli/cli@0.2.3` 是当前 candidate：`docs/release-state.json` 记录
+  `candidateVersion: 0.2.3`、`publishedVersion: 0.2.2`、`status: candidate`。
+- 候选内容：Desktop Security Center 补全（清除历史、MCP 元数据检查、
+  扫描范围会话选择器）、可选的 manifest Ed25519 签名验证
+  （`DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY` 启用）及其 workflow 签名步骤、
+  `runtime status` 报告 `manifestVerification` 状态、打包默认 carrier
+  跟进到 `0.2.2`。
+- 发布仍走既有治理：preflight 通过后由受确认保护的 publish 执行，2FA
+  走浏览器授权；GitHub carrier tag 需单独授权。
+
 ## 0.2.2 候选准备（2026-10-05）
 
 - `@agent_cli/cli@0.2.2` 是当前 candidate：`docs/release-state.json` 记录

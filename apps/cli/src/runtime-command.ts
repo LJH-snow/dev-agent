@@ -136,6 +136,7 @@ export async function resolveManagedRuntimeStatus(args: readonly string[]): Prom
   version: string;
   target?: RuntimeTarget;
   reason?: string;
+  manifestVerification: "enabled" | "not-configured";
 }> {
   const manager = createCliRuntimeManager(args);
   const status = await manager.status(readRuntimeVersion(args), readRuntimeTarget(args));
@@ -144,6 +145,9 @@ export async function resolveManagedRuntimeStatus(args: readonly string[]): Prom
     version: status.version,
     ...(status.target === undefined ? {} : { target: status.target }),
     ...(status.reason === undefined ? {} : { reason: status.reason }),
+    manifestVerification: process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY?.trim()
+      ? "enabled"
+      : "not-configured",
   };
 }
 
@@ -162,6 +166,9 @@ export async function executeRuntimeCommand(
         payload: commandPayload(options.action, version, {
           state: status.state,
           supported: status.state !== "unsupported",
+          manifestVerification: process.env.DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY?.trim()
+            ? "enabled"
+            : "not-configured",
           ...(status.target === undefined ? {} : { target: status.target }),
           ...(status.reason === undefined ? {} : { reason: status.reason }),
           ...(status.binaryPath === undefined ? {} : { binaryPath: status.binaryPath }),

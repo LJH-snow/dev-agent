@@ -260,7 +260,9 @@ four runtime artifacts (runtime identity `0.2.0`), checksums, manifest, and
 verified CLI tarball. The Rust runtime identity remains
 `0.2.0`; use `--runtime-version 0.2.0 --runtime-release 0.2.2` when installing that
 runtime carrier; since the 0.2.2 publication the packaged built-in default is
-`--runtime-release 0.2.2`. See
+`--runtime-release 0.2.2`, and the current candidate `@agent_cli/cli@0.2.3`
+adds Desktop Security Center completion, the session-scope picker, and the
+opt-in manifest signature verification. See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.
