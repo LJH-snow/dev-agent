@@ -15,9 +15,13 @@ import {
 import {
   createEvidenceAuditExport,
   createEvidenceAuditPreview,
+  createSecurityAuditErrorRecord,
+  createSecurityAuditRecord,
   DEFAULT_EVIDENCE_RETENTION,
   EvidenceAuditLimitError,
   FileMemory,
+  scanWorkspace,
+  SecurityAuditHistoryStore,
   selectEvidenceForAudit,
   validateEvidenceAuditLimits,
   type AppliedChangeSetRecord,
@@ -27,6 +31,7 @@ import {
   type EvidencePruneResult,
   type EvidenceSummary,
   type MemoryEntry,
+  type SecurityScanResult,
   type SessionMetadata,
   type AgentTraceSnapshot,
   type AgentTraceLifecycleKind,
@@ -58,6 +63,12 @@ import {
   withDesktopStatusSession,
   type DesktopStatusSnapshot,
 } from "./status.js";
+import {
+  createSecurityCenterSnapshot,
+  MAX_SECURITY_CENTER_HISTORY,
+  MAX_SECURITY_CENTER_RESPONSE_BYTES,
+  SECURITY_CENTER_SCHEMA_VERSION,
+} from "./security-center.js";
 import { resolveDesktopManagedRuntimeStatus } from "./managed-runtime.js";
 import type { DesktopManagedRuntimeStatus } from "./managed-runtime.js";
 import {
@@ -223,6 +234,8 @@ export interface DesktopServerOptions {
   readonly scheduledTasksStateFile?: string;
   /** Overrides the persisted execution history location, primarily for tests. */
   readonly executionHistoryStateFile?: string;
+  /** Overrides the persisted security scan history location, primarily for tests. */
+  readonly securityHistoryStateFile?: string;
   /** Executes scheduled job definitions; defaults to the built-in ci-watch watcher. */
   readonly scheduledJobRunner?: (definition: ScheduleDefinition, trigger: ScheduleRunRecord["trigger"]) =>
     Promise<{ ok: boolean; summary: Record<string, unknown> }>;
@@ -383,6 +396,12 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
     ?? (options.session === undefined ? join(homedir(), ".dev-agent", "desktop-execution-history.json") : undefined);
   const executionHistory = new ExecutionHistoryStore({
     ...(executionHistoryStateFile === undefined ? {} : { stateFile: executionHistoryStateFile }),
+  });
+  const securityHistoryStateFile = options.securityHistoryStateFile
+    ?? process.env.DEV_AGENT_SECURITY_HISTORY_FILE
+    ?? (options.session === undefined ? join(homedir(), ".dev-agent", "desktop-security-history.json") : undefined);
+  const securityHistory = new SecurityAuditHistoryStore({
+    ...(securityHistoryStateFile === undefined ? {} : { stateFile: securityHistoryStateFile }),
   });
   const persistRunHistory = async (run: DesktopRunState): Promise<void> => {
     const record = run.historyRecord();
@@ -560,7 +579,9 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         || url.pathname === "/api/github/repair-verify"
         || url.pathname === "/api/schedules"
         || url.pathname.startsWith("/api/schedules/")
-        || url.pathname === "/api/parallel-runs")
+        || url.pathname === "/api/parallel-runs"
+        || url.pathname === "/api/security-center"
+        || url.pathname === "/api/security-scan")
       && !isLoopbackTerminalRequest(req)
     ) {
       res.writeHead(403, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -1266,6 +1287,92 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
           "cache-control": "no-store",
         });
         res.end(serialized);
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/security-center") {
+        const payload = createSecurityCenterSnapshot({
+          history: securityHistory.list().slice(0, MAX_SECURITY_CENTER_HISTORY),
+        });
+        const serialized = JSON.stringify(payload);
+        if (Buffer.byteLength(serialized, "utf8") > MAX_SECURITY_CENTER_RESPONSE_BYTES) {
+          res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "security center response is too large", code: "security-center-too-large" }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        res.end(serialized);
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/api/security-scan") {
+        const rawBody = await readJsonBody(req, res);
+        if (rawBody === undefined) return;
+        let sessionId: string | undefined;
+        if (rawBody.trim().length > 0) {
+          const parsedResult = parseJsonObjectBody<{ sessionId?: unknown }>(rawBody);
+          if (!parsedResult.ok) {
+            res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+            res.end(JSON.stringify({ error: parsedResult.error }));
+            return;
+          }
+          const rawSessionId = parsedResult.value.sessionId;
+          if (rawSessionId !== undefined) {
+            if (typeof rawSessionId !== "string") {
+              res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+              res.end(JSON.stringify({ error: "sessionId must be a string" }));
+              return;
+            }
+            const normalizedSessionId = normalizeSessionIdForRequest(rawSessionId);
+            if (normalizedSessionId === undefined) {
+              res.writeHead(400, { "content-type": "application/json", "cache-control": "no-store" });
+              res.end(JSON.stringify({ error: "sessionId is too long" }));
+              return;
+            }
+            sessionId = normalizedSessionId;
+          }
+        }
+        const workingDirectory = sessionId === undefined
+          ? process.cwd()
+          : taskWorkspaces.workingDirectoryForSession(sessionId);
+        if (workingDirectory === undefined) {
+          res.writeHead(404, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "unknown session" }));
+          return;
+        }
+        const startedAt = new Date().toISOString();
+        try {
+          const result: SecurityScanResult = await scanWorkspace({ workingDirectory });
+          const record = createSecurityAuditRecord(result, { startedAt, finishedAt: new Date().toISOString() });
+          await securityHistory.record(record);
+          const payload = {
+            schemaVersion: SECURITY_CENTER_SCHEMA_VERSION,
+            status: result.status,
+            filesScanned: result.filesScanned,
+            bytesScanned: result.bytesScanned,
+            skippedEntries: result.skippedEntries,
+            findings: result.findings,
+            record,
+          };
+          const serialized = JSON.stringify(payload);
+          if (Buffer.byteLength(serialized, "utf8") > MAX_SECURITY_CENTER_RESPONSE_BYTES) {
+            res.writeHead(413, { "content-type": "application/json", "cache-control": "no-store" });
+            res.end(JSON.stringify({ error: "security scan response is too large", code: "security-scan-too-large" }));
+            return;
+          }
+          res.writeHead(200, {
+            "content-type": "application/json; charset=utf-8",
+            "cache-control": "no-store",
+          });
+          res.end(serialized);
+        } catch {
+          await securityHistory.record(createSecurityAuditErrorRecord({ startedAt, finishedAt: new Date().toISOString() }));
+          res.writeHead(500, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "security scan failed", code: "security-scan-failed" }));
+        }
         return;
       }
 
