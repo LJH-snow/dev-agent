@@ -13,7 +13,7 @@ import {
   SecurityAuditHistoryStore,
   type SecurityAuditRecord,
 } from "../dist/security-audit-history.js";
-import { parseSecurityCommand, type SecurityScanResult } from "../dist/security-center.js";
+import type { SecurityScanResult } from "../dist/security-scan.js";
 
 function sampleResult(overrides: Partial<SecurityScanResult> = {}): SecurityScanResult {
   return {
@@ -33,13 +33,6 @@ function sampleResult(overrides: Partial<SecurityScanResult> = {}): SecurityScan
 
 const STARTED_AT = "2026-10-05T00:00:00.000Z";
 const FINISHED_AT = "2026-10-05T00:00:01.500Z";
-
-test("security history command parses aliases and rejects unknown subcommands", () => {
-  assert.deepEqual(parseSecurityCommand(":security history"), { handled: true, action: "history" });
-  assert.deepEqual(parseSecurityCommand("/security history"), { handled: true, action: "history" });
-  assert.deepEqual(parseSecurityCommand(":security history extra"), { handled: true, action: "invalid" });
-  assert.deepEqual(parseSecurityCommand(":security fix"), { handled: true, action: "invalid" });
-});
 
 test("audit record projection keeps only allowlisted aggregate metadata", () => {
   const record = createSecurityAuditRecord(sampleResult(), { scanId: "scan-test-1", startedAt: STARTED_AT, finishedAt: FINISHED_AT });

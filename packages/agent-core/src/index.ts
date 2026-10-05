@@ -21,6 +21,8 @@ export * from "./loop.js";
 export * from "./memory.js";
 export * from "./prompts.js";
 export * from "./scheduler.js";
+export * from "./security-audit-history.js";
+export * from "./security-scan.js";
 export * from "./skills.js";
 export * from "./tools.js";
 export * from "./trace.js";
