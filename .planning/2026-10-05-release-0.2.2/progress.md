@@ -52,3 +52,10 @@
   0.2.2 release section), documentation contract updated and green.
 - The formal GitHub carrier release remains `v0.2.1`; a `v0.2.2` tag/release
   is a separate decision requiring explicit authorization.
+- Closing scan for the round:
+  `scan-2026-10-05T11-40-57.116Z-79526bc7838e`, seal
+  `sha256:193d500a07d5b005f7dc48a33aa329c2cfe0a483dc02971ea16db7182e2f7399`,
+  depth deep, 198 dependencies / 0 advisories, verdict effect `none`.
+  Findings: 21 — unchanged across five consecutive scans; the release round
+  (version bump, docs, smoke-script env sanitization) introduced no findings.
+  Static-only evidence, not a runtime security proof.
