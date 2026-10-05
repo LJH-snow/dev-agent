@@ -124,31 +124,39 @@ export function createSecurityCenterUI(options = {}) {
   /**
    * Loads the bounded session list for the scan-scope picker. Only session
    * ids are read from the response; previews and other content-derived
-   * fields are ignored.
+   * fields are ignored. Failures degrade the picker only — they never break
+   * history rendering.
    */
   const loadSessions = async () => {
-    if (!sessionSelect) return;
-    const selected = sessionSelect.value;
-    const response = await fetcher("/api/sessions", { cache: "no-store" });
-    if (!response.ok) return;
-    const payload = await response.json();
-    const ids = Array.isArray(payload?.sessions)
-      ? payload.sessions
-        .map((summary) => (typeof summary?.sessionId === "string" ? summary.sessionId : ""))
-        .filter((id) => id && id.length <= MAX_ID_LENGTH)
-        .slice(0, 256)
-      : [];
-    const defaultOption = documentRef.createElement("option");
-    defaultOption.value = "";
-    defaultOption.textContent = translate("securityCenter.sessionDefault");
-    sessionSelect.replaceChildren(defaultOption);
-    for (const id of ids) {
-      const option = documentRef.createElement("option");
-      option.value = id;
-      option.textContent = id;
-      sessionSelect.append(option);
+    if (!sessionSelect) return false;
+    try {
+      const selected = sessionSelect.value;
+      const response = await fetcher("/api/sessions", { cache: "no-store" });
+      if (!response.ok) throw new Error("session list unavailable");
+      const payload = await response.json();
+      const ids = Array.isArray(payload?.sessions)
+        ? payload.sessions
+          .map((summary) => (typeof summary?.sessionId === "string" ? summary.sessionId : ""))
+          .filter((id) => id && id.length <= MAX_ID_LENGTH)
+          .slice(0, 256)
+        : [];
+      const defaultOption = documentRef.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent = translate("securityCenter.sessionDefault");
+      sessionSelect.replaceChildren(defaultOption);
+      for (const id of ids) {
+        const option = documentRef.createElement("option");
+        option.value = id;
+        option.textContent = id;
+        sessionSelect.append(option);
+      }
+      if (selected && ids.includes(selected)) sessionSelect.value = selected;
+      sessionSelect.title = "";
+      return true;
+    } catch {
+      sessionSelect.title = translate("securityCenter.sessionError");
+      return false;
     }
-    if (selected && ids.includes(selected)) sessionSelect.value = selected;
   };
 
   const refresh = async () => {
