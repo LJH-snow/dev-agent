@@ -184,6 +184,32 @@ test("POST /api/security-scan is capability-gated and records metadata-only hist
     const persisted = JSON.parse(await readFile(stateFile, "utf8"));
     assert.equal(persisted.version, 1);
     assert.equal(persisted.records.length, 1);
+
+    const deleteWithoutToken = await fetch(base + "/api/security-center", { method: "DELETE" });
+    assert.equal(deleteWithoutToken.status, 403);
+    assert.deepEqual(await deleteWithoutToken.json() as any, {
+      error: "desktop capability token is required",
+      code: "desktop-capability-required",
+    });
+
+    const wrongTokenDelete = await fetch(base + "/api/security-center", {
+      method: "DELETE",
+      headers: { "x-dev-agent-capability": "wrong-token" },
+    });
+    assert.equal(wrongTokenDelete.status, 403);
+
+    const clear = await fetch(base + "/api/security-center", {
+      method: "DELETE",
+      headers: { "x-dev-agent-capability": "security-center-test-token" },
+    });
+    assert.equal(clear.status, 200);
+    assert.match(clear.headers.get("cache-control") ?? "", /no-store/);
+    assert.deepEqual(await clear.json() as any, { schemaVersion: 1, cleared: true });
+
+    const afterClear = await fetch(base + "/api/security-center");
+    assert.deepEqual((await afterClear.json() as any).history, []);
+    const persistedAfterClear = JSON.parse(await readFile(stateFile, "utf8"));
+    assert.deepEqual(persistedAfterClear.records, []);
   } finally {
     await close(server);
     await rm(root, { recursive: true, force: true });
@@ -204,6 +230,8 @@ test("security center panel contract stays wired into the workbench", async () =
       "security-center-summary",
       "security-center-list",
       "security-center-run-scan",
+      "security-center-clear",
+      "security-center-clear-status",
       "security-center-refresh",
       "security-center-findings",
       "security-center-findings-title",
@@ -221,6 +249,7 @@ test("security center panel contract stays wired into the workbench", async () =
     for (const symbol of ["createSecurityCenterUI", "/api/security-center", "/api/security-scan", "textContent"]) {
       assert.ok(module.includes(symbol), `security-center.js should reference ${symbol}`);
     }
+    assert.ok(module.includes("securityCenter.clearConfirm"), "clear action must confirm before deleting");
     assert.equal(module.includes("innerHTML"), false, "panel must render with textContent only");
   } finally { await close(server); }
 });

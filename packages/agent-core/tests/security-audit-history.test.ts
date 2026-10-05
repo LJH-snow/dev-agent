@@ -153,8 +153,23 @@ test("store deduplicates scan ids by moving the newest entry to the front", asyn
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
-test("store caps history length and drops the oldest records", async () => {
-  const store = new SecurityAuditHistoryStore({});
+test("store clears persisted history and keeps accepting new records", async () => {
+  const root = await mkdtemp(join(tmpdir(), "dev-agent-security-audit-clear-"));
+  try {
+    const stateFile = join(root, "security-audit-history.json");
+    const store = new SecurityAuditHistoryStore({ stateFile });
+    await store.record(createSecurityAuditRecord(sampleResult(), { scanId: "scan-a", startedAt: STARTED_AT, finishedAt: FINISHED_AT }));
+    assert.equal(store.list().length, 1);
+    await store.clear();
+    assert.equal(store.list().length, 0);
+    const reloaded = new SecurityAuditHistoryStore({ stateFile });
+    assert.equal(reloaded.list().length, 0);
+    await reloaded.record(createSecurityAuditRecord(sampleResult(), { scanId: "scan-b", startedAt: STARTED_AT, finishedAt: FINISHED_AT }));
+    assert.equal(reloaded.list().length, 1);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+test("store caps history length and drops the oldest records", async () => {  const store = new SecurityAuditHistoryStore({});
   for (let index = 0; index < MAX_SECURITY_AUDIT_RECORDS + 5; index++) {
     const startedAt = new Date(Date.parse(STARTED_AT) + index * 1000).toISOString();
     const finishedAt = new Date(Date.parse(startedAt) + 500).toISOString();

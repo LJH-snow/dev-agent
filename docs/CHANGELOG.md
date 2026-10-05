@@ -2,6 +2,10 @@
 
 ## 2026-10-05（v0.2.2 carrier 发布后跟进）
 
+- Desktop Security Center: 新增 `DELETE /api/security-center`（capability
+  token 门控）清除持久化的扫描元数据历史，面板增加带浏览器确认的
+  "清除历史"动作；底层 `SecurityAuditHistoryStore` 增加 `clear()`（先 RED
+  测试）。Desktop 套件 449/449。
 - CLI: managed runtime 默认 carrier release 从 `0.2.1` 跟进到刚发布的
   `0.2.2`（runtime identity 仍为 `0.2.0`）；`pnpm runtime:smoke` 的硬编码
   carrier 常量同步更新。先 RED 测试再切换，文档契约 60/60，官方

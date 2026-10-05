@@ -1308,6 +1308,21 @@ export function createDesktopServer(options: DesktopServerOptions = {}): Server 
         return;
       }
 
+      if (req.method === "DELETE" && url.pathname === "/api/security-center") {
+        const cleared = await securityHistory.clear();
+        if (!cleared) {
+          res.writeHead(500, { "content-type": "application/json", "cache-control": "no-store" });
+          res.end(JSON.stringify({ error: "security history could not be cleared", code: "security-history-clear-failed" }));
+          return;
+        }
+        res.writeHead(200, {
+          "content-type": "application/json; charset=utf-8",
+          "cache-control": "no-store",
+        });
+        res.end(JSON.stringify({ schemaVersion: SECURITY_CENTER_SCHEMA_VERSION, cleared: true }));
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/api/security-scan") {
         const rawBody = await readJsonBody(req, res);
         if (rawBody === undefined) return;

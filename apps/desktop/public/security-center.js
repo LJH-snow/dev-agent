@@ -11,6 +11,8 @@ export function createSecurityCenterUI(options = {}) {
   const list = documentRef.getElementById("security-center-list");
   const refreshButton = documentRef.getElementById("security-center-refresh");
   const scanButton = documentRef.getElementById("security-center-run-scan");
+  const clearButton = documentRef.getElementById("security-center-clear");
+  const clearStatus = documentRef.getElementById("security-center-clear-status");
   const findingsPanel = documentRef.getElementById("security-center-findings");
   const findingsTitle = documentRef.getElementById("security-center-findings-title");
   const findingsList = documentRef.getElementById("security-center-findings-list");
@@ -177,8 +179,31 @@ export function createSecurityCenterUI(options = {}) {
     }
   };
 
+  const clearHistory = async () => {
+    if (clearButton) clearButton.disabled = true;
+    if (clearStatus) clearStatus.textContent = "";
+    try {
+      const response = await fetcher("/api/security-center", {
+        method: "DELETE",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("security history clear failed");
+      if (clearStatus) clearStatus.textContent = translate("securityCenter.cleared");
+      await refresh();
+    } catch {
+      if (clearStatus) clearStatus.textContent = translate("securityCenter.error");
+    } finally {
+      if (clearButton) clearButton.disabled = false;
+    }
+  };
+
   refreshButton?.addEventListener("click", () => { void refresh(); });
   scanButton?.addEventListener("click", () => { void runScan(); });
+  clearButton?.addEventListener("click", () => {
+    if (documentRef.defaultView?.confirm(translate("securityCenter.clearConfirm"))) {
+      void clearHistory();
+    }
+  });
 
-  return { refresh, runScan };
+  return { refresh, runScan, clearHistory };
 }

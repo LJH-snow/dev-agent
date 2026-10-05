@@ -129,6 +129,10 @@ export class SecurityAuditHistoryStore {
     return this.commit(next);
   }
 
+  clear(): Promise<boolean> {
+    return this.commit([]);
+  }
+
   private commit(next: SecurityAuditRecord[]): Promise<boolean> {
     const payload = serializeRecords(next);
     if (Buffer.byteLength(payload, "utf8") > MAX_SECURITY_AUDIT_BYTES) return Promise.resolve(false);

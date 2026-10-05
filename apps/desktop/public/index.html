@@ -854,7 +854,9 @@
             </div>
             <div class="security-center-actions">
               <button type="button" id="security-center-run-scan" data-i18n="securityCenter.runScan">Run bounded scan</button>
+              <button type="button" id="security-center-clear" data-i18n="securityCenter.clear">Clear history</button>
               <button type="button" id="security-center-refresh" class="desktop-status-refresh" data-i18n="securityCenter.refresh">Refresh</button>
+              <span id="security-center-clear-status" class="execution-center-detail-status" role="status" aria-live="polite"></span>
             </div>
           </div>
           <div id="security-center-summary" class="parallel-runs-summary" role="status"></div>
@@ -1438,6 +1440,9 @@
         "securityCenter.summary": "{count} recorded scans · metadata-only",
         "securityCenter.error": "Security metadata is temporarily unavailable.",
         "securityCenter.refresh": "Refresh",
+        "securityCenter.clear": "Clear history",
+        "securityCenter.clearConfirm": "Delete all recorded security scan metadata? The aggregate history cannot be restored.",
+        "securityCenter.cleared": "History cleared.",
         "securityCenter.runScan": "Run bounded scan",
         "securityCenter.scanDone": "Scan {status} · {files} files · {findings} findings",
         "securityCenter.scanError": "The bounded scan failed; it was recorded as an error entry.",
@@ -2328,6 +2333,9 @@
         "securityCenter.summary": "{count} 条扫描记录 · 仅元数据",
         "securityCenter.error": "安全元数据暂时不可用。",
         "securityCenter.refresh": "刷新",
+        "securityCenter.clear": "清除历史",
+        "securityCenter.clearConfirm": "删除所有已记录的安全扫描元数据？聚合历史无法恢复。",
+        "securityCenter.cleared": "历史已清除。",
         "securityCenter.runScan": "运行有界扫描",
         "securityCenter.scanDone": "扫描 {status} · {files} 个文件 · {findings} 个发现",
         "securityCenter.scanError": "有界扫描失败；已记录为一条错误条目。",
