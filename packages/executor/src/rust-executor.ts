@@ -107,6 +107,13 @@ export interface RustExecutorOptions {
   readonly requestTimeoutMs?: number;
   /** Maximum protobuf payload in one framed message. Defaults to 8 MiB. */
   readonly maxFrameBytes?: number;
+  /**
+   * Runs immediately before the runtime process is spawned. Managed-runtime
+   * callers inject re-validation here (private modes, size, checksum) so a
+   * binary swapped between selection and spawn fails closed instead of
+   * executing. A rejection aborts the start and surfaces to the caller.
+   */
+  readonly verifyBeforeSpawn?: (binaryPath: string) => Promise<void> | void;
 }
 
 const NETWORK_POLICY_MAP: Readonly<Record<SandboxNetworkPolicy, number>> = {
@@ -144,6 +151,7 @@ export class RustExecutor implements SandboxExecutor {
   private readonly maxConcurrentExecutions: number;
   private readonly requestTimeoutMs: number;
   private readonly maxFrameBytes: number;
+  private readonly verifyBeforeSpawn?: (binaryPath: string) => Promise<void> | void;
   private child?: ChildProcessWithoutNullStreams;
   private readonly pending = new Map<number, PendingRequest>();
   private nextRequestId = 1;
@@ -165,6 +173,7 @@ export class RustExecutor implements SandboxExecutor {
     this.maxConcurrentExecutions = options.maxConcurrentExecutions ?? DEFAULT_MAX_CONCURRENT;
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.maxFrameBytes = resolveMaxFrameBytes(options.maxFrameBytes);
+    this.verifyBeforeSpawn = options.verifyBeforeSpawn;
   }
 
   async run(
@@ -350,6 +359,13 @@ export class RustExecutor implements SandboxExecutor {
     this.root = root;
     this.envelopeType = root.lookupType("dev_agent.executor.Envelope");
     this.responseType = root.lookupType("dev_agent.executor.Response");
+
+    // Narrowest possible window: re-validate after every other startup step
+    // and immediately before the process is created, so anything that changed
+    // since selection (checksum, size, owner, mode) fails closed here.
+    if (this.verifyBeforeSpawn) {
+      await this.verifyBeforeSpawn(this.binaryPath);
+    }
 
     const child = spawn(this.binaryPath, {
       stdio: ["pipe", "pipe", "pipe"],

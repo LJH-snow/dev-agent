@@ -165,11 +165,16 @@ export * from "./errors.js";
 
 export interface CreateExecutorOptions {
   readonly rustBinaryPath?: string;
+  /** Forwarded to RustExecutor; runs re-validation right before the runtime spawns. */
+  readonly verifyBeforeSpawn?: (binaryPath: string) => Promise<void> | void;
 }
 
 export function createExecutor(options: CreateExecutorOptions = {}): Executor {
   if (options.rustBinaryPath) {
-    return new RustExecutor({ binaryPath: options.rustBinaryPath });
+    return new RustExecutor({
+      binaryPath: options.rustBinaryPath,
+      ...(options.verifyBeforeSpawn === undefined ? {} : { verifyBeforeSpawn: options.verifyBeforeSpawn }),
+    });
   }
   return new LocalExecutor();
 }

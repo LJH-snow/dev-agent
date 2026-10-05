@@ -190,3 +190,39 @@ test("RustExecutor rejects an oversized outgoing frame before writing it", async
     await executor.dispose();
   }
 });
+
+test("RustExecutor fails closed when the pre-spawn verifier rejects", async () => {
+  const executor = new RustExecutor({
+    binaryPath: mockBinary,
+    verifyBeforeSpawn: () => {
+      throw new Error("managed runtime failed re-validation");
+    },
+  } as any);
+
+  try {
+    await assert.rejects(
+      executor.run("echo", ["hello"]),
+      /managed runtime failed re-validation/
+    );
+  } finally {
+    await executor.dispose();
+  }
+});
+
+test("RustExecutor invokes the pre-spawn verifier with the binary path before spawning", async () => {
+  const verifiedPaths: string[] = [];
+  const executor = new RustExecutor({
+    binaryPath: mockBinary,
+    verifyBeforeSpawn: async (binaryPath) => {
+      verifiedPaths.push(binaryPath);
+    },
+  } as any);
+
+  try {
+    const result = await executor.run("echo", ["hello"]);
+    assert.equal(result.stdout, "mock:echo");
+    assert.deepEqual(verifiedPaths, [mockBinary]);
+  } finally {
+    await executor.dispose();
+  }
+});

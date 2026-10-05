@@ -140,6 +140,7 @@ import { printDoctorReport, probeRustBinary, runDoctor } from "./doctor.js";
 import { executeConfigCommand, formatConfigCommandResult } from "./config-command.js";
 import { initializeProject } from "./project-init.js";
 import {
+  createManagedRuntimeSpawnVerifier,
   executeRuntimeCommand,
   formatRuntimeCommandResult,
   resolveManagedRuntimeBinary,
@@ -1884,7 +1885,14 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
     }
     const questionBox: QuestionBox = {};
     const tuiSession = new TuiSessionModel();
-    executor = createExecutor({ rustBinaryPath });
+    executor = createExecutor({
+      rustBinaryPath,
+      // Managed runtimes re-validate (checksum, size, private modes) right
+      // before spawn; explicit custom paths stay caller-trusted by contract.
+      ...(runtimeSelectionSource === "runtime"
+        ? { verifyBeforeSpawn: createManagedRuntimeSpawnVerifier(args) }
+        : {}),
+    });
     const activeCollaborationWorkspaces = new GitCollaborationWorkspaceProvider({
       rootDirectory: workingDirectory,
       executor,

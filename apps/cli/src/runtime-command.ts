@@ -106,6 +106,25 @@ export async function resolveManagedRuntimeBinary(args: readonly string[]): Prom
   return manager.path(readRuntimeVersion(args), readRuntimeTarget(args));
 }
 
+/**
+ * Re-validates the managed runtime immediately before the executor spawns it.
+ * The second full inspection (private modes, size, checksum) narrows the
+ * inspect→spawn window: a binary swapped after selection fails closed here.
+ */
+export function createManagedRuntimeSpawnVerifier(
+  args: readonly string[]
+): (binaryPath: string) => Promise<void> {
+  const manager = createCliRuntimeManager(args);
+  const version = readRuntimeVersion(args);
+  const target = readRuntimeTarget(args);
+  return async (binaryPath) => {
+    const currentPath = await manager.path(version, target);
+    if (currentPath !== binaryPath) {
+      throw new Error("Managed runtime failed re-validation before spawn; refusing to start it.");
+    }
+  };
+}
+
 /** Provides provider-free managed runtime metadata for doctor; never touches the network. */
 export async function resolveManagedRuntimeStatus(args: readonly string[]): Promise<{
   state: "unsupported" | "missing" | "installed" | "corrupt";

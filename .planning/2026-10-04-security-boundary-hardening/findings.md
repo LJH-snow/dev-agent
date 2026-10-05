@@ -66,3 +66,11 @@ Source scan: `scan-2026-10-04T08-40-18.059Z-c1111d24e45a` (static-only; verdict 
 | `apps/desktop/src/server.ts:1356`, `1430`, `1485`, `1660`, `1808` | Provisional static false positives | Responses use JSON content types; verify endpoint tests/headers and no HTML rendering sink. |
 
 Residual risks: static analysis does not prove runtime exploitability; managed cache existing-directory ownership/mode and manager-to-spawn TOCTOU remain out of scope for this minimal slice.
+
+> 2026-10-05 update: the manager-to-spawn TOCTOU window was narrowed (not
+> eliminated) by `RustExecutor.verifyBeforeSpawn`, which re-runs the full
+> managed-runtime inspection (private modes, size, checksum) immediately
+> before the process is created; see
+> `.planning/2026-10-05-runtime-toctou-narrowing/progress.md`. Same-UID
+> planted state that rewrites cache content and metadata consistently, and
+> root attackers, remain out of scope.

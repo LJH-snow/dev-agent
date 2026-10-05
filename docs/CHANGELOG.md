@@ -24,6 +24,13 @@
   security-center.js 面板（textContent 渲染、stale-response guard）。
   持久化历史不含 finding 位置、摘要、命令、环境变量、路径或错误文本。
   扫描器与审计历史已提取到 `@dev-agent/agent-core` 供 CLI/Desktop 共享。
+- Security hardening: managed runtime 的 inspect→spawn 竞态窗口收窄——
+  `RustExecutor` 新增 `verifyBeforeSpawn` 钩子，在进程创建前的一刻对受管
+  runtime 重新执行完整校验（私有权限、大小、checksum），不一致即拒绝启动。
+  CLI 仅在受管 runtime 来源时注入该复验；显式 `--rust-executor`/
+  `DEV_AGENT_RUST_BINARY` 自定义路径保持既有的 caller-trusted 合约。窗口
+  缩小到复验→spawn 之间，并未完全消除；同 UID 可同时改写缓存目录与安装
+  元数据的 planted state 仍是记录在案的残余风险。
 
 ## 2026-10-04（@agent_cli/cli 0.2.1 发布）
 
