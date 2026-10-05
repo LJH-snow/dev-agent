@@ -12,13 +12,13 @@ const packageManager = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const maxBuffer = 4 * 1024 * 1024;
 const runtimeVersion = "0.2.0";
-const runtimeRelease = "0.1.6";
+const runtimeRelease = "0.2.1";
 
 async function run(command, args, options = {}) {
   try {
     return await execFileAsync(command, args, {
       cwd: repositoryRoot,
-      env: process.env,
+      env: sanitizedChildEnv(),
       maxBuffer,
       ...options,
     });
@@ -31,6 +31,22 @@ async function run(command, args, options = {}) {
       { cause: error }
     );
   }
+}
+
+/**
+ * Strips the parent npm/pnpm session's config environment. Config that the
+ * parent session loaded from the user npmrc (such as `allow-scripts`) must
+ * not reach the child install as an explicit command-line-scoped override;
+ * npm 11.6+ rejects that combination for project-scoped installs
+ * (EALLOWSCRIPTS).
+ */
+function sanitizedChildEnv(extra = {}) {
+  const clean = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (/^npm_config_/i.test(key)) continue;
+    clean[key] = value;
+  }
+  return { ...clean, ...extra };
 }
 
 async function runInstalled(binPath, args, cwd, env) {
@@ -71,14 +87,13 @@ async function main() {
     assert.equal(tarballs.length, 1);
     const tarballPath = join(packDirectory, tarballs[0]);
 
-    const isolatedEnv = {
-      ...process.env,
+    const isolatedEnv = sanitizedChildEnv({
       HOME: homeDirectory,
       USERPROFILE: homeDirectory,
       DEV_AGENT_MODEL_PROVIDER: "ollama",
       DEV_AGENT_SESSION_DIR: join(homeDirectory, "sessions"),
       DEV_AGENT_CONFIG_FILE: join(homeDirectory, "missing-config.json"),
-    };
+    });
     await run(npmCommand, [
       "install",
       "--prefix",

@@ -256,7 +256,9 @@ wrapper only publishes after that preflight succeeds. As of October 4, 2026,
 was created by the authorized tag workflow and carries the four runtime artifacts,
 checksums, manifest, and verified CLI tarball. The Rust runtime identity remains
 `0.2.0`; use `--runtime-version 0.2.0 --runtime-release 0.2.1` when installing that
-runtime carrier. See
+runtime carrier. The current release candidate is `@agent_cli/cli@0.2.2`
+(auditor history, Desktop Security Center, and pre-spawn runtime re-validation);
+it publishes only after the user-authorized preflight/publish round. See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.

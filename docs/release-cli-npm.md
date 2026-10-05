@@ -2,6 +2,17 @@
 
 本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-04，`@agent_cli/cli@0.2.1` 已发布到 npm 并成为 `latest`，正式 GitHub Release 为 `v0.2.1`**。npm 发布与 GitHub Release 仍是两个独立状态：tag/release 只有在单独授权后才创建，但本次授权的 `v0.2.1` workflow 已完成。
 
+## 0.2.2 候选准备（2026-10-05）
+
+- `@agent_cli/cli@0.2.2` 是当前 candidate：`docs/release-state.json` 记录
+  `candidateVersion: 0.2.2`、`publishedVersion: 0.2.1`、`status: candidate`。
+- 候选内容包括：CLI Security Center metadata-only 审计历史与 `:security history`、
+  managed runtime 默认 carrier 切换为 `0.2.1`、Desktop Security Center 路由与面板、
+  以及受管 runtime 的 spawn 前完整性复验（`verifyBeforeSpawn`）。
+- 发布仍走既有治理：`pnpm release:preflight` 通过后，由受确认保护的
+  `pnpm release:publish -- --publish` 执行；npm 需要二次验证时按 0.2.1 先例走
+  浏览器授权。GitHub carrier release / tag 不在本轮自动创建范围。
+
 ## 当前发行状态核验（2026-10-04）
 
 - `npm view @agent_cli/cli version` 与 `dist-tags.latest` 均为 `0.2.1`；`npm view @agent_cli/cli@0.2.1 version` 可复核精确版本。

@@ -307,6 +307,8 @@ fallback。详细 proof gap 见
 其[进度记录](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md)
 以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
 均已完成。当前 npm 包 `@agent_cli/cli@0.2.1` 已发布（2026-10-04），npm registry `latest` 指向该版本。
+当前 candidate 为 `@agent_cli/cli@0.2.2`（Security Center 审计历史、Desktop Security Center、
+runtime 默认 carrier 与 spawn 前复验），只在用户授权的发布轮次中发布到 npm。
 正式 GitHub Release 已推进到 `v0.2.1`；tag、workflow run `37215824488`、四平台 runtime、
 checksum sidecar、manifest 和 CLI tarball 均已验证。Rust runtime identity 仍为 `0.2.0`，
 与 carrier release 分开记录；不要把 npm、GitHub carrier release 与 runtime contract 视为同一版本。

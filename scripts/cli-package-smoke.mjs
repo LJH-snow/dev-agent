@@ -16,7 +16,7 @@ async function run(command, args, options = {}) {
   try {
     return await execFileAsync(command, args, {
       cwd: repositoryRoot,
-      env: process.env,
+      env: sanitizedChildEnv(),
       maxBuffer,
       ...options,
     });
@@ -31,6 +31,22 @@ async function run(command, args, options = {}) {
       { cause: error }
     );
   }
+}
+
+/**
+ * Strips the parent npm/pnpm session's config environment. When this script
+ * runs under `npm test`, `npm_config_*` variables leak into the child
+ * `npm install` (e.g. `npm_config_allow_scripts`), and newer npm versions
+ * reject such project-scoped installs with EALLOWSCRIPTS. The smoke install
+ * must behave like a clean user install, not inherit the parent session.
+ */
+function sanitizedChildEnv(extra = {}) {
+  const clean = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (/^npm_config_/i.test(key)) continue;
+    clean[key] = value;
+  }
+  return { ...clean, ...extra };
 }
 
 function assertSuccessful(result, label) {
@@ -94,8 +110,7 @@ async function main() {
     assert.equal(packedFiles.length, 1, `expected one CLI tarball, found ${packedFiles.join(", ")}`);
     const tarballPath = join(packDirectory, packedFiles[0]);
 
-    const isolatedEnv = {
-      ...process.env,
+    const isolatedEnv = sanitizedChildEnv({
       HOME: homeDirectory,
       USERPROFILE: homeDirectory,
       NPM_CONFIG_CACHE: cacheDirectory,
@@ -107,7 +122,7 @@ async function main() {
       DEV_AGENT_SESSION_DIR: join(homeDirectory, "sessions"),
       DEV_AGENT_MEMORY_FILE: join(homeDirectory, "memory.json"),
       DEV_AGENT_CONFIG_FILE: join(homeDirectory, "missing-config.json"),
-    };
+    });
     await run(npmCommand, [
       "install",
       "--prefix",
