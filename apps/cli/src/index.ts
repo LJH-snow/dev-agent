@@ -3791,8 +3791,22 @@ async function gitWorkflowCommandMessage(
 async function securityCommandMessage(command: string, ui: InteractiveUiOptions): Promise<string | undefined> {
   const parsed = parseSecurityCommand(command);
   if (parsed === undefined || !parsed.handled) return undefined;
-  if (parsed.action === "help") return "Usage: :security [scan|history] · read-only workspace and MCP audit; history stores metadata only.";
-  if (parsed.action === "invalid") return "Usage: :security [scan|history]";
+  if (parsed.action === "help") return "Usage: :security [scan|history|clear] · read-only workspace and MCP audit; history stores metadata only.";
+  if (parsed.action === "invalid") return "Usage: :security [scan|history|clear]";
+  if (parsed.action === "clear") {
+    const count = (ui.securityAuditHistory ?? activeSecurityAuditHistory())?.list().length ?? 0;
+    return safeTerminalText(count === 0
+      ? "No recorded security audit history to clear."
+      : `This deletes the ${count} recorded scan entr${count === 1 ? "y" : "ies"} (metadata only). Run :security clear confirm to proceed.`);
+  }
+  if (parsed.action === "clear-confirm") {
+    const store = ui.securityAuditHistory ?? activeSecurityAuditHistory();
+    if (!store) return "Security audit history is unavailable in this session.";
+    const cleared = await store.clear();
+    return safeTerminalText(cleared
+      ? "Security audit history cleared."
+      : "Security audit history could not be cleared.");
+  }
   if (parsed.action === "history") {
     const store = ui.securityAuditHistory ?? activeSecurityAuditHistory();
     if (!store) return "Security audit history is unavailable in this session.";

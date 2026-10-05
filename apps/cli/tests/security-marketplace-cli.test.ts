@@ -25,6 +25,10 @@ test("interactive CLI exposes read-only Security Center and local marketplace co
   await mkdir(join(root, ".dev-agent"), { recursive: true });
   await writeFile(join(root, ".env"), "TOKEN=cli-secret-value\n", "utf8");
   await writeFile(join(root, ".dev-agent", "skill-marketplace.json"), JSON.stringify({ entries: [] }), "utf8");
+  // Isolate the Security Center audit history store so the clear-history
+  // flow below never touches the real user-level state file.
+  const previousSessionDir = process.env.DEV_AGENT_SESSION_DIR;
+  process.env.DEV_AGENT_SESSION_DIR = join(root, "sessions");
   const child = spawn(process.execPath, [cliPath, "--no-stream"], { cwd: root, env: { ...process.env, DEV_AGENT_MCP_SERVERS: "[]", DEV_AGENT_MODEL_PROVIDER: "openai", OPENAI_API_KEY: "test-key", OPENAI_BASE_URL: fake.url, INIT_CWD: root }, stdio: ["pipe", "pipe", "pipe"] });
   let output = ""; child.stdout.setEncoding("utf8"); child.stdout.on("data", (chunk) => { output += chunk; });
   try {
@@ -32,11 +36,17 @@ test("interactive CLI exposes read-only Security Center and local marketplace co
     await waitFor(() => output, "> ");
     child.stdin.write(":security\n"); await waitFor(() => output, "Security Center · findings");
     assert.doesNotMatch(output, /cli-secret-value/);
+    child.stdin.write(":security history\n"); await waitFor(() => output, "Security audit history");
+    child.stdin.write(":security clear\n"); await waitFor(() => output, ":security clear confirm");
+    child.stdin.write(":security clear confirm\n"); await waitFor(() => output, "Security audit history cleared.");
+    child.stdin.write(":security history\n"); await waitFor(() => output, "No recorded security audit history");
     child.stdin.write(":marketplace\n"); await waitFor(() => output, "Skill Marketplace: no skills found.");
     child.stdin.write("exit\n");
     assert.equal(await new Promise<number | null>((resolve) => child.on("close", resolve)), 0);
   } finally {
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+    if (previousSessionDir === undefined) delete process.env.DEV_AGENT_SESSION_DIR;
+    else process.env.DEV_AGENT_SESSION_DIR = previousSessionDir;
     fake.server.closeAllConnections?.(); await new Promise<void>((resolve) => fake.server.close(() => resolve()));
     await rm(root, { recursive: true, force: true });
   }
