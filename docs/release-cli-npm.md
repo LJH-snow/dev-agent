@@ -1,6 +1,14 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-05，`@agent_cli/cli@0.2.2` 已发布到 npm 并成为 `latest`，正式 GitHub carrier Release 为 `v0.2.2`**。npm 发布与 GitHub Release 仍是两个独立状态，本次均已获得用户授权并完成。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-06，`@agent_cli/cli@0.2.3` 已发布到 npm 并成为 `latest`**。npm 发布与 GitHub Release 仍是两个独立状态：正式 GitHub carrier release 仍为 `v0.2.2`，`v0.2.3` tag/release 只有在单独授权后才会创建。
+
+## 0.2.3 发布记录（2026-10-06）
+
+- `npm view @agent_cli/cli version` 与 `dist-tags.latest` 现均为 `0.2.3`；`npm view @agent_cli/cli@0.2.3 version` 可复核精确版本。
+- 发布前 `pnpm release:preflight` 通过（auth authenticated、registry matched 0.2.2、artifact ready）；官方 `npm test` 843/843，`pnpm package:smoke` 与 `NODE_USE_ENV_PROXY=1 pnpm runtime:smoke -- --skip-build`（carrier 0.2.2）通过。
+- 2FA 浏览器授权经历多次会话超时后由用户在有效窗口内完成；npm 接受发布（`+ @agent_cli/cli@0.2.3`），registry 约 80 秒传播延迟后精确版本与 dist-tag 均确认同步。
+- 发布后从 registry clean-install：`dev-agent --version` 输出 `0.2.3`，provider-free `runtime status --json` 正常返回且包含新的 `manifestVerification` 字段。
+- 0.2.3 内容：Desktop Security Center 补全（清除历史、MCP 元数据检查、扫描范围会话选择器）、可选 manifest Ed25519 签名验证（客户端 + secret 门控的 workflow 签名）、`runtime status` 报告 `manifestVerification`、打包默认 carrier 0.2.2。
 
 ## v0.2.2 GitHub Release 记录（2026-10-05）
 
@@ -217,7 +225,7 @@ session: DEV_AGENT_SESSION_DIR > --project-state 项目默认 > 用户默认
 memory:  DEV_AGENT_MEMORY_FILE > 选定的 session 目录
 ```
 
-`--project-state` 已随已发布的 `@agent_cli/cli@0.2.2` 提供；该功能最早随 `@agent_cli/cli@0.1.3` 引入。它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
+`--project-state` 已随已发布的 `@agent_cli/cli@0.2.3` 提供；该功能最早随 `@agent_cli/cli@0.1.3` 引入。它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
 `~/.dev-agent/sessions/default.json`。不带该 flag 时，兼容默认仍是
 `~/.dev-agent/config.json` 和 `~/.dev-agent/sessions`。
 

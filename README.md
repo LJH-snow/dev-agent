@@ -250,19 +250,17 @@ cache entries are reported without starting a provider or silently falling back 
 The package is built as a self-contained JavaScript CLI bundle and is verified by
 `pnpm package:smoke` in a clean npm prefix. New release candidates can be checked with
 `pnpm release:preflight`, which never publishes; the guarded `pnpm release:publish -- --publish`
-wrapper only publishes after that preflight succeeds. As of October 5, 2026,
-`@agent_cli/cli@0.2.2` is published to npm and is the registry `latest` (Security
-Center audit history, Desktop Security Center, runtime default carrier 0.2.1, and
-pre-spawn managed-runtime re-validation). The formal
+wrapper only publishes after that preflight succeeds. As of October 6, 2026,
+`@agent_cli/cli@0.2.3` is published to npm and is the registry `latest` (Desktop
+Security Center completion, the session-scope picker, opt-in manifest signature
+verification, and the packaged default carrier 0.2.2). The formal
 [GitHub Release v0.2.2](https://github.com/LJH-snow/dev-agent/releases/tag/v0.2.2)
 is the current carrier release, created by the authorized tag workflow with the
 four runtime artifacts (runtime identity `0.2.0`), checksums, manifest, and
 verified CLI tarball. The Rust runtime identity remains
 `0.2.0`; use `--runtime-version 0.2.0 --runtime-release 0.2.2` when installing that
-runtime carrier; since the 0.2.2 publication the packaged built-in default is
-`--runtime-release 0.2.2`, and the current candidate `@agent_cli/cli@0.2.3`
-adds Desktop Security Center completion, the session-scope picker, and the
-opt-in manifest signature verification. See
+runtime carrier (the packaged built-in default since 0.2.3 is also `0.2.2`). A `v0.2.3` GitHub
+tag/release is only created after separate authorization. See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.
@@ -272,7 +270,7 @@ pre-populated npm cache and avoid redundant registry downloads, set
 `DEV_AGENT_PACKAGE_SMOKE_NPM_CACHE` to the cache directory before running
 `pnpm package:smoke`.
 
-The published `@agent_cli/cli@0.2.2` retains the explicit `--project-state` opt-in for
+The published `@agent_cli/cli@0.2.3` retains the explicit `--project-state` opt-in for
 project-scoped config and sessions. It remains opt-in and does not migrate existing
 user-level sessions. It also includes the provider, index, MCP, Desktop status, TUI
 history, runtime-boundary hardening, and the Security Center / audit-history work

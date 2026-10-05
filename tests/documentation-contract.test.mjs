@@ -230,7 +230,7 @@ test("npm CLI docs describe external-directory use and current publication statu
   assert.equal(releaseState.package, cliPackage.name);
   assert.ok(["candidate", "published"].includes(releaseState.status));
   assert.equal(candidateCliVersion, cliPackage.version);
-  assert.equal(publishedCliVersion, "0.2.2");
+  assert.equal(publishedCliVersion, "0.2.3");
   assert.equal(candidateCliVersion, "0.2.3");
   assert.match(readme, /release-cli-npm\.md/);
   assert.match(readme, /npm install -g @agent_cli\/cli/);
@@ -531,9 +531,9 @@ test("v0.1.7 records the post-goal-46 release preflight refresh", () => {
 });
 
 test("npm 0.2.1 publication and GitHub Release evidence stay distinct", () => {
-  assert.equal(releaseState.publishedVersion, "0.2.2");
+  assert.equal(releaseState.publishedVersion, "0.2.3");
   assert.equal(releaseState.candidateVersion, "0.2.3");
-  assert.equal(releaseState.status, "candidate");
+  assert.equal(releaseState.status, "published");
   assert.equal(cliPackage.version, "0.2.3");
   assert.match(npmRelease, /2026-10-04[\s\S]*@agent_cli\/cli@0\.2\.1[\s\S]*latest/);
   assert.match(npmRelease, /npm view @agent_cli\/cli@0\.2\.1 version/);

@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-10-06（@agent_cli/cli 0.2.3 发布）
+
+- `@agent_cli/cli@0.2.3` 已发布到 npm 并成为 `latest`（registry 复核
+  `npm view @agent_cli/cli@0.2.3 version` = `0.2.3`，`dist-tags.latest` =
+  `0.2.3`）；release-state 的 `publishedVersion` 已同步。
+- 发布前 `pnpm release:preflight` 通过；官方 `npm test` 843/843，
+  `pnpm package:smoke` 与 `NODE_USE_ENV_PROXY=1 pnpm runtime:smoke --
+  --skip-build`（carrier 0.2.2）通过。2FA 走浏览器授权；发布后
+  clean-install 复核 `dev-agent --version` = `0.2.3`，`runtime status
+  --json` 包含新的 `manifestVerification` 字段。
+- 正式 GitHub carrier release 仍为 `v0.2.2`；`v0.2.3` tag 未创建，需要
+  单独授权。
+- 本版本内容：Desktop Security Center 补全（`DELETE /api/security-center`
+  清除历史、扫描 MCP 元数据但不落盘、面板扫描范围会话选择器）；可选的
+  manifest Ed25519 签名验证（`DEV_AGENT_RUNTIME_MANIFEST_PUBLIC_KEY` 启用
+  客户端验签，`RUNTIME_MANIFEST_SIGNING_KEY` secret 启用 workflow 签名，
+  新错误码 `MANIFEST_SIGNATURE_INVALID`）；打包默认 carrier 跟进 0.2.2。
+
 ## 2026-10-05（v0.2.2 carrier 发布后跟进）
 
 - Release workflow: 新增可选的 manifest 签名步骤——配置

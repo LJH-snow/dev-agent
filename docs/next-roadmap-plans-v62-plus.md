@@ -306,13 +306,11 @@ fallback。详细 proof gap 见
 上一轮 [8 小时安全无人值守并行开发计划](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal.md)、
 其[进度记录](superpowers/plans/2026-09-15-eight-hour-unattended-development-goal-progress.md)
 以及[10 个开发目标的过夜开发计划](superpowers/plans/2026-09-15-overnight-development-goals.md)
-均已完成。当前 npm 包 `@agent_cli/cli@0.2.2` 已发布（2026-10-05），npm registry `latest` 指向该版本；
-0.2.2 包含 Security Center 审计历史、Desktop Security Center、runtime 默认 carrier 0.2.1
-与 spawn 前受管 runtime 完整性复验。正式 GitHub carrier release 已推进到
-`v0.2.2`（workflow run `37306834488` 同源 tag `v0.2.2`，四平台 runtime 以
-identity 0.2.0 构建，checksum 与 manifest 均已复核，carrier 生命周期
-端到端通过）。当前 candidate 为 `@agent_cli/cli@0.2.3`（Desktop Security
-Center 补全、可选 manifest 签名验证），只在用户授权的发布轮次中发布。
+均已完成。当前 npm 包 `@agent_cli/cli@0.2.3` 已发布（2026-10-06），npm registry `latest` 指向该版本；
+0.2.3 包含 Desktop Security Center 补全（清除历史、MCP 元数据检查、会话选择器）、
+可选 manifest Ed25519 签名验证（客户端 + workflow 签名）与打包默认 carrier 0.2.2。
+正式 GitHub carrier release 仍为 `v0.2.2`（workflow run `37306834407`，四平台 runtime 以
+identity 0.2.0 构建，checksum 与 manifest 均已复核）；`v0.2.3` tag 需单独授权。
 正式 GitHub Release 已推进到 `v0.2.1`；tag、workflow run `37215824488`、四平台 runtime、
 checksum sidecar、manifest 和 CLI tarball 均已验证。Rust runtime identity 仍为 `0.2.0`，
 与 carrier release 分开记录；不要把 npm、GitHub carrier release 与 runtime contract 视为同一版本。

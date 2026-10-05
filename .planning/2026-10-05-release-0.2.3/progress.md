@@ -24,4 +24,21 @@
 
 ## Publish evidence
 
-- (pending)
+- Completed 2026-10-06: after several auth sessions timed out (the user was
+  intermittent), a retry loop maintained fresh auth URLs and the user
+  completed browser authorization; npm accepted the publish
+  (`+ @agent_cli/cli@0.2.3`). Note: the authorization landed after npm's
+  CLI-side poll had moved on — the server processed the pending publish and
+  the loop's next attempt was stopped cleanly (a duplicate publish would
+  have been rejected by npm anyway).
+- Registry verification: `npm view @agent_cli/cli@0.2.3 version` → `0.2.3`
+  (after ~80 seconds of propagation delay) and `dist-tags.latest` → `0.2.3`.
+- Post-publish clean install from the registry: `dev-agent --version` →
+  `dev-agent 0.2.3`; provider-free `runtime status --json` returns normally
+  and includes the new `manifestVerification: "not-configured"` field.
+- Documentation flipped to published: `release-state.json` (published 0.2.3,
+  status published, updatedAt 2026-10-06), README, `docs/release-cli-npm.md`
+  (0.2.3 publication record), roadmap, CHANGELOG (new 2026-10-06 section),
+  documentation contract updated and green.
+- The formal GitHub carrier release remains `v0.2.2`; a `v0.2.3` tag/release
+  is a separate decision requiring explicit authorization.
