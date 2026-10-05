@@ -1,7 +1,22 @@
 # Changelog
 
-## 2026-10-05（未发布 / unreleased）
+## 2026-10-05（@agent_cli/cli 0.2.2 发布）
 
+- `@agent_cli/cli@0.2.2` 已发布到 npm 并成为 `latest`（registry 复核
+  `npm view @agent_cli/cli@0.2.2 version` = `0.2.2`，`dist-tags.latest` =
+  `0.2.2`）；release-state 的 `publishedVersion` 已同步。
+- 发布前 `pnpm release:preflight` 通过；官方 `npm test` 842/842，
+  `pnpm package:smoke` 与 `NODE_USE_ENV_PROXY=1 pnpm runtime:smoke --
+  --skip-build`（carrier 0.2.1）通过。账号 2FA 走与 0.2.1 相同的浏览器授权
+  流程；发布后 clean-install 复核 `dev-agent --version` = `0.2.2`，
+  provider-free `--tools --json` 正常。
+- 正式 GitHub carrier release 仍为 `v0.2.1`（runtime identity 0.2.0，
+  carrier 0.2.1）；`v0.2.2` tag/release 未创建，需要单独授权。
+- 本版本内容：CLI Security Center metadata-only 审计历史与 `:security
+  history`；managed runtime 默认 carrier release 从 `0.1.6` 切换为已发布的
+  `0.2.1`；Desktop Security Center 路由与面板（loopback + capability token
+  门控）；受管 runtime spawn 前完整性复验（`RustExecutor.verifyBeforeSpawn`）；
+  smoke 脚本剥离父会话 `npm_config_*` 环境，修复 npm 11.6+ EALLOWSCRIPTS。
 - CLI Security Center: `:security` 扫描现在会把有界元数据写入审计历史，
   并新增 `:security history` 查看。历史记录只包含 scan id、时间、状态、
   耗时、文件/字节/跳过计数和按 severity/category 的聚合计数；finding

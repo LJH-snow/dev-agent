@@ -31,18 +31,24 @@
 
 ## Publish evidence
 
-- Blocked on user 2FA: the non-interactive governance publish returned
-  `publish_failed`; the PTY-wrapped `npm publish` reached the auth stage and
-  printed browser-auth URLs, but the `/-/v1/done` poll timed out (E404) before
-  the user completed authorization. An auto-retry loop (15 attempts over
-  ~35 minutes, freshest URL maintained in `/tmp/dev-agent-npm-auth-latest.txt`)
-  also exhausted without a completed authorization.
-- Registry stayed consistent throughout: `dist-tags.latest` remained `0.2.1`
-  and `@agent_cli/cli@0.2.2` was never partially published.
-- The candidate is fully prepared, verified, and committed (`d6b65f2`).
-  Completion path when the user is ready: re-run the PTY publish (or the
-  guarded `pnpm release:publish -- --publish` after a fresh `npm login`)
-  and click the printed URL within its short validity window; then re-check
-  `npm view @agent_cli/cli@0.2.2 version` and `dist-tags.latest`, flip
-  `docs/release-state.json` to published 0.2.2, update the docs contract and
-  CHANGELOG, and commit.
+- Completed 2026-10-05: the user authorized the round and completed the npm
+  2FA browser authorization on a fresh PTY publish attempt
+  (`+ @agent_cli/cli@0.2.2`, tarball `agent_cli-cli-0.2.2.tgz`, 2.9 MB,
+  5 files, shasum `adcccab7f3bcc4b3a5ed58c1343e253630f94280`).
+- Earlier attempts: the non-interactive governance publish returned
+  `publish_failed`; PTY attempts reached the auth stage but the `/-/v1/done`
+  poll timed out (E404) until the user clicked in time. One intermediate loop
+  misfired by running `npm publish` from the repo root (EPRIVATE) and was
+  corrected to run from `apps/cli`; the registry was never touched by any
+  failed attempt.
+- Registry verification: `npm view @agent_cli/cli@0.2.2 version` → `0.2.2`
+  (after the ~2-minute propagation delay seen in prior rounds) and
+  `dist-tags.latest` → `0.2.2`.
+- Post-publish clean install from the registry: `dev-agent --version` →
+  `dev-agent 0.2.2`; provider-free `dev-agent --tools --json` returns normally.
+- Documentation flipped to published: `release-state.json` (published 0.2.2,
+  status published), README, `docs/release-cli-npm.md` (0.2.2 publication
+  record), roadmap, CHANGELOG (merged the unreleased section into the
+  0.2.2 release section), documentation contract updated and green.
+- The formal GitHub carrier release remains `v0.2.1`; a `v0.2.2` tag/release
+  is a separate decision requiring explicit authorization.

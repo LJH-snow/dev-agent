@@ -1,6 +1,14 @@
 # CLI npm 分发与跨目录使用
 
-本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-04，`@agent_cli/cli@0.2.1` 已发布到 npm 并成为 `latest`，正式 GitHub Release 为 `v0.2.1`**。npm 发布与 GitHub Release 仍是两个独立状态：tag/release 只有在单独授权后才创建，但本次授权的 `v0.2.1` workflow 已完成。
+本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-05，`@agent_cli/cli@0.2.2` 已发布到 npm 并成为 `latest`**。npm 发布与 GitHub Release 仍是两个独立状态：正式 GitHub carrier release 仍为 `v0.2.1`，`v0.2.2` tag/release 只有在单独授权后才会创建。
+
+## 0.2.2 发布记录（2026-10-05）
+
+- `npm view @agent_cli/cli version` 与 `dist-tags.latest` 现均为 `0.2.2`；`npm view @agent_cli/cli@0.2.2 version` 可复核精确版本。
+- 发布前 `pnpm release:preflight` 通过（auth authenticated、registry matched 0.2.1、artifact ready）；官方 `npm test` 842/842，`pnpm package:smoke` 与 `NODE_USE_ENV_PROXY=1 pnpm runtime:smoke -- --skip-build`（carrier 0.2.1）通过。
+- 账号 2FA 浏览器授权流程与 0.2.1 相同：PTY 包装的 `npm publish` 打印一次性授权链接，用户在有效窗口内完成浏览器授权后 npm 接受发布（tarball `agent_cli-cli-0.2.2.tgz`，2.9 MB，5 files，shasum `adcccab7f3bcc4b3a5ed58c1343e253630f94280`）。
+- 发布后从 registry clean-install：`dev-agent --version` 输出 `0.2.2`，provider-free `dev-agent --tools --json` 正常返回。
+- 首次 registry 查询仍出现传播延迟（约 2 分钟内 E404），等待后精确版本与 dist-tag 均确认同步。
 
 ## 0.2.2 候选准备（2026-10-05）
 
@@ -181,7 +189,7 @@ session: DEV_AGENT_SESSION_DIR > --project-state 项目默认 > 用户默认
 memory:  DEV_AGENT_MEMORY_FILE > 选定的 session 目录
 ```
 
-`--project-state` 已随已发布的 `@agent_cli/cli@0.2.1` 提供；该功能最早随 `@agent_cli/cli@0.1.3` 引入。它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
+`--project-state` 已随已发布的 `@agent_cli/cli@0.2.2` 提供；该功能最早随 `@agent_cli/cli@0.1.3` 引入。它是显式 opt-in，不会自动迁移、重命名或覆盖已有的
 `~/.dev-agent/sessions/default.json`。不带该 flag 时，兼容默认仍是
 `~/.dev-agent/config.json` 和 `~/.dev-agent/sessions`。
 
