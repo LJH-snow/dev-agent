@@ -143,7 +143,7 @@ dev-agent --resume other-project --once "continue the previous task"
 dev-agent --acp --cwd /path/to/other-project
 dev-agent --a2a --cwd /path/to/other-project --host 127.0.0.1 --port 4320
 dev-agent runtime status --runtime-version 0.2.0 --json
-dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.2.1
+dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.2.2
 dev-agent --executor rust-sandbox --runtime-version 0.2.0 --once "list files"
 # Provider-free CI workflows
 dev-agent review --cwd /path/to/other-project --json --non-interactive
@@ -259,8 +259,8 @@ is the current carrier release, created by the authorized tag workflow with the
 four runtime artifacts (runtime identity `0.2.0`), checksums, manifest, and
 verified CLI tarball. The Rust runtime identity remains
 `0.2.0`; use `--runtime-version 0.2.0 --runtime-release 0.2.2` when installing that
-runtime carrier (the built-in default is `0.2.1` until the packaged default is
-bumped). See
+runtime carrier; since the 0.2.2 publication the packaged built-in default is
+`--runtime-release 0.2.2`. See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The
 [release state](docs/release-state.json) records the latest published npm version and current version.
@@ -400,7 +400,7 @@ cargo build --release --bin dev-agent-executor
 
 Point the CLI or desktop app at it with `--rust-executor <path>` or
 `DEV_AGENT_RUST_BINARY`. For released binaries, the CLI can instead use
-`dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.2.1` followed by
+`dev-agent runtime install --runtime-version 0.2.0 --runtime-release 0.2.2` followed by
 `--executor rust-sandbox`; `runtime status|path|remove` provide cache diagnostics
 without starting a model provider.
 

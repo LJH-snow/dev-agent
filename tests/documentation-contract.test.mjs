@@ -279,7 +279,7 @@ test("published CLI version is synchronized across current release documentation
 test("runtime release selection and smoke command are documented separately from runtime identity", () => {
   assert.match(cliReadme, /--runtime-release <version>/);
   assert.match(cliReadme, /GitHub release that carries the runtime manifest and archive/);
-  assert.match(cliReadme, /--runtime-release 0\.2\.1/);
+  assert.match(cliReadme, /--runtime-release 0\.2\.2/);
   assert.match(cliReadme, /runtime identity/);
   assert.match(cliReadme, /pnpm runtime:smoke/);
   assert.match(desktopCandidate, /--runtime-release/);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-05（v0.2.2 carrier 发布后跟进）
+
+- CLI: managed runtime 默认 carrier release 从 `0.2.1` 跟进到刚发布的
+  `0.2.2`（runtime identity 仍为 `0.2.0`）；`pnpm runtime:smoke` 的硬编码
+  carrier 常量同步更新。先 RED 测试再切换，文档契约 60/60，官方
+  `npm test` 842/842。下一次版本发布时该默认值才会随包分发。
+
 ## 2026-10-05（@agent_cli/cli 0.2.2 发布）
 
 - `@agent_cli/cli@0.2.2` 已发布到 npm 并成为 `latest`（registry 复核

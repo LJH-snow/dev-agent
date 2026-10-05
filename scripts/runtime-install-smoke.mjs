@@ -12,7 +12,7 @@ const packageManager = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
 const maxBuffer = 4 * 1024 * 1024;
 const runtimeVersion = "0.2.0";
-const runtimeRelease = "0.2.1";
+const runtimeRelease = "0.2.2";
 
 async function run(command, args, options = {}) {
   try {

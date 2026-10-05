@@ -16,7 +16,7 @@ import {
 type RuntimeAction = "status" | "install" | "path" | "remove";
 
 /** The official release currently carries runtime 0.2.0 assets. */
-export const DEFAULT_RUNTIME_RELEASE_VERSION = "0.2.1";
+export const DEFAULT_RUNTIME_RELEASE_VERSION = "0.2.2";
 
 export interface RuntimeCommandOptions {
   readonly action: RuntimeAction;
