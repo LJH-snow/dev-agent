@@ -292,6 +292,15 @@ import {
 } from "./model-routing.js";
 import { SessionModelBudget } from "./model-budget.js";
 import { formatSecurityScan, parseSecurityCommand, scanWorkspace, type SecurityScanResult } from "./security-center.js";
+import {
+  activateSecurityAuditHistory,
+  activeSecurityAuditHistory,
+  createSecurityAuditErrorRecord,
+  createSecurityAuditRecord,
+  formatSecurityAuditHistory,
+  MAX_SECURITY_AUDIT_VISIBLE,
+  SecurityAuditHistoryStore,
+} from "./security-audit-history.js";
 import { LocalSkillMarketplace } from "./skill-marketplace.js";
 import {
   createAnthropicProvider,
@@ -2415,6 +2424,10 @@ export async function main(argv: string[], options: CliMainOptions = {}): Promis
       filePath: projectMemoryFilePath(workingDirectory, projectState),
     });
     const skillMarketplace = new LocalSkillMarketplace({ workingDirectory });
+    const securityAuditHistory = new SecurityAuditHistoryStore({
+      stateFile: join(sessionDir(workingDirectory, projectState), "security-audit-history.json"),
+    });
+    activateSecurityAuditHistory(securityAuditHistory);
     await interactive(loop, context, streaming, questionBox, {
       rich: richUi,
       ink:
@@ -3412,6 +3425,7 @@ interface InteractiveUiOptions {
   readonly projectMemory?: ProjectMemoryStore;
   readonly skillMarketplace?: LocalSkillMarketplace;
   readonly runSecurityScan?: () => Promise<SecurityScanResult>;
+  readonly securityAuditHistory?: SecurityAuditHistoryStore;
   readonly consumePlanReview?: () => PlanReview | undefined;
   readonly runCollaborativePlan?: (
     prompt: string,
@@ -3769,11 +3783,32 @@ async function gitWorkflowCommandMessage(
 async function securityCommandMessage(command: string, ui: InteractiveUiOptions): Promise<string | undefined> {
   const parsed = parseSecurityCommand(command);
   if (parsed === undefined || !parsed.handled) return undefined;
-  if (parsed.action === "help") return "Usage: :security [scan] · read-only workspace and MCP audit.";
-  if (parsed.action === "invalid") return "Usage: :security [scan]";
+  if (parsed.action === "help") return "Usage: :security [scan|history] · read-only workspace and MCP audit; history stores metadata only.";
+  if (parsed.action === "invalid") return "Usage: :security [scan|history]";
+  if (parsed.action === "history") {
+    const store = ui.securityAuditHistory ?? activeSecurityAuditHistory();
+    if (!store) return "Security audit history is unavailable in this session.";
+    return safeTerminalText(formatSecurityAuditHistory(store.list().slice(0, MAX_SECURITY_AUDIT_VISIBLE)));
+  }
   if (!ui.runSecurityScan) return "Security Center is unavailable in this session.";
-  try { return safeTerminalText(formatSecurityScan(await ui.runSecurityScan())); }
-  catch (error) { return safeTerminalText(`Security scan failed: ${error instanceof Error ? error.message : String(error)}`); }
+  const startedAt = new Date().toISOString();
+  const auditStore = ui.securityAuditHistory ?? activeSecurityAuditHistory();
+  try {
+    const result = await ui.runSecurityScan();
+    if (auditStore) {
+      await auditStore.record(
+        createSecurityAuditRecord(result, { startedAt, finishedAt: new Date().toISOString() }),
+      );
+    }
+    return safeTerminalText(formatSecurityScan(result));
+  } catch (error) {
+    if (auditStore) {
+      await auditStore.record(
+        createSecurityAuditErrorRecord({ startedAt, finishedAt: new Date().toISOString() }),
+      );
+    }
+    return safeTerminalText(`Security scan failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
 }
 
 async function skillMarketplaceCommandMessage(

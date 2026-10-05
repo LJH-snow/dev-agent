@@ -269,6 +269,7 @@ The CLI includes two bounded, read-first surfaces:
 
 ```text
 :security
+:security history
 :marketplace
 :marketplace search docs
 :marketplace install docs-helper
@@ -277,6 +278,8 @@ The CLI includes two bounded, read-first surfaces:
 ```
 
 `:security` scans a bounded set of text files for secret-like material, flags sensitive filenames, reviews shell-based MCP entries and secret-like MCP environment keys, and reports symlinks that leave the workspace. It never prints secret values, runs commands, edits files, or performs automatic remediation.
+
+`:security history` shows the most recent scan metadata recorded by this workspace's Security Center: scan id, time, status, duration, scanned file/byte counts, and aggregate finding counts by severity and category. History is metadata-only — finding locations, summaries, secret values, paths, commands, environment values, and errors are never persisted or displayed. The bounded history lives next to the session state and is capped in record count and size. Audit history is a bookkeeping aid, not proof of runtime security.
 
 The local marketplace reads `.dev-agent/skill-marketplace.json`. Entries declare a name, version, local source file, and permission labels. Install, disable, and enable require confirmation where they mutate files; remote URLs, path escapes, oversized skill files, malformed entries, and unconfirmed mutations are rejected. Skills are instruction-only and never execute code. Restart the CLI after install/enable so bounded skill discovery reloads them.
 

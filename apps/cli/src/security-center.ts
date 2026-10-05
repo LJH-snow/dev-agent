@@ -22,7 +22,7 @@ export interface SecurityScanOptions {
   readonly maxFiles?: number;
   readonly maxBytes?: number;
 }
-export type SecurityCommand = { readonly handled: true; readonly action: "scan" | "help" | "invalid" } | { readonly handled: false };
+export type SecurityCommand = { readonly handled: true; readonly action: "scan" | "history" | "help" | "invalid" } | { readonly handled: false };
 
 const SKIP_DIRECTORIES = new Set([".git", "node_modules", "dist", "build", "output", ".playwright-cli"]);
 const SECRET_PATTERNS = [
@@ -87,6 +87,7 @@ export async function scanWorkspace(options: SecurityScanOptions): Promise<Secur
 export function parseSecurityCommand(command: string): SecurityCommand | undefined {
   const normalized = command.trim().replace(/^\//u, ":");
   if (normalized === ":security" || normalized === ":security scan") return { handled: true, action: "scan" };
+  if (normalized === ":security history") return { handled: true, action: "history" };
   if (normalized === ":security help") return { handled: true, action: "help" };
   if (normalized.startsWith(":security")) return { handled: true, action: "invalid" };
   return undefined;
