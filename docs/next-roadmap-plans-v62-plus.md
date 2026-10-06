@@ -311,6 +311,8 @@ fallback。详细 proof gap 见
 可选 manifest Ed25519 签名验证（客户端 + workflow 签名）与打包默认 carrier 0.2.2。
 正式 GitHub carrier release 仍为 `v0.2.2`（workflow run `37306834407`，四平台 runtime 以
 identity 0.2.0 构建，checksum 与 manifest 均已复核）；`v0.2.3` tag 需单独授权。
+当前 candidate 为 `@agent_cli/cli@0.2.4`（过夜加固轮），发布走维护者提供的
+npm 自动化 token（用户级配置），不再需要交互式 2FA。
 正式 GitHub Release 已推进到 `v0.2.1`；tag、workflow run `37215824488`、四平台 runtime、
 checksum sidecar、manifest 和 CLI tarball 均已验证。Rust runtime identity 仍为 `0.2.0`，
 与 carrier release 分开记录；不要把 npm、GitHub carrier release 与 runtime contract 视为同一版本。

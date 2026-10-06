@@ -259,7 +259,10 @@ is the current carrier release, created by the authorized tag workflow with the
 four runtime artifacts (runtime identity `0.2.0`), checksums, manifest, and
 verified CLI tarball. The Rust runtime identity remains
 `0.2.0`; use `--runtime-version 0.2.0 --runtime-release 0.2.2` when installing that
-runtime carrier (the packaged built-in default since 0.2.3 is also `0.2.2`). A `v0.2.3` GitHub
+runtime carrier (the packaged built-in default since 0.2.3 is also `0.2.2`). The
+current candidate `@agent_cli/cli@0.2.4` packages the overnight hardening round
+(session-picker failure isolation, `:security clear`, doctor verification
+status, and the signing key-ceremony documentation). A `v0.2.3` GitHub
 tag/release is only created after separate authorization. See
 [`docs/release-cli-npm.md`](docs/release-cli-npm.md)
 for the install, `--cwd`, `--project-state`, config/session, provider, and optional Rust runtime rules. The

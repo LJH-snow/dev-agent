@@ -2,6 +2,16 @@
 
 本文记录 `@agent_cli/cli` 从 workspace 开发态到可安装 CLI 的边界。当前仓库已经具备本地打包、clean-install 和外部目录 smoke test；**截至 2026-10-06，`@agent_cli/cli@0.2.3` 已发布到 npm 并成为 `latest`**。npm 发布与 GitHub Release 仍是两个独立状态：正式 GitHub carrier release 仍为 `v0.2.2`，`v0.2.3` tag/release 只有在单独授权后才会创建。
 
+## 0.2.4 候选准备（2026-10-06）
+
+- `@agent_cli/cli@0.2.4` 是当前 candidate：`docs/release-state.json` 记录
+  `candidateVersion: 0.2.4`、`publishedVersion: 0.2.3`、`status: candidate`。
+- 候选内容：过夜加固轮（面板会话列表故障隔离、`:security clear` 两步清除、
+  doctor 报告 manifestVerification、签名密钥仪式文档）。
+- 发布授权模式更新：维护者提供了 npm 自动化 token 并已配置到用户级
+  `~/.npmrc`（凭据永不入仓库/文档/账本），后续 publish 不再需要交互式 2FA；
+  本候选是该模式下的首次发布。
+
 ## 0.2.3 发布记录（2026-10-06）
 
 - `npm view @agent_cli/cli version` 与 `dist-tags.latest` 现均为 `0.2.3`；`npm view @agent_cli/cli@0.2.3 version` 可复核精确版本。
